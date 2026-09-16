@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@google/genai": "latest",
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.116.0",
     "cheerio": "1.2.0",
@@ -22,6 +23,7 @@
     "@types/node": "^24.4.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "supabase": "latest",
     "typescript": "^5.9.2"
   }
 }
