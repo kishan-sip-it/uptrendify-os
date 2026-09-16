@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@google/genai": "2.22.0",
@@ -23,7 +25,8 @@
     "@types/node": "^24.4.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "supabase": "2.117.0",
-    "typescript": "^5.9.2"
+"supabase": "2.117.0",
+    "typescript": "^5.9.2",
+    "vitest": "^5.0.1"
   }
 }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const envSchema = z.object({
+export const envSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1).optional(),
@@ -10,9 +10,10 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().min(1).optional(),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
-  ANTHROPIC_MODEL: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default('claude-3-5-haiku-latest'),
   GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_MODEL: z.string().default('gemini-3.7-flash'),
+  DEFAULT_AI_PROVIDER: z.enum(['groq', 'openai', 'anthropic', 'gemini']).default('groq'),
   SEMRUSH_API_KEY: z.string().min(1).optional(),
   SURFER_API_KEY: z.string().min(1).optional(),
   JASPER_API_KEY: z.string().min(1).optional(),
@@ -21,7 +22,9 @@ const envSchema = z.object({
   RESEARCH_USER_AGENT: z.string().default('UpTrendifyOSBot/1.0'),
   MAX_RESEARCH_PAGES: z.coerce.number().int().positive().max(100).default(15),
   MAX_RESEARCH_BYTES: z.coerce.number().int().positive().max(20_000_000).default(5_000_000),
+  MAX_RESEARCH_REDIRECTS: z.coerce.number().int().min(0).max(20).default(5),
   RESEARCH_TIMEOUT_MS: z.coerce.number().int().positive().max(60_000).default(12_000),
+  RESEARCH_TOTAL_BUDGET_MS: z.coerce.number().int().positive().max(120_000).default(45_000),
 });
 
 let cached: z.infer<typeof envSchema> | null = null;

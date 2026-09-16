@@ -1,5 +1,6 @@
 import { ArrowUpRight, FileText, Globe2, Plus, Search, Sparkles, Users } from 'lucide-react';
-import type { ElementType } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { LogoutButton } from '@/components/auth/logout-button';
 
 const brands = [
   { name: 'Acme Technologies', type: 'B2B SaaS', health: 91, opportunities: 14, status: 'Research complete' },
@@ -7,7 +8,7 @@ const brands = [
   { name: 'Orbit Commerce', type: 'E-commerce', health: 84, opportunities: 21, status: 'Strategy ready' },
 ];
 
-const metrics: Array<{ label: string; value: string; Icon: ElementType }> = [
+const metrics: Array<{ label: string; value: string; Icon: LucideIcon }> = [
   { label: 'Active brands', value: '12', Icon: Users },
   { label: 'Campaigns', value: '27', Icon: Sparkles },
   { label: 'Content to review', value: '18', Icon: FileText },
@@ -29,6 +30,7 @@ export default function Home() {
           <p style={{ marginBottom: 8 }}>Ask UpTrendifyOS to find your next growth opportunity.</p>
           <div className="badge"><Sparkles size={13} /> Agent ready</div>
         </div>
+        <div style={{ marginTop: 20 }}><LogoutButton /></div>
       </aside>
 
       <section className="main">
@@ -42,7 +44,7 @@ export default function Home() {
         </div>
 
         <div className="grid grid-4">
-          {metrics.map(({ label, value, Icon }) => (
+{metrics.map(({ label, value, Icon }) => (
             <div className="card metric" key={label}>
               <div className="metric-label"><Icon size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />{label}</div>
               <div className="metric-value">{value}</div>

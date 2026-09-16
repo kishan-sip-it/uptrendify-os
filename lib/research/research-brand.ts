@@ -1,7 +1,10 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { env } from '@/lib/env';
-import { assertPublicHttpUrl, assertResolvablePublicHost } from './url-security';
+import { obs } from '@/lib/obs/logger';
+import { assertPublicHttpUrl, assertResolvablePublicHost, readBoundedBody } from './url-security';
 import { extractPage } from './extract';
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 function normalizeUrl(raw: string) {
   const url = assertPublicHttpUrl(raw);
@@ -21,83 +24,129 @@ export async function researchBrand(organizationId: string, brandId: string, web
   const rootHost = new URL(root).hostname;
   await assertResolvablePublicHost(rootHost);
 
-  await supabase.from('research_runs').update({ status: 'RUNNING', started_at: new Date().toISOString() }).eq('id', researchRunId);
+  await supabase.from('research_runs').update({ status: 'RUNNING', started_at: new Date().toISOString(), error_code: null, error_message: null }).eq('id', researchRunId);
 
   const queue = [root];
   const seen = new Set<string>();
+  const crawlBudget = Math.min(e.RESEARCH_TOTAL_BUDGET_MS, e.RESEARCH_TIMEOUT_MS * (e.MAX_RESEARCH_PAGES + 1));
+  const start = Date.now();
   let pagesProcessed = 0;
   let partial = false;
 
-  while (queue.length && pagesProcessed < e.MAX_RESEARCH_PAGES) {
-    const target = normalizeUrl(queue.shift()!);
-    if (seen.has(target)) continue;
-    seen.add(target);
+  try {
+    while (queue.length && pagesProcessed < e.MAX_RESEARCH_PAGES) {
+      if (Date.now() - start > crawlBudget) { partial = true; break; }
 
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), e.RESEARCH_TIMEOUT_MS);
-      const response = await fetch(target, {
-        signal: controller.signal,
-        redirect: 'manual',
-        headers: { 'user-agent': e.RESEARCH_USER_AGENT, accept: 'text/html,application/xhtml+xml' },
-      });
-      clearTimeout(timeout);
+      const target = normalizeUrl(queue.shift()!);
+      if (seen.has(target)) continue;
+      seen.add(target);
 
-      if ([301,302,303,307,308].includes(response.status)) {
-        const location = response.headers.get('location');
-        if (location && seen.size < e.MAX_RESEARCH_PAGES) {
-          const redirected = normalizeUrl(new URL(location, target).toString());
-          if (sameOrigin(root, redirected)) {
-            await assertResolvablePublicHost(new URL(redirected).hostname);
-            queue.unshift(redirected);
+      try {
+        const host = new URL(target).hostname;
+        await assertResolvablePublicHost(host);
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), e.RESEARCH_TIMEOUT_MS);
+        let response: Response;
+        try {
+          response = await fetch(target, {
+            signal: controller.signal,
+            redirect: 'manual',
+            headers: { 'user-agent': e.RESEARCH_USER_AGENT, accept: 'text/html,application/xhtml+xml' },
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+
+        if (REDIRECT_STATUSES.has(response.status)) {
+          const location = response.headers.get('location');
+          const redirectCount = Number(response.headers.get('x-redirect-count') || 0) + 1;
+          if (location && redirectCount <= e.MAX_RESEARCH_REDIRECTS && seen.size < e.MAX_RESEARCH_PAGES * 3) {
+            const redirected = normalizeUrl(new URL(location, target).toString());
+            if (sameOrigin(root, redirected)) {
+              await assertResolvablePublicHost(new URL(redirected).hostname);
+              queue.unshift(redirected);
+            }
+          }
+          continue;
+        }
+
+        if (!response.ok) { partial = true; continue; }
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) { partial = true; continue; }
+
+        const contentLength = Number(response.headers.get('content-length') || 0);
+        if (contentLength > e.MAX_RESEARCH_BYTES) { partial = true; continue; }
+
+        const { content, truncated } = await readBoundedBody(response, e.MAX_RESEARCH_BYTES);
+        if (truncated) { partial = true; }
+
+        const extracted = extractPage(content, target);
+        const canonicalRaw = extracted.canonicalUrl ? new URL(extracted.canonicalUrl, target).toString() : target;
+        const canonical = normalizeUrl(canonicalRaw);
+        const contentHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(extracted.text)).then(buf => Buffer.from(buf).toString('hex'));
+
+        const source = await supabase.from('brand_sources').upsert({
+          organization_id: organizationId,
+          brand_id: brandId,
+          url: target,
+          canonical_url: canonical,
+          title: extracted.title,
+          content_type: contentType,
+          status: 'ACTIVE',
+          http_status: response.status,
+          retrieved_at: new Date().toISOString(),
+          content_hash: contentHash,
+          extracted_text: extracted.text,
+          metadata: { description: extracted.description, headings: extracted.headings },
+        }, { onConflict: 'brand_id,canonical_url' }).select('id').single();
+        if (source.error) throw source.error;
+
+        const link = await supabase.from('research_sources').upsert({ research_run_id: researchRunId, organization_id: organizationId, source_id: source.data.id, status: 'PROCESSED' }, { onConflict: 'research_run_id,source_id' });
+        if (link.error) throw link.error;
+
+        pagesProcessed += 1;
+        for (const next of extracted.links) {
+          try {
+            const candidate = normalizeUrl(next);
+            if (sameOrigin(root, candidate) && !seen.has(candidate) && queue.length + seen.size < e.MAX_RESEARCH_PAGES * 3) queue.push(candidate);
+          } catch {
+            continue;
           }
         }
-        continue;
+      } catch (error) {
+        partial = true;
+        obs.warn('Research page failed', { brandId, url: target, error: error instanceof Error ? error.message : String(error) });
       }
 
-      if (!response.ok) { partial = true; continue; }
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) { partial = true; continue; }
-
-      const contentLength = Number(response.headers.get('content-length') || 0);
-      if (contentLength > e.MAX_RESEARCH_BYTES) { partial = true; continue; }
-      const html = await response.text();
-      if (Buffer.byteLength(html, 'utf8') > e.MAX_RESEARCH_BYTES) { partial = true; continue; }
-
-      const extracted = extractPage(html, target);
-      const canonical = extracted.canonicalUrl ? new URL(extracted.canonicalUrl, target).toString() : target;
-      const contentHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(extracted.text)).then(buf => Buffer.from(buf).toString('hex'));
-
-      const source = await supabase.from('brand_sources').upsert({
-        organization_id: organizationId,
-        brand_id: brandId,
-        url: target,
-        canonical_url: canonical,
-        title: extracted.title,
-        content_type: contentType,
-        status: 'ACTIVE',
-        http_status: response.status,
-        retrieved_at: new Date().toISOString(),
-        content_hash: contentHash,
-        extracted_text: extracted.text,
-        metadata: { description: extracted.description, headings: extracted.headings },
-      }, { onConflict: 'brand_id,canonical_url' }).select('id').single();
-      if (source.error) throw source.error;
-
-      await supabase.from('research_sources').upsert({ research_run_id: researchRunId, organization_id: organizationId, source_id: source.data.id, status: 'PROCESSED' }, { onConflict: 'research_run_id,source_id' });
-
-      pagesProcessed += 1;
-      for (const link of extracted.links) {
-        if (sameOrigin(root, link) && !seen.has(normalizeUrl(link)) && queue.length + seen.size < e.MAX_RESEARCH_PAGES * 3) queue.push(link);
-      }
-    } catch {
-      partial = true;
+      const progress = await supabase.from('research_runs').update({ pages_processed: pagesProcessed, pages_discovered: seen.size }).eq('id', researchRunId);
+      if (progress.error) obs.warn('Failed to persist research progress', { researchRunId, error: progress.error.message });
     }
 
-    await supabase.from('research_runs').update({ pages_processed: pagesProcessed, pages_discovered: seen.size }).eq('id', researchRunId);
-  }
+    const finalStatus = pagesProcessed > 0 ? (partial ? 'PARTIAL' : 'COMPLETED') : 'FAILED';
+    const result = await supabase.from('research_runs').update({
+      status: finalStatus,
+      pages_processed: pagesProcessed,
+      pages_discovered: seen.size,
+      finished_at: new Date().toISOString(),
+      error_code: finalStatus === 'FAILED' ? 'NO_PAGES_PROCESSED' : partial ? 'PARTIAL' : null,
+      error_message: finalStatus === 'FAILED'
+        ? 'No pages could be processed during this research run.'
+        : partial
+          ? 'Some pages could not be processed; review source status.'
+          : null,
+    }).eq('id', researchRunId);
+    if (result.error) throw result.error;
 
-  const finalStatus = pagesProcessed > 0 ? (partial ? 'PARTIAL' : 'COMPLETED') : 'FAILED';
-  await supabase.from('research_runs').update({ status: finalStatus, pages_processed: pagesProcessed, pages_discovered: seen.size, finished_at: new Date().toISOString(), error_message: partial ? 'Some pages could not be processed; review source status.' : null }).eq('id', researchRunId);
-  return { status: finalStatus, pagesProcessed, pagesDiscovered: seen.size };
+    return { status: finalStatus, pagesProcessed, pagesDiscovered: seen.size };
+  } catch (error) {
+    const failed = await supabase.from('research_runs').update({
+      status: 'FAILED',
+      finished_at: new Date().toISOString(),
+      error_code: 'RESEARCH_FAILED',
+      error_message: error instanceof Error ? error.message : 'Research failed',
+    }).eq('id', researchRunId);
+    if (failed.error) obs.error('Failed to mark research run as failed', { researchRunId, error: failed.error.message });
+    throw error;
+  }
 }

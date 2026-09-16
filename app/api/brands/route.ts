@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { CAN_CREATE_BRANDS, requireOrgRole } from '@/lib/auth/roles';
+import { obs } from '@/lib/obs/logger';
 
 const inputSchema = z.object({
   clientName: z.string().trim().min(2).max(120),
@@ -18,21 +20,12 @@ function slugify(value: string) {
 export async function POST(request: Request) {
   try {
     const body = inputSchema.parse(await request.json());
+
+    const auth = await requireOrgRole(CAN_CREATE_BRANDS);
+    if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
+
     const supabase = await createSupabaseServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-
-    const { data: membership, error: membershipError } = await supabase
-      .from('organization_members')
-      .select('organization_id')
-      .eq('user_id', user.id)
-      .limit(1)
-      .maybeSingle();
-
-    if (membershipError) throw membershipError;
-    if (!membership) return NextResponse.json({ error: 'No organization membership found' }, { status: 403 });
-
-    const organizationId = membership.organization_id;
+    const organizationId = auth.context.organizationId;
     const clientSlug = slugify(body.clientName);
     const brandSlug = slugify(body.brandName);
 
@@ -57,9 +50,11 @@ export async function POST(request: Request) {
 
     if (createdBrand.error) throw createdBrand.error;
 
+    obs.info('Brand created', { organizationId, brandId: createdBrand.data.id, actorRole: auth.context.role });
     return NextResponse.json({ ok: true, brand: createdBrand.data }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid input', details: error.flatten() }, { status: 400 });
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to create brand' }, { status: 500 });
+    obs.error('Brand creation failed', { error: error instanceof Error ? error.message : String(error) });
+    return NextResponse.json({ error: 'Failed to create brand' }, { status: 500 });
   }
 }

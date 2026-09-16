@@ -2,24 +2,33 @@
 
 import { FormEvent, useState } from 'react';
 import { ArrowLeft, Globe2, LoaderCircle, Sparkles } from 'lucide-react';
+import { ErrorState, SuccessState } from '@/components/ui/feedback';
+
+type Status = { kind: 'success' | 'error' | 'idle'; message: string };
 
 export default function NewBrandPage() {
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [status, setStatus] = useState<Status>({ kind: 'idle', message: '' });
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
-    setMessage('');
+    setStatus({ kind: 'idle', message: '' });
     const form = new FormData(event.currentTarget);
     const payload = Object.fromEntries(form.entries());
     try {
       const response = await fetch('/api/brands', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Could not create brand');
-      setMessage(`Brand ${result.brand.name} created successfully. Next step: run brand research.`);
+      if (!response.ok) {
+        if (response.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+        throw new Error(result.error || 'Could not create brand');
+      }
+      setStatus({ kind: 'success', message: `Brand ${result.brand.name} created successfully. Next step: run brand research.` });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Something went wrong');
+      setStatus({ kind: 'error', message: error instanceof Error ? error.message : 'Something went wrong' });
     } finally {
       setLoading(false);
     }
@@ -46,7 +55,8 @@ export default function NewBrandPage() {
         <button disabled={loading} className="badge" style={{ border:0, justifyContent:'center', padding:14, cursor:'pointer' }}>
           {loading ? <><LoaderCircle size={15} className="spin"/> Creating…</> : <>Create brand workspace <Sparkles size={15}/></>}
         </button>
-        {message && <div className="card" style={{ background:'#0a111d' }}>{message}</div>}
+        {status.kind === 'success' && <SuccessState message={status.message} />}
+        {status.kind === 'error' && <ErrorState message={status.message} />}
       </form>
     </main>
   );

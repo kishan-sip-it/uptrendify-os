@@ -1,27 +1,84 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
 
+function ipv4ToInt(ip: string): number {
+  return ip.split('.').reduce((acc, part) => (acc << 8) | Number(part), 0) >>> 0;
+}
+
 function isPrivateIpv4(ip: string) {
-  const parts = ip.split('.').map(Number);
-  if (parts.length !== 4 || parts.some(Number.isNaN)) return true;
-  const [a,b,c] = parts;
-  return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 100 && b >= 64 && b <= 127);
+  if (!net.isIPv4(ip)) return true;
+  const value = ipv4ToInt(ip);
+  const blocks: Array<[string, number]> = [
+    ['0.0.0.0', 8],
+    ['10.0.0.0', 8],
+    ['100.64.0.0', 10],
+    ['127.0.0.0', 8],
+    ['169.254.0.0', 16],
+    ['172.16.0.0', 12],
+    ['192.0.0.0', 24],
+    ['192.168.0.0', 16],
+    ['198.18.0.0', 15],
+    ['198.51.100.0', 24],
+    ['203.0.113.0', 24],
+    ['224.0.0.0', 4],
+    ['240.0.0.0', 4],
+  ];
+  return blocks.some(([base, prefix]) => {
+    const mask = (~0 << (32 - prefix)) >>> 0;
+    return (value & mask) === (ipv4ToInt(base) & mask);
+  });
+}
+
+function embeddedIpv4(ipv6: string): string | null {
+  const lower = ipv6.toLowerCase();
+  const prefix =
+    lower.startsWith('::ffff:') ? '::ffff:'
+    : lower.startsWith('::') ? '::'
+    : lower.startsWith('64:ff9b::') ? '64:ff9b::'
+    : null;
+  if (!prefix) return null;
+  const tail = lower.slice(prefix.length);
+  const dotted = tail.split('.');
+  if (dotted.length === 4) {
+    if (dotted.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)) return dotted.join('.');
+    return null;
+  }
+  const hextets = tail.split(':');
+  if (hextets.length === 2 && hextets.every((h) => /^[0-9a-f]{1,4}$/.test(h))) {
+    const bytes: number[] = [];
+    for (const h of hextets) {
+      const padded = h.padStart(4, '0');
+      bytes.push(parseInt(padded.slice(0, 2), 16), parseInt(padded.slice(2, 4), 16));
+    }
+    return bytes.join('.');
+  }
+  return null;
 }
 
 function isPrivateIpv6(ip: string) {
-  const normalized = ip.toLowerCase();
-  return normalized === '::1' || normalized === '::' || normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80:');
+  const lower = ip.toLowerCase();
+  if (lower === '::' || lower === '::1') return true;
+  if (lower.startsWith('ff')) return true;
+  if ((lower.startsWith('fc') || lower.startsWith('fd')) && net.isIPv6(lower)) return true;
+  if (lower.startsWith('fe80:') && net.isIPv6(lower)) return true;
+  const mapped = embeddedIpv4(lower);
+  if (mapped && isPrivateIpv4(mapped)) return true;
+  return false;
+}
+
+function isPrivateIp(ip: string) {
+  const bare = ip.replace(/^\[|\]$/g, '');
+  if (net.isIPv4(bare)) return isPrivateIpv4(bare);
+  if (net.isIPv6(bare)) return isPrivateIpv6(bare);
+  return false;
 }
 
 export function assertPublicHttpUrl(raw: string) {
   const url = new URL(raw);
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only http/https URLs are allowed');
   if (url.username || url.password) throw new Error('Credentials in URLs are not allowed');
-  if (url.port && !['80','443'].includes(url.port)) throw new Error('Non-standard ports are not allowed');
-  if (net.isIP(url.hostname)) {
-    if (net.isIPv4(url.hostname) && isPrivateIpv4(url.hostname)) throw new Error('Private IPv4 targets are blocked');
-    if (net.isIPv6(url.hostname) && isPrivateIpv6(url.hostname)) throw new Error('Private IPv6 targets are blocked');
-  }
+  if (url.port && !['80', '443'].includes(url.port)) throw new Error('Non-standard ports are not allowed');
+  if (isPrivateIp(url.hostname)) throw new Error('Private, loopback or link-local targets are blocked');
   return url;
 }
 
@@ -29,7 +86,41 @@ export async function assertResolvablePublicHost(hostname: string) {
   const addresses = await dns.lookup(hostname, { all: true, verbatim: true });
   if (!addresses.length) throw new Error('Unable to resolve research hostname');
   for (const entry of addresses) {
-    if (net.isIPv4(entry.address) && isPrivateIpv4(entry.address)) throw new Error('Research hostname resolves to private IPv4');
-    if (net.isIPv6(entry.address) && isPrivateIpv6(entry.address)) throw new Error('Research hostname resolves to private IPv6');
+    if (isPrivateIp(entry.address)) {
+      throw new Error(`Research hostname resolves to a non-public address (${entry.address})`);
+    }
   }
+}
+
+export function readBoundedBody(response: Response, maxBytes: number): Promise<{ content: string; truncated: boolean }> {
+  return new Promise((resolve, reject) => {
+    if (!response.body) {
+      resolve({ content: '', truncated: false });
+      return;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let content = '';
+    let bytes = 0;
+    let truncated = false;
+
+    function pump(): void {
+      reader.read().then(({ done, value }) => {
+        if (done) {
+          resolve({ content, truncated });
+          return;
+        }
+        bytes += value.byteLength;
+        if (bytes > maxBytes) {
+          truncated = true;
+          reader.cancel().catch(() => undefined);
+          resolve({ content, truncated });
+          return;
+        }
+        content += decoder.decode(value, { stream: true });
+        pump();
+      }).catch(reject);
+    }
+    pump();
+  });
 }
