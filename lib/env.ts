@@ -12,7 +12,7 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_MODEL: z.string().optional(),
   GEMINI_API_KEY: z.string().min(1).optional(),
-  GEMINI_MODEL: z.string().optional(),
+  GEMINI_MODEL: z.string().default('gemini-3.7-flash'),
   SEMRUSH_API_KEY: z.string().min(1).optional(),
   SURFER_API_KEY: z.string().min(1).optional(),
   JASPER_API_KEY: z.string().min(1).optional(),
