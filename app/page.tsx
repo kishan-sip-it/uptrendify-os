@@ -1,9 +1,17 @@
-import { ArrowUpRight, Bot, FileText, Globe2, Plus, Search, Sparkles, Users } from 'lucide-react';
+import { ArrowUpRight, FileText, Globe2, Plus, Search, Sparkles, Users } from 'lucide-react';
+import type { ElementType } from 'react';
 
 const brands = [
   { name: 'Acme Technologies', type: 'B2B SaaS', health: 91, opportunities: 14, status: 'Research complete' },
   { name: 'Nova Health', type: 'Healthcare', health: 78, opportunities: 9, status: 'Needs review' },
   { name: 'Orbit Commerce', type: 'E-commerce', health: 84, opportunities: 21, status: 'Strategy ready' },
+];
+
+const metrics: Array<{ label: string; value: string; Icon: ElementType }> = [
+  { label: 'Active brands', value: '12', Icon: Users },
+  { label: 'Campaigns', value: '27', Icon: Sparkles },
+  { label: 'Content to review', value: '18', Icon: FileText },
+  { label: 'Research jobs', value: '06', Icon: Globe2 },
 ];
 
 export default function Home() {
@@ -30,19 +38,16 @@ export default function Home() {
             <h1>Good morning, growth team.</h1>
             <p className="subtitle">One operating system for research, brand intelligence, strategy, content and campaign execution across every client brand.</p>
           </div>
-          <a className="badge" href="#brands"><Plus size={14} /> Add brand</a>
+          <a className="badge" href="/brands/new"><Plus size={14} /> Add brand</a>
         </div>
 
         <div className="grid grid-4">
-          {[
-            ['Active brands', '12', Users],
-            ['Campaigns', '27', Sparkles],
-            ['Content to review', '18', FileText],
-            ['Research jobs', '06', Globe2],
-          ].map(([label, value, Icon]) => {
-            const I = Icon as typeof Bot;
-            return <div className="card metric" key={String(label)}><div className="metric-label"><I size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />{label}</div><div className="metric-value">{value}</div></div>;
-          })}
+          {metrics.map(({ label, value, Icon }) => (
+            <div className="card metric" key={label}>
+              <div className="metric-label"><Icon size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />{label}</div>
+              <div className="metric-value">{value}</div>
+            </div>
+          ))}
         </div>
 
         <div className="grid grid-3" style={{ marginTop: 16 }}>
@@ -71,8 +76,8 @@ export default function Home() {
         </div>
 
         <div className="card" style={{ marginTop:16 }}>
-          <div className="section-title"><div><div className="eyebrow">Golden workflow</div><h2 style={{ margin:'5px 0' }}>URL → Brand Brain → Growth Plan → Content</h2></div><a className="badge" href="#">Open workflow <ArrowUpRight size={13}/></a></div>
-          <p className="subtitle">The first production workflow will onboard a brand from its public website, store evidence, generate an editable Brand Brain, then use that context for strategy and content.</p>
+          <div className="section-title"><div><div className="eyebrow">Golden workflow</div><h2 style={{ margin:'5px 0' }}>URL → Brand Brain → Growth Plan → Content</h2></div><a className="badge" href="/brands/new">Open workflow <ArrowUpRight size={13}/></a></div>
+          <p className="subtitle">The first production workflow onboards a brand from its public website, stores evidence, builds an editable Brand Brain, then uses that context for strategy and content.</p>
         </div>
       </section>
     </main>
