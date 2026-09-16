@@ -1,0 +1,51 @@
+-- Defense-in-depth tenant isolation for Supabase.
+
+alter table public.organizations enable row level security;
+alter table public.organization_members enable row level security;
+alter table public.clients enable row level security;
+alter table public.brands enable row level security;
+alter table public.brand_sources enable row level security;
+alter table public.brand_source_chunks enable row level security;
+alter table public.brand_facts enable row level security;
+alter table public.brand_competitors enable row level security;
+alter table public.brand_insights enable row level security;
+alter table public.research_runs enable row level security;
+alter table public.research_sources enable row level security;
+alter table public.strategies enable row level security;
+alter table public.campaigns enable row level security;
+alter table public.content_items enable row level security;
+alter table public.content_versions enable row level security;
+alter table public.content_reviews enable row level security;
+alter table public.approvals enable row level security;
+alter table public.agent_runs enable row level security;
+alter table public.agent_events enable row level security;
+alter table public.integration_accounts enable row level security;
+alter table public.analytics_snapshots enable row level security;
+alter table public.ai_tasks enable row level security;
+alter table public.audit_logs enable row level security;
+
+create policy organizations_select_member on public.organizations for select using (public.is_org_member(id));
+create policy organization_members_select_member on public.organization_members for select using (public.is_org_member(organization_id));
+
+create policy clients_all_member on public.clients for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy brands_all_member on public.brands for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy brand_sources_all_member on public.brand_sources for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy brand_source_chunks_all_member on public.brand_source_chunks for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy brand_facts_all_member on public.brand_facts for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy brand_competitors_all_member on public.brand_competitors for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy brand_insights_all_member on public.brand_insights for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy research_runs_all_member on public.research_runs for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy research_sources_all_member on public.research_sources for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy strategies_all_member on public.strategies for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy campaigns_all_member on public.campaigns for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy content_items_all_member on public.content_items for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy content_versions_all_member on public.content_versions for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy content_reviews_all_member on public.content_reviews for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy approvals_all_member on public.approvals for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy agent_runs_all_member on public.agent_runs for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy agent_events_all_member on public.agent_events for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy integration_accounts_all_member on public.integration_accounts for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy analytics_snapshots_all_member on public.analytics_snapshots for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy ai_tasks_all_member on public.ai_tasks for all using (public.is_org_member(organization_id)) with check (public.is_org_member(organization_id));
+create policy audit_logs_select_member on public.audit_logs for select using (public.is_org_member(organization_id));
+create policy audit_logs_insert_member on public.audit_logs for insert with check (public.is_org_member(organization_id));
