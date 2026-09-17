@@ -131,7 +131,7 @@ export default function LoginPage() {
 
       {step === 'bootstrap' ? (
         <form onSubmit={handleBootstrap} className="card" style={{ display: 'grid', gap: 16 }}>
-          <label>Organization name<input name="organizationName" required placeholder="Acme Agency" maxLength={120} style={{ width: '100%' }} /></label>
+          <label>Organization name<input name="organizationName" required placeholder="e.g. Northwind Agency" maxLength={120} style={{ width: '100%' }} /></label>
           <button disabled={loading} className="badge" style={{ border: 0, justifyContent: 'center', padding: 14, cursor: 'pointer' }}>
             {loading ? <><LoaderCircle size={15} className="spin" /> Creating…</> : <>Create workspace <Sparkles size={15} /></>}
           </button>

@@ -44,8 +44,8 @@ export default function NewBrandPage() {
       </div>
       <form onSubmit={submit} className="card" style={{ marginTop: 28, display: 'grid', gap: 18 }}>
         <div className="badge"><Sparkles size={14}/> AI-ready brand onboarding</div>
-        <label>Client name<input name="clientName" required placeholder="Acme Technologies" /></label>
-        <label>Brand name<input name="brandName" required placeholder="Acme" /></label>
+        <label>Client name<input name="clientName" required placeholder="e.g. Aurora Labs" /></label>
+        <label>Brand name<input name="brandName" required placeholder="e.g. Aurora" /></label>
         <label>Website URL<div style={{ position:'relative' }}><Globe2 size={18} style={{ position:'absolute', left:12, top:13, color:'var(--muted)' }}/><input name="websiteUrl" type="url" required placeholder="https://example.com" style={{ paddingLeft:40, width:'100%' }}/></div></label>
         <div className="grid grid-3">
           <label>Industry<input name="industry" placeholder="B2B SaaS" /></label>

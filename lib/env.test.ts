@@ -53,4 +53,25 @@ describe('env schema', () => {
     expect(result.SEMRUSH_API_KEY).toBeUndefined();
     expect(result.GHL_API_KEY).toBeUndefined();
   });
+
+  it('treats empty optional keys as unset instead of failing', () => {
+    const result = envSchema.parse({
+      ...base,
+      NEXT_PUBLIC_SUPABASE_URL: '',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: '',
+      SUPABASE_SERVICE_ROLE_KEY: '',
+      GROQ_API_KEY: '',
+      GROQ_MODEL: '',
+      ANTHROPIC_MODEL: '',
+      SEMRUSH_API_KEY: '',
+      GHL_API_KEY: '',
+      GHL_LOCATION_ID: '',
+      DEFAULT_AI_PROVIDER: '',
+    });
+    expect(result.NEXT_PUBLIC_SUPABASE_URL).toBeUndefined();
+    expect(result.GROQ_API_KEY).toBeUndefined();
+    expect(result.GROQ_MODEL).toBe('llama-3.3-70b-versatile');
+    expect(result.ANTHROPIC_MODEL).toBe('claude-3-5-haiku-latest');
+    expect(result.DEFAULT_AI_PROVIDER).toBe('groq');
+  });
 });

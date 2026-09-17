@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CAN_CREATE_BRANDS, CAN_RUN_RESEARCH, ROLES } from './roles';
+import { CAN_CREATE_BRANDS, CAN_RUN_RESEARCH, CAN_VIEW_DASHBOARD, ROLES } from './roles';
 
 describe('role constants', () => {
   it('includes all expected roles', () => {
@@ -22,5 +22,11 @@ describe('role constants', () => {
 
   it('CAN_RUN_RESEARCH matches CAN_CREATE_BRANDS for now', () => {
     expect(CAN_RUN_RESEARCH).toEqual(CAN_CREATE_BRANDS);
+  });
+
+  it('CAN_VIEW_DASHBOARD includes every organization role', () => {
+    for (const role of Object.values(ROLES)) {
+      expect(CAN_VIEW_DASHBOARD).toContain(role);
+    }
   });
 });
