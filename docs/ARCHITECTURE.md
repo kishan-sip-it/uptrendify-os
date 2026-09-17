@@ -211,6 +211,8 @@ Initial live providers:
 
 The default selection is configured through environment variables. Provider failures must be classified and retried only when safe.
 
+Implemented for brand research: the pipeline schedules the crawl via `after()` after the API response, then runs `brand_intelligence` extraction against a bounded evidence context (10 sources / ~8k chars each) with a strict Zod schema (identity, audience, positioning, offer, messaging, SEO, competition + cited evidence claims). Transient provider errors (429/502/503 and network failures) are retried with exponential back-off; every task records its provider, model, latency and token usage in `ai_tasks`, and extracted facts/insights are regenerated atomically per run (`source_type = AI_INFERRED`, `metadata.origin = brand-intelligence`).
+
 ## 9. Agent architecture
 
 Agents are domain services with constrained tools, not unrestricted autonomous loops.

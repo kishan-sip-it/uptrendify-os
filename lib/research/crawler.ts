@@ -1,10 +1,35 @@
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { env } from '@/lib/env';
 import { obs } from '@/lib/obs/logger';
 import { assertPublicHttpUrl, assertResolvablePublicHost, readBoundedBody } from './url-security';
 import { extractPage } from './extract';
 
+export const RESEARCH_TERMINAL_STATUSES = ['COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'] as const;
+export const RESEARCH_ACTIVE_STATUSES = ['QUEUED', 'RUNNING'] as const;
+
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+export type ProcessedPage = {
+  id: string;
+  url: string;
+  canonicalUrl: string;
+  title: string | null;
+  text: string;
+};
+
+export type CrawlOutcome = {
+  status: 'COMPLETED' | 'PARTIAL' | 'FAILED';
+  pagesProcessed: number;
+  pagesDiscovered: number;
+  processedPages: ProcessedPage[];
+};
+
+export type CrawlArgs = {
+  organizationId: string;
+  brandId: string;
+  websiteUrl: string;
+  researchRunId: string;
+};
 
 function normalizeUrl(raw: string) {
   const url = assertPublicHttpUrl(raw);
@@ -17,9 +42,9 @@ function sameOrigin(a: string, b: string) {
   return new URL(a).origin === new URL(b).origin;
 }
 
-export async function researchBrand(organizationId: string, brandId: string, websiteUrl: string, researchRunId: string) {
+export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Promise<CrawlOutcome> {
+  const { organizationId, brandId, websiteUrl, researchRunId } = args;
   const e = env();
-  const supabase = await createSupabaseServerClient();
   const root = normalizeUrl(websiteUrl);
   const rootHost = new URL(root).hostname;
   await assertResolvablePublicHost(rootHost);
@@ -31,7 +56,9 @@ export async function researchBrand(organizationId: string, brandId: string, web
   const crawlBudget = Math.min(e.RESEARCH_TOTAL_BUDGET_MS, e.RESEARCH_TIMEOUT_MS * (e.MAX_RESEARCH_PAGES + 1));
   const start = Date.now();
   let pagesProcessed = 0;
+  let pagesDiscovered = 0;
   let partial = false;
+  const processedPages: ProcessedPage[] = [];
 
   try {
     while (queue.length && pagesProcessed < e.MAX_RESEARCH_PAGES) {
@@ -105,6 +132,8 @@ export async function researchBrand(organizationId: string, brandId: string, web
         const link = await supabase.from('research_sources').upsert({ research_run_id: researchRunId, organization_id: organizationId, source_id: source.data.id, status: 'PROCESSED' }, { onConflict: 'research_run_id,source_id' });
         if (link.error) throw link.error;
 
+        processedPages.push({ id: source.data.id, url: target, canonicalUrl: canonical, title: extracted.title, text: extracted.text });
+        pagesDiscovered = seen.size;
         pagesProcessed += 1;
         for (const next of extracted.links) {
           try {
@@ -116,6 +145,7 @@ export async function researchBrand(organizationId: string, brandId: string, web
         }
       } catch (error) {
         partial = true;
+        pagesDiscovered = seen.size;
         obs.warn('Research page failed', { brandId, url: target, error: error instanceof Error ? error.message : String(error) });
       }
 
@@ -138,7 +168,9 @@ export async function researchBrand(organizationId: string, brandId: string, web
     }).eq('id', researchRunId);
     if (result.error) throw result.error;
 
-    return { status: finalStatus, pagesProcessed, pagesDiscovered: seen.size };
+    obs.info('Research crawl finished', { researchRunId, brandId, status: finalStatus, pagesProcessed, pagesDiscovered: seen.size });
+
+    return { status: finalStatus, pagesProcessed, pagesDiscovered: seen.size, processedPages };
   } catch (error) {
     const failed = await supabase.from('research_runs').update({
       status: 'FAILED',

@@ -153,7 +153,7 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
       ) : (
         <div className="grid" id="brands">
           {brands.map((brand, i) => (
-            <div className="card brand-card hover-lift animate-fade-up" key={brand.id} style={{ background: '#0b111c', animationDelay: `${i * 60}ms` }}>
+            <a className="card brand-card hover-lift animate-fade-up" href={`/brands/${brand.id}`} key={brand.id} style={{ background: '#0b111c', animationDelay: `${i * 60}ms`, display: 'block' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
                 <div>
                   <h3 style={{ margin: 0 }}>{brand.name}</h3>
@@ -165,7 +165,7 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
                 <span>Onboarded {timeAgo(brand.created_at)}</span>
                 <ArrowRight size={16} />
               </div>
-            </div>
+            </a>
           ))}
         </div>
       )}
@@ -192,14 +192,16 @@ function ResearchActivityPanel({ activity }: { activity: ResearchActivity[] }) {
       ) : (
         <div className="activity-list">
           {activity.map((run, i) => (
-            <div className="activity-item hover-lift animate-fade-up" key={run.id} style={{ animationDelay: `${i * 50}ms` }}>
-              <span className={`status-dot${isLive(run.status) ? ' live' : ''}`} style={{ background: dotColor(run.status), marginTop: 4, flexShrink: 0 }} />
-              <div className="activity-body">
-                <div className="activity-title">{run.brand_name ?? 'Unknown brand'}</div>
-                <div className="activity-meta">{labelFor(run.status)} · {timeAgo(run.created_at)}</div>
-                {run.status === 'FAILED' && run.error_message ? <div className="activity-error">{run.error_message}</div> : null}
+            <a className="activity-item hover-lift animate-fade-up" href={`/brands/${run.brand_id}`} key={run.id} style={{ animationDelay: `${i * 50}ms`, display: 'block' }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <span className={`status-dot${isLive(run.status) ? ' live' : ''}`} style={{ background: dotColor(run.status), marginTop: 4, flexShrink: 0 }} />
+                <div className="activity-body">
+                  <div className="activity-title">{run.brand_name ?? 'Unknown brand'}</div>
+                  <div className="activity-meta">{labelFor(run.status)} · {timeAgo(run.created_at)}</div>
+                  {run.status === 'FAILED' && run.error_message ? <div className="activity-error">{run.error_message}</div> : null}
+                </div>
               </div>
-            </div>
+            </a>
           ))}
         </div>
       )}

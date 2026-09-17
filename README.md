@@ -18,6 +18,8 @@ The repository has now been initialized around a real production architecture ra
 - `docs/ARCHITECTURE.md` — application, AI, security, research and deployment architecture.
 - `supabase/migrations/0001_initial_schema.sql` — multi-tenant database schema.
 - `supabase/migrations/0002_rls.sql` — tenant-isolation policies.
+- `supabase/migrations/0003_hardening.sql` — hardening constraints, indexes, cleanup.
+- `supabase/migrations/0004_brand_intelligence.sql` — research/brain task linkage and indexes.
 - `.env.example` — safe environment-variable template.
 
 ### Current application foundation
@@ -52,6 +54,46 @@ For Supabase, create a project, enable `pgcrypto` and `pgvector`, and apply migr
 ```text
 supabase/migrations/0001_initial_schema.sql
 supabase/migrations/0002_rls.sql
+supabase/migrations/0003_hardening.sql
+supabase/migrations/0004_brand_intelligence.sql
+```
+
+## Brand research & Brand Brain
+
+The brand-overview journey starts from the dashboard (`/brands` → `/brands/[brandId]`):
+
+1. **Start research** — `POST /api/brands/:brandId/research` queues a bounded website crawl for the brand's `website_url`. The request is idempotent via an optional `idempotencyKey`, and a second kick while a run is active returns `409`.
+2. **Crawl** — an SSRF-guarded crawler visits public pages (bounded pages, bytes, redirects, time), stores canonical sources in `brand_sources`, links them to the run in `research_sources`, and writes text chunks to `brand_source_chunks`.
+3. **AI extraction** — after the crawl completes, `brand_intelligence` analysis runs in the background: evidence is packed into a bounded context window and a JSON response is parsed against a strict schema (identity, audience, positioning, offer, messaging, SEO, competition + cited evidence claims). Transient provider errors (429/502/503, network drops) are retried with back-off.
+4. **Brand Brain** — facts (`brand_facts`, `source_type = AI_INFERRED`) and insights (`brand_insights`, `metadata.origin = brand-intelligence`) are regenerated atomically each run; prior AI-inferred rows are replaced.
+5. **Read** — `GET /api/brands/:brandId/brain` and `GET /api/brands/:brandId/research` (run history + AI task status) power the brand overview page, which auto-refreshes while a run is in progress.
+
+Run states: `QUEUED → RUNNING → COMPLETED | PARTIAL | FAILED`. AI task states: `RUNNING → SUCCEEDED | FAILED | SKIPPED`. Everything is tenant-scoped by `organization_id` and every API/UI path re-checks membership + role (`CAN_RUN_RESEARCH` / `CAN_VIEW_BRAND`).
+
+### AI provider
+
+`DEFAULT_AI_PROVIDER` selects the primary provider (`gemini` by default) with Groq/OpenAI/Anthropic as alternates; configure keys in `.env.local`:
+
+```text
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.7-flash
+DEFAULT_AI_PROVIDER=gemini
+```
+
+Without any configured key, the pipeline still runs and records an AI task failed with `PROVIDER_UNCONFIGURED`.
+
+## Local verification
+
+```bash
+npm run typecheck
+npm test          # 115 unit tests across lib/ai, lib/research, and API routes
+npm run build     # next build (all app + API routes)
+```
+
+Full end-to-end verification boots the app with a real provider against local Supabase:
+
+```bash
+VERIFY_APP=http://localhost:3000 VERIFY_PROVIDER=gemini node /tmp/opencode/verify-research.cjs
 ```
 
 ## AI integrations

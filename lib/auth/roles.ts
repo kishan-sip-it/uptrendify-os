@@ -14,6 +14,7 @@ export type OrgRole = (typeof ROLES)[keyof typeof ROLES];
 export const CAN_CREATE_BRANDS: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR'];
 export const CAN_RUN_RESEARCH: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR'];
 export const CAN_VIEW_DASHBOARD: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR', 'APPROVER', 'CLIENT'];
+export const CAN_VIEW_BRAND: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR', 'APPROVER', 'CLIENT'];
 
 export type AuthContext = {
   organizationId: string;

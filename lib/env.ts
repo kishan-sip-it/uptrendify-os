@@ -36,7 +36,7 @@ export const envSchema = z.object({
   GEMINI_MODEL: stringWithDefault('GEMINI_MODEL', 'gemini-3.7-flash'),
   DEFAULT_AI_PROVIDER: z.preprocess(
     (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
-    z.enum(['groq', 'openai', 'anthropic', 'gemini']).default('groq'),
+    z.enum(['groq', 'openai', 'anthropic', 'gemini']).default('gemini'),
   ),
   SEMRUSH_API_KEY: optionalString('SEMRUSH_API_KEY'),
   SURFER_API_KEY: optionalString('SURFER_API_KEY'),

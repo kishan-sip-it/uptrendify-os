@@ -57,6 +57,21 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .status-dot.live { animation:pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 0% { box-shadow:0 0 0 0 rgba(139,124,255,.45); } 70% { box-shadow:0 0 0 8px rgba(139,124,255,0); } 100% { box-shadow:0 0 0 0 rgba(139,124,255,0); } }
 
+/* Brand brain */
+.brain-fact { align-self: start; }
+.fact-list { display: grid; gap: 8px; margin-top: 8px; }
+.fact-row { display: grid; grid-template-columns: 34% 1fr; gap: 12px; align-items: baseline; }
+.fact-label { color: var(--muted); font-size: 12px; }
+.fact-value { font-size: 13px; line-height: 1.45; word-break: break-word; }
+.evidence-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 10px; }
+.evidence-item { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: rgba(237,244,255,.88); }
+.insight-groups { display: grid; gap: 16px; }
+.insight-group-label { text-transform: uppercase; letter-spacing: .12em; font-size: 11px; font-weight: 700; color: var(--accent-2); margin-bottom: 8px; }
+.source-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 10px; }
+.source-item { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(11,17,28,.6); }
+.source-item a { display: grid; gap: 3px; min-width: 0; }
+.activity-body { flex: 1; min-width: 0; }
+
 /* Motion */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin .9s linear infinite; }

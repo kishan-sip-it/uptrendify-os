@@ -72,6 +72,6 @@ describe('env schema', () => {
     expect(result.GROQ_API_KEY).toBeUndefined();
     expect(result.GROQ_MODEL).toBe('llama-3.3-70b-versatile');
     expect(result.ANTHROPIC_MODEL).toBe('claude-3-5-haiku-latest');
-    expect(result.DEFAULT_AI_PROVIDER).toBe('groq');
+    expect(result.DEFAULT_AI_PROVIDER).toBe('gemini');
   });
 });
