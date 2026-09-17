@@ -225,3 +225,12 @@ A feature is complete when:
 5. errors/loading/empty states exist,
 6. it has tests where practical,
 7. it works locally with documented environment requirements.
+
+## Reliability layer
+
+- lib/ai/retry.ts: bounded transient retry with exponential backoff (default 3 attempts, 300ms base).
+- lib/ai/classify.ts: deterministic provider-failure classification (RATE_LIMITED, SERVICE_UNAVAILABLE, NETWORK_ERROR, AUTHENTICATION_ERROR, VALIDATION_ERROR, PROVIDER_UNCONFIGURED, UNKNOWN); retryable flag drives retry, actionable flag drives UI retry guidance.
+- lib/ai/http.ts: provider-status + request-runtime failures raised as AiProviderError; never retries auth/validation failures; never retries forever.
+- app/api/health: provider registry health incl. per-provider availability without live AI calls; models read via env() only.
+- Tests are deterministic (no live provider calls); only scripts/ai-verify-journey.cjs triggers controlled real AI.
+- Failure UI: actionable "Retry" guidance; NO fabricated "AI generated" results.
