@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, FileText, Globe2, Plus, Search, Sparkles, Users } from 'lucide-react';
+import { ArrowRight, FileText, Globe2, Plus, Search, Sparkles, Target, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EmptyState, ErrorState } from '@/components/ui/feedback';
-import type { DashboardData, RecentBrand, ResearchActivity } from '@/lib/dashboard/data';
+import type { DashboardData, RecentBrand, ResearchActivity, StrategyActivity } from '@/lib/dashboard/data';
 
 const STATUS_LABELS: Record<string, string> = {
   ACTIVE: 'Active',
@@ -209,6 +209,43 @@ function ResearchActivityPanel({ activity }: { activity: ResearchActivity[] }) {
   );
 }
 
+function StrategyActivityPanel({ activity }: { activity: StrategyActivity[] }) {
+  return (
+    <div className="card">
+      <div className="section-title">
+        <div>
+          <div className="eyebrow">Activity</div>
+          <h2 style={{ margin: '5px 0' }}>Strategy versions</h2>
+        </div>
+        <Target size={18} color="var(--muted)" />
+      </div>
+      {activity.length === 0 ? (
+        <EmptyState
+          title="No strategies yet"
+          description="Generated strategies will appear here once a brand has been researched."
+        />
+      ) : (
+        <div className="activity-list">
+          {activity.map((run, i) => (
+            <a className="activity-item hover-lift animate-fade-up" href={`/brands/${run.brand_id}`} key={run.id} style={{ animationDelay: `${i * 50}ms`, display: 'block' }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <span className={`status-dot${isLive(run.status) ? ' live' : ''}`} style={{ background: dotColor(run.status), marginTop: 4, flexShrink: 0 }} />
+                <div className="activity-body">
+                  <div className="activity-title">
+                    {run.brand_name ?? 'Unknown brand'}
+                    <span className="chip" style={{ marginLeft: 8 }}>v{run.version}</span>
+                  </div>
+                  <div className="activity-meta">{labelFor(run.status)} · {timeAgo(run.created_at)}</div>
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DashboardSkeleton() {
   return (
     <>
@@ -317,7 +354,10 @@ export function DashboardContent() {
       </div>
       <div className="grid grid-3" style={{ marginTop: 16 }}>
         <RecentBrandsPanel brands={data.recentBrands} />
-        <ResearchActivityPanel activity={data.recentResearch} />
+        <div className="grid" style={{ gap: 16 }}>
+          <ResearchActivityPanel activity={data.recentResearch} />
+          <StrategyActivityPanel activity={data.recentStrategies} />
+        </div>
       </div>
     </>
   );

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createDefaultRegistry } from '@/lib/ai/registry';
-import { AiProviderError, type AiProvider } from '@/lib/ai/types';
+import type { AiProvider } from '@/lib/ai/types';
 import {
   buildEvidenceContext,
   extractBrandIntelligence,
@@ -8,6 +8,7 @@ import {
   type EvidenceFragment,
   type ExtractionOutcome,
 } from '@/lib/ai/brand-intelligence';
+import { withTransientRetry } from '@/lib/ai/retry';
 import { obs } from '@/lib/obs/logger';
 
 export const BRAIN_TASK_TYPE = 'brand_intelligence';
@@ -15,10 +16,6 @@ export const INSIGHT_ORIGIN = 'brand-intelligence';
 export const AI_INFERRED_FACT_CONFIDENCE = 0.95;
 
 const SECTION_KEYS = ['identity', 'audience', 'positioning', 'offer', 'messaging', 'seo', 'competition'] as const;
-
-const BRAIN_MAX_ATTEMPTS = 3;
-const RETRY_BASE_DELAY_MS = 300;
-const TRANSIENT_PATTERNS = ['fetch failed', 'ETIMEDOUT', 'ECONNRESET', 'ENOTFOUND', 'AbortError', '503', '429', 'UNAVAILABLE', 'RESOURCE_EXHAUSTED', 'high demand', 'temporarily'];
 
 export type BrainOutcome = {
   status: 'SUCCEEDED' | 'FAILED' | 'SKIPPED';
@@ -71,35 +68,14 @@ function shorten(text: string, max = 120): string {
   return clean.length <= max ? clean : `${clean.slice(0, max - 1).trimEnd()}…`;
 }
 
-function isTransientProviderError(error: unknown): boolean {
-  if (error instanceof AiProviderError) {
-    return error.status === 429 || error.status === 502 || error.status === 503;
-  }
-  const message = error instanceof Error ? error.message : String(error);
-  return TRANSIENT_PATTERNS.some((pattern) => message.includes(pattern));
-}
-
 async function extractWithRetry(
   provider: AiProvider,
   evidence: EvidenceFragment[],
-  maxAttempts = BRAIN_MAX_ATTEMPTS,
 ): Promise<ExtractionOutcome> {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      return await extractBrandIntelligence(provider, evidence);
-    } catch (error) {
-      lastError = error;
-      if (attempt === maxAttempts || !isTransientProviderError(error)) throw error;
-      obs.info('Retrying brand intelligence after transient provider error', {
-        provider: provider.id,
-        attempt,
-        error: error instanceof Error ? error.message.slice(0, 300) : String(error),
-      });
-      await new Promise((resolve) => setTimeout(resolve, RETRY_BASE_DELAY_MS * 2 ** (attempt - 1)));
-    }
-  }
-  throw lastError;
+  return withTransientRetry(() => extractBrandIntelligence(provider, evidence), {
+    label: 'brand intelligence',
+    providerId: provider.id,
+  });
 }
 
 export function mapIntelligenceToRows(

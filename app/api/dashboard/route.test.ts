@@ -14,6 +14,7 @@ import { requireOrgRole } from '@/lib/auth/roles';
 import { fetchOrganizationDashboardData } from '@/lib/dashboard/data';
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001';
+const USER_ID = '00000000-0000-4000-8000-000000000002';
 
 const SAMPLE_DATA = {
   counts: {
@@ -23,9 +24,12 @@ const SAMPLE_DATA = {
     researchRuns: 7,
     activeResearchRuns: 0,
     failedResearchRuns: 0,
+    strategies: 4,
+    activeStrategies: 1,
   },
   recentBrands: [],
   recentResearch: [],
+  recentStrategies: [],
 };
 
 const require = vi.mocked(requireOrgRole);
@@ -57,7 +61,7 @@ describe('GET /api/dashboard', () => {
   });
 
   it('returns the authenticated organization dashboard data', async () => {
-    require.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'OWNER' } });
+    require.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'OWNER', userId: USER_ID } });
     fetchData.mockResolvedValue(SAMPLE_DATA);
 
     const response = await GET();
@@ -69,7 +73,7 @@ describe('GET /api/dashboard', () => {
   });
 
   it('returns 500 when the dashboard query fails, without leaking details', async () => {
-    require.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'OWNER' } });
+    require.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'OWNER', userId: USER_ID } });
     fetchData.mockRejectedValue(new Error('connection refused'));
 
     const response = await GET();

@@ -147,6 +147,13 @@ Generate structured strategies:
 - KPIs
 - assumptions
 
+Implemented (migration `0005` + `lib/strategy/*`):
+- Strategy generation consumes the Brand Brain snapshot (facts, insights, evidence claims, sources) rather than raw research.
+- Output is a Zod-validated, 14-section schema (`lib/strategy/schema.ts`) persisted as structured JSON in `strategies.output`, alongside a capped `input_snapshot` and assumptions separated from evidence.
+- Strategies are versioned per brand (`strategies` unique `(brand_id, version)`); endpoints enforce idempotency (`idempotency_key`) and an active-job guard (409).
+- Job lifecycle uses `status/error_code/error_message/started_at/finished_at` on `strategies` and a linked `ai_tasks.strategy_id`; a single repair attempt recovers from malformed/off-schema model output, and invalid output is never persisted as SUCCEEDED.
+- An audit log entry (`strategy.generated`) is written on success.
+
 ### Step 8 — Content Studio
 
 Support:

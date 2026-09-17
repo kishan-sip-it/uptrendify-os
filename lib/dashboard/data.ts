@@ -3,8 +3,10 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export const CONTENT_REVIEW_STATUSES = ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED'] as const;
 export const ACTIVE_RESEARCH_STATUSES = ['QUEUED', 'RUNNING'] as const;
+export const ACTIVE_STRATEGY_STATUSES = ['QUEUED', 'RUNNING'] as const;
 export const RECENT_BRANDS_LIMIT = 4;
 export const RECENT_RESEARCH_LIMIT = 6;
+export const RECENT_STRATEGIES_LIMIT = 6;
 
 export type RecentBrand = {
   id: string;
@@ -25,6 +27,16 @@ export type ResearchActivity = {
   error_message: string | null;
 };
 
+export type StrategyActivity = {
+  id: string;
+  brand_id: string;
+  brand_name: string | null;
+  status: string;
+  version: number;
+  created_at: string;
+  finished_at: string | null;
+};
+
 export type DashboardCounts = {
   activeBrands: number;
   campaigns: number;
@@ -32,12 +44,15 @@ export type DashboardCounts = {
   researchRuns: number;
   activeResearchRuns: number;
   failedResearchRuns: number;
+  strategies: number;
+  activeStrategies: number;
 };
 
 export type DashboardData = {
   counts: DashboardCounts;
   recentBrands: RecentBrand[];
   recentResearch: ResearchActivity[];
+  recentStrategies: StrategyActivity[];
 };
 
 export class DashboardDataError extends Error {
@@ -69,6 +84,8 @@ async function loadCounts(client: { from: SupabaseClient['from'] }, organization
   const researchRuns = await client.from('research_runs').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId);
   const activeResearchRuns = await client.from('research_runs').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId).in('status', [...ACTIVE_RESEARCH_STATUSES]);
   const failedResearchRuns = await client.from('research_runs').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId).eq('status', 'FAILED');
+  const strategies = await client.from('strategies').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId);
+  const activeStrategies = await client.from('strategies').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId).in('status', [...ACTIVE_STRATEGY_STATUSES]);
 
   return {
     activeBrands: await exactCount(brands, 'brands'),
@@ -77,6 +94,8 @@ async function loadCounts(client: { from: SupabaseClient['from'] }, organization
     researchRuns: await exactCount(researchRuns, 'research_runs'),
     activeResearchRuns: await exactCount(activeResearchRuns, 'research_runs'),
     failedResearchRuns: await exactCount(failedResearchRuns, 'research_runs'),
+    strategies: await exactCount(strategies, 'strategies'),
+    activeStrategies: await exactCount(activeStrategies, 'strategies'),
   };
 }
 
@@ -124,14 +143,47 @@ async function loadRecentResearch(client: { from: SupabaseClient['from'] }, orga
   }));
 }
 
+async function loadRecentStrategies(client: { from: SupabaseClient['from'] }, organizationId: string): Promise<StrategyActivity[]> {
+  const result = (await client
+    .from('strategies')
+    .select('id,brand_id,status,version,created_at,finished_at,brand:brands(id,name)')
+    .eq('organization_id', organizationId)
+    .order('created_at', { ascending: false })
+    .limit(RECENT_STRATEGIES_LIMIT)) as {
+    data: Array<{
+      id: string;
+      brand_id: string | null;
+      brand: { id: string; name: string } | null;
+      status: string;
+      version: number;
+      created_at: string;
+      finished_at: string | null;
+    }> | null;
+    error: { message: string } | null;
+  };
+
+  if (result.error) throw new DashboardDataError('strategies', result.error.message);
+
+  return (result.data ?? []).map((row) => ({
+    id: row.id,
+    brand_id: row.brand_id ?? row.brand?.id ?? '',
+    brand_name: row.brand?.name ?? null,
+    status: row.status,
+    version: row.version,
+    created_at: row.created_at,
+    finished_at: row.finished_at,
+  }));
+}
+
 export async function loadDashboardData(client: { from: SupabaseClient['from'] }, organizationId: string): Promise<DashboardData> {
-  const [counts, recentBrands, recentResearch] = await Promise.all([
+  const [counts, recentBrands, recentResearch, recentStrategies] = await Promise.all([
     loadCounts(client, organizationId),
     loadRecentBrands(client, organizationId),
     loadRecentResearch(client, organizationId),
+    loadRecentStrategies(client, organizationId),
   ]);
 
-  return { counts, recentBrands, recentResearch };
+  return { counts, recentBrands, recentResearch, recentStrategies };
 }
 
 export async function fetchOrganizationDashboardData(organizationId: string): Promise<DashboardData> {

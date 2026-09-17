@@ -13,12 +13,14 @@ export type OrgRole = (typeof ROLES)[keyof typeof ROLES];
 
 export const CAN_CREATE_BRANDS: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR'];
 export const CAN_RUN_RESEARCH: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR'];
+export const CAN_GENERATE_STRATEGY: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR'];
 export const CAN_VIEW_DASHBOARD: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR', 'APPROVER', 'CLIENT'];
 export const CAN_VIEW_BRAND: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR', 'APPROVER', 'CLIENT'];
 
 export type AuthContext = {
   organizationId: string;
   role: OrgRole;
+  userId: string;
 };
 
 export type AuthResult =
@@ -41,5 +43,5 @@ export async function requireOrgRole(allowed: OrgRole[]): Promise<AuthResult> {
   if (error || !membership) return { error: { status: 403, body: { error: 'No organization membership found' } }, context: null };
   if (!allowed.includes(membership.role as OrgRole)) return { error: { status: 403, body: { error: 'Insufficient permissions for this action' } }, context: null };
 
-  return { error: null, context: { organizationId: membership.organization_id, role: membership.role as OrgRole } };
+  return { error: null, context: { organizationId: membership.organization_id, role: membership.role as OrgRole, userId: user.id } };
 }

@@ -20,6 +20,7 @@ The repository has now been initialized around a real production architecture ra
 - `supabase/migrations/0002_rls.sql` — tenant-isolation policies.
 - `supabase/migrations/0003_hardening.sql` — hardening constraints, indexes, cleanup.
 - `supabase/migrations/0004_brand_intelligence.sql` — research/brain task linkage and indexes.
+- `supabase/migrations/0005_strategy_engine.sql` — strategy lifecycle columns, `ai_tasks.strategy_id`, versioning.
 - `.env.example` — safe environment-variable template.
 
 ### Current application foundation
@@ -56,6 +57,7 @@ supabase/migrations/0001_initial_schema.sql
 supabase/migrations/0002_rls.sql
 supabase/migrations/0003_hardening.sql
 supabase/migrations/0004_brand_intelligence.sql
+supabase/migrations/0005_strategy_engine.sql
 ```
 
 ## Brand research & Brand Brain
@@ -69,6 +71,18 @@ The brand-overview journey starts from the dashboard (`/brands` → `/brands/[br
 5. **Read** — `GET /api/brands/:brandId/brain` and `GET /api/brands/:brandId/research` (run history + AI task status) power the brand overview page, which auto-refreshes while a run is in progress.
 
 Run states: `QUEUED → RUNNING → COMPLETED | PARTIAL | FAILED`. AI task states: `RUNNING → SUCCEEDED | FAILED | SKIPPED`. Everything is tenant-scoped by `organization_id` and every API/UI path re-checks membership + role (`CAN_RUN_RESEARCH` / `CAN_VIEW_BRAND`).
+
+## Strategy engine
+
+The strategy starting point is the **Brand Brain** (`/brands/[brandId]` → strategy section):
+
+1. **Generate** — `POST /api/brands/:brandId/strategy` queues a strategy job (idempotent via `idempotencyKey`, `409` while one is active, versions auto-increment per brand).
+2. **Context** — the pipeline loads the capped Brand Brain snapshot (facts, insights, evidence claims, sources) and renders it as markdown; strategies without brain context fail fast with `INSUFFICIENT_BRAIN` (no AI call).
+3. **Generate** — `strategy_generation` runs against the default AI provider and returns a Zod-validated 14-section JSON document (executive summary, business understanding, objectives, ICP, positioning, messaging, content, SEO, channels, campaigns, 90-day roadmap, KPIs, risks/gaps, assumptions). A single repair attempt recovers from malformed output; invalid output is never persisted as SUCCEEDED.
+4. **Persist** — validated output lands in `strategies.output` with an `input_snapshot` (assumptions separated from evidence), linked `ai_tasks` usage/latency, and an `audit_logs` `strategy.generated` entry.
+5. **Read** — `GET /api/brands/:brandId/strategy` returns the latest version with full output plus version history and role-aware `canGenerate`; the dashboard shows strategy counts and recent strategy activity.
+
+Strategy states: `QUEUED → RUNNING → SUCCEEDED | FAILED` with `error_code`/`error_message` (e.g. `STRATEGY_VALIDATION_FAILED`, `AI_GENERATION_FAILED`, `PROVIDER_UNCONFIGURED`). Generation is gated by `CAN_GENERATE_STRATEGY` (OWNER/ADMIN/STRATEGIST/EDITOR).
 
 ### AI provider
 
@@ -86,7 +100,7 @@ Without any configured key, the pipeline still runs and records an AI task faile
 
 ```bash
 npm run typecheck
-npm test          # 115 unit tests across lib/ai, lib/research, and API routes
+npm test          # unit tests across lib/ai, lib/research, lib/strategy, and API routes
 npm run build     # next build (all app + API routes)
 ```
 
@@ -94,6 +108,7 @@ Full end-to-end verification boots the app with a real provider against local Su
 
 ```bash
 VERIFY_APP=http://localhost:3000 VERIFY_PROVIDER=gemini node /tmp/opencode/verify-research.cjs
+VERIFY_APP=http://localhost:3100 node /tmp/opencode/verify-strategy.cjs   # with GEMINI_MODEL=gemini-3.6-flash dev server
 ```
 
 ## AI integrations

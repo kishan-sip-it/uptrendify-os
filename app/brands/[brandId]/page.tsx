@@ -3,6 +3,7 @@ import { ArrowLeft, Plus } from 'lucide-react';
 import { CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { BrandOverview } from '@/components/brand/brand-overview';
+import { BrandStrategy } from '@/components/brand/brand-strategy';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +44,8 @@ export default async function BrandPage({ params }: { params: Promise<{ brandId:
       </div>
 
       <BrandOverview brandId={brandId} brandName={brand.name} />
+
+      <BrandStrategy brandId={brandId} brandName={brand.name} />
     </main>
   );
 }
