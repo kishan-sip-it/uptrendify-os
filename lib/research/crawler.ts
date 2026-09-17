@@ -42,6 +42,48 @@ function sameOrigin(a: string, b: string) {
   return new URL(a).origin === new URL(b).origin;
 }
 
+async function recordPageFailure(
+  supabase: SupabaseClient,
+  args: { organizationId: string; brandId: string; researchRunId: string; url: string; message: string },
+): Promise<void> {
+  try {
+    const canonical = args.url;
+    const source = await supabase
+      .from('brand_sources')
+      .upsert({
+        organization_id: args.organizationId,
+        brand_id: args.brandId,
+        url: canonical,
+        canonical_url: canonical,
+        title: null,
+        content_type: 'text/html',
+        status: 'FAILED',
+        http_status: 0,
+        retrieved_at: new Date().toISOString(),
+        content_hash: null,
+        extracted_text: '',
+        metadata: { error: args.message },
+      }, { onConflict: 'brand_id,canonical_url' })
+      .select('id')
+      .single();
+    if (source.error || !source.data) return;
+    await supabase
+      .from('research_sources')
+      .upsert(
+        {
+          research_run_id: args.researchRunId,
+          organization_id: args.organizationId,
+          source_id: source.data.id,
+          status: 'FAILED',
+          error_message: args.message.slice(0, 400),
+        },
+        { onConflict: 'research_run_id,source_id' },
+      );
+  } catch (error) {
+    obs.warn('Failed to record page failure', { url: args.url, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Promise<CrawlOutcome> {
   const { organizationId, brandId, websiteUrl, researchRunId } = args;
   const e = env();
@@ -98,9 +140,9 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           continue;
         }
 
-        if (!response.ok) { partial = true; continue; }
+        if (!response.ok) { partial = true; await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, message: `HTTP ${response.status}` }); continue; }
         const contentType = response.headers.get('content-type') || '';
-        if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) { partial = true; continue; }
+        if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) { partial = true; await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, message: 'Not an HTML page' }); continue; }
 
         const contentLength = Number(response.headers.get('content-length') || 0);
         if (contentLength > e.MAX_RESEARCH_BYTES) { partial = true; continue; }
@@ -147,6 +189,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         partial = true;
         pagesDiscovered = seen.size;
         obs.warn('Research page failed', { brandId, url: target, error: error instanceof Error ? error.message : String(error) });
+        await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, message: error instanceof Error ? error.message : String(error) });
       }
 
       const progress = await supabase.from('research_runs').update({ pages_processed: pagesProcessed, pages_discovered: seen.size }).eq('id', researchRunId);

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AiProviderError } from '@/lib/ai/types';
-import { analyzeResearchEvidence, mapIntelligenceToRows, persistBrainRows } from './brain';
+import { analyzeResearchEvidence, mapIntelligenceToInsights, persistInsights } from './brain';
+import { deriveAllSuggestionDrafts, deriveSuggestionDraft, persistSuggestionDrafts, ALL_FIELDS } from '@/lib/brain/suggestions';
 
 const ORG_ID = '00000000-0000-4000-8000-000000000001';
 const BRAND_ID = '00000000-0000-4000-8000-000000000002';
@@ -51,7 +52,7 @@ function makeSupabaseMock() {
 }
 
 const INTELLIGENCE = {
-  identity: { brandName: 'Aurora', companyDescription: 'B2B SaaS', industry: 'B2B SaaS', productCategories: ['Analytics'] },
+  identity: { brandName: 'Aurora', companyDescription: 'B2B SaaS', industry: 'B2B SaaS', businessModel: null, primaryMarket: null, geography: null, productCategories: ['Analytics'] },
   audience: { targetAudience: 'Ops leaders', buyerPersonas: [], customerTypes: [], painPoints: ['Slow reports'], useCases: [] },
   positioning: { valueProposition: 'Faster insights', differentiators: ['Real-time dashboards'], positioningThemes: [], brandMessaging: null },
   offer: { productsAndServices: ['Aurora Analytics'], keyFeatures: [], benefits: [], pricingSignals: [], callsToAction: [] },
@@ -76,27 +77,76 @@ const validProvider = {
   })),
 };
 
-describe('mapIntelligenceToRows', () => {
+describe('deriveSuggestionDraft', () => {
+  const sourceIndex = new Map([['https://example.com/', SOURCE_ID]]);
+  const sources = [
+    { url: 'https://example.com/', title: 'Aurora', text: 'Aurora is a B2B SaaS company selling real-time analytics.' },
+  ];
+  const fieldByName = new Map(ALL_FIELDS.map((def) => [def.field, def]));
+
+  it('creates a PENDING suggestion with cited evidence for a found field', () => {
+    const draft = deriveSuggestionDraft(fieldByName.get('brand_name')!, INTELLIGENCE as any, sources, sourceIndex);
+    expect(draft.field).toBe('brand_name');
+    expect(draft.proposedValue).toBe('Aurora');
+    expect(draft.status).toBe('PENDING');
+    expect(draft.found).toBe(true);
+    expect(draft.evidence.length).toBeGreaterThan(0);
+    expect(draft.evidence[0].sourceId).toBe(SOURCE_ID);
+    expect(draft.evidence[0].strength).toBe('partial');
+    expect(draft.evidenceStrength).toBe('partial');
+    expect(draft.confidence).toBe(0.85);
+  });
+
+  it('labels fields with no matching citation as weak evidence', () => {
+    const draft = deriveSuggestionDraft(fieldByName.get('pain_points')!, INTELLIGENCE as any, sources, sourceIndex);
+    expect(draft.found).toBe(true);
+    expect(draft.evidence).toEqual([]);
+    expect(draft.evidenceStrength).toBe('weak');
+    expect(draft.confidence).toBe(0.6);
+  });
+
+  it('produces NOT_FOUND suggestions when the brand site does not state a field', () => {
+    const draft = deriveSuggestionDraft(fieldByName.get('buyer_personas')!, INTELLIGENCE as any, sources, sourceIndex);
+    expect(draft.status).toBe('NOT_FOUND');
+    expect(draft.found).toBe(false);
+    expect(draft.proposedValue).toBeNull();
+    expect(draft.evidence).toEqual([]);
+    expect(draft.evidenceStrength).toBeNull();
+  });
+
+  it('derives all field catalog entries', () => {
+    const drafts = deriveAllSuggestionDrafts(INTELLIGENCE as any, sources, sourceIndex);
+    expect(drafts).toHaveLength(ALL_FIELDS.length);
+    expect(drafts.filter((d) => d.status === 'NOT_FOUND').length).toBeGreaterThan(0);
+    expect(drafts.filter((d) => d.status === 'PENDING').length).toBeGreaterThan(0);
+  });
+});
+
+describe('persistSuggestionDrafts', () => {
+  it('creates drafts, updates PENDING rows, and never overrides human-reviewed rows', async () => {
+    const client = makeSupabaseMock();
+    client.queue('brand_suggestions', () => ({
+      data: [
+        { id: 'aa', field: 'brand_name', status: 'APPROVED', proposed_value: 'Aurora', history: [], updated_at: '2026-09-01T00:00:00Z', evidence: [] },
+        { id: 'bb', field: 'industry', status: 'PENDING', proposed_value: 'Old value', history: [], updated_at: '2026-09-01T00:00:00Z', evidence: [] },
+      ],
+      error: null,
+    }));
+
+    const drafts = deriveAllSuggestionDrafts(INTELLIGENCE as any, [], new Map());
+    const counts = await persistSuggestionDrafts(client as any, { organizationId: ORG_ID, brandId: BRAND_ID, researchRunId: RUN_ID }, drafts);
+
+    expect(counts.created).toBeGreaterThan(0);
+    expect(counts.updated).toBeGreaterThanOrEqual(1);
+    expect(counts.untouched).toBe(1);
+  });
+});
+
+describe('mapIntelligenceToInsights', () => {
   const sourceIndex = new Map([['https://example.com/', SOURCE_ID]]);
 
-  it('creates section facts with cited evidence source ids', () => {
-    const { facts } = mapIntelligenceToRows(INTELLIGENCE as any, sourceIndex, ORG_ID, BRAND_ID, RUN_ID);
-    expect(facts.length).toBeGreaterThanOrEqual(1);
-    const identityFact = facts.find((f) => f.key === 'identity');
-    expect(identityFact?.brand_id).toBe(BRAND_ID);
-    expect(identityFact?.source_type).toBe('AI_INFERRED');
-    expect(identityFact?.evidence_source_ids).toEqual([SOURCE_ID]);
-    expect(identityFact?.approved).toBe(false);
-  });
-
-  it('skips empty sections', () => {
-    const empty = { ...INTELLIGENCE, competition: { namedCompetitors: [], alternatives: [], differentiationClaims: [] } };
-    const { facts } = mapIntelligenceToRows(empty as any, sourceIndex, ORG_ID, BRAND_ID, RUN_ID);
-    expect(facts.find((f) => f.key === 'competition')).toBeUndefined();
-  });
-
   it('produces insights for opportunities, pain points and evidence claims', () => {
-    const { insights } = mapIntelligenceToRows(INTELLIGENCE as any, sourceIndex, ORG_ID, BRAND_ID, RUN_ID);
+    const insights = mapIntelligenceToInsights(INTELLIGENCE as any, sourceIndex, ORG_ID, BRAND_ID, RUN_ID);
     expect(insights.some((i) => i.category === 'SEO' && i.description.includes('Pricing page missing'))).toBe(true);
     expect(insights.some((i) => i.category === 'AUDIENCE' && i.description.includes('Slow reports'))).toBe(true);
     const evidenceClaims = insights.filter((i) => i.category === 'EVIDENCE');
@@ -105,22 +155,17 @@ describe('mapIntelligenceToRows', () => {
   });
 });
 
-describe('persistBrainRows', () => {
-  it('replaces prior AI-inferred facts and insights with fresh rows', async () => {
+describe('persistInsights', () => {
+  it('replaces prior AI insights with fresh rows', async () => {
     const client = makeSupabaseMock();
-    client.queue('brand_facts', () => ({ data: null, error: null }), () => ({ data: null, error: null }));
-    client.queue('brand_insights', () => ({ data: null, error: null }), () => ({ data: null, error: null }));
-
-    const rows = mapIntelligenceToRows(INTELLIGENCE as any, new Map([['https://example.com/', SOURCE_ID]]), ORG_ID, BRAND_ID, RUN_ID);
-    const counts = await persistBrainRows(client as any, rows, BRAND_ID, ORG_ID);
-
-    expect(counts.factsWritten).toBe(rows.facts.length);
-    expect(counts.insightsWritten).toBe(rows.insights.length);
+    const insights = mapIntelligenceToInsights(INTELLIGENCE as any, new Map([['https://example.com/', SOURCE_ID]]), ORG_ID, BRAND_ID, RUN_ID);
+    const count = await persistInsights(client as any, insights, BRAND_ID, ORG_ID);
+    expect(count).toBe(insights.length);
   });
 });
 
 describe('analyzeResearchEvidence', () => {
-  it('persists facts and insights when extraction succeeds', async () => {
+  it('persists suggestions and insights when extraction succeeds', async () => {
     const client = makeSupabaseMock();
     client.queue('research_sources', () => ({ data: [{ brand_sources: { id: SOURCE_ID, url: 'https://example.com/', canonical_url: null, title: 'Aurora', extracted_text: 'Aurora sells analytics.' } }], error: null }));
     client.queue('ai_tasks', () => ({ data: { id: TASK_ID }, error: null }), () => ({ data: null, error: null }));
@@ -130,7 +175,9 @@ describe('analyzeResearchEvidence', () => {
     expect(outcome.status).toBe('SUCCEEDED');
     expect(outcome.aiTaskId).toBe(TASK_ID);
     expect(outcome.provider).toBe('gemini');
-    expect(outcome.factsWritten).toBeGreaterThan(0);
+    expect(outcome.suggestionsWritten).toBeGreaterThan(0);
+    expect(outcome.suggestionsFound).toBeGreaterThan(0);
+    expect(outcome.suggestionsNotFound).toBeGreaterThan(0);
     expect(outcome.insightsWritten).toBeGreaterThan(0);
   });
 

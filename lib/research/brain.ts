@@ -10,6 +10,7 @@ import {
 } from '@/lib/ai/brand-intelligence';
 import { withTransientRetry } from '@/lib/ai/retry';
 import { obs } from '@/lib/obs/logger';
+import { deriveAllSuggestionDrafts, persistSuggestionDrafts } from '@/lib/brain/suggestions';
 
 export const BRAIN_TASK_TYPE = 'brand_intelligence';
 export const INSIGHT_ORIGIN = 'brand-intelligence';
@@ -22,7 +23,9 @@ export type BrainOutcome = {
   aiTaskId?: string;
   provider?: string;
   model?: string;
-  factsWritten?: number;
+  suggestionsWritten?: number;
+  suggestionsFound?: number;
+  suggestionsNotFound?: number;
   insightsWritten?: number;
   errorCode?: string;
   errorMessage?: string;
@@ -30,17 +33,6 @@ export type BrainOutcome = {
 
 export type AnalyzeDeps = {
   provider?: AiProvider | null;
-};
-
-export type BrainFactRow = {
-  organization_id: string;
-  brand_id: string;
-  key: string;
-  value: unknown;
-  source_type: 'AI_INFERRED';
-  confidence: number;
-  evidence_source_ids: string[];
-  approved: boolean;
 };
 
 export type BrainInsightRow = {
@@ -54,21 +46,12 @@ export type BrainInsightRow = {
   metadata: Record<string, unknown>;
 };
 
-function hasData(section: Record<string, unknown>): boolean {
-  return Object.values(section).some((value) => {
-    if (value === undefined || value === null) return false;
-    if (Array.isArray(value)) return value.length > 0;
-    if (typeof value === 'string') return value.trim() !== '';
-    return true;
-  });
-}
-
 function shorten(text: string, max = 120): string {
   const clean = text.replace(/\s+/g, ' ').trim();
   return clean.length <= max ? clean : `${clean.slice(0, max - 1).trimEnd()}…`;
 }
 
-async function extractWithRetry(
+export async function extractWithRetry(
   provider: AiProvider,
   evidence: EvidenceFragment[],
 ): Promise<ExtractionOutcome> {
@@ -78,32 +61,82 @@ async function extractWithRetry(
   });
 }
 
-export function mapIntelligenceToRows(
+export type EvidenceBundle = {
+  sources: Array<{ id: string; url: string; canonicalUrl: string; title: string | null; text: string }>;
+  fragments: EvidenceFragment[];
+  sourceIndex: Map<string, string>;
+};
+
+export function sourceIndexFromSources(sources: EvidenceBundle['sources']): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const source of sources) index.set(source.canonicalUrl || source.url, source.id);
+  return index;
+}
+
+export function bundleFromRows(rows: any[]): EvidenceBundle {
+  const sources = rows
+    .map((row) => row.brand_sources)
+    .filter((source) => Boolean(source))
+    .map((source: any) => ({
+      id: source.id as string,
+      url: source.url as string,
+      canonicalUrl: (source.canonical_url ?? source.url) as string,
+      title: (source.title ?? null) as string | null,
+      text: (source.extracted_text ?? '') as string,
+    }));
+
+  const fragments: EvidenceFragment[] = sources
+    .filter((source) => source.text.trim() !== '')
+    .map((source) => ({ url: source.canonicalUrl || source.url, title: source.title, text: source.text }));
+
+  return { sources, fragments, sourceIndex: sourceIndexFromSources(sources) };
+}
+
+async function loadRunEvidence(
+  supabase: SupabaseClient,
+  organizationId: string,
+  researchRunId: string,
+): Promise<EvidenceBundle> {
+  const { data, error } = await supabase
+    .from('research_sources')
+    .select('brand_sources!inner(id,url,canonical_url,title,extracted_text)')
+    .eq('research_run_id', researchRunId)
+    .eq('organization_id', organizationId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return bundleFromRows(data ?? []);
+}
+
+export async function loadBrandEvidence(
+  supabase: SupabaseClient,
+  args: { organizationId: string; brandId: string },
+): Promise<{ researchRunId: string; bundle: EvidenceBundle } | null> {
+  const { organizationId, brandId } = args;
+  const { data: runs, error } = await supabase
+    .from('research_runs')
+    .select('id,status')
+    .eq('brand_id', brandId)
+    .eq('organization_id', organizationId)
+    .in('status', ['COMPLETED', 'PARTIAL'])
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const runId = runs?.[0]?.id;
+  if (!runId) return null;
+  const bundle = await loadRunEvidence(supabase, organizationId, runId);
+  return { researchRunId: runId, bundle };
+}
+
+export function mapIntelligenceToInsights(
   intelligence: BrandIntelligence,
   sourceIndex: Map<string, string>,
   organizationId: string,
   brandId: string,
   researchRunId: string,
-): { facts: BrainFactRow[]; insights: BrainInsightRow[] } {
+): BrainInsightRow[] {
   const citedIds = [
     ...new Set(intelligence.evidence.map((entry) => sourceIndex.get(entry.sourceUrl)).filter((id): id is string => Boolean(id))),
   ];
-
-  const facts: BrainFactRow[] = [];
-  for (const key of SECTION_KEYS) {
-    const section = intelligence[key];
-    if (!section || !hasData(section)) continue;
-    facts.push({
-      organization_id: organizationId,
-      brand_id: brandId,
-      key,
-      value: section,
-      source_type: 'AI_INFERRED',
-      confidence: AI_INFERRED_FACT_CONFIDENCE,
-      evidence_source_ids: citedIds,
-      approved: false,
-    });
-  }
 
   const insights: BrainInsightRow[] = [];
   const templates: Array<{ from: (i: BrandIntelligence) => string[] | undefined; category: string; priority: number }> = [
@@ -145,23 +178,15 @@ export function mapIntelligenceToRows(
     });
   }
 
-  return { facts, insights };
+  return insights;
 }
 
-export async function persistBrainRows(
+export async function persistInsights(
   supabase: SupabaseClient,
-  rows: { facts: BrainFactRow[]; insights: BrainInsightRow[] },
+  insights: BrainInsightRow[],
   brandId: string,
   organizationId: string,
-): Promise<{ factsWritten: number; insightsWritten: number }> {
-  const factsDelete = await supabase
-    .from('brand_facts')
-    .delete()
-    .eq('brand_id', brandId)
-    .eq('organization_id', organizationId)
-    .eq('source_type', 'AI_INFERRED');
-  if (factsDelete.error) throw factsDelete.error;
-
+): Promise<number> {
   const insightsDelete = await supabase
     .from('brand_insights')
     .delete()
@@ -170,16 +195,11 @@ export async function persistBrainRows(
     .eq('metadata->>origin', INSIGHT_ORIGIN);
   if (insightsDelete.error) throw insightsDelete.error;
 
-  if (rows.facts.length > 0) {
-    const factsInsert = await supabase.from('brand_facts').insert(rows.facts);
-    if (factsInsert.error) throw factsInsert.error;
+  if (insights.length > 0) {
+    const insert = await supabase.from('brand_insights').insert(insights);
+    if (insert.error) throw insert.error;
   }
-  if (rows.insights.length > 0) {
-    const insightsInsert = await supabase.from('brand_insights').insert(rows.insights);
-    if (insightsInsert.error) throw insightsInsert.error;
-  }
-
-  return { factsWritten: rows.facts.length, insightsWritten: rows.insights.length };
+  return insights.length;
 }
 
 export async function analyzeResearchEvidence(
@@ -189,29 +209,16 @@ export async function analyzeResearchEvidence(
 ): Promise<BrainOutcome> {
   const { organizationId, brandId, researchRunId } = args;
 
-  const { data: runSources, error: sourcesError } = await supabase
-    .from('research_sources')
-    .select('brand_sources!inner(id,url,canonical_url,title,extracted_text)')
-    .eq('research_run_id', researchRunId)
-    .eq('organization_id', organizationId)
-    .order('created_at', { ascending: true });
-
-  if (sourcesError) {
-    obs.error('Failed to load research sources for brain analysis', { researchRunId, error: sourcesError.message });
-    return { status: 'SKIPPED', errorCode: 'SOURCES_UNREADABLE', errorMessage: sourcesError.message };
+  let bundle: EvidenceBundle;
+  try {
+    bundle = await loadRunEvidence(supabase, organizationId, researchRunId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    obs.error('Failed to load research sources for brain analysis', { researchRunId, error: message });
+    return { status: 'SKIPPED', errorCode: 'SOURCES_UNREADABLE', errorMessage: message };
   }
 
-  const sources = (runSources ?? [])
-    .map((row: any) => row.brand_sources)
-    .filter((source: any) => Boolean(source));
-
-  const fragments: EvidenceFragment[] = sources.map((source: any) => ({
-    url: source.canonical_url ?? source.url,
-    title: source.title ?? null,
-    text: source.extracted_text ?? '',
-  }));
-
-  const evidence = buildEvidenceContext(fragments);
+  const evidence = buildEvidenceContext(bundle.fragments);
   if (evidence.length === 0) {
     return { status: 'SKIPPED', errorCode: 'NO_EVIDENCE', errorMessage: 'No usable evidence was collected for analysis.' };
   }
@@ -269,19 +276,27 @@ export async function analyzeResearchEvidence(
     const extraction = await extractWithRetry(provider, evidence);
     const { result } = extraction;
 
-    const sourceIndex = new Map<string, string>();
-    for (let i = 0; i < sources.length; i += 1) {
-      const source = sources[i];
-      const url = source.canonical_url ?? source.url;
-      sourceIndex.set(url, source.id);
-    }
+    const drafts = deriveAllSuggestionDrafts(result, bundle.sources, bundle.sourceIndex);
+    const counts = await persistSuggestionDrafts(supabase, { organizationId, brandId, researchRunId }, drafts);
 
-    const rows = mapIntelligenceToRows(result, sourceIndex, organizationId, brandId, researchRunId);
-    const counts = await persistBrainRows(supabase, rows, brandId, organizationId);
+    const insightsWritten = await persistInsights(
+      supabase,
+      mapIntelligenceToInsights(result, bundle.sourceIndex, organizationId, brandId, researchRunId),
+      brandId,
+      organizationId,
+    );
+
+    const found = drafts.filter((draft) => draft.found).length;
+    const notFound = drafts.length - found;
+    const suggestionsWritten = counts.created + counts.updated;
 
     const outputMetadata = {
-      facts: counts.factsWritten,
-      insights: counts.insightsWritten,
+      suggestionsCreated: counts.created,
+      suggestionsUpdated: counts.updated,
+      suggestionsSkippedHumanOwned: counts.untouched,
+      found,
+      notFound,
+      insights: insightsWritten,
       evidenceClaims: result.evidence.length,
       evidenceSources: evidence.length,
       researchRunId,
@@ -302,7 +317,7 @@ export async function analyzeResearchEvidence(
     obs.info('Brand intelligence generated', {
       researchRunId, brandId, organizationId,
       provider: providerId, model: extraction.model,
-      facts: counts.factsWritten, insights: counts.insightsWritten,
+      suggestions: suggestionsWritten, found, notFound,
     });
 
     return {
@@ -310,8 +325,10 @@ export async function analyzeResearchEvidence(
       aiTaskId,
       provider: providerId,
       model: extraction.model,
-      factsWritten: counts.factsWritten,
-      insightsWritten: counts.insightsWritten,
+      suggestionsWritten,
+      suggestionsFound: found,
+      suggestionsNotFound: notFound,
+      insightsWritten,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

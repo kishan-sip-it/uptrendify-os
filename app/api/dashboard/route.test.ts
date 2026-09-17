@@ -12,11 +12,12 @@ vi.mock('@/lib/dashboard/data', () => ({
 import { GET } from './route';
 import { requireOrgRole } from '@/lib/auth/roles';
 import { fetchOrganizationDashboardData } from '@/lib/dashboard/data';
+import type { DashboardData } from '@/lib/dashboard/data';
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001';
 const USER_ID = '00000000-0000-4000-8000-000000000002';
 
-const SAMPLE_DATA = {
+const SAMPLE_DATA: DashboardData = {
   counts: {
     activeBrands: 3,
     campaigns: 5,
@@ -26,10 +27,15 @@ const SAMPLE_DATA = {
     failedResearchRuns: 0,
     strategies: 4,
     activeStrategies: 1,
+    pendingSuggestions: 6,
   },
   recentBrands: [],
   recentResearch: [],
   recentStrategies: [],
+  topPendingBrand: { id: 'brand-1', name: 'Aurora', count: 6 },
+  nextActions: [
+    { id: 'review-suggestions', kind: 'review', title: '6 suggestions to review', description: 'Aurora has 6 pending fields.', href: '/brands/brand-1#intelligence', cta: 'Review inbox' },
+  ],
 };
 
 const require = vi.mocked(requireOrgRole);

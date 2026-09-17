@@ -60,6 +60,7 @@ type BrainData = {
   insights: InsightInfo[];
   sources: SourceInfo[];
   latestRun: RunInfo | null;
+  suggestionCounts?: { pending: number; approved: number; edited: number; notFound: number; total: number };
 };
 
 const LIVE_STATUSES = new Set(['QUEUED', 'RUNNING']);
@@ -435,6 +436,7 @@ export function BrandOverview({ brandId, brandName }: { brandId: string; brandNa
   const factCount = brain?.facts.length ?? 0;
   const insightCount = brain?.insights.length ?? 0;
   const sourceCount = brain?.sources.length ?? 0;
+  const pendingCount = brain?.suggestionCounts?.pending ?? 0;
   const lastFinishedAi = latest?.ai;
 
   return (
@@ -483,8 +485,12 @@ export function BrandOverview({ brandId, brandName }: { brandId: string; brandNa
         <>
           <div className="grid grid-4">
             <div className="card metric"><div className="metric-label"><Globe2 size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />Sources</div><div className="metric-value">{sourceCount}</div></div>
-            <div className="card metric"><div className="metric-label"><Brain size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />Facts</div><div className="metric-value">{factCount}</div></div>
-            <div className="card metric"><div className="metric-label"><Sparkles size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />Signals</div><div className="metric-value">{insightCount}</div></div>
+            <div className="card metric"><div className="metric-label"><Brain size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />Approved facts</div><div className="metric-value">{factCount}</div><div className="metric-hint">Human-approved or edited</div></div>
+            <a className="card metric" href="#intelligence" style={{ textDecoration: 'none', color: 'inherit' }}>
+              <div className="metric-label"><Sparkles size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />Suggestions</div>
+              <div className="metric-value">{pendingCount}</div>
+              <div className="metric-hint">{pendingCount > 0 ? 'Pending your review' : 'No items waiting'}</div>
+            </a>
             <div className="card metric"><div className="metric-label"><History size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />Runs</div><div className="metric-value">{runs.length}</div></div>
           </div>
 

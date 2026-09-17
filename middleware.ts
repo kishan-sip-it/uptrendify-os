@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { env } from '@/lib/env';
 
+const PUBLIC_PATHS = new Set(['/', '/login', '/register', '/forgot-password', '/reset-password']);
+const AUTH_PATHS = new Set(['/login', '/register', '/forgot-password', '/reset-password']);
+
 export async function middleware(request: NextRequest) {
   const e = env();
   const { pathname } = request.nextUrl;
@@ -25,16 +28,22 @@ export async function middleware(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
 
     const isPublicPage =
-      pathname === '/login' ||
+      PUBLIC_PATHS.has(pathname) ||
       pathname === '/api/health' ||
       pathname.startsWith('/api/auth') ||
-      pathname === '/_next' ||
       pathname.startsWith('/_next') ||
       pathname === '/favicon.ico';
 
     if (!user && !isPublicPage) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
+      url.search = '';
+      return NextResponse.redirect(url);
+    }
+
+    if (user && AUTH_PATHS.has(pathname)) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
       url.search = '';
       return NextResponse.redirect(url);
     }

@@ -3,8 +3,27 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { obs } from '@/lib/obs/logger';
+import { computeCounts } from '@/lib/brain/review';
+import { FIELD_BY_KEY } from '@/lib/brain/suggestions';
 
 const paramsSchema = z.object({ brandId: z.string().uuid() });
+
+export type BrainSuggestion = {
+  id: string;
+  field: string;
+  label: string;
+  section: string;
+  kind: string;
+  proposed_value: unknown;
+  status: string;
+  evidence: unknown[];
+  evidence_strength: string | null;
+  sources_examined: number;
+  confidence: number | null;
+  created_at: string;
+  updated_at: string;
+  reviewed_at: string | null;
+};
 
 export async function GET(_request: Request, { params }: { params: Promise<{ brandId: string }> }) {
   try {
@@ -23,7 +42,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
       .maybeSingle();
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
 
-    const [factsResult, insightsResult, sourcesResult, runsResult] = await Promise.all([
+    const [factsResult, insightsResult, sourcesResult, runsResult, suggestionsResult] = await Promise.all([
       supabase
         .from('brand_facts')
         .select('id,key,value,source_type,confidence,evidence_source_ids,approved,updated_at')
@@ -52,9 +71,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
         .eq('organization_id', auth.context.organizationId)
         .order('created_at', { ascending: false })
         .limit(1),
+      supabase
+        .from('brand_suggestions')
+        .select('id,field,label,kind,proposed_value,status,evidence,evidence_strength,sources_examined,confidence,created_at,updated_at,reviewed_at')
+        .eq('brand_id', brandId)
+        .eq('organization_id', auth.context.organizationId)
+        .order('field', { ascending: true }),
     ]);
 
-    for (const result of [factsResult, insightsResult, sourcesResult, runsResult]) {
+    for (const result of [factsResult, insightsResult, sourcesResult, runsResult, suggestionsResult]) {
       if (result.error) throw result.error;
     }
 
@@ -63,10 +88,43 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
       ? [...latestRun.ai_tasks].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
       : null;
 
+    const runSourceCounts = await (async () => {
+      if (!latestRun) return { processed: 0, failed: 0, pagesDiscovered: 0, pagesProcessed: 0 };
+      const { data, error } = await supabase
+        .from('research_sources')
+        .select('status')
+        .eq('organization_id', auth.context.organizationId)
+        .eq('research_run_id', latestRun.id);
+      if (error) return { processed: 0, failed: 0, pagesDiscovered: latestRun.pages_discovered, pagesProcessed: latestRun.pages_processed };
+      const processed = (data ?? []).filter((row) => row.status !== 'FAILED').length;
+      const failed = (data ?? []).filter((row) => row.status === 'FAILED').length;
+      return { processed, failed, pagesDiscovered: latestRun.pages_discovered, pagesProcessed: latestRun.pages_processed };
+    })();
+
+    const suggestions: BrainSuggestion[] = (suggestionsResult.data ?? []).map((row: any) => {
+      const fieldDef = FIELD_BY_KEY.get(row.field);
+      return {
+        id: row.id,
+        field: row.field,
+        label: row.label,
+        section: fieldDef?.section ?? '',
+        kind: row.kind,
+        proposed_value: row.proposed_value,
+        status: row.status,
+        evidence: row.evidence,
+        evidence_strength: row.evidence_strength,
+        sources_examined: row.sources_examined,
+        confidence: row.confidence,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        reviewed_at: row.reviewed_at,
+      };
+    });
+
     return NextResponse.json(
       {
         ok: true,
-        facts: factsResult.data ?? [],
+        facts: (factsResult.data ?? []).filter((fact: any) => fact.approved),
         insights: insightsResult.data ?? [],
         sources: sourcesResult.data ?? [],
         latestRun: latestRun
@@ -82,6 +140,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
               ai: ai ? { status: ai.status, provider: ai.provider, model: ai.model, errorMessage: ai.error_message } : null,
             }
           : null,
+        suggestions,
+        suggestionCounts: computeCounts(suggestions as any),
+        importInfo: runSourceCounts,
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );

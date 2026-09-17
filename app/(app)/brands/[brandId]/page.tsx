@@ -3,6 +3,7 @@ import { ArrowLeft, Plus } from 'lucide-react';
 import { CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { BrandOverview } from '@/components/brand/brand-overview';
+import { BrandBrainReview } from '@/components/brand/brand-brain-review';
 import { BrandStrategy } from '@/components/brand/brand-strategy';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,7 @@ export default async function BrandPage({ params }: { params: Promise<{ brandId:
     <main className="main">
       <div className="topbar" style={{ marginBottom: 20, flexWrap: 'wrap' }}>
         <div>
-          <a href="/" className="metric-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+          <a href="/dashboard" className="metric-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
             <ArrowLeft size={15} /> Back to command center
           </a>
           <h1 style={{ fontSize: 'clamp(24px, 3vw, 34px)', marginTop: 8 }}>{brand.name}</h1>
@@ -44,6 +45,8 @@ export default async function BrandPage({ params }: { params: Promise<{ brandId:
       </div>
 
       <BrandOverview brandId={brandId} brandName={brand.name} />
+
+      <BrandBrainReview brandId={brandId} brandName={brand.name} />
 
       <BrandStrategy brandId={brandId} brandName={brand.name} />
     </main>

@@ -15,10 +15,20 @@ import {
 } from './context';
 import { extractStrategy, isStrategyValidationError } from './strategy';
 import type { StrategyOutput } from './schema';
+import { checkApprovalGate, GATE_MIN_APPROVED, type SuggestionRow } from '@/lib/brain/review';
 
 export const STRATEGY_TASK_TYPE = 'strategy_generation';
 export const STRATEGY_ACTIVE_STATUSES = ['QUEUED', 'RUNNING'] as const;
 export type StrategyActiveStatus = (typeof STRATEGY_ACTIVE_STATUSES)[number];
+
+export function gateMessage(rows: SuggestionRow[]): string {
+  const { missing } = checkApprovalGate(rows);
+  const approved = rows.filter((row) => row.status === 'APPROVED' || row.status === 'EDITED').length;
+  const parts = [
+    `Review and approve the Brand Brain suggestions first. Currently ${approved}/${GATE_MIN_APPROVED} required fields are approved, and ${missing.length} required field${missing.length === 1 ? '' : 's'} (${missing.join(', ')}) need approval.`,
+  ];
+  return parts.join(' ');
+}
 
 export type StrategyPipelineInput = {
   supabase: SupabaseClient;
@@ -45,7 +55,7 @@ export type StrategyOutcome = {
 async function loadBrainSnapshot(
   supabase: SupabaseClient,
   args: { organizationId: string; brandId: string },
-): Promise<BrainSnapshot> {
+): Promise<{ snapshot: BrainSnapshot; suggestionRows: SuggestionRow[] }> {
   const { organizationId, brandId } = args;
 
   const brandResult = await supabase
@@ -60,8 +70,16 @@ async function loadBrainSnapshot(
     .select('key,value')
     .eq('brand_id', brandId)
     .eq('organization_id', organizationId)
+    .eq('approved', true)
     .order('key', { ascending: true })
-    .limit(30);
+    .limit(40);
+
+  const suggestionsResult = await supabase
+    .from('brand_suggestions')
+    .select('id,field,label,proposed_value,status')
+    .eq('brand_id', brandId)
+    .eq('organization_id', organizationId)
+    .order('field', { ascending: true });
 
   const insightsResult = await supabase
     .from('brand_insights')
@@ -88,11 +106,20 @@ async function loadBrainSnapshot(
     .order('created_at', { ascending: false })
     .limit(1);
 
-  for (const result of [brandResult, factsResult, insightsResult, sourcesResult, runsResult]) {
+  for (const result of [brandResult, factsResult, insightsResult, sourcesResult, runsResult, suggestionsResult]) {
     if (result.error) throw result.error;
   }
 
-  const facts: StrategyFact[] = (factsResult.data ?? []).map((row: any) => ({ key: row.key, value: row.value }));
+  const suggestionRows = (suggestionsResult.data ?? []) as SuggestionRow[];
+  const approvedSuggestionRows = suggestionRows.filter((row) => row.status === 'APPROVED' || row.status === 'EDITED');
+
+  const facts: StrategyFact[] = [
+    ...approvedSuggestionRows.map((row) => ({ key: row.label || row.field, value: row.proposed_value })),
+  ];
+  const approvedSuggestionKeys = new Set(suggestionRows.map((row) => row.field));
+  for (const row of ((factsResult.data ?? []) as Array<{ key: string; value: unknown }>)) {
+    if (!approvedSuggestionKeys.has(row.key)) facts.push({ key: row.key, value: row.value });
+  }
   const insightRows = (insightsResult.data ?? []) as Array<{
     category: string;
     title: string;
@@ -117,18 +144,21 @@ async function loadBrainSnapshot(
   })).filter((source: StrategySource) => Boolean(source.url));
 
   return {
-    brand: {
-      name: brandResult.data?.name ?? '',
-      websiteUrl: brandResult.data?.website_url ?? null,
-      industry: brandResult.data?.industry ?? null,
-      marketCountry: brandResult.data?.market_country ?? null,
-      targetAudience: brandResult.data?.target_audience ?? null,
+    snapshot: {
+      brand: {
+        name: brandResult.data?.name ?? '',
+        websiteUrl: brandResult.data?.website_url ?? null,
+        industry: brandResult.data?.industry ?? null,
+        marketCountry: brandResult.data?.market_country ?? null,
+        targetAudience: brandResult.data?.target_audience ?? null,
+      },
+      facts,
+      insights,
+      evidenceClaims,
+      sources,
+      researchRunId: runsResult.data?.[0]?.id ?? null,
     },
-    facts,
-    insights,
-    evidenceClaims,
-    sources,
-    researchRunId: runsResult.data?.[0]?.id ?? null,
+    suggestionRows,
   };
 }
 
@@ -177,9 +207,26 @@ export async function runStrategyGeneration(
     .eq('organization_id', organizationId);
   if (startedUpdate.error) throw startedUpdate.error;
 
-  const snapshot = await loadBrainSnapshot(supabase, { organizationId, brandId });
-  const hasContext =
-    snapshot.facts.length > 0 || snapshot.insights.length > 0 || snapshot.evidenceClaims.length > 0;
+  const { snapshot, suggestionRows } = await loadBrainSnapshot(supabase, { organizationId, brandId });
+
+  if (suggestionRows.length === 0) {
+    await failTask(supabase, {
+      strategyId,
+      organizationId,
+      code: 'INSUFFICIENT_BRAIN',
+      message: 'Import the brand website and review the Brand Brain suggestions before building a strategy.',
+    });
+    return { status: 'FAILED', version, errorCode: 'INSUFFICIENT_BRAIN', errorMessage: 'Import the brand website first.' };
+  }
+
+  const gate = checkApprovalGate(suggestionRows);
+  if (!gate.ok) {
+    const message = gateMessage(suggestionRows);
+    await failTask(supabase, { strategyId, organizationId, code: 'INSUFFICIENT_APPROVED_BRAIN', message });
+    return { status: 'FAILED', version, errorCode: 'INSUFFICIENT_APPROVED_BRAIN', errorMessage: message };
+  }
+
+  const hasContext = snapshot.facts.length > 0 || snapshot.insights.length > 0 || snapshot.evidenceClaims.length > 0;
   if (!hasContext) {
     await failTask(supabase, {
       strategyId,

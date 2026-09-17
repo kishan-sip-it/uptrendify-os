@@ -1,10 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, FileText, Globe2, Plus, Search, Sparkles, Target, Users } from 'lucide-react';
+import {
+  ArrowRight, Globe2, ListChecks, Plus, Search, Sparkles, Target, Users, Zap,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EmptyState, ErrorState } from '@/components/ui/feedback';
-import type { DashboardData, RecentBrand, ResearchActivity, StrategyActivity } from '@/lib/dashboard/data';
+import type { DashboardData, NextAction, RecentBrand, ResearchActivity, StrategyActivity } from '@/lib/dashboard/data';
+
+const ACTION_ICONS: Record<NextAction['kind'], LucideIcon> = {
+  brand: Plus,
+  review: ListChecks,
+  research: Globe2,
+  retry: Zap,
+  strategy: Target,
+};
 
 const STATUS_LABELS: Record<string, string> = {
   ACTIVE: 'Active',
@@ -246,6 +256,35 @@ function StrategyActivityPanel({ activity }: { activity: StrategyActivity[] }) {
   );
 }
 
+function NextActionsPanel({ actions }: { actions: NextAction[] }) {
+  if (actions.length === 0) return null;
+  return (
+    <section className="next-actions" aria-label="Suggested next steps">
+      <div className="section-title">
+        <div>
+          <div className="eyebrow">Do this next</div>
+          <h2 style={{ margin: '5px 0' }}>Recommended actions</h2>
+        </div>
+      </div>
+      <div className="next-actions-grid">
+        {actions.map((action, i) => {
+          const Icon = ACTION_ICONS[action.kind];
+          return (
+            <a className="next-action-card animate-fade-up" href={action.href} key={action.id} style={{ animationDelay: `${i * 60}ms` }}>
+              <span className="next-action-icon"><Icon size={17} /></span>
+              <div className="next-action-body">
+                <div className="next-action-title">{action.title}</div>
+                <div className="next-action-desc">{action.description}</div>
+              </div>
+              <span className="next-action-cta"><span className="next-action-cta-label">{action.cta}</span><ArrowRight size={14} /></span>
+            </a>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function DashboardSkeleton() {
   return (
     <>
@@ -346,10 +385,11 @@ export function DashboardContent() {
 
   return (
     <>
-      <div className="grid grid-4">
+      <NextActionsPanel actions={data.nextActions} />
+      <div className="grid grid-4" style={{ marginTop: 16 }}>
         <MetricCard label="Active brands" value={counts.activeBrands} Icon={Users} delay={0} />
         <MetricCard label="Campaigns" value={counts.campaigns} Icon={Sparkles} delay={60} />
-        <MetricCard label="Content to review" value={counts.contentNeedingReview} Icon={FileText} delay={120} />
+        <MetricCard label="Brand suggestions" value={counts.pendingSuggestions} Icon={ListChecks} hint={counts.pendingSuggestions > 0 ? 'Pending review' : 'Inbox clear'} delay={120} />
         <MetricCard label="Research jobs" value={counts.researchRuns} Icon={Globe2} hint={researchHint} delay={180} />
       </div>
       <div className="grid grid-3" style={{ marginTop: 16 }}>

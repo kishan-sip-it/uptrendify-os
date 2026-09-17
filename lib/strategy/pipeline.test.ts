@@ -79,6 +79,19 @@ function fakeProvider(generate: (input: { prompt: string }) => Promise<unknown>)
   };
 }
 
+function approvedSuggestion(field: string, label: string, value: unknown) {
+  return { id: `suggestion-${field}`, field, label, proposed_value: value, status: 'APPROVED' as const };
+}
+
+const approvedSuggestionRows = () => [
+  approvedSuggestion('brand_name', 'Brand name', 'Aurora'),
+  approvedSuggestion('brand_description', 'What the company does', 'B2B SaaS for growth teams'),
+  approvedSuggestion('industry', 'Industry', 'B2B SaaS'),
+  approvedSuggestion('business_model', 'Business model', 'Subscription'),
+  approvedSuggestion('products_services', 'Products & services', ['Aurora Analytics']),
+  approvedSuggestion('differentiators', 'Differentiators', ['Real-time dashboards']),
+];
+
 const successQueues = () => ({
   strategies: [
     { data: { id: STRATEGY_ID, version: 1 }, error: null },
@@ -86,7 +99,8 @@ const successQueues = () => ({
     { error: null },
   ],
   brands: [{ data: { name: 'Aurora', website_url: 'https://aurora.dev', industry: 'B2B SaaS', market_country: 'US', target_audience: 'Growth teams' }, error: null }],
-  brand_facts: [{ data: [{ key: 'identity', value: { brandName: 'Aurora' } }], error: null }],
+  brand_facts: [{ data: [], error: null }],
+  brand_suggestions: [{ data: approvedSuggestionRows(), error: null }],
   brand_insights: [{ data: [{ category: 'POSITIONING', title: 'Differentiator', description: 'Evidence-first workflow', priority: 1, metadata: null }], error: null }],
   brand_sources: [{ data: [{ url: 'https://aurora.dev/', canonical_url: null, title: 'Aurora Home' }], error: null }],
   research_runs: [{ data: [{ id: RUN_ID }], error: null }],
@@ -148,7 +162,8 @@ describe('runStrategyGeneration', () => {
         { error: null },
       ],
       brands: [{ data: { name: 'Aurora', website_url: 'https://aurora.dev', industry: null, market_country: null, target_audience: null }, error: null }],
-      brand_facts: [{ data: [{ key: 'identity', value: 'Aurora' }], error: null }],
+      brand_facts: [{ data: [], error: null }],
+      brand_suggestions: [{ data: approvedSuggestionRows(), error: null }],
       brand_insights: [{ data: [], error: null }],
       brand_sources: [{ data: [], error: null }],
       research_runs: [{ data: [], error: null }],
@@ -177,7 +192,8 @@ describe('runStrategyGeneration', () => {
         { error: null },
       ],
       brands: [{ data: { name: 'Aurora' }, error: null }],
-      brand_facts: [{ data: [{ key: 'identity', value: 'Aurora' }], error: null }],
+      brand_facts: [{ data: [], error: null }],
+      brand_suggestions: [{ data: approvedSuggestionRows(), error: null }],
       brand_insights: [{ data: [], error: null }],
       brand_sources: [{ data: [], error: null }],
       research_runs: [{ data: [], error: null }],
@@ -196,7 +212,7 @@ describe('runStrategyGeneration', () => {
     expect(outcome).toMatchObject({ status: 'FAILED', errorCode: 'PROVIDER_UNCONFIGURED' });
   });
 
-  it('fails without creating an AI task when the Brand Brain has no context', async () => {
+  it('fails without creating an AI task when the brand has never been analyzed', async () => {
     const client = makeClient({
       strategies: [
         { data: { id: STRATEGY_ID, version: 1 }, error: null },
@@ -205,6 +221,7 @@ describe('runStrategyGeneration', () => {
       ],
       brands: [{ data: { name: 'Aurora' }, error: null }],
       brand_facts: [{ data: [], error: null }],
+      brand_suggestions: [{ data: [], error: null }],
       brand_insights: [{ data: [], error: null }],
       brand_sources: [{ data: [], error: null }],
       research_runs: [{ data: [], error: null }],
@@ -218,5 +235,34 @@ describe('runStrategyGeneration', () => {
     expect(outcome).toMatchObject({ status: 'FAILED', errorCode: 'INSUFFICIENT_BRAIN' });
     expect(client.from).not.toHaveBeenCalledWith('ai_tasks');
     expect(client.from).not.toHaveBeenCalledWith('audit_logs');
+  });
+
+  it('fails with INSUFFICIENT_APPROVED_BRAIN when only PENDING suggestions exist', async () => {
+    const client = makeClient({
+      strategies: [
+        { data: { id: STRATEGY_ID, version: 1 }, error: null },
+        { error: null },
+        { error: null },
+      ],
+      brands: [{ data: { name: 'Aurora' }, error: null }],
+      brand_facts: [{ data: [{ key: 'brand_name', value: 'Aurora' }], error: null }],
+      brand_suggestions: [
+        {
+          data: approvedSuggestionRows().map((row) => ({ ...row, status: 'PENDING' })),
+          error: null,
+        },
+      ],
+      brand_insights: [{ data: [], error: null }],
+      brand_sources: [{ data: [], error: null }],
+      research_runs: [{ data: [{ id: RUN_ID }], error: null }],
+    });
+
+    const outcome = await runStrategyGeneration(
+      { supabase: client, organizationId: ORG_ID, brandId: BRAND_ID, strategyId: STRATEGY_ID },
+      { provider: fakeProvider(vi.fn()) },
+    );
+
+    expect(outcome).toMatchObject({ status: 'FAILED', errorCode: 'INSUFFICIENT_APPROVED_BRAIN' });
+    expect(client.from).not.toHaveBeenCalledWith('ai_tasks');
   });
 });

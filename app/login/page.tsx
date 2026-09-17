@@ -2,8 +2,10 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { LoaderCircle, Sparkles } from 'lucide-react';
+import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
+import { AuthLayout } from '@/components/auth/auth-layout';
 
 type Step = 'checking' | 'auth' | 'bootstrap';
 
@@ -11,7 +13,6 @@ type BootstrapOrg = { id: string; role: string; name: string | null } | null;
 
 export default function LoginPage() {
   const [step, setStep] = useState<Step>('checking');
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -50,20 +51,10 @@ export default function LoginPage() {
     const supabase = createSupabaseBrowserClient();
 
     try {
-      const { error: authError } = mode === 'signup'
-        ? await supabase.auth.signUp({ email, password })
-        : await supabase.auth.signInWithPassword({ email, password });
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
       if (authError) {
         setError(authError.message);
-        return;
-      }
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setError(mode === 'signup'
-          ? 'Account created. Check your inbox to confirm your email before signing in.'
-          : 'Could not verify your session.');
         return;
       }
 
@@ -115,47 +106,57 @@ export default function LoginPage() {
     );
   }
 
-  return (
-    <main className="main" style={{ maxWidth: 520, margin: '0 auto', paddingTop: 80 }}>
-      <div style={{ textAlign: 'center', marginBottom: 28 }}>
-        <div className="brand-mark" style={{ justifyContent: 'center', padding: 0 }}><span className="logo" /> UpTrendifyOS</div>
-        <h1 style={{ fontSize: 30 }}>
-          {step === 'bootstrap' ? 'Name your agency workspace.' : 'Your agency command center.'}
-        </h1>
-        <p className="subtitle" style={{ margin: '0 auto' }}>
-          {step === 'bootstrap'
-            ? 'One workspace for every client brand, research run and AI workflow.'
-            : 'Sign in or create an account to manage multi-brand growth operations.'}
-        </p>
-      </div>
-
-      {step === 'bootstrap' ? (
-        <form onSubmit={handleBootstrap} className="card" style={{ display: 'grid', gap: 16 }}>
-          <label>Organization name<input name="organizationName" required placeholder="e.g. Northwind Agency" maxLength={120} style={{ width: '100%' }} /></label>
-          <button disabled={loading} className="badge" style={{ border: 0, justifyContent: 'center', padding: 14, cursor: 'pointer' }}>
+  if (step === 'bootstrap') {
+    return (
+      <AuthLayout
+        eyebrow="Workspace"
+        title="Name your agency workspace."
+        subtitle="One workspace for every client brand, research run and AI workflow."
+        footer={
+          <Link href="/" className="auth-link">← Back to home</Link>
+        }
+      >
+        <form onSubmit={handleBootstrap} className="card auth-card-form">
+          <label>
+            Organization name
+            <input name="organizationName" required placeholder="e.g. Northwind Agency" maxLength={120} autoFocus />
+          </label>
+          <button type="submit" disabled={loading} className="badge auth-submit">
             {loading ? <><LoaderCircle size={15} className="spin" /> Creating…</> : <>Create workspace <Sparkles size={15} /></>}
           </button>
           {error && <ErrorState message={error} />}
         </form>
-      ) : (
-        <form onSubmit={handleAuth} className="card" style={{ display: 'grid', gap: 16 }}>
-          <label>Email<input name="email" type="email" required autoComplete="email" style={{ width: '100%' }} /></label>
-          <label>Password<input name="password" type="password" required minLength={8} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} style={{ width: '100%' }} /></label>
-          <button disabled={loading} className="badge" style={{ border: 0, justifyContent: 'center', padding: 14, cursor: 'pointer' }}>
-            {loading ? <><LoaderCircle size={15} className="spin" /> Working…</> : <>{mode === 'signup' ? 'Create account' : 'Sign in'} <Sparkles size={15} /></>}
-          </button>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); setError(''); }}
-            className="metric-label"
-            style={{ background: 'transparent', border: 0, cursor: 'pointer', padding: 4 }}
-          >
-            {mode === 'signup' ? 'Already have an account? Sign in' : 'New here? Create an account'}
-          </button>
-          {error && <ErrorState message={error} />}
-        </form>
-      )}
-    </main>
+      </AuthLayout>
+    );
+  }
+
+  return (
+    <AuthLayout
+      eyebrow="Command center"
+      title="Your agency command center."
+      subtitle="Sign in to manage multi-brand research, reviews and strategy."
+      footer={
+        <div className="auth-footer-links">
+          <Link href="/register">Create an account</Link>
+          <Link href="/forgot-password">Forgot password?</Link>
+          <Link href="/">Back to home</Link>
+        </div>
+      }
+    >
+      <form onSubmit={handleAuth} className="card auth-card-form">
+        <label>
+          Email
+          <input name="email" type="email" required autoComplete="email" placeholder="you@agency.com" />
+        </label>
+        <label>
+          Password
+          <input name="password" type="password" required autoComplete="current-password" placeholder="••••••••" />
+        </label>
+        <button type="submit" disabled={loading} className="badge auth-submit">
+          {loading ? <><LoaderCircle size={15} className="spin" /> Working…</> : <>Sign in <Sparkles size={15} /></>}
+        </button>
+        {error && <ErrorState message={error} />}
+      </form>
+    </AuthLayout>
   );
 }
