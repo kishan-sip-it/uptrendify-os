@@ -34,7 +34,7 @@ export default async function Home() {
   // Keep redirects outside the try/catch because Next.js implements redirect()
   // by throwing a framework control-flow signal.
   if (userId) {
-    if (onboardingCompleted === false) redirect('/onboarding');
+    if (onboardingCompleted !== true) redirect('/onboarding');
     redirect('/dashboard');
   }
 
