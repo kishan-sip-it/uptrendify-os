@@ -15,7 +15,7 @@ export async function GET() {
     providers: Object.fromEntries(health.map((h) => [h.id, h.ok])),
     defaultProvider: defaultProvider?.id ?? null,
     integrations: {
-      supabase: Boolean(e.NEXT_PUBLIC_SUPABASE_URL && e.NEXT_PUBLIC_SUPABASE_ANON_KEY),
+      supabase: Boolean(e.NEXT_PUBLIC_SUPABASE_URL && (e.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || e.NEXT_PUBLIC_SUPABASE_ANON_KEY)),
       semrush: Boolean(e.SEMRUSH_API_KEY),
       surfer: Boolean(e.SURFER_API_KEY),
       jasper: Boolean(e.JASPER_API_KEY),
