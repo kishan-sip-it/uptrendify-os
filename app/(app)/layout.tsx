@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/app/shell';
-import { Analytics } from "@vercel/analytics/next"
 import { CAN_VIEW_DASHBOARD, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isReplayOrgSlug } from '@/lib/replay';
+import { obs } from '@/lib/obs/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +12,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (auth.error) redirect('/login');
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: { user } }, organizationResult, brandsResult, profileResult] = await Promise.all([
+  const [userResult, organizationResult, brandsResult, profileResult] = await Promise.allSettled([
     supabase.auth.getUser(),
     supabase
       .from('organizations')
@@ -32,21 +32,58 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       .maybeSingle(),
   ]);
 
-  // A missing profile is also an incomplete onboarding state. This matters
-  // immediately after first workspace bootstrap, before the first profile save.
-  if (!profileResult.data || profileResult.data.onboarding_completed !== true) redirect('/onboarding');
+  const user =
+    userResult.status === 'fulfilled' && !userResult.value.error
+      ? userResult.value.data.user
+      : null;
+  const organization =
+    organizationResult.status === 'fulfilled' && !organizationResult.value.error
+      ? organizationResult.value.data
+      : null;
+  const brands =
+    brandsResult.status === 'fulfilled' && !brandsResult.value.error
+      ? brandsResult.value.data ?? []
+      : [];
+  const profile =
+    profileResult.status === 'fulfilled' && !profileResult.value.error
+      ? profileResult.value.data
+      : null;
+
+  if (userResult.status === 'rejected') {
+    obs.error('Authenticated user lookup failed in app shell', { error: String(userResult.reason) });
+  }
+  if (organizationResult.status === 'rejected') {
+    obs.error('Organization shell lookup failed', { organizationId: auth.context.organizationId, error: String(organizationResult.reason) });
+  } else if (organizationResult.status === 'fulfilled' && organizationResult.value.error) {
+    obs.error('Organization shell query failed', { organizationId: auth.context.organizationId, error: organizationResult.value.error.message });
+  }
+  if (brandsResult.status === 'rejected') {
+    obs.error('Brand shell lookup failed', { organizationId: auth.context.organizationId, error: String(brandsResult.reason) });
+  } else if (brandsResult.status === 'fulfilled' && brandsResult.value.error) {
+    obs.error('Brand shell query failed', { organizationId: auth.context.organizationId, error: brandsResult.value.error.message });
+  }
+  if (profileResult.status === 'rejected') {
+    obs.error('Profile shell lookup failed', { userId: auth.context.userId, error: String(profileResult.reason) });
+  } else if (profileResult.status === 'fulfilled' && profileResult.value.error) {
+    obs.error('Profile shell query failed', { userId: auth.context.userId, error: profileResult.value.error.message });
+  }
+
+  // A missing profile is an incomplete onboarding state. A transient profile
+  // query error should not crash the whole application shell; route the user
+  // through onboarding instead, where the profile can be repaired.
+  if (!profile || profile.onboarding_completed !== true) redirect('/onboarding');
 
   return (
     <AppShell
       organization={{
         id: auth.context.organizationId,
-        name: organizationResult.data?.name ?? 'Your workspace',
+        name: organization?.name ?? 'Your workspace',
         role: auth.context.role,
       }}
-      brands={brandsResult.data ?? []}
+      brands={brands}
       userEmail={user?.email ?? ''}
-      userFirstName={profileResult.data.first_name ?? null}
-      replayActive={isReplayOrgSlug(organizationResult.data?.slug ?? '')}
+      userFirstName={profile.first_name ?? null}
+      replayActive={isReplayOrgSlug(organization?.slug ?? '')}
     >
       {children}
     </AppShell>
