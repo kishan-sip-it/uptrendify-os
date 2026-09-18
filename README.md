@@ -96,6 +96,39 @@ DEFAULT_AI_PROVIDER=gemini
 
 Without any configured key, the pipeline still runs and records an AI task failed with `PROVIDER_UNCONFIGURED`.
 
+## Presentation replay mode
+
+`AI_EXECUTION_MODE` controls whether AI runs for real (or at all):
+
+- `live` (default) — production behavior. Research, Brand Brain and Strategy call the configured provider and surface live failure states.
+- `replay` — deterministic presentation mode for the seeded **Aurora Labs** workspace. The app never calls a model; the `aurora-labs-presentation` organization replays from the bundled fixture (`lib/replay/fixtures/aurora.json`). Every other workspace keeps the normal live behavior, and a small "Presentation Replay" badge appears in the top bar while it is active.
+
+The fixture data (`lib/replay/index.ts` + `lib/replay/fixtures/aurora.json`) is the single source of truth for both the seed and the replay runtime, so a watched demo always matches the seeded state.
+
+### Set up a demo
+
+```bash
+# 1. Ensure migrations 0001–0007 are applied to local Supabase, then set:
+cp .env.example .env.local       # fill NEXT_PUBLIC_SUPABASE_URL + the two Supabase keys
+export AI_EXECUTION_MODE=replay  # (or .env.local: AI_EXECUTION_MODE=replay)
+
+# 2. Seed the deterministic presentation workspace (idempotent, safe to re-run):
+node scripts/seed-presentation.cjs
+
+# 3. Run the app and sign in:
+npm run dev
+#   email:    presenter@uptrendify.local
+#   password: uptrendify-demo
+```
+
+### Presentation flow
+
+Open the **Aurora Labs** brand and walk: **Brand → Website Research → Brand Brain → Review → Approve → Brand Intelligence → Strategy**.
+
+The seed pre-approves six Brand Brain facts (brand name, what the company does, industry, audience, value proposition, differentiators) so the strategy approval gate is already satisfied and a `SUCCEEDED` strategy v1 is visible immediately. The remaining suggestions are `PENDING` so a presenter reviews them live — approving/rejecting/editing/regenerating uses the normal review API. In replay mode, "Start research", "Generate strategy" and "Regenerate suggestion" complete deterministically and synchronously so the demo never waits on a model call.
+
+Re-running `node scripts/seed-presentation.cjs` resets the brand to the pristine presentable state. To remove the workspace, delete the organization with `slug = aurora-labs-presentation`. Setting `AI_EXECUTION_MODE=live` (or unsetting it) restores full production behavior.
+
 ## Local verification
 
 ```bash

@@ -49,6 +49,10 @@ export const envSchema = z.object({
   MAX_RESEARCH_REDIRECTS: z.coerce.number().int().min(0).max(20).default(5),
   RESEARCH_TIMEOUT_MS: z.coerce.number().int().positive().max(60_000).default(12_000),
   RESEARCH_TOTAL_BUDGET_MS: z.coerce.number().int().positive().max(120_000).default(45_000),
+  AI_EXECUTION_MODE: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.enum(['live', 'replay']).default('live').describe('AI_EXECUTION_MODE'),
+  ),
 });
 
 let cached: z.infer<typeof envSchema> | null = null;
@@ -56,4 +60,8 @@ let cached: z.infer<typeof envSchema> | null = null;
 export function env() {
   if (!cached) cached = envSchema.parse(process.env);
   return cached;
+}
+
+export function resetEnv() {
+  cached = null;
 }

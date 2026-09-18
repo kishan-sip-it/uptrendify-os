@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/app/shell';
 import { CAN_VIEW_DASHBOARD, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { isReplayOrgSlug } from '@/lib/replay';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       brands={brandsResult.data ?? []}
       userEmail={user?.email ?? ''}
       userFirstName={profileResult.data?.first_name ?? null}
+      replayActive={isReplayOrgSlug(organizationResult.data?.slug ?? '')}
     >
       {children}
     </AppShell>

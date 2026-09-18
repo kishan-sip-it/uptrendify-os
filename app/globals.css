@@ -42,6 +42,7 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .badge.tone-danger { border-color: rgba(239,68,68,.32); background:rgba(239,68,68,.1); color:#f87171; }
 .badge.tone-info { border-color: rgba(139,124,255,.28); background:rgba(139,124,255,.1); color:#b9adff; }
 .badge.tone-muted { border-color: rgba(140,160,188,.22); background:rgba(140,160,188,.08); color:var(--muted); }
+.badge.replay-badge { border-color: rgba(251,191,36,.32); background:rgba(251,191,36,.1); color:#fbbf24; white-space:nowrap; }
 .section-title { display:flex; align-items:center; justify-content:space-between; margin-bottom: 12px; }
 .brand-card { position:relative; overflow:hidden; }
 .brand-card::after { content:''; position:absolute; inset:auto -60px -70px auto; width:160px; height:160px; border-radius:50%; background:rgba(139,124,255,.08); filter:blur(10px); }

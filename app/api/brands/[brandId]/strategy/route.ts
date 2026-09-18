@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_GENERATE_STRATEGY, CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
+import { completeReplayStrategy, isReplayOrganization } from '@/lib/replay';
 import { scheduleStrategyExecution, STRATEGY_ACTIVE_STATUSES } from '@/lib/strategy/pipeline';
 import { obs } from '@/lib/obs/logger';
 
@@ -154,6 +155,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       version: inserted.data.version,
       actorId: auth.context.userId,
     });
+
+    if (await isReplayOrganization(supabase, auth.context.organizationId)) {
+      const outcome = await completeReplayStrategy(supabase, {
+        organizationId: auth.context.organizationId,
+        brandId: brand.id,
+        strategyId,
+        userId: auth.context.userId,
+        input: { version: inserted.data.version },
+      });
+      return NextResponse.json(
+        { ok: true, strategyId, status: outcome.status, version: inserted.data.version, replay: true },
+        { status: 201 },
+      );
+    }
 
     scheduleStrategyExecution({
       supabase,

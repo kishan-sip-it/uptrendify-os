@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_REVIEW_SUGGESTIONS, requireOrgRole } from '@/lib/auth/roles';
 import { approveSuggestion, editSuggestion, rejectSuggestion, regenerateSuggestion } from '@/lib/brain/review';
+import { isReplayOrganization, regenerateReplaySuggestion } from '@/lib/replay';
 import { obs } from '@/lib/obs/logger';
 
 const paramsSchema = z.object({ brandId: z.string().uuid(), suggestionId: z.string().uuid() });
@@ -55,6 +56,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
         return NextResponse.json({ ok: true, suggestion: updated });
       }
       case 'regenerate': {
+        if (await isReplayOrganization(supabase, auth.context.organizationId)) {
+          const draft = await regenerateReplaySuggestion(supabase, { ...base, suggestionId });
+          return NextResponse.json({ ok: true, suggestion: draft });
+        }
         const draft = await regenerateSuggestion(supabase, { ...base, suggestionId });
         return NextResponse.json({ ok: true, suggestion: draft });
       }

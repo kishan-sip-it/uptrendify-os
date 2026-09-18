@@ -59,12 +59,14 @@ export function AppShell({
   brands,
   userEmail,
   userFirstName,
+  replayActive = false,
   children,
 }: {
   organization: ShellOrganization;
   brands: ShellBrand[];
   userEmail: string;
   userFirstName: string | null;
+  replayActive?: boolean;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -271,6 +273,12 @@ export function AppShell({
           <div className="topbar-title">
             <h1>{greeting}, {displayName.split(' ')[0]}.</h1>
           </div>
+
+          {replayActive ? (
+            <span className="badge replay-badge" title="AI execution is in replay mode — running on deterministic presentation data with no live model calls">
+              Presentation Replay
+            </span>
+          ) : null}
 
           <a className="badge topbar-add" href="/brands/new"><Plus size={14} /> Add brand</a>
 

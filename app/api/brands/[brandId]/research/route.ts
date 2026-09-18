@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_RUN_RESEARCH, CAN_VIEW_DASHBOARD, requireOrgRole } from '@/lib/auth/roles';
+import { completeReplayResearchRun, isReplayOrganization } from '@/lib/replay';
 import { scheduleResearchExecution } from '@/lib/research/pipeline';
 import { RESEARCH_ACTIVE_STATUSES } from '@/lib/research/crawler';
 import { obs } from '@/lib/obs/logger';
@@ -100,6 +101,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     const runId = inserted.data.id;
 
     obs.info('Research run created', { researchRunId: runId, brandId: brand.id, organizationId: auth.context.organizationId, actorRole: auth.context.role });
+
+    if (await isReplayOrganization(supabase, auth.context.organizationId)) {
+      await completeReplayResearchRun(supabase, {
+        organizationId: auth.context.organizationId,
+        brandId: brand.id,
+        researchRunId: runId,
+        userId: auth.context.userId,
+      });
+      return NextResponse.json({ ok: true, researchRunId: runId, status: 'COMPLETED', replay: true }, { status: 201 });
+    }
 
     scheduleResearchExecution({
       supabase,

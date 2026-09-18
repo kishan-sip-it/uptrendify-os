@@ -1,0 +1,1056 @@
+{
+  "meta": {
+    "organizationSlug": "aurora-labs-presentation",
+    "organizationName": "Aurora Labs (Presentation)",
+    "clientName": "Aurora Labs North America",
+    "clientSlug": "aurora-labs",
+    "brandName": "Aurora Labs",
+    "brandSlug": "aurora",
+    "brandUrl": "https://example.com",
+    "brandIndustry": "B2B SaaS — Brand & growth intelligence",
+    "marketCountry": "North America",
+    "targetAudience": "Fractional and in-house marketing leaders at product-led B2B SaaS companies (20–500 employees) who need fast, evidence-based brand research and go-to-market plans.",
+    "presenterUser": {
+      "email": "presenter@uptrendify.local",
+      "password": "uptrendify-demo",
+      "firstName": "Aurora",
+      "lastName": "Presenter"
+    },
+    "providerLabel": "replay",
+    "modelLabel": "presentation-fixture",
+    "fallbackIdempotencyKeys": {
+      "research": "replay:presentation:aurora:v1",
+      "strategy": "replay:presentation:aurora:strategy:v1"
+    }
+  },
+  "run": {
+    "pagesDiscovered": 6,
+    "pagesProcessed": 4
+  },
+  "sources": [
+    {
+      "url": "https://example.com/",
+      "canonicalUrl": "https://example.com/",
+      "title": "Aurora Labs — Brand Intelligence for Growth Teams",
+      "contentType": "text/html",
+      "httpStatus": 200,
+      "text": "Aurora Labs is a brand intelligence platform for growth teams. We help marketing leaders understand what their brand truly stands for by combining public web research, documented claims, and structured brand facts in one workspace. Founded in 2021, Aurora Labs is a product-led B2B SaaS company headquartered in Austin, Texas, serving customers across North America and Europe. Our platform crawls public websites, captures verifiable evidence, and turns it into an actionable brand brain that research and marketing teams can review, approve, and reuse. Hundreds of product-led companies rely on Aurora Labs to cut research time from weeks to hours. We practice what we preach: every brand profile is built from cited, human-approved evidence. Aurora Labs offers three plans — Starter, Growth, and Scale — with transparent pricing, a 14-day free trial, and no long-term contracts."
+    },
+    {
+      "url": "https://example.com/about",
+      "canonicalUrl": "https://example.com/about",
+      "title": "About Aurora Labs",
+      "contentType": "text/html",
+      "httpStatus": 200,
+      "text": "Aurora Labs was founded in 2021 by a small team of former agency strategists and data engineers who were tired of slow, subjective research. Our mission is to make credible brand research universally available. We are a remote-first team of 35 people spread across North America and Europe. Small and mid-size B2B companies use Aurora Labs to complete buyer and market research for new product launches, rebrands, and go-to-market campaigns. Typical users include fractional CMOs, heads of marketing, and product marketers who need defensible positioning in days, not quarters. Our values are rigor, transparency, and speed. We publish our accuracy metrics and audit our research against source evidence so customers can verify every claim. Aurora Labs is venture-backed and operates as a fully remote company with a distributed engineering team."
+    },
+    {
+      "url": "https://example.com/pricing",
+      "canonicalUrl": "https://example.com/pricing",
+      "title": "Pricing — Aurora Labs",
+      "contentType": "text/html",
+      "httpStatus": 200,
+      "text": "Aurora Labs pricing is simple and transparent. The Starter plan is $29 per month and includes 1 workspace, 3 brand profiles, and unlimited reviewers. The Growth plan is $79 per month and adds 10 brand profiles, priority research speed, version history, and integrations with Notion and Slack. The Scale plan is $199 per month and includes unlimited brand profiles, dedicated onboarding, SSO, and an API. Every plan starts with a 14-day free trial and no long-term contracts. All prices are listed in USD and billed monthly or annually. Customers on the Growth and Scale plans get a 20% discount when they choose annual billing. There are no setup fees and no hidden charges; you can cancel at any time."
+    },
+    {
+      "url": "https://example.com/blog/fractional-cmo-guide",
+      "canonicalUrl": "https://example.com/blog/fractional-cmo-guide",
+      "title": "The Fractional CMO's Guide to Faster Brand Research",
+      "contentType": "text/html",
+      "httpStatus": 200,
+      "text": "Fractional CMOs are expected to deliver a point of view on the brand within their first two weeks. The fastest way is to work from evidence instead of opinion. This guide is a playbook for researching a brand's website, aggregating claims into themes, and asking the marketing team to confirm what matters before building positioning. We recommend four steps: capture public pages, extract claims with sources, cluster claims into themes, and get one human sign-off per theme. Teams that follow this workflow reduce research time by up to 70% and keep every assertion traceable to a public source. The same evidence-first discipline underpins Aurora Labs' brand intelligence editor, where approved facts drive positioning and go-to-market strategy. Consistency comes from a single source of truth: a brand brain that reflects documented and human-approved claims."
+    }
+  ],
+  "approvedFields": [
+    "brand_name",
+    "brand_description",
+    "industry",
+    "target_audience",
+    "value_proposition",
+    "differentiators"
+  ],
+  "suggestions": [
+    {
+      "field": "brand_name",
+      "label": "Brand name",
+      "section": "identity",
+      "kind": "text",
+      "proposedValue": "Aurora Labs",
+      "confidence": 0.99,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "Company name is Aurora Labs, a brand intelligence platform.",
+          "strength": "strong",
+          "excerpt": "Aurora Labs is a brand intelligence platform for growth teams."
+        }
+      ]
+    },
+    {
+      "field": "brand_description",
+      "label": "What the company does",
+      "section": "identity",
+      "kind": "text",
+      "proposedValue": "Aurora Labs is a brand intelligence platform that turns public web research into a structured, human-approved brand brain for growth teams. It crawls public websites, captures verifiable evidence, and produces reviewed brand facts that marketing and research teams reuse for positioning and go-to-market strategy.",
+      "confidence": 0.95,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "The platform crawls public websites, captures verifiable evidence, and turns it into an actionable brand brain.",
+          "strength": "strong",
+          "excerpt": "Our platform crawls public websites, captures verifiable evidence, and turns it into an actionable brand brain"
+        }
+      ]
+    },
+    {
+      "field": "industry",
+      "label": "Industry",
+      "section": "identity",
+      "kind": "text",
+      "proposedValue": "B2B SaaS — Brand & growth intelligence",
+      "confidence": 0.96,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "Aurora Labs is a product-led B2B SaaS company.",
+          "strength": "strong",
+          "excerpt": "Aurora Labs is a product-led B2B SaaS company headquartered in Austin, Texas"
+        }
+      ]
+    },
+    {
+      "field": "business_model",
+      "label": "Business model",
+      "section": "identity",
+      "kind": "text",
+      "proposedValue": "Subscription SaaS with self-serve signup, transparent tiered pricing, and a 14-day free trial. Monthly or annual billing with no long-term contracts.",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "url": "https://example.com/pricing",
+          "claim": "Offers three plans with transparent tiered pricing and no long-term contracts.",
+          "strength": "strong",
+          "excerpt": "Aurora Labs pricing is simple and transparent. The Starter plan is $29 per month"
+        }
+      ]
+    },
+    {
+      "field": "primary_market",
+      "label": "Primary market",
+      "section": "identity",
+      "kind": "text",
+      "proposedValue": "Product-led B2B SaaS companies with 20–500 employees",
+      "confidence": 0.85,
+      "evidence": [
+        {
+          "url": "https://example.com/about",
+          "claim": "Small and mid-size B2B companies use Aurora Labs for buyer and market research.",
+          "strength": "strong",
+          "excerpt": "Small and mid-size B2B companies use Aurora Labs to complete buyer and market research"
+        }
+      ]
+    },
+    {
+      "field": "geography",
+      "label": "Geographic focus",
+      "section": "identity",
+      "kind": "text",
+      "proposedValue": "North America first, with meaningful adoption across Europe",
+      "confidence": 0.85,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "Serving customers across North America and Europe from Austin, Texas.",
+          "strength": "strong",
+          "excerpt": "headquartered in Austin, Texas, serving customers across North America and Europe"
+        }
+      ]
+    },
+    {
+      "field": "product_categories",
+      "label": "Products & services",
+      "section": "identity",
+      "kind": "list",
+      "proposedValue": ["Brand intelligence editor", "Web research & evidence capture", "Reviewed brand facts", "Positioning builder"],
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "Platform produces structured brand facts from captured evidence.",
+          "strength": "strong",
+          "excerpt": "an actionable brand brain that research and marketing teams can review, approve, and reuse"
+        }
+      ]
+    },
+    {
+      "field": "target_audience",
+      "label": "Audience summary",
+      "section": "audience",
+      "kind": "text",
+      "proposedValue": "Fractional and in-house marketing leaders at product-led B2B SaaS companies who need fast, evidence-based brand research and go-to-market plans.",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "url": "https://example.com/about",
+          "claim": "Typical users include fractional CMOs, heads of marketing, and product marketers.",
+          "strength": "strong",
+          "excerpt": "Typical users include fractional CMOs, heads of marketing, and product marketers"
+        }
+      ]
+    },
+    {
+      "field": "buyer_personas",
+      "label": "Ideal customer profiles",
+      "section": "audience",
+      "kind": "persona",
+      "proposedValue": [
+        { "name": "Frank the Fractional CMO", "description": "Works with 2–4 SaaS clients, needs a defensible POV on the brand within the first two weeks." },
+        { "name": "Priya the Head of Marketing", "description": "Owns positioning and campaigns for a 50–200 person product-led company; wants research done in days." },
+        { "name": "Mo the Product Marketer", "description": "Prepares launch narratives and needs traceable evidence to align multiple stakeholders." }
+      ],
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "url": "https://example.com/blog/fractional-cmo-guide",
+          "claim": "Fractional CMOs are expected to deliver a point of view on the brand within their first two weeks.",
+          "strength": "strong",
+          "excerpt": "Fractional CMOs are expected to deliver a point of view on the brand within their first two weeks"
+        }
+      ]
+    },
+    {
+      "field": "customer_types",
+      "label": "Customer types",
+      "section": "audience",
+      "kind": "list",
+      "proposedValue": ["Fractional CMOs", "Heads of marketing", "Product marketers", "Growth agencies"],
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "url": "https://example.com/about",
+          "claim": "Typical users include fractional CMOs, heads of marketing, and product marketers.",
+          "strength": "strong",
+          "excerpt": "Typical users include fractional CMOs, heads of marketing, and product marketers"
+        }
+      ]
+    },
+    {
+      "field": "pain_points",
+      "label": "Pain points",
+      "section": "audience",
+      "kind": "list",
+      "proposedValue": ["Research taking weeks instead of days", "Subjective, non-cited brand claims", "Marketing teams not aligned on positioning", "No single source of truth for brand facts"],
+      "confidence": 0.85,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "Customers cut research time from weeks to hours.",
+          "strength": "strong",
+          "excerpt": "Hundreds of product-led companies rely on Aurora Labs to cut research time from weeks to hours"
+        }
+      ]
+    },
+    {
+      "field": "use_cases",
+      "label": "Use cases",
+      "section": "audience",
+      "kind": "list",
+      "proposedValue": ["New product launches", "Rebrands and repositioning", "Go-to-market campaign planning", "Buyer and market research"],
+      "confidence": 0.85,
+      "evidence": [
+        {
+          "url": "https://example.com/about",
+          "claim": "Used for launches, rebrands, and go-to-market campaigns.",
+          "strength": "strong",
+          "excerpt": "buyer and market research for new product launches, rebrands, and go-to-market campaigns"
+        }
+      ]
+    },
+    {
+      "field": "value_proposition",
+      "label": "Value proposition",
+      "section": "positioning",
+      "kind": "text",
+      "proposedValue": "Turn public web research into a human-approved brand brain, so marketing teams go from scattered opinions to defensible positioning in days.",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "Every brand profile is built from cited, human-approved evidence.",
+          "strength": "strong",
+          "excerpt": "every brand profile is built from cited, human-approved evidence"
+        }
+      ]
+    },
+    {
+      "field": "differentiators",
+      "label": "Differentiators",
+      "section": "positioning",
+      "kind": "list",
+      "proposedValue": ["Evidence-first research with cited sources", "Human review and approval of every brand fact", "Workspace designed for marketing teams", "Versioned brand brain as a single source of truth"],
+      "confidence": 0.85,
+      "evidence": [
+        {
+          "url": "https://example.com/blog/fractional-cmo-guide",
+          "claim": "Consistency comes from a single source of truth that reflects documented and human-approved claims.",
+          "strength": "strong",
+          "excerpt": "Consistency comes from a single source of truth: a brand brain that reflects documented and human-approved claims"
+        }
+      ]
+    },
+    {
+      "field": "positioning_themes",
+      "label": "Market positioning",
+      "section": "positioning",
+      "kind": "list",
+      "proposedValue": ["Speed: research in days, not quarters", "Credibility: every claim traceable to source", "Alignment: one approved brand brain for the whole team"],
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "Designed for evidence-based research and reviewable brand facts.",
+          "strength": "strong",
+          "excerpt": "structured brand facts in one workspace"
+        }
+      ]
+    },
+    {
+      "field": "brand_messaging",
+      "label": "Messaging direction",
+      "section": "positioning",
+      "kind": "text",
+      "proposedValue": "Aurora Labs is the evidence-first way to build a brand brain. We lead with credibility, speed, and team alignment, and we back every claim with a cited source a human approved.",
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "Practice what we preach: every brand profile is built from cited, human-approved evidence.",
+          "strength": "strong",
+          "excerpt": "We practice what we preach: every brand profile is built from cited, human-approved evidence"
+        }
+      ]
+    },
+    {
+      "field": "products_services",
+      "label": "Products & services",
+      "section": "offer",
+      "kind": "list",
+      "proposedValue": ["Brand intelligence editor", "Automated web research & evidence capture", "Brand fact review and approvals", "Strategy and positioning outputs"],
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "Platform turns research into a brand brain for review, approval, and reuse.",
+          "strength": "strong",
+          "excerpt": "turns it into an actionable brand brain that research and marketing teams can review, approve, and reuse"
+        }
+      ]
+    },
+    {
+      "field": "key_features",
+      "label": "Key features",
+      "section": "offer",
+      "kind": "list",
+      "proposedValue": ["Public site crawling", "Cited evidence capture", "Suggestion review workflow", "Approved brand facts", "Version history"],
+      "confidence": 0.85,
+      "evidence": [
+        {
+          "url": "https://example.com/blog/fractional-cmo-guide",
+          "claim": "Workflow: capture pages, extract claims with sources, cluster themes, and get one human sign-off per theme.",
+          "strength": "strong",
+          "excerpt": "capture public pages, extract claims with sources, cluster claims into themes"
+        }
+      ]
+    },
+    {
+      "field": "benefits",
+      "label": "Customer benefits",
+      "section": "offer",
+      "kind": "list",
+      "proposedValue": ["Up to 70% faster brand research", "Every assertion traceable to a public source", "Clear approval process for the whole team", "A consistent brand brain for future work"],
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "url": "https://example.com/blog/fractional-cmo-guide",
+          "claim": "Teams reduce research time by up to 70% and keep every assertion traceable.",
+          "strength": "strong",
+          "excerpt": "reduce research time by up to 70% and keep every assertion traceable to a public source"
+        }
+      ]
+    },
+    {
+      "field": "calls_to_action",
+      "label": "Primary CTAs",
+      "section": "offer",
+      "kind": "list",
+      "proposedValue": ["Start free trial", "See pricing", "Read the guide"],
+      "confidence": 0.75,
+      "evidence": [
+        {
+          "url": "https://example.com/pricing",
+          "claim": "Every plan starts with a 14-day free trial and no long-term contracts.",
+          "strength": "strong",
+          "excerpt": "Every plan starts with a 14-day free trial and no long-term contracts"
+        }
+      ]
+    },
+    {
+      "field": "tone_of_voice",
+      "label": "Voice attributes",
+      "section": "messaging",
+      "kind": "list",
+      "proposedValue": ["Confident", "Clear", "Direct", "Evidence-minded"],
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "Company describes itself with rigor, transparency, and speed.",
+          "strength": "partial",
+          "excerpt": "Our values are rigor, transparency, and speed"
+        }
+      ]
+    },
+    {
+      "field": "terminology",
+      "label": "Brand vocabulary",
+      "section": "messaging",
+      "kind": "list",
+      "proposedValue": ["brand brain", "evidence", "human-approved", "verified claims", "positioning"],
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "Uses 'brand brain' to describe the reviewed brand fact store.",
+          "strength": "partial",
+          "excerpt": "turns it into an actionable brand brain"
+        }
+      ]
+    },
+    {
+      "field": "important_topics",
+      "label": "Key topics",
+      "section": "seo",
+      "kind": "list",
+      "proposedValue": ["brand research", "competitor analysis", "brand positioning", "go-to-market strategy", "marketing evidence"],
+      "confidence": 0.85,
+      "evidence": [
+        {
+          "url": "https://example.com/blog/fractional-cmo-guide",
+          "claim": "Publishes playbook content on brand research workflows.",
+          "strength": "partial",
+          "excerpt": "This guide is a playbook for researching a brand's website"
+        }
+      ]
+    },
+    {
+      "field": "keyword_themes",
+      "label": "SEO keyword themes",
+      "section": "seo",
+      "kind": "list",
+      "proposedValue": ["fractional CMO resources", "brand research software", "brand intelligence platform", "marketing research tools"],
+      "confidence": 0.75,
+      "evidence": [
+        {
+          "url": "https://example.com/blog/fractional-cmo-guide",
+          "claim": "Content targets fractional CMOs and marketing leaders.",
+          "strength": "partial",
+          "excerpt": "The Fractional CMO's Guide to Faster Brand Research"
+        }
+      ]
+    },
+    {
+      "field": "competitors",
+      "label": "Named competitors",
+      "section": "competition",
+      "kind": "list",
+      "proposedValue": ["Sprout Social listening tools", "Crayon competitive intelligence", "HubSpot research templates", "Agency research retainers"],
+      "confidence": 0.6,
+      "evidence": [
+        {
+          "url": "https://example.com/",
+          "claim": "Brand emphasizes doing research in-house faster than an agency.",
+          "strength": "weak",
+          "excerpt": "cut research time from weeks to hours"
+        }
+      ]
+    },
+    {
+      "field": "alternatives",
+      "label": "Alternatives",
+      "section": "competition",
+      "kind": "list",
+      "proposedValue": ["Doing nothing (opinion-led strategy)", "DIY sheets and shared docs", "Agency research retainers"],
+      "confidence": 0.6,
+      "evidence": [
+        {
+          "url": "https://example.com/blog/fractional-cmo-guide",
+          "claim": "Positions opinion-led, undocumented research as the weak default.",
+          "strength": "weak",
+          "excerpt": "work from evidence instead of opinion"
+        }
+      ]
+    }
+  ],
+  "insights": [
+    {
+      "category": "EVIDENCE",
+      "title": "Aurora Labs is a brand intelligence platform for growth teams",
+      "description": "Aurora Labs is a brand intelligence platform that combines public web research, documented claims, and structured brand facts in one workspace.",
+      "priority": 3,
+      "claimUrl": "https://example.com/"
+    },
+    {
+      "category": "EVIDENCE",
+      "title": "Company is product-led B2B SaaS headquartered in Austin, Texas",
+      "description": "Founded in 2021, Aurora Labs is a product-led B2B SaaS company headquartered in Austin, Texas, serving customers across North America and Europe.",
+      "priority": 3,
+      "claimUrl": "https://example.com/"
+    },
+    {
+      "category": "EVIDENCE",
+      "title": "Offers three transparent pricing tiers with a 14-day free trial",
+      "description": "Aurora Labs offers three plans — Starter, Growth, and Scale — with transparent pricing, a 14-day free trial, and no long-term contracts.",
+      "priority": 3,
+      "claimUrl": "https://example.com/pricing"
+    },
+    {
+      "category": "EVIDENCE",
+      "title": "Fraud prevention: claims are traceable to a public source",
+      "description": "Every assertion is traceable to a public source, and there are no hidden charges; customers can cancel at any time.",
+      "priority": 3,
+      "claimUrl": "https://example.com/pricing"
+    },
+    {
+      "category": "POSITIONING",
+      "title": "Evidence-first research is the primary differentiator",
+      "description": "Aurora Labs leads with cited, human-approved evidence instead of subjective opinion, differentiating from agencies and DIY methods.",
+      "priority": 1
+    },
+    {
+      "category": "POSITIONING",
+      "title": "Speed is a core proof point",
+      "description": "Research that used to take weeks now takes hours, a concrete outcome promise for growth teams.",
+      "priority": 1
+    },
+    {
+      "category": "AUDIENCE",
+      "title": "Fractional CMOs must produce a brand POV within two weeks",
+      "description": "The tight two-week window is a strong, content-backed trigger for the target audience.",
+      "priority": 2
+    },
+    {
+      "category": "AUDIENCE",
+      "title": "Pain point: slow and subjective research",
+      "description": "Customers feel the drag of 'opinion-led' research and undocumented claims across their teams.",
+      "priority": 2
+    },
+    {
+      "category": "MESSAGING",
+      "title": "Consistent vocabulary: brand brain, evidence, human-approved",
+      "description": "The brand consistently frames output as a 'brand brain' of approved facts, reinforcing the mental model.",
+      "priority": 2
+    },
+    {
+      "category": "SEO",
+      "title": "Content targets the fractional CMO playbook",
+      "description": "The flagship guide targets fractional CMOs and heads of marketing, aligning with the core ICP.",
+      "priority": 2
+    },
+    {
+      "category": "SEO",
+      "title": "Opportunity: capture 'brand research software' intent",
+      "description": "Editorial currently under-serves commercial search intent around brand research tooling and templates.",
+      "priority": 3
+    },
+    {
+      "category": "COMPETITION",
+      "title": "Competes against agency retainers and DIY spreadsheets",
+      "description": "The alternative set is far from a single tool suite, creating a consolidation opportunity.",
+      "priority": 3
+    }
+  ],
+  "strategy": {
+    "executiveSummary": {
+      "summary": "Aurora Labs should double down on its evidence-first brand intelligence positioning and own the 'brand brain' category it is creating. Over the next 90 days the brand should (1) launch a positioning-first content engine around the fractional CMO playbook, (2) capture high-intent search demand for brand research software, and (3) ship a public evidence credibility report that turns its transparency values into a defensible moat. Core to success is keeping brand facts human-approved and traceable, mirroring the discipline the product enforces for customers. Success is measured against the four quarterly objectives below, anchored in trial starts and strategy-ready brand profiles.",
+      "currentSituation": "Aurora Labs is a credible, well-designed product-led B2B SaaS brand with strong positioning raw material: evidence-first research, transparent pricing, and a clear ICP in fractional and in-house marketing leaders. The main gaps are limited category-owning content, thin commercial search coverage, and a messaging system that leans on features more than outcomes.",
+      "strategicDirection": "Own 'brand intelligence' for growth teams by packaging research as a human-approved brand brain, publishing the fractional CMO playbook at scale, and proving credibility through a public evidence report."
+    },
+    "businessUnderstanding": {
+      "whatCompanySells": "A brand intelligence platform that crawls public websites, captures cited evidence, and helps marketing teams review and approve structured brand facts in one workspace.",
+      "targetAudience": "Fractional and in-house marketing leaders at product-led B2B SaaS companies (20–500 employees) who need positioning defensible research in days, not quarters.",
+      "problemsSolved": [
+        "Research taking weeks instead of hours",
+        "Undocumented, opinion-led brand claims",
+        "Marketing teams not aligned on positioning",
+        "No single source of truth for brand facts"
+      ],
+      "valueProposition": "Turn public web research into a human-approved brand brain, so marketing teams go from scattered opinions to defensible positioning in days.",
+      "differentiators": [
+        "Evidence-first research with cited sources",
+        "Human review and approval of every brand fact",
+        "Versioned brand brain as a single source of truth"
+      ],
+      "evidenceBasis": [
+        "Public pages capture cited product, pricing, and company claims",
+        "Human approval workflow converts extracted suggestions into authoritative facts",
+        "The brand brain becomes the trusted input for positioning and go-to-market strategy"
+      ]
+    },
+    "objectives": [
+      {
+        "objective": "Own the commercial search space for brand research software",
+        "rationale": "The ICP searches for tooling and templates around brand and market research; capturing this intent converts directly into trial starts.",
+        "successMetric": "Rank in the top 10 for at least 8 target keywords in the 'brand research software' intent cluster",
+        "timeHorizon": "90 days"
+      },
+      {
+        "objective": "Build the fractional CMO playbook into a category-defining resource hub",
+        "rationale": "Fractional CMOs are the top-of-funnel trigger; a consistent, high-value playbook builds authority and inbound pipeline.",
+        "successMetric": "Grow organic sessions on playbook content by 60% and earn 25 referring domains",
+        "timeHorizon": "90 days"
+      },
+      {
+        "objective": "Launch a public evidence & credibility report",
+        "rationale": "Transparency is a core value; publishing accuracy metrics and an evidence audit makes the brand's moat visible and press-worthy.",
+        "successMetric": "1 public report published, 3 third-party mentions, and 10% lift in brand search queries",
+        "timeHorizon": "60 days"
+      },
+      {
+        "objective": "Increase strategy-ready, approved brand brain completion",
+        "rationale": "The approved brand brain is the product's core job-to-be-done; a higher completion rate lifts activation and retention.",
+        "successMetric": "Lift the share of new workspaces that complete an approved brand profile within the first two weeks by 15%",
+        "timeHorizon": "90 days"
+      }
+    ],
+    "icp": {
+      "primaryAudience": "Fractional and in-house marketing leaders at product-led B2B SaaS companies with 20–500 employees.",
+      "secondaryAudience": "Product marketers and growth team leads preparing launches, rebrands, and go-to-market campaigns.",
+      "painPoints": [
+        "Slow, subjective research that takes weeks",
+        "Claims that can't be traced back to a source",
+        "Marketing teams misaligned on positioning",
+        "No repeatable, reusable brand fact base"
+      ],
+      "motivations": [
+        "Deliver a defensible brand POV within their first two weeks",
+        "Build campaigns on approved, cited evidence",
+        "Save time and budget versus agency retainers",
+        "Create a single source of truth the whole team trusts"
+      ],
+      "buyingTriggers": [
+        "New product launch or rebrand",
+        "Go-to-market campaign planning",
+        "Agency retainer renewal review",
+        "First fractional CMO engagement"
+      ],
+      "objections": [
+        "Concern about evidence quality on niche websites",
+        "Fear that a new tool adds another step to research",
+        "Wondering how we differ from listening or competitive tools"
+      ]
+    },
+    "positioning": {
+      "positioningStatement": "For growth teams at product-led B2B SaaS companies, Aurora Labs is the brand intelligence workspace that turns public web research into a human-approved brand brain — so positioning is defensible, not opinionated.",
+      "corePromise": "A cited, human-approved brand brain your whole team can build on, in days.",
+      "differentiators": [
+        "Every brand fact is evidence-based and human-approved",
+        "One versioned brain replaces scattered docs and opinions",
+        "Designed for marketing workflows, not research analysts"
+      ],
+      "proofPoints": [
+        "Up to 70% faster research documented in the published playbook",
+        "Transparent pricing with a 14-day free trial",
+        "Every claim traceable to a public source"
+      ],
+      "gaps": [
+        "Category-owning terminology is still emerging",
+        "Evidence quality proof for long-tail niche sites is sparse",
+        "Case studies with named logos are not yet published"
+      ],
+      "uncertainties": [
+        "How broadly 'brand intelligence' becomes a recognized category",
+        "Whether enterprise teams will need deeper workflow controls",
+        "Competitive response from listening and research tool suites"
+      ]
+    },
+    "messaging": {
+      "coreMessage": "Turn what customers already say about a brand into a brand brain you can build on — evidence-first, human-approved, and ready in days.",
+      "supportingMessages": [
+        "Stop debating opinions; start working from cited evidence",
+        "One approved brand brain, the same truth for every team",
+        "Research in days, not quarters — without the agency retainer"
+      ],
+      "valuePropositions": [
+        "Faster research with a workflow ICPs already run",
+        "Traceable claims that any stakeholder can verify",
+        "An approved fact base that compounds in value over time"
+      ],
+      "ctaDirections": [
+        "Start free trial",
+        "Read the fractional CMO playbook",
+        "See transparent pricing"
+      ],
+      "toneOfVoice": "Confident, clear, direct, and evidence-minded. No hype without a cited source."
+    },
+    "contentStrategy": {
+      "contentPillars": [
+        "Fractional CMO playbooks & workflows",
+        "Brand research methods & evidence capture",
+        "Positioning & go-to-market strategy",
+        "Marketing operations & team alignment"
+      ],
+      "topicClusters": [
+        "Fractional CMO onboarding research",
+        "Brand research software and tooling",
+        "Competitor research workflows",
+        "Approvals and brand governance"
+      ],
+      "educationalThemes": [
+        "How to extract claims with sources",
+        "How to turn evidence into positioning",
+        "How to run a 90-day brand research sprint"
+      ],
+      "conversionThemes": [
+        "Brand brain templates and checklists",
+        "Trial onboarding guides",
+        "Evidence credibility report"
+      ],
+      "trustThemes": [
+        "Accuracy metrics and audits",
+        "Customer testimonials",
+        "Method transparency"
+      ],
+      "contentFormats": [
+        "Playbook guides",
+        "Template downloads",
+        "Checklists",
+        "Short video walkthroughs"
+      ]
+    },
+    "seoStrategy": {
+      "keywordOpportunities": [
+        "brand research software",
+        "brand intelligence platform",
+        "competitor research tool",
+        "fractional CMO resources",
+        "marketing research templates",
+        "brand positioning framework"
+      ],
+      "searchIntentCategories": [
+        {
+          "intent": "Commercial investigation — tooling and templates",
+          "topics": [
+            "brand research software",
+            "brand intelligence platform",
+            "competitor research tool"
+          ]
+        },
+        {
+          "intent": "Information — how-to playbooks",
+          "topics": [
+            "how to research a brand",
+            "fractional CMO onboarding",
+            "brand positioning examples"
+          ]
+        }
+      ],
+      "priorityTopics": [
+        "The Fractional CMO's 2-week research sprint",
+        "How to extract claims with sources",
+        "Brand brain templates for positioning",
+        "Competitor research workflow guide"
+      ],
+      "onPageOpportunities": [
+        "Add an evidence example to the pricing page",
+        "Turn the guide into a hub with interlinked cluster articles",
+        "Add schema markup for SaaS software category"
+      ],
+      "internalLinkingOpportunities": [
+        "Link playbook articles to the pricing page with value-driven anchors",
+        "Cross-link research method posts to the evidence credibility report",
+        "Link templates to trial signup pages"
+      ],
+      "gaps": [
+        "No dedicated commercial landing pages for tooling keywords",
+        "Thin coverage of comparison and alternative queries",
+        "No localized market landing pages for Europe"
+      ]
+    },
+    "channels": [
+      {
+        "channel": "Organic search",
+        "purpose": "Capture commercial intent for brand research software and build the playbook hub as an always-on acquisition engine.",
+        "audience": "Fractional CMOs, heads of marketing, product marketers",
+        "contentTypes": [
+          "Playbook guides",
+          "Template downloads",
+          "Cluster articles"
+        ],
+        "strategicRole": "Primary long-term acquisition channel; compounds the brand brain category.",
+        "confidence": "High"
+      },
+      {
+        "channel": "Search-accelerated LinkedIn",
+        "purpose": "Distribute playbook content to fractional CMO communities and build founder-led credibility.",
+        "audience": "Fractional CMO communities and marketing leaders",
+        "contentTypes": [
+          "Article excerpts",
+          "Data story posts",
+          "Carousel summaries"
+        ],
+        "strategicRole": "Awareness and authority channel feeding organic and trial growth.",
+        "confidence": "Medium"
+      },
+      {
+        "channel": "Email nurture",
+        "purpose": "Convert trial starts and guide readers into activated, approved-brand-brain users.",
+        "audience": "Trial users and content subscribers",
+        "contentTypes": [
+          "Onboarding sequences",
+          "Evidence tips",
+          "Template offers"
+        ],
+        "strategicRole": "Activation and retention accelerate; supports the completion objective.",
+        "confidence": "High"
+      },
+      {
+        "channel": "Partner & community",
+        "purpose": "Reach fractional CMO practitioners through communities, directories, and micro-consultancies.",
+        "audience": "Fractional CMO networks and agencies",
+        "contentTypes": [
+          "Guest playbooks",
+          "Community AMAs",
+          "Joint templates"
+        ],
+        "strategicRole": "Credibility partnerships that expand reach into the ICP's own audiences.",
+        "confidence": "Medium"
+      },
+      {
+        "channel": "Product-led onboarding",
+        "purpose": "Turn the product's own research workflow into a visible, shareable moment.",
+        "audience": "New trial users",
+        "contentTypes": [
+          "In-app guidance",
+          "Brand brain share links"
+        ],
+        "strategicRole": "Activation lever that doubles as organic word-of-mouth."
+      },
+      {
+        "channel": "PR & topical press",
+        "purpose": "Amplify the credibility report and research data stories into third parties.",
+        "audience": "Trade and B2B SaaS press",
+        "contentTypes": [
+          "Data report",
+          "Expert commentary"
+        ],
+        "strategicRole": "Earned credibility boost tied directly to the transparency moat."
+      }
+    ],
+    "campaigns": [
+      {
+        "name": "The 2-Week Brand POV Sprint",
+        "objective": "Package the fractional CMO onboarding research sprint into a downloadable playbook that converts into trials.",
+        "audience": "Fractional CMOs and heads of marketing",
+        "coreIdea": "A step-by-step, evidence-first sprint that mirrors the workflow the product enforces, with a template download as the conversion point.",
+        "channel": "Organic search + LinkedIn + email",
+        "cta": "Download the sprint template",
+        "sequence": [
+          "Publish the hub guide with a template download",
+          "Promote in fractional CMO communities on LinkedIn",
+          "Nurture downloads with a 5-email evidence series",
+          "Offer a live workspace walkthrough for warm leads"
+        ]
+      },
+      {
+        "name": "Own the Category Search Push",
+        "objective": "Capture commercial search intent for brand research software and tooling terms.",
+        "audience": "Marketing leaders in active tool research",
+        "coreIdea": "Commercial landing pages that position the brand brain against DIY, agency, and listening tool alternatives.",
+        "channel": "Organic search",
+        "cta": "Start free trial",
+        "sequence": [
+          "Build 6 commercial landing pages for the target cluster",
+          "Publish comparison and alternative guides",
+          "Interlink with playbook hub for topical authority",
+          "Measure trial attribution per keyword"
+        ]
+      },
+      {
+        "name": "Transparency Report Launch",
+        "objective": "Publish the public evidence & credibility report and earn third-party coverage.",
+        "audience": "B2B SaaS press and marketing communities",
+        "coreIdea": "Turn the internal evidence audit into public proof of the transparency moat.",
+        "channel": "PR + LinkedIn + email",
+        "cta": "Read the report",
+        "sequence": [
+          "Prepare the report data narrative",
+          "Brief 10 relevant journalists",
+          "Launch with a founder post and community AMA",
+          "Add report leads to the email nurture track"
+        ]
+      },
+      {
+        "name": "Activated Brain Onboarding",
+        "objective": "Lift completed, approved brand profiles in the first two weeks of every new workspace.",
+        "audience": "New trial and paid users",
+        "coreIdea": "Guide users through running their first research sprint and approving their first facts inside the product.",
+        "channel": "Product-led onboarding + email",
+        "cta": "Build your brand brain",
+        "sequence": [
+          "Send a 5-step in-app onboarding checklist",
+          "Celebrate the first approved fact with a shareable card",
+          "Auto-nudge at day 3 and day 7 with one-click re-runs",
+          "Surface strategy generation once the approval gate passes"
+        ]
+      }
+    ],
+    "roadmap": {
+      "days1To30": [
+        {
+          "action": "Publish the 2-Week Brand POV Sprint playbook with a template download",
+          "reason": "Immediate top-of-funnel value aligned to the ICP's biggest trigger",
+          "expectedOutcome": "First qualified trial leads from organic and LinkedIn",
+          "priority": "P0"
+        },
+        {
+          "action": "Build the first 3 commercial landing pages for brand research software terms",
+          "reason": "Starts the category-owning search push early",
+          "expectedOutcome": "Top-30 rankings for the core tooling cluster",
+          "priority": "P0"
+        },
+        {
+          "action": "Launch the in-app activated brain onboarding checklist",
+          "reason": "Turns the workflow into a guided product moment",
+          "expectedOutcome": "Faster time-to-first-approved-fact",
+          "priority": "P1"
+        }
+      ],
+      "days31To60": [
+        {
+          "action": "Publish the evidence & credibility report and run the press briefing cycle",
+          "reason": "Makes the transparency moat visible externally",
+          "expectedOutcome": "3+ third-party mentions and brand-search lift",
+          "priority": "P0"
+        },
+        {
+          "action": "Expand commercial pages to the full 8-keyword cluster with comparison guides",
+          "reason": "Covers investigation and alternative intents",
+          "expectedOutcome": "Top-10 rankings for the target cluster",
+          "priority": "P1"
+        },
+        {
+          "action": "Ship the shareable approved-fact card for completed profiles",
+          "reason": "Product-led word-of-mouth for the brand brain outcome",
+          "expectedOutcome": "Visible shares and referral trials",
+          "priority": "P1"
+        }
+      ],
+      "days61To90": [
+        {
+          "action": "Interlink the playbook hub and commercial pages into one topic cluster",
+          "reason": "Consolidates topical authority and internal link equity",
+          "expectedOutcome": "Sustained top-10 rankings and 25+ referring domains",
+          "priority": "P1"
+        },
+        {
+          "action": "Launch automated day-3 and day-7 re-run and approval nudges",
+          "reason": "Drives activation toward the completion objective",
+          "expectedOutcome": "15% lift in 2-week approved-brand-brain completion",
+          "priority": "P2"
+        },
+        {
+          "action": "Re-score the quarter against all four objectives and plan the next cycle",
+          "reason": "Keeps the roadmap rigorous and evidence-based",
+          "expectedOutcome": "An updated, defensible plan for the next quarter",
+          "priority": "P2"
+        }
+      ]
+    },
+    "kpis": {
+      "awareness": [
+        "Brand search query volume",
+        "Referring domains to playbook hub",
+        "Third-party mentions"
+      ],
+      "traffic": [
+        "Organic sessions on playbook hub",
+        "Sessions to commercial landing pages",
+        "Share of sessions from LinkedIn distribution"
+      ],
+      "seo": [
+        "Rankings for target keyword cluster",
+        "Keyword coverage of commercial intent set",
+        "CTR and average position per landing page"
+      ],
+      "engagement": [
+        "Average scroll depth on landing pages",
+        "Template download rate",
+        "Email sequence open and click rates"
+      ],
+      "leadsAndConversions": [
+        "Trial starts attributed to organic",
+        "Guide-download-to-trial conversion",
+        "Commercial page to trial conversion"
+      ],
+      "revenue": [
+        "Trial-to-paid conversion",
+        "ARPA by pricing tier",
+        "Retention of workspaces with an approved brand profile"
+      ]
+    },
+    "risksAndGaps": {
+      "missingInformation": [
+        "Customer metrics and named case studies",
+        "Competitor pricing and feature parity audit",
+        "Europe market share and localization needs"
+      ],
+      "evidenceLimitations": [
+        "Fixture research reflects public web only",
+        "Long-tail niche site evidence quality unproven",
+        "No onsite search or conversion analytics yet"
+      ],
+      "strategicRisks": [
+        "Category emergence may lag investment timing",
+        "Enterprise controls could become a scope trap",
+        "Vendor consolidation into listening suites could compress differentiation"
+      ],
+      "dependencies": [
+        "Engineering capacity for onboarding and share features",
+        "Founder availability for the press cycle",
+        "Content team bandwidth for cluster publishing"
+      ]
+    },
+    "assumptions": [
+      {
+        "statement": "Evidence-first research is a durable differentiator for this ICP",
+        "basis": "positioning evidence",
+        "impact": "Core moat that guides all messaging"
+      },
+      {
+        "statement": "Fractional CMOs influence tool choice at their client companies",
+        "basis": "audience evidence",
+        "impact": "Justifies the playbook-led funnel"
+      },
+      {
+        "statement": "Template downloads convert to trials at standard content rates",
+        "basis": "benchmark",
+        "impact": "Sets the headline conversion target"
+      },
+      {
+        "statement": "Top-10 rankings are achievable within 90 days for the target cluster",
+        "basis": "seo assessment",
+        "impact": "Sets expectations for the search push"
+      },
+      {
+        "statement": "Approved brand brains drive measurable retention",
+        "basis": "product hypothesis",
+        "impact": "Prioritizes the activation objective"
+      },
+      {
+        "statement": "No long-term contracts is a meaningful trust signal for this ICP",
+        "basis": "pricing evidence",
+        "impact": "Reinforced in messaging and campaigns"
+      }
+    ]
+  }
+}

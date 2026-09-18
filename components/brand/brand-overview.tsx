@@ -120,6 +120,35 @@ const FIELD_LABELS: Record<string, string> = {
   differentiationClaims: 'Differentiation claims',
 };
 
+const FACT_LABELS: Record<string, string> = {
+  brand_name: 'Brand name',
+  brand_description: 'What the company does',
+  industry: 'Industry',
+  business_model: 'Business model',
+  primary_market: 'Primary market',
+  geography: 'Geographic focus',
+  product_categories: 'Products & services',
+  target_audience: 'Audience summary',
+  buyer_personas: 'Ideal customer profiles',
+  customer_types: 'Customer types',
+  pain_points: 'Pain points',
+  use_cases: 'Use cases',
+  value_proposition: 'Value proposition',
+  differentiators: 'Differentiators',
+  positioning_themes: 'Market positioning',
+  brand_messaging: 'Messaging direction',
+  products_services: 'Products & services',
+  key_features: 'Key features',
+  benefits: 'Customer benefits',
+  calls_to_action: 'Primary CTAs',
+  tone_of_voice: 'Voice attributes',
+  terminology: 'Brand vocabulary',
+  important_topics: 'Key topics',
+  keyword_themes: 'SEO keyword themes',
+  competitors: 'Named competitors',
+  alternatives: 'Alternatives',
+};
+
 const INSIGHT_CATEGORY_LABELS: Record<string, string> = {
   EVIDENCE: 'Verified evidence',
   POSITIONING: 'Positioning',
@@ -167,28 +196,21 @@ function present(value: unknown): string {
 }
 
 function FactGrid({ fact }: { fact: FactInfo }) {
-  const section = fact.value ?? {};
-  const entries = Object.entries(section).filter(([key, value]) => present(value) !== '' && key !== 'brandMessaging');
+  const label = FACT_LABELS[fact.key] ?? SECTION_LABELS[fact.key] ?? fact.key;
+  const rendered = present(fact.value);
   return (
     <div className="card brain-fact hover-lift">
       <div className="section-title" style={{ marginBottom: 8 }}>
         <div>
           <div className="eyebrow">FACT · {fact.approved ? 'approved' : 'draft'}</div>
-          <h3 style={{ margin: '4px 0 0', fontSize: 17 }}>{SECTION_LABELS[fact.key] ?? fact.key}</h3>
+          <h3 style={{ margin: '4px 0 0', fontSize: 17 }}>{label}</h3>
         </div>
         {fact.confidence !== null ? <span className="badge tone-muted">{Math.round((fact.confidence ?? 0) * 100)}%</span> : null}
       </div>
-      {entries.length === 0 ? (
-        <p className="metric-label" style={{ margin: 0 }}>No details captured yet.</p>
+      {rendered ? (
+        <p className="fact-value" style={{ margin: 0 }}>{rendered}</p>
       ) : (
-        <div className="fact-list">
-          {entries.map(([key, value]) => (
-            <div className="fact-row" key={key}>
-              <span className="fact-label">{FIELD_LABELS[key] ?? key}</span>
-              <span className="fact-value">{present(value)}</span>
-            </div>
-          ))}
-        </div>
+        <p className="metric-label" style={{ margin: 0 }}>No details captured yet.</p>
       )}
     </div>
   );
