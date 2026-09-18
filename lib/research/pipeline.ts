@@ -106,10 +106,26 @@ export function scheduleResearchExecution(input: ResearchPipelineInput): void {
       const message = error instanceof Error ? error.message : String(error);
       obs.error('Research pipeline failed', { researchRunId: input.researchRunId, brandId: input.brandId, error: message });
       try {
+        const current = await input.supabase
+          .from('research_runs')
+          .select('status')
+          .eq('id', input.researchRunId)
+          .eq('organization_id', input.organizationId)
+          .maybeSingle();
+
+        if (current.error) throw current.error;
+
+        const targetStatus = current.data?.status === 'COMPLETED' ? 'PARTIAL' : 'FAILED';
         await input.supabase
           .from('research_runs')
-          .update({ status: 'FAILED', finished_at: new Date().toISOString(), error_code: 'PIPELINE_FAILED', error_message: 'Research pipeline failed' })
-          .eq('id', input.researchRunId);
+          .update({
+            status: targetStatus,
+            finished_at: new Date().toISOString(),
+            error_code: 'PIPELINE_FAILED',
+            error_message: 'Research pipeline failed',
+          })
+          .eq('id', input.researchRunId)
+          .eq('organization_id', input.organizationId);
       } catch (markError) {
         obs.error('Failed to mark research run failed', {
           researchRunId: input.researchRunId,
