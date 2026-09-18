@@ -1,13 +1,9 @@
 import { ArrowUpRight } from 'lucide-react';
 import { DashboardContent } from '@/components/dashboard/dashboard-content';
-import { CAN_VIEW_DASHBOARD, requireOrgRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 
-export default async function DashboardPage() {
-  const auth = await requireOrgRole(CAN_VIEW_DASHBOARD);
-  if (auth.error) return null;
-
+export default function DashboardPage() {
   return (
     <>
       <DashboardContent />
