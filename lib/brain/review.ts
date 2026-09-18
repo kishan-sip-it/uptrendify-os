@@ -165,15 +165,6 @@ export async function approveSuggestion(
     .filter((id): id is string => Boolean(id));
   const evidence = row.evidence as EvidenceItem[];
 
-  await writeAuthoritativeFact(supabase, {
-    organizationId,
-    brandId,
-    field: row.field,
-    value,
-    confidence: row.confidence,
-    evidenceIds,
-    suggestionId,
-  });
   await writeCuratedEvidenceInsights(supabase, { organizationId, brandId, evidence });
 
   const { error: updateError } = await supabase
@@ -200,16 +191,6 @@ export async function editSuggestion(
     .maybeSingle();
   if (error) throw error;
   if (!row) throw new Error('SUGGESTION_NOT_FOUND');
-
-  await writeAuthoritativeFact(supabase, {
-    organizationId,
-    brandId,
-    field: row.field,
-    value: editedValue,
-    confidence: null,
-    evidenceIds: [],
-    suggestionId,
-  });
 
   const { error: updateError } = await supabase
     .from('brand_suggestions')
