@@ -90,8 +90,9 @@ Strategy states: `QUEUED → RUNNING → SUCCEEDED | FAILED` with `error_code`/`
 
 ```text
 GEMINI_API_KEY=
+GROQ_MODEL=openai/gpt-oss-20b
 GEMINI_MODEL=gemini-3.7-flash
-DEFAULT_AI_PROVIDER=gemini
+DEFAULT_AI_PROVIDER=groq
 ```
 
 Without any configured key, the pipeline still runs and records an AI task failed with `PROVIDER_UNCONFIGURED`.
