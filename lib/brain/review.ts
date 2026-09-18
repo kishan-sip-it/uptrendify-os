@@ -84,7 +84,7 @@ export async function writeAuthoritativeFact(
   if (existing.data) {
     const { error } = await supabase
       .from('brand_facts')
-      .update({ value, source_type: 'USER_CONFIRMED', confidence, evidence_source_ids: evidenceIds, approved: true, updated_at: new Date().toISOString() })
+      .update({ value, source_type: 'USER_CONFIRMED', confidence, evidence_source_ids: evidenceIds, approved: true, source_suggestion_id: suggestionId, updated_at: new Date().toISOString() })
       .eq('id', existing.data.id);
     if (error) throw error;
   } else {
