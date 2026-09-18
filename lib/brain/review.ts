@@ -154,6 +154,10 @@ export async function approveSuggestion(
   if (error) throw error;
   if (!row) throw new Error('SUGGESTION_NOT_FOUND');
 
+  if (row.status === 'NOT_FOUND' || row.proposed_value === null || row.proposed_value === undefined) {
+    throw new Error('SUGGESTION_HAS_NO_APPROVABLE_VALUE');
+  }
+
   const proposal = row.proposed_value as SuggestionDraft['proposedValue'];
   const value = proposal === null || proposal === undefined ? null : proposal;
   const evidenceIds = (row.evidence as EvidenceItem[])
