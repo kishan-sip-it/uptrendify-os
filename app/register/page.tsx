@@ -78,13 +78,10 @@ export default function RegisterPage() {
         return;
       }
 
-      // Supabase can create the user without an active session when email
-      // confirmation is required. In that case, calling the protected
-      // bootstrap endpoint immediately produces "Authentication required".
-      // Save the workspace name and wait until the user confirms/signs in.
+      // Supabase may create the account before returning an authenticated
+      // session when email confirmation is enabled. Do not call protected
+      // workspace bootstrap until a session exists.
       if (!data.session) {
-        const pending: PendingWorkspace = { email: email.toLowerCase(), organizationName };
-        window.localStorage.setItem(PENDING_WORKSPACE_KEY, JSON.stringify(pending));
         setStep('confirm');
         return;
       }
