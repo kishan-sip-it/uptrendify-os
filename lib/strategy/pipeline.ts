@@ -2,6 +2,7 @@ import { after } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createDefaultRegistry } from '@/lib/ai/registry';
 import { withTransientRetry } from '@/lib/ai/retry';
+import { classifyProviderFailure } from '@/lib/ai/classify';
 import type { AiProvider } from '@/lib/ai/types';
 import { obs } from '@/lib/obs/logger';
 import {
@@ -366,7 +367,8 @@ export async function runStrategyGeneration(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const code = isStrategyValidationError(error) ? 'STRATEGY_VALIDATION_FAILED' : 'AI_GENERATION_FAILED';
+    const classified = classifyProviderFailure(error);
+    const code = isStrategyValidationError(error) ? 'VALIDATION_ERROR' : classified.code;
     obs.error('Strategy generation failed', {
       strategyId, brandId, organizationId,
       provider: providerId, model, error: message,
