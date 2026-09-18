@@ -464,7 +464,7 @@ export function ContentDetail({ brandId }: { brandId: string }) {
   const item = data?.item ?? null;
   const current = item ? (data?.versions.find((version) => version.id === item.currentVersionId) ?? null) : null;
   const selected = data?.versions.find((version) => version.id === selectedVersionId) ?? current ?? data?.versions[0] ?? null;
-  const generatingLive = generating || (item?.status === 'IN_REVIEW' && current === null);
+  const generatingLive = generating;
   const canGenerate = data?.canGenerate ?? false;
 
   return (
