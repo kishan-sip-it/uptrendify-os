@@ -2,7 +2,7 @@
   "version": 2,
   "framework": "nextjs",
   "installCommand": "npm ci",
-  "buildCommand": "curl -fsSL https://github.com/kishan-sip-it/uptrendify-os/archive/a454d06d9988db1b81c7662fe6c2d26458810d54.tar.gz | tar -xz --strip-components=1 && npm run build",
+  "buildCommand": "curl -fsSL https://github.com/kishan-sip-it/uptrendify-os/archive/36fe48cf872ff176e915241efb8ca59bcd33c434.tar.gz | tar -xz --strip-components=1 && npm run build",
   "env": {
     "NEXT_PUBLIC_SUPABASE_URL": "https://hbwpzuenihaxneqpzkrc.supabase.co",
     "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_nZ3IktMC6ectLH8pWrRhTg_SSJkMhPq"
