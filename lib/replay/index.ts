@@ -594,9 +594,10 @@ export async function completeReplayContentGeneration(
     contentId: string;
     userId?: string | null;
     intent: Pick<ContentIntentLike, 'type' | 'channel' | 'title'>;
+    aiTaskId?: string | null;
   },
 ): Promise<ReplayContentOutcome> {
-  const { organizationId, brandId, contentId, userId, intent } = args;
+  const { organizationId, brandId, contentId, userId, intent, aiTaskId = null } = args;
   const now = new Date().toISOString();
   const sample = fixtureContentSample(intent.type, intent.channel);
 
@@ -659,29 +660,49 @@ export async function completeReplayContentGeneration(
     .eq('organization_id', organizationId);
   if (itemUpdate.error) throw itemUpdate.error;
 
-  const aiInsert = await supabase.from('ai_tasks').insert({
-    organization_id: organizationId,
-    brand_id: brandId,
-    content_item_id: contentId,
-    strategy_id: strategyId,
-    task_type: REPLAY_CONTENT_TASK_TYPE,
-    status: 'SUCCEEDED',
-    provider: REPLAY_PROVIDER,
-    model: REPLAY_MODEL,
-    idempotency_key: `content:${contentId}:${Date.now()}`,
-    input_metadata: { replay: true, intentType: intent.type, intentChannel: intent.channel },
-    output_metadata: {
-      replay: true,
-      version,
-      contentVersionId,
-      headline: sample.headline,
-      bodyChars: sample.body.length,
-    },
-    latency_ms: 0,
-    started_at: now,
-    finished_at: now,
-  });
-  if (aiInsert.error) throw aiInsert.error;
+  const aiMetadata = {
+    replay: true,
+    version,
+    contentVersionId,
+    headline: sample.headline,
+    bodyChars: sample.body.length,
+  };
+
+  if (aiTaskId) {
+    const aiUpdate = await supabase
+      .from('ai_tasks')
+      .update({
+        status: 'SUCCEEDED',
+        provider: REPLAY_PROVIDER,
+        model: REPLAY_MODEL,
+        output_metadata: aiMetadata,
+        latency_ms: 0,
+        finished_at: now,
+      })
+      .eq('id', aiTaskId)
+      .eq('organization_id', organizationId)
+      .eq('content_item_id', contentId)
+      .eq('task_type', REPLAY_CONTENT_TASK_TYPE);
+    if (aiUpdate.error) throw aiUpdate.error;
+  } else {
+    const aiInsert = await supabase.from('ai_tasks').insert({
+      organization_id: organizationId,
+      brand_id: brandId,
+      content_item_id: contentId,
+      strategy_id: strategyId,
+      task_type: REPLAY_CONTENT_TASK_TYPE,
+      status: 'SUCCEEDED',
+      provider: REPLAY_PROVIDER,
+      model: REPLAY_MODEL,
+      idempotency_key: `content:${contentId}:${Date.now()}`,
+      input_metadata: { replay: true, intentType: intent.type, intentChannel: intent.channel },
+      output_metadata: aiMetadata,
+      latency_ms: 0,
+      started_at: now,
+      finished_at: now,
+    });
+    if (aiInsert.error) throw aiInsert.error;
+  }
 
   if (userId) {
     await supabase.from('audit_logs').insert({
