@@ -75,7 +75,7 @@ describe('crawlBrand', () => {
     expect(result.pagesProcessed).toBeGreaterThanOrEqual(1);
     expect(result.pagesDiscovered).toBeGreaterThanOrEqual(1);
     expect(fetchMock).toHaveBeenCalled();
-    expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: 'manual' });
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: 'manual', dispatcher: expect.anything() });
     expect(client.__updates).toContain('RUNNING');
     expect(client.__updates).toContain('COMPLETED');
     expect(result.processedPages[0].title).toBe('Landing');
