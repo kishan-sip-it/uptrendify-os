@@ -4,11 +4,13 @@ import type { AiProvider } from '@/lib/ai/types';
 import {
   buildEvidenceContext,
   extractBrandIntelligence,
+  isBrandValidationError,
   type BrandIntelligence,
   type EvidenceFragment,
   type ExtractionOutcome,
 } from '@/lib/ai/brand-intelligence';
 import { withTransientRetry } from '@/lib/ai/retry';
+import { classifyProviderFailure } from '@/lib/ai/classify';
 import { obs } from '@/lib/obs/logger';
 import { deriveAllSuggestionDrafts, persistSuggestionDrafts } from '@/lib/brain/suggestions';
 
