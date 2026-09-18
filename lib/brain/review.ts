@@ -162,14 +162,18 @@ export async function approveSuggestion(
 
   await writeCuratedEvidenceInsights(supabase, { organizationId, brandId, evidence });
 
-  const { error: updateError } = await supabase
+  const { data: updateResult, error: updateError } = await supabase
     .from('brand_suggestions')
     .update({ status: 'APPROVED', reviewed_at: new Date().toISOString(), reviewed_by: userId, updated_at: new Date().toISOString() })
     .eq('id', suggestionId)
-    .eq('organization_id', organizationId);
+    .eq('organization_id', organizationId)
+    .eq('status', row.status)
+    .select('*')
+    .maybeSingle();
   if (updateError) throw updateError;
+  if (!updateResult) throw new Error('SUGGESTION_CHANGED_CONCURRENTLY');
 
-  return { ...row, status: 'APPROVED', reviewed_at: new Date().toISOString() } as SuggestionRow;
+  return updateResult as SuggestionRow;
 }
 
 export async function editSuggestion(
@@ -187,7 +191,7 @@ export async function editSuggestion(
   if (error) throw error;
   if (!row) throw new Error('SUGGESTION_NOT_FOUND');
 
-  const { error: updateError } = await supabase
+  const { data: updateResult, error: updateError } = await supabase
     .from('brand_suggestions')
     .update({
       proposed_value: editedValue,
@@ -200,10 +204,14 @@ export async function editSuggestion(
       confidence: null,
     })
     .eq('id', suggestionId)
-    .eq('organization_id', organizationId);
+    .eq('organization_id', organizationId)
+    .eq('status', row.status)
+    .select('*')
+    .maybeSingle();
   if (updateError) throw updateError;
+  if (!updateResult) throw new Error('SUGGESTION_CHANGED_CONCURRENTLY');
 
-  return { ...row, proposed_value: editedValue, status: 'EDITED', reviewed_at: new Date().toISOString() } as SuggestionRow;
+  return updateResult as SuggestionRow;
 }
 
 export async function rejectSuggestion(
@@ -221,14 +229,18 @@ export async function rejectSuggestion(
   if (error) throw error;
   if (!row) throw new Error('SUGGESTION_NOT_FOUND');
 
-  const { error: updateError } = await supabase
+  const { data: updateResult, error: updateError } = await supabase
     .from('brand_suggestions')
     .update({ status: 'REJECTED', reviewed_at: new Date().toISOString(), reviewed_by: userId, updated_at: new Date().toISOString() })
     .eq('id', suggestionId)
-    .eq('organization_id', organizationId);
+    .eq('organization_id', organizationId)
+    .eq('status', row.status)
+    .select('*')
+    .maybeSingle();
   if (updateError) throw updateError;
+  if (!updateResult) throw new Error('SUGGESTION_CHANGED_CONCURRENTLY');
 
-  return { ...row, status: 'REJECTED', reviewed_at: new Date().toISOString() } as SuggestionRow;
+  return updateResult as SuggestionRow;
 }
 
 export type ReviewDeps = {
@@ -280,7 +292,7 @@ export async function regenerateSuggestion(
       .concat([{ at: row.updated_at, status: row.status, proposed_value: row.proposed_value, evidence: row.evidence }])
       .slice(-10);
 
-    const { error: updateError } = await supabase
+    const { data: updateResult, error: updateError } = await supabase
       .from('brand_suggestions')
       .update({
         research_run_id: evidence.researchRunId,
@@ -296,8 +308,12 @@ export async function regenerateSuggestion(
         reviewed_by: null,
       })
       .eq('id', suggestionId)
-      .eq('organization_id', organizationId);
+      .eq('organization_id', organizationId)
+      .eq('status', row.status)
+      .select('*')
+      .maybeSingle();
     if (updateError) throw updateError;
+    if (!updateResult) throw new Error('SUGGESTION_CHANGED_CONCURRENTLY');
 
     await supabase
       .from('ai_tasks')
