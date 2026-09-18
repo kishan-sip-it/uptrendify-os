@@ -1,16 +1,17 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { getSupabaseConfig } from './config';
 import { env } from '@/lib/env';
 
 export async function createSupabaseServerClient() {
-  const e = env();
-  if (!e.NEXT_PUBLIC_SUPABASE_URL || !e.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  const { url, key } = getSupabaseConfig();
+  if (!url || !key) {
     throw new Error('Supabase server environment is not configured');
   }
 
   const cookieStore = await cookies();
 
-  return createServerClient(e.NEXT_PUBLIC_SUPABASE_URL, e.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+  return createServerClient(url, key, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -20,7 +21,6 @@ export async function createSupabaseServerClient() {
           values.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
         } catch {
           // Server Components may not always be allowed to mutate cookies.
-          // Route handlers/middleware handle session refresh writes.
         }
       },
     },
