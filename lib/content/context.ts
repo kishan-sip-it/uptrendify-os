@@ -161,8 +161,10 @@ export async function loadContentSnapshot(
       clientId: brandResult.data?.client_id ?? null,
     },
     facts,
-    insights,
-    evidenceClaims,
+    // Keep unreviewed AI insights out of generation. Content is grounded in
+    // approved Brand Brain facts plus the approved strategy.
+    insights: [],
+    evidenceClaims: [],
     sources,
     suggestionRows,
     researchRunId: runsResult.data?.[0]?.id ?? null,
