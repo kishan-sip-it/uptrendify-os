@@ -146,9 +146,14 @@ export function Landing() {
 
   async function handleStart() {
     setLoading(true);
-    const supabase = createSupabaseBrowserClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    window.location.href = user ? '/' : '/register';
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      window.location.href = user ? '/' : '/register';
+    } catch {
+      // Auth/network failure must not break the public landing CTA.
+      window.location.href = '/register';
+    }
   }
 
   return (
