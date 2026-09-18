@@ -99,6 +99,44 @@ describe('runResearchPipeline', () => {
     expect(mocks.analyzeResearchEvidence).toHaveBeenCalledTimes(1);
   });
 
+  it('downgrades a completed crawl to PARTIAL when Brand Brain analysis fails', async () => {
+    const client = makeSupabaseMock();
+    client.on('brand_source_chunks', () => ({ data: null, error: null }));
+    client.on('research_runs', () => ({ data: null, error: null }));
+    mocks.crawlBrand.mockResolvedValue({
+      status: 'COMPLETED',
+      pagesProcessed: 2,
+      pagesDiscovered: 2,
+      processedPages: [{ id: SOURCE_ID, url: 'https://example.com/', text: 'Evidence '.repeat(100) }],
+    });
+    mocks.analyzeResearchEvidence.mockResolvedValue({
+      status: 'FAILED',
+      errorCode: 'RATE_LIMITED',
+      errorMessage: 'Provider rate limit',
+    });
+
+    const outcome = await runResearchPipeline({
+      supabase: client as any,
+      organizationId: ORG_ID,
+      brandId: BRAND_ID,
+      websiteUrl: 'https://example.com/',
+      researchRunId: RUN_ID,
+    });
+
+    expect(outcome).toEqual({
+      status: 'PARTIAL',
+      pagesProcessed: 2,
+      pagesDiscovered: 2,
+      brainStatus: 'FAILED',
+    });
+
+    const update = client.calls.find((call) => call.table === 'research_runs' && call.method === 'update');
+    expect(update).toBeDefined();
+    const values = update!.args[0] as { status: string; error_code: string; error_message: string };
+    expect(values.status).toBe('PARTIAL');
+    expect(values.error_code).toBe('RATE_LIMITED');
+  });
+
   it('skips AI analysis when no pages were processed', async () => {
     const client = makeSupabaseMock();
     mocks.crawlBrand.mockResolvedValue({ status: 'FAILED', pagesProcessed: 0, pagesDiscovered: 3, processedPages: [] });
