@@ -1,4 +1,5 @@
-import { PROJECT_PHASES } from '@/lib/progress/phases';
+import { ArrowRight, CheckCircle2, CircleDashed, Gauge, Layers3, ShieldCheck } from 'lucide-react';
+import { PROJECT_PHASES, progressStats } from '@/lib/progress/phases';
 
 export const metadata = {
   title: 'Progress — UpTrendify OS',
@@ -6,51 +7,66 @@ export const metadata = {
 };
 
 export default function ProgressPage() {
-  const total = PROJECT_PHASES.length;
-  const completed = PROJECT_PHASES.filter((p) => p.status === 'COMPLETED').length;
-  const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
+  const stats = progressStats();
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6">
-      <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">UpTrendify OS — /progress</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Implementation progress by phase. This page measures delivery of the product, not production readiness.</p>
-
-      <div className="mt-4 flex items-center gap-3 rounded-xl border p-4">
-        <div className="text-3xl font-bold">{percent}%</div>
-        <div className="flex-1">
-          <div className="h-2 overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${percent}%` }} />
+    <main className="progress-shell">
+      <section className="progress-hero">
+        <div className="progress-eyebrow"><span className="progress-eyebrow-dot" /> Implementation snapshot</div>
+        <div className="progress-hero-grid">
+          <div>
+            <h1>UpTrendify OS <span>/ progress</span></h1>
+            <p className="progress-lede">A live view of what is implemented across the agency operating system — from foundation and research to intelligence, review and strategy.</p>
+            <div className="progress-hero-chips">
+              <span className="progress-chip"><ShieldCheck size={14} /> 9 phases delivered</span>
+              <span className="progress-chip"><Layers3 size={14} /> 13 total phases</span>
+              <span className="progress-chip"><Gauge size={14} /> {stats.percent}% complete</span>
+            </div>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {completed} of {total} phases completed
-          </p>
-        </div>
-      </div>
 
-      <ol className="mt-6 space-y-3">
-        {PROJECT_PHASES.map((phase) => {
-          const done = phase.status === 'COMPLETED';
-          return (
-            <li key={phase.phase} className="flex gap-3 rounded-xl border p-4">
-              <span className="mt-0.5 text-lg" aria-hidden>{done ? '✅' : '⬜'}</span>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-semibold">Phase {phase.phase} — {phase.title}</h2>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${done ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'}`}>
-                    {phase.status}
-                  </span>
+          <div className="progress-score-card">
+            <div className="progress-score-top"><span>Implementation</span><strong>{stats.percent}%</strong></div>
+            <div className="progress-track progress-track-large" aria-label={stats.percent + '% complete'}><span style={{ width: stats.percent + '%' }} /></div>
+            <div className="progress-score-meta"><span>{stats.completed} completed</span><span>{stats.pending} remaining</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section className="progress-stats" aria-label="Progress summary">
+        <div className="progress-stat-card"><span className="progress-stat-icon progress-good"><CheckCircle2 size={17} /></span><div><strong>{stats.completed}</strong><span>Completed</span></div></div>
+        <div className="progress-stat-card"><span className="progress-stat-icon progress-neutral"><CircleDashed size={17} /></span><div><strong>{stats.inProgress}</strong><span>In progress</span></div></div>
+        <div className="progress-stat-card"><span className="progress-stat-icon progress-muted"><Layers3 size={17} /></span><div><strong>{stats.pending}</strong><span>Pending</span></div></div>
+      </section>
+
+      <section className="progress-timeline" aria-labelledby="progress-timeline-title">
+        <div className="progress-section-head"><div><div className="progress-eyebrow">Delivery timeline</div><h2 id="progress-timeline-title">Product phases</h2></div><span className="progress-note">Delivery status, not production readiness</span></div>
+        <div className="progress-list">
+          {PROJECT_PHASES.map((phase, index) => {
+            const done = phase.status === 'COMPLETED';
+            const active = phase.status === 'IN_PROGRESS';
+            return (
+              <article key={phase.phase} className={'progress-phase ' + (done ? 'is-done ' : '') + (active ? 'is-active' : '')} style={{ animationDelay: Math.min(index * 45, 500) + 'ms' }}>
+                <div className="progress-phase-rail">
+                  <div className="progress-phase-node">{done ? <CheckCircle2 size={16} /> : active ? <ArrowRight size={16} /> : <span />}</div>
+                  {index < PROJECT_PHASES.length - 1 ? <div className="progress-phase-line" /> : null}
                 </div>
-                <p className="mt-1 text-sm text-muted-foreground">{phase.description}</p>
-                {phase.evidence.length > 0 && (
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-                    {phase.evidence.map((item) => <li key={item}>{item}</li>)}
-                  </ul>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-    </div>
+                <div className="progress-phase-card">
+                  <div className="progress-phase-head">
+                    <div><div className="progress-phase-kicker">Phase {String(phase.phase).padStart(2, '0')}</div><h3>{phase.title}</h3></div>
+                    <span className={'progress-status ' + (done ? 'status-done' : active ? 'status-active' : 'status-pending')}>{done ? 'Completed' : active ? 'In progress' : 'Pending'}</span>
+                  </div>
+                  <p>{phase.description}</p>
+                  {phase.evidence.length > 0 ? (
+                    <div className="progress-evidence">
+                      {phase.evidence.map((item) => <span key={item}><CheckCircle2 size={13} /> {item}</span>)}
+                    </div>
+                  ) : <div className="progress-future">Next delivery layer</div>}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    </main>
   );
 }
