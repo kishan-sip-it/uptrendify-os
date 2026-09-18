@@ -32,7 +32,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       .maybeSingle(),
   ]);
 
-  if (profileResult.data && !profileResult.data.onboarding_completed) redirect('/onboarding');
+  // A missing profile is also an incomplete onboarding state. This matters
+  // immediately after first workspace bootstrap, before the first profile save.
+  if (!profileResult.data || profileResult.data.onboarding_completed !== true) redirect('/onboarding');
 
   return (
     <AppShell
@@ -43,7 +45,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       }}
       brands={brandsResult.data ?? []}
       userEmail={user?.email ?? ''}
-      userFirstName={profileResult.data?.first_name ?? null}
+      userFirstName={profileResult.data.first_name ?? null}
       replayActive={isReplayOrgSlug(organizationResult.data?.slug ?? '')}
     >
       {children}
