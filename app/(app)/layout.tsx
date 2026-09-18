@@ -73,6 +73,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // through onboarding instead, where the profile can be repaired.
   if (!profile || profile.onboarding_completed !== true) redirect('/onboarding');
 
+  let replayActive = false;
+  try {
+    replayActive = isReplayOrgSlug(organization?.slug ?? '');
+  } catch (error) {
+    obs.error('Replay mode configuration could not be evaluated', { error: error instanceof Error ? error.message : String(error) });
+  }
+
   return (
     <AppShell
       organization={{
@@ -83,7 +90,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       brands={brands}
       userEmail={user?.email ?? ''}
       userFirstName={profile.first_name ?? null}
-      replayActive={isReplayOrgSlug(organization?.slug ?? '')}
+      replayActive={replayActive}
     >
       {children}
     </AppShell>
