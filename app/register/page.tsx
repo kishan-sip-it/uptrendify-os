@@ -69,6 +69,11 @@ export default function RegisterPage() {
     const email = String(form.get('email') ?? '').trim();
     const password = String(form.get('password') ?? '');
     const organizationName = String(form.get('organizationName') ?? '').trim();
+    if (organizationName.length < 2) {
+      setError('Organization name is required to create your account.');
+      setLoading(false);
+      return;
+    }
     const redirectTo = `${window.location.origin}/register?confirmed=1`;
 
     const supabase = createSupabaseBrowserClient();
