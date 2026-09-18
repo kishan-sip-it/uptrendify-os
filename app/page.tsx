@@ -11,19 +11,24 @@ export const metadata: Metadata = {
 };
 
 export default async function Home() {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data: claimsData } = await supabase.auth.getClaims();
+    const userId = claimsData?.claims?.sub;
 
-  if (user) {
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('onboarding_completed')
-      .eq('user_id', user.id)
-      .maybeSingle();
+    if (userId) {
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('onboarding_completed')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-    if (profile && !profile.onboarding_completed) redirect('/onboarding');
-    redirect('/dashboard');
+      if (profile && !profile.onboarding_completed) redirect('/onboarding');
+      redirect('/dashboard');
+    }
+  } catch {
+    // Keep the public landing page available during temporary Supabase/Auth failures.
   }
 
   return <Landing />;
-}
+};
