@@ -7,9 +7,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
 
-type Step = 'checking' | 'auth' | 'bootstrap';
-
-type BootstrapOrg = { id: string; role: string; name: string | null } | null;
+type Step = 'checking' | 'auth';
 
 const PENDING_WORKSPACE_KEY = 'uptrendify_pending_workspace';
 
@@ -20,6 +18,33 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  async function finishWorkspaceSetup() {
+    const pendingRaw = window.localStorage.getItem(PENDING_WORKSPACE_KEY);
+    let pendingName = '';
+    if (pendingRaw) {
+      try {
+        const pending = JSON.parse(pendingRaw) as PendingWorkspace;
+        pendingName = pending.organizationName || '';
+      } catch {
+        window.localStorage.removeItem(PENDING_WORKSPACE_KEY);
+      }
+    }
+
+    const response = await fetch('/api/auth/bootstrap', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: pendingName ? JSON.stringify({ organizationName: pendingName }) : JSON.stringify({}),
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || 'Your account is registered, but the workspace could not be loaded.');
+    }
+
+    window.localStorage.removeItem(PENDING_WORKSPACE_KEY);
+    window.location.href = '/';
+  }
+
   async function checkSession() {
     const supabase = createSupabaseBrowserClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -27,18 +52,19 @@ export default function LoginPage() {
       setStep('auth');
       return;
     }
+
     const response = await fetch('/api/auth/bootstrap');
     if (!response.ok) {
-      setError('Could not load your workspace.');
-      setStep('auth');
-      return;
+      throw new Error('Could not load your workspace.');
     }
-    const body = (await response.json()) as { organization: BootstrapOrg };
-    if (body.organization) {
+
+    const body = await response.json();
+    if (body?.organization) {
       window.location.href = '/';
       return;
     }
-    setStep('bootstrap');
+
+    await finishWorkspaceSetup();
   }
 
   useEffect(() => {
@@ -49,8 +75,9 @@ export default function LoginPage() {
     event.preventDefault();
     setError('');
     setLoading(true);
+
     const form = new FormData(event.currentTarget);
-    const email = String(form.get('email') ?? '');
+    const email = String(form.get('email') ?? '').trim();
     const password = String(form.get('password') ?? '');
     const supabase = createSupabaseBrowserClient();
 
@@ -63,68 +90,30 @@ export default function LoginPage() {
       }
 
       const response = await fetch('/api/auth/bootstrap');
-      const body = response.ok ? await response.json() : null;
+      if (!response.ok) {
+        setError('Could not load your workspace. Please try signing in again.');
+        return;
+      }
+
+      const body = await response.json();
       if (body?.organization) {
         window.localStorage.removeItem(PENDING_WORKSPACE_KEY);
         window.location.href = '/';
         return;
       }
 
-      const pendingRaw = window.localStorage.getItem(PENDING_WORKSPACE_KEY);
-      if (pendingRaw) {
-        try {
-          const pending = JSON.parse(pendingRaw) as PendingWorkspace;
-          if (pending.email === email.trim().toLowerCase() && pending.organizationName) {
-            const bootstrap = await fetch('/api/auth/bootstrap', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ organizationName: pending.organizationName }),
-            });
-            if (bootstrap.ok) {
-              window.localStorage.removeItem(PENDING_WORKSPACE_KEY);
-              window.location.href = '/';
-              return;
-            }
-          }
-        } catch {
-          window.localStorage.removeItem(PENDING_WORKSPACE_KEY);
-        }
-      }
-
-      setStep('bootstrap');
-    } catch {
-      setError('Something went wrong. Please try again.');
+      // Never ask an already-registered user to type the organization again.
+      // The server recovers the organization name from signup metadata; the
+      // local pending value is only a backward-compatible fallback.
+      await finishWorkspaceSetup();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleBootstrap(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError('');
-    setLoading(true);
-    const form = new FormData(event.currentTarget);
-    const organizationName = String(form.get('organizationName') ?? '');
 
-    try {
-      const response = await fetch('/api/auth/bootstrap', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ organizationName }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        setError(body?.error || 'Could not create your workspace.');
-        return;
-      }
-      window.localStorage.removeItem(PENDING_WORKSPACE_KEY);
-      window.location.href = '/';
-    } catch {
-      setError('Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }
 
   if (step === 'checking') {
     return (
@@ -134,29 +123,6 @@ export default function LoginPage() {
     );
   }
 
-  if (step === 'bootstrap') {
-    return (
-      <AuthLayout
-        eyebrow="Workspace"
-        title="Name your agency workspace."
-        subtitle="One workspace for every client brand, research run and AI workflow."
-        footer={
-          <Link href="/" className="auth-link">← Back to home</Link>
-        }
-      >
-        <form onSubmit={handleBootstrap} className="card auth-card-form">
-          <label>
-            Organization name
-            <input name="organizationName" required placeholder="e.g. Northwind Agency" maxLength={120} autoFocus />
-          </label>
-          <button type="submit" disabled={loading} className="badge auth-submit">
-            {loading ? <><LoaderCircle size={15} className="spin" /> Creating…</> : <>Create workspace <Sparkles size={15} /></>}
-          </button>
-          {error && <ErrorState message={error} />}
-        </form>
-      </AuthLayout>
-    );
-  }
 
   return (
     <AuthLayout
