@@ -135,7 +135,7 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
     });
 
     expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ error: expect.stringContaining('generated version') });
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining('content version') });
   });
 
   it('blocks an invalid transition with 409', async () => {
