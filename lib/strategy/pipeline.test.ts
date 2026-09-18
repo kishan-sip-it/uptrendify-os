@@ -184,6 +184,43 @@ describe('runStrategyGeneration', () => {
     expect(generate).toHaveBeenCalledTimes(2);
   });
 
+  it('classifies exhausted rate limits with the provider failure code', async () => {
+    vi.useFakeTimers();
+    const client = makeClient({
+      strategies: [
+        { data: { id: STRATEGY_ID, version: 1 }, error: null },
+        { error: null },
+        { error: null },
+      ],
+      brands: [{ data: { name: 'Aurora', website_url: 'https://aurora.dev', industry: null, market_country: null, target_audience: null }, error: null }],
+      brand_facts: [{ data: [], error: null }],
+      brand_suggestions: [{ data: approvedSuggestionRows(), error: null }],
+      brand_insights: [{ data: [], error: null }],
+      brand_sources: [{ data: [], error: null }],
+      research_runs: [{ data: [], error: null }],
+      ai_tasks: [
+        { data: { id: AI_TASK_ID }, error: null },
+        { error: null },
+        { error: null },
+        { error: null },
+      ],
+      audit_logs: [{ error: null }],
+    });
+    const generate = vi.fn().mockRejectedValue(new AiProviderError('fake', 'rate limited', 429));
+
+    const promise = runStrategyGeneration(
+      { supabase: client, organizationId: ORG_ID, brandId: BRAND_ID, strategyId: STRATEGY_ID },
+      { provider: fakeProvider(generate) },
+    );
+    await vi.runAllTimersAsync();
+    const outcome = await promise;
+
+    expect(outcome.status).toBe('FAILED');
+    expect(outcome.errorCode).toBe('RATE_LIMITED');
+    expect(generate).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+
   it('marks the strategy FAILED when no provider is configured', async () => {
     const client = makeClient({
       strategies: [
