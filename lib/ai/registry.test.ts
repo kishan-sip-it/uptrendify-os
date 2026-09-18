@@ -41,12 +41,12 @@ describe('AiProviderRegistry', () => {
     expect(registry.default()?.id).toBe('b');
   });
 
-  it('default falls back to first configured when preferred is not configured', () => {
+  it('does not silently fall back when the preferred provider is not configured', () => {
     const registry = new AiProviderRegistry('b', [
       mockProvider('a', true),
       mockProvider('b', false),
     ]);
-    expect(registry.default()?.id).toBe('a');
+    expect(registry.default()).toBeNull();
   });
 
   it('default returns null when no provider is configured', () => {
