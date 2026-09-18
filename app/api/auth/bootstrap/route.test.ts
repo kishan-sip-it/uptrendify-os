@@ -14,7 +14,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }));
 
 function makeClient(options: {
-  user?: { id: string } | null;
+  user?: { id: string; user_metadata?: { organizationName?: string } } | null;
   membership?: { organization_id: string; role: string } | null;
   rpcResult?: unknown;
   rpcError?: { message: string } | null;
@@ -59,6 +59,39 @@ describe('POST /api/auth/bootstrap', () => {
 
     expect(response.status).toBe(201);
     expect(client.rpc).toHaveBeenCalledWith('bootstrap_organization', { organization_name: 'Aurora Labs' });
+  });
+
+  it('uses signup metadata when the browser does not send an organization name', async () => {
+    const client = makeClient({
+      user: { id: USER_ID, user_metadata: { organizationName: 'Metadata Agency' } },
+      rpcResult: { id: ORG_ID, role: 'OWNER', name: 'Metadata Agency' },
+    });
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/auth/bootstrap', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(client.rpc).toHaveBeenCalledWith('bootstrap_organization', { organization_name: 'Metadata Agency' });
+  });
+
+  it('returns a setup error instead of asking for the organization again when metadata is missing', async () => {
+    const client = makeClient({ user: { id: USER_ID } });
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/auth/bootstrap', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('workspace setup is incomplete') });
   });
 
   it('returns 401 when there is no authenticated user', async () => {
