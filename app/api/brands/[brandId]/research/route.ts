@@ -84,17 +84,37 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
 
     if (inserted.error) {
       if (inserted.error.code === '23505') {
-        const existing = await supabase
+        const existingByKey = await supabase
           .from('research_runs')
           .select('id,status')
           .eq('organization_id', auth.context.organizationId)
           .eq('idempotency_key', idempotencyKey)
           .maybeSingle();
-        if (existing.error || !existing.data) throw inserted.error;
-        if (RESEARCH_ACTIVE_STATUSES.includes(existing.data.status as (typeof RESEARCH_ACTIVE_STATUSES)[number])) {
-          return NextResponse.json({ error: 'A research run is already active for this request', researchRunId: existing.data.id, status: existing.data.status }, { status: 409 });
+
+        if (!existingByKey.error && existingByKey.data) {
+          if (RESEARCH_ACTIVE_STATUSES.includes(existingByKey.data.status as (typeof RESEARCH_ACTIVE_STATUSES)[number])) {
+            return NextResponse.json({ error: 'A research run is already active for this request', researchRunId: existingByKey.data.id, status: existingByKey.data.status }, { status: 409 });
+          }
+          return NextResponse.json({ ok: true, researchRunId: existingByKey.data.id, status: existingByKey.data.status }, { status: 200 });
         }
-        return NextResponse.json({ ok: true, researchRunId: existing.data.id, status: existing.data.status }, { status: 200 });
+
+        // A partial unique index can also reject a concurrent active run
+        // even when each request generated a different idempotency key.
+        const concurrent = await supabase
+          .from('research_runs')
+          .select('id,status')
+          .eq('brand_id', brand.id)
+          .eq('organization_id', auth.context.organizationId)
+          .in('status', [...RESEARCH_ACTIVE_STATUSES])
+          .limit(1)
+          .maybeSingle();
+
+        if (!concurrent.error && concurrent.data) {
+          return NextResponse.json(
+            { error: 'A research run is already active for this brand', researchRunId: concurrent.data.id, status: concurrent.data.status },
+            { status: 409 },
+          );
+        }
       }
       throw inserted.error;
     }
