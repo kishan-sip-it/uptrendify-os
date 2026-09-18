@@ -32,6 +32,30 @@ jobs:
       - name: Production build
         run: npm run build
 
+      - name: Supabase Auth API-key smoke test
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const source = fs.readFileSync('lib/supabase/config.ts', 'utf8');
+          const urlMatch = source.match(/PRODUCTION_SUPABASE_URL = '([^']+)'/);
+          const anonMatch = source.match(/PRODUCTION_SUPABASE_ANON_KEY = "([^"]+)"/);
+          if (!urlMatch?.[1] || !anonMatch?.[1]) {
+            throw new Error('Production Supabase compatibility config is incomplete');
+          }
+
+          const response = await fetch(urlMatch[1] + '/auth/v1/settings', {
+            headers: { apikey: anonMatch[1] },
+            cache: 'no-store',
+          });
+          const body = await response.text();
+          console.log('Supabase Auth gateway with production public key -> ' + response.status);
+          if (!response.ok) {
+            throw new Error('Supabase rejected the production public key: HTTP ' + response.status + ' ' + body.slice(0, 300));
+          }
+          NODE
+
       - name: Runtime smoke test
         shell: bash
         run: |
