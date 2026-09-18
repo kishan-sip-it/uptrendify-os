@@ -36,12 +36,12 @@ async function loadBrand(
 ) {
   const result = await supabase
     .from('brands')
-    .select('id,name')
+    .select('id,name,client_id')
     .eq('id', brandId)
     .eq('organization_id', organizationId)
     .maybeSingle();
   if (result.error) throw result.error;
-  return result.data as { id: string; name: string } | null;
+  return result.data as { id: string; name: string; client_id?: string | null } | null;
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ brandId: string }> }) {
@@ -169,20 +169,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     const brand = await loadBrand(supabase, brandId, auth.context.organizationId);
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
 
-    const brandContext = await supabase
-      .from('brands')
-      .select('id,client_id')
-      .eq('id', brand.id)
-      .eq('organization_id', auth.context.organizationId)
-      .maybeSingle();
-    if (brandContext.error) throw brandContext.error;
-    if (!brandContext.data) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
-
-    if (body.clientId && body.clientId !== brandContext.data.client_id) {
+    if (body.clientId && body.clientId !== brand.client_id) {
       return NextResponse.json({ error: 'Client does not own this brand' }, { status: 409 });
     }
 
-    const effectiveClientId = brandContext.data.client_id;
+    const effectiveClientId = brand.client_id ?? null;
 
     const insert = await supabase
       .from('content_items')
