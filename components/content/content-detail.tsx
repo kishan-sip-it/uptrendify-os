@@ -125,17 +125,12 @@ function ReviewActions({
   const [comment, setComment] = useState('');
 
   const actions: Array<{ action: string; label: string; tone: string; allowed: boolean }> = [];
-  if (status === 'DRAFT') actions.push({ action: 'submit', label: 'Submit for review', tone: 'tone-good', allowed: canGenerate });
+  if (status === 'DRAFT' && versionId) actions.push({ action: 'submit', label: 'Submit for review', tone: 'tone-good', allowed: canGenerate });
   if (['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED'].includes(status)) {
     actions.push({ action: 'approve', label: 'Approve', tone: 'tone-good', allowed: canReview });
     actions.push({ action: 'changes_requested', label: 'Request changes', tone: 'tone-info', allowed: canReview });
     actions.push({ action: 'reject', label: 'Reject', tone: 'tone-danger', allowed: canReview });
   }
-  if (status === 'APPROVED') {
-    actions.push({ action: 'schedule', label: 'Schedule', tone: 'tone-good', allowed: canReview });
-    actions.push({ action: 'publish', label: 'Publish', tone: 'tone-good', allowed: canReview });
-  }
-  if (status === 'SCHEDULED' && canReview) actions.push({ action: 'publish', label: 'Publish', tone: 'tone-good', allowed: true });
   if (['DRAFT', 'IN_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'APPROVED'].includes(status) && canGenerate) {
     actions.push({ action: 'return_to_draft', label: 'Return to draft', tone: 'tone-muted', allowed: true });
   }
