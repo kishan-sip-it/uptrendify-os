@@ -26,9 +26,7 @@ begin
     return new;
   end if;
 
-  if old.status = new.status then
-    return new;
-  end if;
+  if old.status = new.status then return new; end if;
 
   if new.status in ('SCHEDULED','PUBLISHED') then
     raise exception 'PUBLISHING_NOT_ENABLED';
@@ -58,10 +56,6 @@ drop trigger if exists content_status_transition_guard on public.content_items;
 create trigger content_status_transition_guard
 before insert or update of status on public.content_items
 for each row execute function private.enforce_content_status_transition();
-
-revoke all on function private.enforce_content_status_transition() from public;
-revoke all on function private.enforce_content_status_transition() from anon;
-revoke all on function private.enforce_content_status_transition() from authenticated;
 
 -- Research lifecycle guard.
 create or replace function private.enforce_research_status_transition()
@@ -109,199 +103,203 @@ create trigger strategy_status_transition_guard
 before update of status on public.strategies
 for each row execute function private.enforce_strategy_status_transition();
 
-revoke all on function private.enforce_research_status_transition() from public;
-revoke all on function private.enforce_research_status_transition() from anon;
-revoke all on function private.enforce_research_status_transition() from authenticated;
-revoke all on function private.enforce_strategy_status_transition() from public;
-revoke all on function private.enforce_strategy_status_transition() from anon;
-revoke all on function private.enforce_strategy_status_transition() from authenticated;
-
--- Critical parent-child tenant integrity. These are NOT VALID so existing data
--- is not blocked; all future inserts/updates are still enforced immediately.
-do $$
+-- Tenant integrity guards.
+create or replace function private.assert_tenant_integrity()
+returns trigger
+language plpgsql
+as $$
+declare
+  parent_org uuid;
 begin
-  if not exists (select 1 from pg_constraint where conname='brands_org_client_fk') then
-    alter table public.brands
-      add constraint brands_org_client_fk
-      foreign key (organization_id, client_id)
-      references public.clients (organization_id, id)
-      on delete cascade not valid;
+  if tg_table_name = 'brands' then
+    select organization_id into parent_org from public.clients where id = new.client_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_CLIENT_REFERENCE';
+    end if;
+
+  elsif tg_table_name = 'brand_sources' then
+    select organization_id into parent_org from public.brands where id = new.brand_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_BRAND_REFERENCE';
+    end if;
+
+  elsif tg_table_name = 'brand_source_chunks' then
+    select organization_id into parent_org from public.brands where id = new.brand_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_BRAND_REFERENCE';
+    end if;
+    select organization_id into parent_org from public.brand_sources where id = new.source_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_SOURCE_REFERENCE';
+    end if;
+
+  elsif tg_table_name = 'brand_facts' or tg_table_name = 'brand_insights' or tg_table_name = 'brand_competitors' then
+    select organization_id into parent_org from public.brands where id = new.brand_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_BRAND_REFERENCE';
+    end if;
+
+  elsif tg_table_name = 'research_runs' then
+    select organization_id into parent_org from public.brands where id = new.brand_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_BRAND_REFERENCE';
+    end if;
+
+  elsif tg_table_name = 'research_sources' then
+    select organization_id into parent_org from public.research_runs where id = new.research_run_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_RESEARCH_RUN_REFERENCE';
+    end if;
+    select organization_id into parent_org from public.brand_sources where id = new.source_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_SOURCE_REFERENCE';
+    end if;
+
+  elsif tg_table_name = 'brand_suggestions' then
+    select organization_id into parent_org from public.brands where id = new.brand_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_BRAND_REFERENCE';
+    end if;
+    if new.research_run_id is not null then
+      select organization_id into parent_org from public.research_runs where id = new.research_run_id;
+      if parent_org is null or parent_org <> new.organization_id then
+        raise exception 'CROSS_TENANT_RESEARCH_RUN_REFERENCE';
+      end if;
+    end if;
+
+  elsif tg_table_name = 'strategies' then
+    select organization_id into parent_org from public.brands where id = new.brand_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_BRAND_REFERENCE';
+    end if;
+
+  elsif tg_table_name = 'campaigns' then
+    select organization_id into parent_org from public.brands where id = new.brand_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_BRAND_REFERENCE';
+    end if;
+    if new.strategy_id is not null then
+      select organization_id into parent_org from public.strategies where id = new.strategy_id;
+      if parent_org is null or parent_org <> new.organization_id then
+        raise exception 'CROSS_TENANT_STRATEGY_REFERENCE';
+      end if;
+    end if;
+
+  elsif tg_table_name = 'content_items' then
+    select organization_id into parent_org from public.brands where id = new.brand_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_BRAND_REFERENCE';
+    end if;
+
+    if new.client_id is not null then
+      select organization_id into parent_org from public.clients where id = new.client_id;
+      if parent_org is null or parent_org <> new.organization_id then
+        raise exception 'CROSS_TENANT_CLIENT_REFERENCE';
+      end if;
+
+      if exists (
+        select 1 from public.brands b
+        where b.id = new.brand_id and b.client_id <> new.client_id
+      ) then
+        raise exception 'CONTENT_CLIENT_DOES_NOT_MATCH_BRAND';
+      end if;
+    end if;
+
+    if new.campaign_id is not null then
+      select organization_id into parent_org from public.campaigns where id = new.campaign_id;
+      if parent_org is null or parent_org <> new.organization_id then
+        raise exception 'CROSS_TENANT_CAMPAIGN_REFERENCE';
+      end if;
+    end if;
+
+    if new.strategy_id is not null then
+      select organization_id into parent_org from public.strategies where id = new.strategy_id;
+      if parent_org is null or parent_org <> new.organization_id then
+        raise exception 'CROSS_TENANT_STRATEGY_REFERENCE';
+      end if;
+    end if;
+
+  elsif tg_table_name = 'content_versions' then
+    select organization_id into parent_org from public.content_items where id = new.content_item_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_CONTENT_REFERENCE';
+    end if;
+    if new.strategy_id is not null then
+      select organization_id into parent_org from public.strategies where id = new.strategy_id;
+      if parent_org is null or parent_org <> new.organization_id then
+        raise exception 'CROSS_TENANT_STRATEGY_REFERENCE';
+      end if;
+    end if;
+
+  elsif tg_table_name = 'content_reviews' then
+    select organization_id into parent_org from public.content_items where id = new.content_item_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_CONTENT_REFERENCE';
+    end if;
+    if new.content_version_id is not null then
+      select organization_id into parent_org from public.content_versions where id = new.content_version_id;
+      if parent_org is null or parent_org <> new.organization_id then
+        raise exception 'CROSS_TENANT_VERSION_REFERENCE';
+      end if;
+    end if;
+
+  elsif tg_table_name = 'approvals' then
+    select organization_id into parent_org from public.content_items where id = new.content_item_id;
+    if parent_org is null or parent_org <> new.organization_id then
+      raise exception 'CROSS_TENANT_CONTENT_REFERENCE';
+    end if;
   end if;
 
-  if not exists (select 1 from pg_constraint where conname='sources_org_brand_fk') then
-    alter table public.brand_sources
-      add constraint sources_org_brand_fk
-      foreign key (organization_id, brand_id)
-      references public.brands (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='chunks_org_brand_fk') then
-    alter table public.brand_source_chunks
-      add constraint chunks_org_brand_fk
-      foreign key (organization_id, brand_id)
-      references public.brands (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='chunks_org_source_fk') then
-    alter table public.brand_source_chunks
-      add constraint chunks_org_source_fk
-      foreign key (organization_id, source_id)
-      references public.brand_sources (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='runs_org_brand_fk') then
-    alter table public.research_runs
-      add constraint runs_org_brand_fk
-      foreign key (organization_id, brand_id)
-      references public.brands (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='research_sources_org_run_fk') then
-    alter table public.research_sources
-      add constraint research_sources_org_run_fk
-      foreign key (organization_id, research_run_id)
-      references public.research_runs (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='research_sources_org_source_fk') then
-    alter table public.research_sources
-      add constraint research_sources_org_source_fk
-      foreign key (organization_id, source_id)
-      references public.brand_sources (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='suggestions_org_brand_fk') then
-    alter table public.brand_suggestions
-      add constraint suggestions_org_brand_fk
-      foreign key (organization_id, brand_id)
-      references public.brands (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='suggestions_org_run_fk') then
-    alter table public.brand_suggestions
-      add constraint suggestions_org_run_fk
-      foreign key (organization_id, research_run_id)
-      references public.research_runs (organization_id, id)
-      on delete set null not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='facts_org_brand_fk') then
-    alter table public.brand_facts
-      add constraint facts_org_brand_fk
-      foreign key (organization_id, brand_id)
-      references public.brands (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='insights_org_brand_fk') then
-    alter table public.brand_insights
-      add constraint insights_org_brand_fk
-      foreign key (organization_id, brand_id)
-      references public.brands (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='strategies_org_brand_fk') then
-    alter table public.strategies
-      add constraint strategies_org_brand_fk
-      foreign key (organization_id, brand_id)
-      references public.brands (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='campaigns_org_brand_fk') then
-    alter table public.campaigns
-      add constraint campaigns_org_brand_fk
-      foreign key (organization_id, brand_id)
-      references public.brands (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='campaigns_org_strategy_fk') then
-    alter table public.campaigns
-      add constraint campaigns_org_strategy_fk
-      foreign key (organization_id, strategy_id)
-      references public.strategies (organization_id, id)
-      on delete set null not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='content_org_brand_fk') then
-    alter table public.content_items
-      add constraint content_org_brand_fk
-      foreign key (organization_id, brand_id)
-      references public.brands (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='content_org_client_fk') then
-    alter table public.content_items
-      add constraint content_org_client_fk
-      foreign key (organization_id, client_id)
-      references public.clients (organization_id, id)
-      on delete set null not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='content_org_campaign_fk') then
-    alter table public.content_items
-      add constraint content_org_campaign_fk
-      foreign key (organization_id, campaign_id)
-      references public.campaigns (organization_id, id)
-      on delete set null not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='content_org_strategy_fk') then
-    alter table public.content_items
-      add constraint content_org_strategy_fk
-      foreign key (organization_id, strategy_id)
-      references public.strategies (organization_id, id)
-      on delete set null not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='versions_org_content_fk') then
-    alter table public.content_versions
-      add constraint versions_org_content_fk
-      foreign key (organization_id, content_item_id)
-      references public.content_items (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='versions_org_strategy_fk') then
-    alter table public.content_versions
-      add constraint versions_org_strategy_fk
-      foreign key (organization_id, strategy_id)
-      references public.strategies (organization_id, id)
-      on delete set null not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='reviews_org_content_fk') then
-    alter table public.content_reviews
-      add constraint reviews_org_content_fk
-      foreign key (organization_id, content_item_id)
-      references public.content_items (organization_id, id)
-      on delete cascade not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='reviews_org_version_fk') then
-    alter table public.content_reviews
-      add constraint reviews_org_version_fk
-      foreign key (organization_id, content_version_id)
-      references public.content_versions (organization_id, id)
-      on delete set null not valid;
-  end if;
-
-  if not exists (select 1 from pg_constraint where conname='approvals_org_content_fk') then
-    alter table public.approvals
-      add constraint approvals_org_content_fk
-      foreign key (organization_id, content_item_id)
-      references public.content_items (organization_id, id)
-      on delete cascade not valid;
-  end if;
-end
+  return new;
+end;
 $$;
+
+drop trigger if exists brands_tenant_integrity on public.brands;
+create trigger brands_tenant_integrity before insert or update of organization_id,client_id on public.brands for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists brand_sources_tenant_integrity on public.brand_sources;
+create trigger brand_sources_tenant_integrity before insert or update of organization_id,brand_id on public.brand_sources for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists brand_source_chunks_tenant_integrity on public.brand_source_chunks;
+create trigger brand_source_chunks_tenant_integrity before insert or update of organization_id,brand_id,source_id on public.brand_source_chunks for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists brand_facts_tenant_integrity on public.brand_facts;
+create trigger brand_facts_tenant_integrity before insert or update of organization_id,brand_id on public.brand_facts for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists brand_insights_tenant_integrity on public.brand_insights;
+create trigger brand_insights_tenant_integrity before insert or update of organization_id,brand_id on public.brand_insights for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists brand_competitors_tenant_integrity on public.brand_competitors;
+create trigger brand_competitors_tenant_integrity before insert or update of organization_id,brand_id on public.brand_competitors for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists research_runs_tenant_integrity on public.research_runs;
+create trigger research_runs_tenant_integrity before insert or update of organization_id,brand_id on public.research_runs for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists research_sources_tenant_integrity on public.research_sources;
+create trigger research_sources_tenant_integrity before insert or update of organization_id,research_run_id,source_id on public.research_sources for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists brand_suggestions_tenant_integrity on public.brand_suggestions;
+create trigger brand_suggestions_tenant_integrity before insert or update of organization_id,brand_id,research_run_id on public.brand_suggestions for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists strategies_tenant_integrity on public.strategies;
+create trigger strategies_tenant_integrity before insert or update of organization_id,brand_id on public.strategies for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists campaigns_tenant_integrity on public.campaigns;
+create trigger campaigns_tenant_integrity before insert or update of organization_id,brand_id,strategy_id on public.campaigns for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists content_items_tenant_integrity on public.content_items;
+create trigger content_items_tenant_integrity before insert or update of organization_id,brand_id,client_id,campaign_id,strategy_id on public.content_items for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists content_versions_tenant_integrity on public.content_versions;
+create trigger content_versions_tenant_integrity before insert or update of organization_id,content_item_id,strategy_id on public.content_versions for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists content_reviews_tenant_integrity on public.content_reviews;
+create trigger content_reviews_tenant_integrity before insert or update of organization_id,content_item_id,content_version_id on public.content_reviews for each row execute function private.assert_tenant_integrity();
+
+drop trigger if exists approvals_tenant_integrity on public.approvals;
+create trigger approvals_tenant_integrity before insert or update of organization_id,content_item_id on public.approvals for each row execute function private.assert_tenant_integrity();
+
+revoke all on function private.enforce_content_status_transition() from public, anon, authenticated;
+revoke all on function private.enforce_research_status_transition() from public, anon, authenticated;
+revoke all on function private.enforce_strategy_status_transition() from public, anon, authenticated;
+revoke all on function private.assert_tenant_integrity() from public, anon, authenticated;
