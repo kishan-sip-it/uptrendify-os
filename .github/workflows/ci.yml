@@ -40,7 +40,8 @@ jobs:
           trap 'kill $APP_PID 2>/dev/null || true' EXIT
 
           node --input-type=module <<'NODE'
-          const routes = ['/', '/progress', '/register', '/login', '/forgot-password', '/reset-password', '/api/health'];
+          const publicRoutes = ['/', '/progress', '/register', '/login', '/forgot-password', '/reset-password', '/api/health'];
+          const protectedRoutes = ['/dashboard', '/brands', '/content', '/onboarding'];
           const deadline = Date.now() + 30000;
 
           while (Date.now() < deadline) {
@@ -51,12 +52,24 @@ jobs:
             await new Promise((resolve) => setTimeout(resolve, 1000));
           }
 
-          for (const route of routes) {
+          for (const route of publicRoutes) {
             const response = await fetch('http://127.0.0.1:3000' + route, { redirect: 'manual', cache: 'no-store' });
             if (response.status >= 500) {
               throw new Error(route + ' returned ' + response.status);
             }
             console.log(route + ' -> ' + response.status);
+          }
+
+          for (const route of protectedRoutes) {
+            const response = await fetch('http://127.0.0.1:3000' + route, { redirect: 'manual', cache: 'no-store' });
+            if (response.status < 300 || response.status >= 400) {
+              throw new Error(route + ' should redirect anonymously, got ' + response.status);
+            }
+            const location = response.headers.get('location') || '';
+            if (!location.endsWith('/login')) {
+              throw new Error(route + ' redirected to unexpected location: ' + location);
+            }
+            console.log(route + ' -> ' + response.status + ' -> ' + location);
           }
 
           const health = await (await fetch('http://127.0.0.1:3000/api/health', { cache: 'no-store' })).json();
