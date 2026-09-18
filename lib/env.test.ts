@@ -70,7 +70,7 @@ describe('env schema', () => {
     });
     expect(result.NEXT_PUBLIC_SUPABASE_URL).toBeUndefined();
     expect(result.GROQ_API_KEY).toBeUndefined();
-    expect(result.GROQ_MODEL).toBe('llama-3.3-70b-versatile');
+    expect(result.GROQ_MODEL).toBe('openai/gpt-oss-20b');
     expect(result.ANTHROPIC_MODEL).toBe('claude-3-5-haiku-latest');
     expect(result.DEFAULT_AI_PROVIDER).toBe('groq');
   });
