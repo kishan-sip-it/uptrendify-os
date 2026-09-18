@@ -148,10 +148,10 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
 
   it('does not allow review actions from APPROVED because the database only permits APPROVED -> ARCHIVED', async () => {
     mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'APPROVER', userId: USER_ID } });
-    const client = makeClient([['content_items', contentRow('APPROVED')]]);
-    mocks.createSupabaseServerClient.mockResolvedValue(client);
-
     for (const action of ['reject', 'changes_requested', 'return_to_draft']) {
+      const client = makeClient([['content_items', contentRow('APPROVED')]]);
+      mocks.createSupabaseServerClient.mockResolvedValue(client);
+
       const res = await POST(new NextRequest('http://localhost/api/review', {
         method: 'POST',
         body: JSON.stringify({ action }),
