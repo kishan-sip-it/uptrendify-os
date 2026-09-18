@@ -26,10 +26,10 @@ const bodySchema = z
 const TRANSITIONS: Record<ReviewAction, { from: string[]; to: string }> = {
   submit: { from: ['DRAFT', 'CHANGES_REQUESTED', 'REJECTED'], to: 'IN_REVIEW' },
   approve: { from: ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED'], to: 'APPROVED' },
-  reject: { from: ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'APPROVED'], to: 'REJECTED' },
-  changes_requested: { from: ['IN_REVIEW', 'CLIENT_REVIEW', 'APPROVED'], to: 'CHANGES_REQUESTED' },
-  return_to_draft: { from: ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'APPROVED'], to: 'DRAFT' },
-  archive: { from: ['DRAFT', 'IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED', 'SCHEDULED', 'PUBLISHED'], to: 'ARCHIVED' },
+  reject: { from: ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED'], to: 'REJECTED' },
+  changes_requested: { from: ['IN_REVIEW', 'CLIENT_REVIEW'], to: 'CHANGES_REQUESTED' },
+  return_to_draft: { from: ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'REJECTED'], to: 'DRAFT' },
+  archive: { from: ['DRAFT', 'IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED'], to: 'ARCHIVED' },
 };
 
 const REVIEWER_ACTIONS: ReviewAction[] = ['approve', 'reject', 'changes_requested'];
