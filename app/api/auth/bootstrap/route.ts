@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { obs } from '@/lib/obs/logger';
 
 const bootstrapSchema = z.object({
-  organizationName: z.string().trim().min(2).max(120),
+  organizationName: z.string().trim().min(2).max(120).optional(),
 });
 
 export async function GET() {
@@ -49,8 +49,6 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { organizationName } = bootstrapSchema.parse(await request.json());
-
     const supabase = await createSupabaseServerClient();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError) {
@@ -58,6 +56,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Authentication service unavailable' }, { status: 503 });
     }
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+
+    if (userError) {
+      obs.error('Organization bootstrap auth lookup failed', { error: userError.message });
+      return NextResponse.json({ error: 'Authentication service unavailable' }, { status: 503 });
+    }
+    if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+
+    const userMetadataName = user.user_metadata?.organizationName;
+    const parsedBody = bootstrapSchema.parse(await request.json().catch(() => ({})));
+    const organizationName =
+      parsedBody.organizationName?.trim() ||
+      (typeof userMetadataName === 'string' ? userMetadataName.trim() : '');
+
+    if (!organizationName) {
+      return NextResponse.json(
+        { error: 'Your account is registered, but workspace setup is incomplete. Please finish account setup from the registration flow.' },
+        { status: 409 },
+      );
+    }
 
     const { data, error } = await supabase
       .rpc('bootstrap_organization', { organization_name: organizationName })
@@ -82,7 +99,7 @@ export async function POST(request: Request) {
     }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: 'Organization name is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid workspace setup request' }, { status: 400 });
     }
     obs.error('Organization bootstrap failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Could not create your workspace' }, { status: 500 });
