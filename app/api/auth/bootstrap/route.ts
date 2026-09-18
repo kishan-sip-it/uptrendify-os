@@ -57,15 +57,46 @@ export async function POST(request: Request) {
     }
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 
-    const userMetadataName = user.user_metadata?.organizationName;
     const parsedBody = bootstrapSchema.parse(await request.json().catch(() => ({})));
+
+    // Existing users are resolved by their membership. They must never be
+    // asked to type the organization name again.
+    const { data: existingMembership, error: existingMembershipError } = await supabase
+      .from('organization_members')
+      .select('organization_id, role')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingMembershipError) throw existingMembershipError;
+
+    if (existingMembership) {
+      const { data: existingOrg } = await supabase
+        .from('organizations')
+        .select('id,name')
+        .eq('id', existingMembership.organization_id)
+        .maybeSingle();
+
+      return NextResponse.json({
+        organization: {
+          id: existingMembership.organization_id,
+          role: existingMembership.role,
+          name: existingOrg?.name ?? null,
+        },
+      }, { status: 200 });
+    }
+
+    // First-time signup can bootstrap from the name supplied during
+    // registration. Metadata is only used when no workspace exists yet.
+    const userMetadataName = user.user_metadata?.organizationName;
     const organizationName =
       parsedBody.organizationName?.trim() ||
       (typeof userMetadataName === 'string' ? userMetadataName.trim() : '');
 
     if (!organizationName) {
       return NextResponse.json(
-        { error: 'Your account is registered, but workspace setup is incomplete. Please finish account setup from the registration flow.' },
+        { error: 'Your account is registered, but workspace setup is incomplete. Please restart registration and provide an organization name.' },
         { status: 409 },
       );
     }
