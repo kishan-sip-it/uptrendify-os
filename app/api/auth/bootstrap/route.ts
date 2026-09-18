@@ -113,13 +113,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Could not create your workspace' }, { status: 500 });
     }
 
-    if (!data) return NextResponse.json({ error: 'Could not create your workspace' }, { status: 500 });
+    const bootstrapData = data as { id: string; role: string; name: string } | null;
+    if (!bootstrapData) return NextResponse.json({ error: 'Could not create your workspace' }, { status: 500 });
 
     return NextResponse.json({
       organization: {
-        id: data.id,
-        role: data.role,
-        name: data.name,
+        id: bootstrapData.id,
+        role: bootstrapData.role,
+        name: bootstrapData.name,
       },
     }, { status: 201 });
   } catch (error) {
