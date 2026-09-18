@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { ROLES, type OrgRole } from '@/lib/auth/roles';
 import { obs } from '@/lib/obs/logger';
 
@@ -58,7 +57,7 @@ export async function POST(request: Request) {
       organization_id: organizationId,
       first_name: parsed.firstName ?? null,
       last_name: parsed.lastName ?? null,
-      role: parsed.role ?? null,
+      role: membership?.role ?? parsed.role ?? null,
       team_size: parsed.teamSize ?? null,
       timezone: parsed.timezone ?? null,
       onboarding_completed: parsed.onboardingComplete ?? false,
@@ -66,17 +65,19 @@ export async function POST(request: Request) {
     }, { onConflict: 'user_id' });
     if (upsert.error) throw upsert.error;
 
-    if (parsed.role && membership && membership.role !== parsed.role) {
-      const admin = createSupabaseAdminClient();
-      const { error: roleError } = await admin
-        .from('organization_members')
-        .update({ role: parsed.role })
-        .eq('user_id', user.id)
-        .eq('organization_id', membership.organization_id);
-      if (roleError) throw roleError;
+    // Membership role is authorization data and can only be changed by a
+    // server-side membership-management action. A user must never be able
+    // to promote themselves by editing their profile.
+    const effectiveRole = membership?.role ?? parsed.role ?? null;
+    if (effectiveRole && parsed.role && membership && parsed.role !== membership.role) {
+      obs.info('Ignoring self-service membership role change attempt', {
+        userId: user.id,
+        requestedRole: parsed.role,
+        effectiveRole: membership.role,
+      });
     }
 
-    return NextResponse.json({ ok: true, profile: { ...parsed, organization_id: organizationId } }, { status: 200 });
+    return NextResponse.json({ ok: true, profile: { ...parsed, role: membership?.role ?? parsed.role ?? null, organization_id: organizationId } }, { status: 200 });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid profile' }, { status: 400 });
     obs.error('Profile save failed', { error: error instanceof Error ? error.message : String(error) });
