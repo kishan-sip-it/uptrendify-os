@@ -1,12 +1,22 @@
 import { NextResponse } from 'next/server';
 import { env } from '@/lib/env';
 import { createDefaultRegistry } from '@/lib/ai/registry';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export async function GET() {
   const e = env();
   const registry = createDefaultRegistry();
   const health = await registry.health();
   const defaultProvider = registry.default();
+
+  let supabaseDbReachable = false;
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.from('organizations').select('id').limit(1);
+    supabaseDbReachable = !error;
+  } catch {
+    supabaseDbReachable = false;
+  }
 
   return NextResponse.json({
     ok: true,
@@ -16,6 +26,7 @@ export async function GET() {
     defaultProvider: defaultProvider?.id ?? null,
     integrations: {
       supabase: Boolean(e.NEXT_PUBLIC_SUPABASE_URL && (e.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || e.NEXT_PUBLIC_SUPABASE_ANON_KEY)),
+      supabaseDbReachable,
       semrush: Boolean(e.SEMRUSH_API_KEY),
       surfer: Boolean(e.SURFER_API_KEY),
       jasper: Boolean(e.JASPER_API_KEY),
