@@ -36,6 +36,9 @@ function failure(code: ProviderFailureCode, retryable: boolean, actionable: bool
 
 export function classifyProviderFailure(error: unknown): ProviderFailure {
   if (error instanceof AiProviderError) {
+    if (error.status === 0) {
+      return failure('NETWORK_ERROR', true, false, 'Could not reach the AI provider. Retrying with backoff.');
+    }
     if (error.status === 401 || error.status === 403) {
       return failure('AUTHENTICATION_ERROR', false, true, 'Provider rejected the configured credentials.');
     }
