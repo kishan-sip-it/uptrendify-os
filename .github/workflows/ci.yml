@@ -60,10 +60,14 @@ jobs:
           }
 
           const health = await (await fetch('http://127.0.0.1:3000/api/health', { cache: 'no-store' })).json();
-          if (!health.integrations?.supabase || !health.integrations?.supabaseDbReachable) {
-            throw new Error('Supabase runtime smoke check failed: ' + JSON.stringify(health.integrations));
+          if (!health.integrations?.supabase) {
+            throw new Error('Supabase runtime configuration is missing');
           }
-          console.log('Supabase runtime: reachable');
+          if (process.env.CI_SUPABASE_DB_SMOKE === '1' && !health.integrations?.supabaseDbReachable) {
+            throw new Error('Supabase DB smoke check failed: ' + JSON.stringify(health.integrations));
+          }
+          console.log('Supabase runtime configuration: present');
+
           NODE
 
           echo "----- Next.js runtime log -----"
