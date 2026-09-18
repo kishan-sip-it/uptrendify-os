@@ -57,12 +57,6 @@ export async function POST(request: Request) {
     }
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 
-    if (userError) {
-      obs.error('Organization bootstrap auth lookup failed', { error: userError.message });
-      return NextResponse.json({ error: 'Authentication service unavailable' }, { status: 503 });
-    }
-    if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-
     const userMetadataName = user.user_metadata?.organizationName;
     const parsedBody = bootstrapSchema.parse(await request.json().catch(() => ({})));
     const organizationName =
