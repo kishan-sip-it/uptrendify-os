@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { env } from '@/lib/env';
 import { createDefaultRegistry } from '@/lib/ai/registry';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getSupabaseConfig } from '@/lib/supabase/config';
 
 export async function GET() {
   const e = env();
@@ -25,7 +26,7 @@ export async function GET() {
     providers: Object.fromEntries(health.map((h) => [h.id, h.ok])),
     defaultProvider: defaultProvider?.id ?? null,
     integrations: {
-      supabase: Boolean(e.NEXT_PUBLIC_SUPABASE_URL && (e.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || e.NEXT_PUBLIC_SUPABASE_ANON_KEY)),
+      supabase: Boolean(getSupabaseConfig().url && getSupabaseConfig().key),
       supabaseDbReachable,
       semrush: Boolean(e.SEMRUSH_API_KEY),
       surfer: Boolean(e.SURFER_API_KEY),
