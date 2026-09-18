@@ -137,7 +137,7 @@ export default function RegisterPage() {
       <AuthLayout
         eyebrow="Confirm your email"
         title="Check your inbox."
-        subtitle="We sent you a confirmation link. Click it to activate your account, then sign in to create your workspace."
+        subtitle="We sent you a confirmation link. Click it to activate your account, then sign in. Your workspace will be loaded automatically."
         footer={
           <div className="auth-footer-links">
             <Link href="/login">Got it — sign in</Link>
@@ -147,7 +147,7 @@ export default function RegisterPage() {
       >
         <div className="card auth-card-form auth-success-card">
           <span className="auth-success-icon"><MailCheck size={22} /></span>
-          <p>After confirming your email, sign in once. We’ll finish creating the workspace using the agency name you entered.</p>
+          <p>After confirming your email, sign in once. We’ll finish your workspace setup automatically using the agency name you entered.</p>
           <Link href="/login" className="badge" style={{ justifyContent: 'center', textDecoration: 'none' }}>Go to sign in</Link>
         </div>
       </AuthLayout>
