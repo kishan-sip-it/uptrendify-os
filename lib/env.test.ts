@@ -26,7 +26,7 @@ describe('env schema', () => {
 
   it('applies default values when optional fields are missing', () => {
     const result = envSchema.parse(base);
-    expect(result.GROQ_MODEL).toBe('llama-3.3-70b-versatile');
+    expect(result.GROQ_MODEL).toBe('openai/gpt-oss-20b');
     expect(result.DEFAULT_AI_PROVIDER).toBe('groq');
     expect(result.RESEARCH_USER_AGENT).not.toBe('');
   });
@@ -72,6 +72,6 @@ describe('env schema', () => {
     expect(result.GROQ_API_KEY).toBeUndefined();
     expect(result.GROQ_MODEL).toBe('llama-3.3-70b-versatile');
     expect(result.ANTHROPIC_MODEL).toBe('claude-3-5-haiku-latest');
-    expect(result.DEFAULT_AI_PROVIDER).toBe('gemini');
+    expect(result.DEFAULT_AI_PROVIDER).toBe('groq');
   });
 });
