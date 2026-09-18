@@ -16,13 +16,6 @@ const TIMEZONES = (() => {
   }
 })();
 
-const ROLES = [
-  { value: 'OWNER', label: 'Founder / Owner' },
-  { value: 'STRATEGIST', label: 'Strategist' },
-  { value: 'EDITOR', label: 'Editor / Content' },
-  { value: 'ADMIN', label: 'Operations / Admin' },
-];
-
 const STEPS = ['Profile', 'First brand', 'Launch'];
 
 export default function OnboardingPage() {
@@ -65,7 +58,6 @@ export default function OnboardingPage() {
         body: JSON.stringify({
           firstName: String(form.get('firstName') ?? ''),
           lastName: String(form.get('lastName') ?? '') || null,
-          role: String(form.get('role') ?? ''),
           teamSize: String(form.get('teamSize') ?? '') || null,
           timezone: String(form.get('timezone') ?? '') || null,
         }),
@@ -144,7 +136,7 @@ export default function OnboardingPage() {
   }
 
   const stepTitles = [
-    { eyebrow: 'Step 1 of 3', title: 'Who runs the show?', subtitle: 'Tell us about you — this shapes your team permissions.' },
+    { eyebrow: 'Step 1 of 3', title: 'Who runs the show?', subtitle: 'Tell us about you. Workspace permissions are controlled by your organization membership.' },
     { eyebrow: 'Step 2 of 3', title: 'Add your first client brand.', subtitle: 'We\u2019ll research its public website and draft a Brand Brain you can review.' },
     { eyebrow: 'Step 3 of 3', title: 'Ready for launch.', subtitle: 'Start research now or add it later from the brand page.' },
   ];
@@ -167,12 +159,6 @@ export default function OnboardingPage() {
             <label>First name<input name="firstName" required maxLength={120} placeholder="Jane" autoFocus /></label>
             <label>Last name<input name="lastName" maxLength={120} placeholder="Doe" /></label>
           </div>
-          <label>
-            Your role
-            <select name="role" defaultValue="STRATEGIST">
-              {ROLES.map((role) => <option value={role.value} key={role.value}>{role.label}</option>)}
-            </select>
-          </label>
           <div className="onboarding-grid">
             <label>Team size<input name="teamSize" maxLength={40} placeholder="e.g. 2–5 people" /></label>
             <label>
