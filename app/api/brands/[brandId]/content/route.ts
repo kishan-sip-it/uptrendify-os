@@ -169,23 +169,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     const brand = await loadBrand(supabase, brandId, auth.context.organizationId);
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
 
-    if (body.clientId) {
-      const client = await supabase
-        .from('clients')
-        .select('id')
-        .eq('id', body.clientId)
-        .eq('organization_id', auth.context.organizationId)
-        .maybeSingle();
-      if (client.error) throw client.error;
-      if (!client.data) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    const brandContext = await supabase
+      .from('brands')
+      .select('id,client_id')
+      .eq('id', brand.id)
+      .eq('organization_id', auth.context.organizationId)
+      .maybeSingle();
+    if (brandContext.error) throw brandContext.error;
+    if (!brandContext.data) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+
+    if (body.clientId && body.clientId !== brandContext.data.client_id) {
+      return NextResponse.json({ error: 'Client does not own this brand' }, { status: 409 });
     }
+
+    const effectiveClientId = brandContext.data.client_id;
 
     const insert = await supabase
       .from('content_items')
       .insert({
         organization_id: auth.context.organizationId,
         brand_id: brand.id,
-        client_id: body.clientId ?? null,
+        client_id: effectiveClientId,
         type: body.type,
         channel: body.channel,
         title: body.title,
