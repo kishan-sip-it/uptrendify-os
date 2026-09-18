@@ -62,9 +62,10 @@ function contentRow(status: string) {
 }
 
 function actQueues(status: string): Array<[string, unknown]> {
+  const next = status === 'IN_REVIEW' ? 'APPROVED' : 'IN_REVIEW';
   return [
     ['content_items', contentRow(status)],
-    ['content_items', { data: null, error: null }],
+    ['content_items', { data: { id: CONTENT_ID, status: next }, error: null }],
     ['content_reviews', { data: [{ id: 'review-1' }], error: null }],
     ['audit_logs', { data: null, error: null }],
   ];
