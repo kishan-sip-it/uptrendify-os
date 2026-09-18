@@ -34,9 +34,11 @@ export class AiProviderRegistry {
   }
 
   default(): AiProvider | null {
+    // Never silently switch providers. The configured primary provider is
+    // intentional, especially for quota/cost control. An unconfigured primary
+    // must fail explicitly instead of unexpectedly consuming another provider.
     const preferred = this.providers.get(this.defaultId);
-    if (preferred?.configured()) return preferred;
-    return this.configured()[0] ?? preferred ?? null;
+    return preferred?.configured() ? preferred : null;
   }
 
   async health(): Promise<ProviderHealth[]> {
