@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AiProvider } from '@/lib/ai/types';
 import type { EvidenceFragment } from '@/lib/ai/brand-intelligence';
 import { createDefaultRegistry } from '@/lib/ai/registry';
+import { classifyProviderFailure } from '@/lib/ai/classify';
 import { extractWithRetry, loadBrandEvidence, type EvidenceBundle } from '@/lib/research/brain';
 import { FIELD_BY_KEY, fieldSummary, type EvidenceItem, type SuggestionRow, type SuggestionStatus, type SuggestionDraft, deriveSuggestionDraft } from '@/lib/brain/suggestions';
 import { obs } from '@/lib/obs/logger';
