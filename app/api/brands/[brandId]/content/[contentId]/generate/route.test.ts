@@ -183,7 +183,10 @@ describe('POST /api/brands/[brandId]/content/[contentId]/generate', () => {
   });
 
   it('replays content generation for the replay organization', async () => {
-    const client = makeClient(snapshotQueues());
+    const client = makeClient([
+      ...snapshotQueues(),
+      ['ai_tasks', { data: { id: 'replay-task' }, error: null }],
+    ]);
     mocks.createSupabaseServerClient.mockResolvedValue(client);
     mocks.isReplayOrganization.mockResolvedValue(true);
     mocks.loadContentSnapshot.mockResolvedValue({ suggestionRows: [] });
@@ -199,7 +202,7 @@ describe('POST /api/brands/[brandId]/content/[contentId]/generate', () => {
     expect(body).toMatchObject({ ok: true, status: 'SUCCEEDED', version: 1, replay: true });
     expect(mocks.completeReplayContentGeneration).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ contentId: CONTENT_ID, intent: expect.objectContaining({ channel: 'linkedin' }) }),
+      expect.objectContaining({ contentId: CONTENT_ID, aiTaskId: 'replay-task', intent: expect.objectContaining({ channel: 'linkedin' }) }),
     );
     expect(mocks.scheduleContentExecution).not.toHaveBeenCalled();
   });
