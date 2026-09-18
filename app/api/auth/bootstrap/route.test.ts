@@ -61,6 +61,27 @@ describe('POST /api/auth/bootstrap', () => {
     expect(client.rpc).toHaveBeenCalledWith('bootstrap_organization', { organization_name: 'Aurora Labs' });
   });
 
+  it('returns the existing organization from POST without requiring the organization name again', async () => {
+    const client = makeClient({
+      user: { id: USER_ID },
+      membership: { organization_id: ORG_ID, role: 'OWNER' },
+    });
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/auth/bootstrap', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      organization: { id: ORG_ID, role: 'OWNER', name: 'Aurora Labs' },
+    });
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
   it('uses signup metadata when the browser does not send an organization name', async () => {
     const client = makeClient({
       user: { id: USER_ID, user_metadata: { organizationName: 'Metadata Agency' } },
