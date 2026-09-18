@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { env } from '@/lib/env';
+import { getSupabaseConfig } from '@/lib/supabase/config';
 
 const PUBLIC_PATHS = new Set([
   '/',
@@ -23,63 +23,55 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/_next') ||
     pathname === '/favicon.ico';
 
-  // Public routes must not depend on Supabase being available.
   if (isPublicPage) {
     return NextResponse.next();
   }
 
-  const e = env();
-
-  if (!e.NEXT_PUBLIC_SUPABASE_URL || !e.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.search = '';
-    return NextResponse.redirect(url);
+  const { url, key } = getSupabaseConfig();
+  if (!url || !key) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = '/login';
+    redirectUrl.search = '';
+    return NextResponse.redirect(redirectUrl);
   }
 
   let response = NextResponse.next({ request });
 
   try {
-    const supabase = createServerClient(
-      e.NEXT_PUBLIC_SUPABASE_URL,
-      e.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          getAll() {
-            return request.cookies.getAll();
-          },
-          setAll(values) {
-            values.forEach(({ name, value }) => request.cookies.set(name, value));
-            response = NextResponse.next({ request });
-            values.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
-          },
+    const supabase = createServerClient(url, key, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(values) {
+          values.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
+          values.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
         },
       },
-    );
+    });
 
     const { data } = await supabase.auth.getClaims();
     const user = data?.claims?.sub ? data.claims : null;
 
     if (!user) {
-      const url = request.nextUrl.clone();
-      url.pathname = '/login';
-      url.search = '';
-      return NextResponse.redirect(url);
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = '/login';
+      redirectUrl.search = '';
+      return NextResponse.redirect(redirectUrl);
     }
 
     if (AUTH_PATHS.has(pathname)) {
-      const url = request.nextUrl.clone();
-      url.pathname = '/';
-      url.search = '';
-      return NextResponse.redirect(url);
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = '/';
+      redirectUrl.search = '';
+      return NextResponse.redirect(redirectUrl);
     }
   } catch {
-    // Never let auth middleware take the whole deployment down.
-    // Protected routes fall back to the login page until auth can be verified.
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.search = '';
-    return NextResponse.redirect(url);
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = '/login';
+    redirectUrl.search = '';
+    return NextResponse.redirect(redirectUrl);
   }
 
   return response;
