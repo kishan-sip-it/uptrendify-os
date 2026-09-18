@@ -71,6 +71,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
     const message = error instanceof Error ? error.message : String(error);
     if (message === 'SUGGESTION_NOT_FOUND') return NextResponse.json({ error: 'Suggestion not found' }, { status: 404 });
     if (message === 'SUGGESTION_HAS_NO_APPROVABLE_VALUE') return NextResponse.json({ error: 'This suggestion has no value that can be approved. Edit it with a verified value first.' }, { status: 409 });
+    if (message === 'SUGGESTION_CHANGED_CONCURRENTLY') return NextResponse.json({ error: 'This suggestion changed while you were reviewing it. Reload and try again.' }, { status: 409 });
     if (message === 'NO_RESEARCH_DATA' || message === 'UNKNOWN_FIELD' || message === 'NO_AI_PROVIDER') {
       return NextResponse.json({ error: 'Could not regenerate this suggestion' }, { status: 400 });
     }
