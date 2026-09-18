@@ -68,9 +68,10 @@ export async function writeAuthoritativeFact(
     value: string | string[] | Array<{ name: string; description?: string | null }> | null;
     confidence: number | null;
     evidenceIds: string[];
+    suggestionId?: string | null;
   },
 ): Promise<void> {
-  const { organizationId, brandId, field, value, confidence, evidenceIds } = args;
+  const { organizationId, brandId, field, value, confidence, evidenceIds, suggestionId = null } = args;
   const existing = await supabase
     .from('brand_facts')
     .select('id')
@@ -96,6 +97,7 @@ export async function writeAuthoritativeFact(
       confidence,
       evidence_source_ids: evidenceIds,
       approved: true,
+      source_suggestion_id: suggestionId,
     });
     if (error) throw error;
   }
@@ -166,6 +168,7 @@ export async function approveSuggestion(
     value,
     confidence: row.confidence,
     evidenceIds,
+    suggestionId,
   });
   await writeCuratedEvidenceInsights(supabase, { organizationId, brandId, evidence });
 
@@ -201,6 +204,7 @@ export async function editSuggestion(
     value: editedValue,
     confidence: null,
     evidenceIds: [],
+    suggestionId,
   });
 
   const { error: updateError } = await supabase
