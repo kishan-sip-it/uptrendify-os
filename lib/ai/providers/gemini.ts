@@ -26,11 +26,16 @@ export function createGeminiProvider(apiKey: string | null, defaultModel: string
       return { text, model: input.model ?? defaultModel };
     } catch (err) {
       if (err instanceof AiProviderError) throw err;
-      throw new AiProviderError(
-        id,
-        err instanceof Error ? err.message : 'Gemini generation failed',
-        502,
-      );
+      const candidate = err as { status?: unknown; statusCode?: unknown; code?: unknown };
+      const numericStatus =
+        typeof candidate.status === 'number' ? candidate.status :
+        typeof candidate.statusCode === 'number' ? candidate.statusCode :
+        typeof candidate.code === 'number' ? candidate.code :
+        undefined;
+      const message = err instanceof Error ? err.message : 'Gemini generation failed';
+      const match = /(?:status|code)[^0-9]{0,12}(401|403|429|500|502|503|504)\b/i.exec(message);
+      const status = numericStatus ?? (match ? Number(match[1]) : 502);
+      throw new AiProviderError(id, message, status);
     }
   }
 
