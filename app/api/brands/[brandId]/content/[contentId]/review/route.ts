@@ -81,8 +81,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       .from('content_items')
       .update({ status: transition.to, updated_at: now })
       .eq('id', contentId)
-      .eq('organization_id', auth.context.organizationId);
+      .eq('organization_id', auth.context.organizationId)
+      .eq('status', item.status)
+      .select('id,status')
+      .maybeSingle();
     if (itemUpdate.error) throw itemUpdate.error;
+    if (!itemUpdate.data) {
+      return NextResponse.json(
+        { error: 'Content status changed concurrently. Reload and try again.' },
+        { status: 409 },
+      );
+    }
 
     const reviewInsert = await supabase
       .from('content_reviews')
