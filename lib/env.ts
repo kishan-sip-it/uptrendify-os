@@ -28,7 +28,7 @@ export const envSchema = z.object({
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: optionalString('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'),
   SUPABASE_SERVICE_ROLE_KEY: optionalString('SUPABASE_SERVICE_ROLE_KEY'),
   GROQ_API_KEY: optionalString('GROQ_API_KEY'),
-  GROQ_MODEL: stringWithDefault('GROQ_MODEL', 'llama-3.3-70b-versatile'),
+  GROQ_MODEL: stringWithDefault('GROQ_MODEL', 'openai/gpt-oss-20b'),
   OPENAI_API_KEY: optionalString('OPENAI_API_KEY'),
   OPENAI_MODEL: stringWithDefault('OPENAI_MODEL', 'gpt-4o-mini'),
   ANTHROPIC_API_KEY: optionalString('ANTHROPIC_API_KEY'),
