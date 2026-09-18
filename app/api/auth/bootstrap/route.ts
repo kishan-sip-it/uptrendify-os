@@ -101,9 +101,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data, error } = await supabase
-      .rpc('bootstrap_organization', { organization_name: organizationName })
-      .maybeSingle();
+    const { data, error } = await supabase.rpc('bootstrap_organization', {
+      organization_name: organizationName,
+    });
 
     if (error) {
       obs.error('Organization bootstrap RPC failed', { error: error.message });
