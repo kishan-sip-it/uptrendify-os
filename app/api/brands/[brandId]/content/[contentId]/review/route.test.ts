@@ -119,6 +119,24 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
     expect(await res.json()).toMatchObject({ status: 'IN_REVIEW' });
   });
 
+  it('requires a generated version before submitting a draft for review', async () => {
+    mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'EDITOR', userId: USER_ID } });
+    const client = makeClient([
+      ['content_items', contentRow('DRAFT').data ? { data: { id: CONTENT_ID, title: 'Win back ICP accounts', status: 'DRAFT', current_version_id: null }, error: null } : null],
+    ]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const res = await POST(new NextRequest('http://localhost/api/review', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'submit' }),
+    }), {
+      params: Promise.resolve({ brandId: BRAND_ID, contentId: CONTENT_ID }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining('generated version') });
+  });
+
   it('blocks an invalid transition with 409', async () => {
     mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'APPROVER', userId: USER_ID } });
     const client = makeClient([['content_items', contentRow('DRAFT')]]);
