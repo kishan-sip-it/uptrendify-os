@@ -1,5 +1,6 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import { Agent } from 'undici';
 
 function ipv4ToInt(ip: string): number {
   return ip.split('.').reduce((acc, part) => (acc << 8) | Number(part), 0) >>> 0;
@@ -80,6 +81,31 @@ export function assertPublicHttpUrl(raw: string) {
   if (url.port && !['80', '443'].includes(url.port)) throw new Error('Non-standard ports are not allowed');
   if (isPrivateIp(url.hostname)) throw new Error('Private, loopback or link-local targets are blocked');
   return url;
+}
+
+
+export const publicLookupDispatcher = new Agent({
+  connect: {
+    lookup(hostname, options, callback) {
+      void dns.lookup(hostname, { all: true, verbatim: true })
+        .then((addresses) => {
+          const publicAddress = addresses.find((entry) => !isPrivateIp(entry.address));
+          if (!publicAddress) {
+            callback(new Error('Research hostname resolves to a non-public address'), '', 0);
+            return;
+          }
+          callback(null, publicAddress.address, publicAddress.family);
+        })
+        .catch((error) => callback(error instanceof Error ? error : new Error(String(error)), '', 0));
+    },
+  },
+});
+
+export function fetchPublicHttp(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(url, {
+    ...init,
+    dispatcher: publicLookupDispatcher,
+  } as RequestInit & { dispatcher: Agent });
 }
 
 export async function assertResolvablePublicHost(hostname: string) {
