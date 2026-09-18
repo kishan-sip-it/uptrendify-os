@@ -11,6 +11,8 @@ type Step = 'checking' | 'auth' | 'bootstrap';
 
 type BootstrapOrg = { id: string; role: string; name: string | null } | null;
 
+const PENDING_WORKSPACE_KEY = 'uptrendify_pending_workspace';
+
 export default function LoginPage() {
   const [step, setStep] = useState<Step>('checking');
   const [loading, setLoading] = useState(false);
@@ -61,9 +63,25 @@ export default function LoginPage() {
       const response = await fetch('/api/auth/bootstrap');
       const body = response.ok ? await response.json() : null;
       if (body?.organization) {
+        window.localStorage.removeItem(PENDING_WORKSPACE_KEY);
         window.location.href = '/';
         return;
       }
+
+      const pendingWorkspace = window.localStorage.getItem(PENDING_WORKSPACE_KEY);
+      if (pendingWorkspace) {
+        const bootstrap = await fetch('/api/auth/bootstrap', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ organizationName: pendingWorkspace }),
+        });
+        if (bootstrap.ok) {
+          window.localStorage.removeItem(PENDING_WORKSPACE_KEY);
+          window.location.href = '/';
+          return;
+        }
+      }
+
       setStep('bootstrap');
     } catch {
       setError('Something went wrong. Please try again.');
@@ -90,6 +108,7 @@ export default function LoginPage() {
         setError(body?.error || 'Could not create your workspace.');
         return;
       }
+      window.localStorage.removeItem(PENDING_WORKSPACE_KEY);
       window.location.href = '/';
     } catch {
       setError('Something went wrong. Please try again.');
