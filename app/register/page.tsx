@@ -9,10 +9,6 @@ import { AuthLayout } from '@/components/auth/auth-layout';
 
 type Step = 'checking' | 'auth' | 'confirm';
 
-const PENDING_WORKSPACE_KEY = 'uptrendify_pending_workspace';
-
-type PendingWorkspace = { email: string; organizationName: string };
-
 export default function RegisterPage() {
   const [step, setStep] = useState<Step>('checking');
   const [loading, setLoading] = useState(false);
@@ -33,29 +29,16 @@ export default function RegisterPage() {
         return;
       }
 
-      // If the account is signed in but the workspace is not yet created,
-      // restore the agency name captured before email confirmation.
-      const pendingRaw = window.localStorage.getItem(PENDING_WORKSPACE_KEY);
-      if (pendingRaw) {
-        try {
-          const pending = JSON.parse(pendingRaw) as PendingWorkspace;
-          if (pending.email === (user.email ?? '').trim().toLowerCase() && pending.organizationName) {
-            const bootstrap = await fetch('/api/auth/bootstrap', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ organizationName: pending.organizationName }),
-            });
-            if (bootstrap.ok) {
-              window.localStorage.removeItem(PENDING_WORKSPACE_KEY);
-              window.location.href = '/';
-              return;
-            }
-          }
-        } catch {
-          window.localStorage.removeItem(PENDING_WORKSPACE_KEY);
-        }
+      // A confirmed/signed-in account can bootstrap from its signup metadata.
+      const bootstrap = await fetch('/api/auth/bootstrap', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      if (bootstrap.ok) {
+        window.location.href = '/';
+        return;
       }
-
       setStep('auth');
     }
     check().catch(() => setStep('auth'));
