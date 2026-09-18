@@ -29,7 +29,6 @@ export default function RegisterPage() {
         return;
       }
 
-      // A confirmed/signed-in account can bootstrap from its signup metadata.
       const bootstrap = await fetch('/api/auth/bootstrap', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -48,39 +47,41 @@ export default function RegisterPage() {
     event.preventDefault();
     setError('');
     setLoading(true);
+
     const form = new FormData(event.currentTarget);
     const email = String(form.get('email') ?? '').trim();
     const password = String(form.get('password') ?? '');
     const organizationName = String(form.get('organizationName') ?? '').trim();
+
     if (organizationName.length < 2) {
       setError('Organization name is required to create your account.');
       setLoading(false);
       return;
     }
+
     const supabase = createSupabaseBrowserClient();
+
     try {
-      const { data, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { organizationName },
-        },
+      // Use our server-side admin registration path so this temporary
+      // testing environment does not send signup confirmation emails or
+      // consume Supabase's built-in email-sending quota.
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password, organizationName }),
       });
-      if (authError) {
-        setError(authError.message);
-        return;
-      }
-      if (!data.user) {
-        setError('Account creation did not return a user. Please try again.');
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setError(body?.error || 'Could not create your account.');
         return;
       }
 
-      // This product currently runs without email-confirmation gating.
-      // If the hosted Supabase project still requires confirmation, signup will
-      // return a user without a session and the protected workspace bootstrap
-      // cannot run until that Auth setting is disabled.
-      if (!data.session) {
-        setError('Account created, but email confirmation is still enabled in Supabase Auth. Disable email confirmations for this environment and register again.');
+      // Admin-created users are confirmed immediately, but the browser still
+      // needs a normal Auth session before protected workspace bootstrap.
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) {
+        setError(signInError.message);
         return;
       }
 
@@ -89,11 +90,12 @@ export default function RegisterPage() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ organizationName }),
       });
+      const bootstrapBody = await bootstrap.json().catch(() => null);
       if (!bootstrap.ok) {
-        const body = await bootstrap.json().catch(() => null);
-        setError(body?.error || 'Could not create your workspace.');
+        setError(bootstrapBody?.error || 'Could not create your workspace.');
         return;
       }
+
       window.location.href = '/dashboard';
     } catch {
       setError('Something went wrong. Please try again.');
