@@ -334,8 +334,16 @@ export async function analyzeResearchEvidence(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const code = 'AI_ANALYSIS_FAILED';
-    obs.error('Brand intelligence analysis failed', { researchRunId, brandId, provider: providerId, model, error: message });
+    const classified = classifyProviderFailure(error);
+    const code = isBrandValidationError(error) ? 'VALIDATION_ERROR' : classified.code;
+    obs.error('Brand intelligence analysis failed', {
+      researchRunId,
+      brandId,
+      provider: providerId,
+      model,
+      code,
+      error: message,
+    });
     await failTask(code, message);
     return { status: 'FAILED', aiTaskId, provider: providerId, model, errorCode: code, errorMessage: message };
   }
