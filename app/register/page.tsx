@@ -1,13 +1,13 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { LoaderCircle, MailCheck, Sparkles } from 'lucide-react';
+import { LoaderCircle, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { ErrorState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
 
-type Step = 'checking' | 'auth' | 'confirm';
+type Step = 'checking' | 'auth';
 
 export default function RegisterPage() {
   const [step, setStep] = useState<Step>('checking');
@@ -57,15 +57,12 @@ export default function RegisterPage() {
       setLoading(false);
       return;
     }
-    const redirectTo = `${window.location.origin}/register?confirmed=1`;
-
     const supabase = createSupabaseBrowserClient();
     try {
       const { data, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: redirectTo,
           data: { organizationName },
         },
       });
@@ -78,11 +75,12 @@ export default function RegisterPage() {
         return;
       }
 
-      // Supabase may create the account before returning an authenticated
-      // session when email confirmation is enabled. Do not call protected
-      // workspace bootstrap until a session exists.
+      // This product currently runs without email-confirmation gating.
+      // If the hosted Supabase project still requires confirmation, signup will
+      // return a user without a session and the protected workspace bootstrap
+      // cannot run until that Auth setting is disabled.
       if (!data.session) {
-        setStep('confirm');
+        setError('Account created, but email confirmation is still enabled in Supabase Auth. Disable email confirmations for this environment and register again.');
         return;
       }
 
@@ -113,28 +111,6 @@ export default function RegisterPage() {
         footer={<Link href="/" className="auth-link">← Back to home</Link>}
       >
         <div className="card auth-card-form"><span className="spinner" aria-hidden="true" /></div>
-      </AuthLayout>
-    );
-  }
-
-  if (step === 'confirm') {
-    return (
-      <AuthLayout
-        eyebrow="Confirm your email"
-        title="Check your inbox."
-        subtitle="We sent you a confirmation link. Click it to activate your account, then sign in. Your workspace will be loaded automatically."
-        footer={
-          <div className="auth-footer-links">
-            <Link href="/login">Got it — sign in</Link>
-            <Link href="/">Back to home</Link>
-          </div>
-        }
-      >
-        <div className="card auth-card-form auth-success-card">
-          <span className="auth-success-icon"><MailCheck size={22} /></span>
-          <p>After confirming your email, sign in once. We’ll finish your workspace setup automatically using the agency name you entered.</p>
-          <Link href="/login" className="badge" style={{ justifyContent: 'center', textDecoration: 'none' }}>Go to sign in</Link>
-        </div>
       </AuthLayout>
     );
   }
