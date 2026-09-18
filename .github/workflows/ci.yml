@@ -31,3 +31,40 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+      - name: Runtime smoke test
+        shell: bash
+        run: |
+          npm run start > /tmp/uptrendify-next.log 2>&1 &
+          APP_PID=$!
+          trap 'kill $APP_PID 2>/dev/null || true' EXIT
+
+          node <<'NODE'
+          const routes = ['/', '/progress', '/register', '/login', '/forgot-password', '/reset-password', '/api/health'];
+          const deadline = Date.now() + 30000;
+
+          while (Date.now() < deadline) {
+            try {
+              const response = await fetch('http://127.0.0.1:3000/api/health', { cache: 'no-store' });
+              if (response.ok) break;
+            } catch {}
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+
+          for (const route of routes) {
+            const response = await fetch('http://127.0.0.1:3000' + route, { redirect: 'manual', cache: 'no-store' });
+            if (response.status >= 500) {
+              throw new Error(route + ' returned ' + response.status);
+            }
+            console.log(route + ' -> ' + response.status);
+          }
+
+          const health = await (await fetch('http://127.0.0.1:3000/api/health', { cache: 'no-store' })).json();
+          if (!health.integrations?.supabase || !health.integrations?.supabaseDbReachable) {
+            throw new Error('Supabase runtime smoke check failed: ' + JSON.stringify(health.integrations));
+          }
+          console.log('Supabase runtime: reachable');
+          NODE
+
+          echo "----- Next.js runtime log -----"
+          cat /tmp/uptrendify-next.log
