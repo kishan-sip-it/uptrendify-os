@@ -15,22 +15,18 @@ export async function postJson(
       signal: controller.signal,
     });
   } catch (cause) {
-    throw new AiProviderError('http', `Provider request failed: ${cause instanceof Error ? cause.message : String(cause)}`, 502);
+    throw new AiProviderError('http', `Provider request failed: ${cause instanceof Error ? cause.message : String(cause)}`, 0);
   } finally {
     clearTimeout(timer);
   }
 
   const raw = await response.text().catch(() => '');
   let data: any = null;
-  try {
-    data = raw ? JSON.parse(raw) : null;
-  } catch {
-    data = null;
-  }
+  try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
 
   if (!response.ok) {
     const detail = data?.error?.message ?? data?.error ?? raw.slice(0, 200);
-    throw new AiProviderError('http', `Provider returned ${response.status}: ${detail}`, 502);
+    throw new AiProviderError('http', `Provider returned ${response.status}: ${detail}`, response.status);
   }
   return data;
 }
