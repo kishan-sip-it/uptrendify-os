@@ -36,7 +36,7 @@ export default function RegisterPage() {
         body: '{}',
       });
       if (bootstrap.ok) {
-        window.location.href = '/';
+        window.location.href = '/dashboard';
         return;
       }
       setStep('auth');
@@ -96,7 +96,7 @@ export default function RegisterPage() {
         setError(body?.error || 'Could not create your workspace.');
         return;
       }
-      window.location.href = '/';
+      window.location.href = '/dashboard';
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
