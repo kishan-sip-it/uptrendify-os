@@ -13,26 +13,43 @@ vi.mock('@/lib/supabase/server', () => ({
   createSupabaseServerClient: mocks.createSupabaseServerClient,
 }));
 
-function makeClient() {
-  const calls: string[] = [];
+function makeClient(options: {
+  profile?: {
+    first_name: string | null;
+    last_name: string | null;
+    role: string | null;
+    team_size: string | null;
+    timezone: string | null;
+    onboarding_completed: boolean;
+    organization_id: string | null;
+  } | null;
+} = { profile: null }) {
+  const upsertedRows: any[] = [];
   const client: any = {
     from: (table: string) => {
-      calls.push(table);
+      const calls: any[] = [];
       const chain: any = {
         select: () => chain,
         eq: () => chain,
+        order: () => chain,
         limit: () => chain,
-        maybeSingle: async () => ({
-          data: table === 'organization_members'
-            ? { organization_id: ORG_ID, role: 'OWNER' }
-            : null,
-          error: null,
-        }),
-        upsert: async () => ({ data: null, error: null }),
+        maybeSingle: async () => {
+          if (table === 'organization_members') {
+            return { data: { organization_id: ORG_ID, role: 'OWNER' }, error: null };
+          }
+          return { data: options.profile ?? null, error: null };
+        },
+        upsert: async (row: any) => {
+          upsertedRows.push(row);
+          return { data: null, error: null };
+        },
       };
       return chain;
     },
-    calls,
+    auth: {
+      getUser: async () => ({ data: { user: { id: USER_ID } }, error: null }),
+    },
+    upsertedRows,
   };
   return client;
 }
@@ -44,7 +61,6 @@ describe('POST /api/auth/profile', () => {
 
   it('does not allow a user to self-promote membership role', async () => {
     const client = makeClient();
-    client.auth = { getUser: async () => ({ data: { user: { id: USER_ID } }, error: null }) };
     mocks.createSupabaseServerClient.mockResolvedValue(client);
 
     const response = await POST(
@@ -62,7 +78,40 @@ describe('POST /api/auth/profile', () => {
 
     expect(response.status).toBe(200);
     expect(body.profile.role).toBe('OWNER');
-    expect(client.calls.filter((table: string) => table === 'organization_members')).toHaveLength(1);
+    expect(client.upsertedRows[0].role).toBe('OWNER');
+  });
+
+  it('preserves omitted fields when finishing onboarding', async () => {
+    const client = makeClient({
+      profile: {
+        first_name: 'Kishan',
+        last_name: 'Patel',
+        role: 'OWNER',
+        team_size: '2-5',
+        timezone: 'Asia/Kolkata',
+        onboarding_completed: false,
+        organization_id: ORG_ID,
+      },
+    });
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/auth/profile', {
+        method: 'POST',
+        body: JSON.stringify({ onboardingComplete: true }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(client.upsertedRows[0]).toMatchObject({
+      organization_id: ORG_ID,
+      first_name: 'Kishan',
+      last_name: 'Patel',
+      role: 'OWNER',
+      team_size: '2-5',
+      timezone: 'Asia/Kolkata',
+      onboarding_completed: true,
+    });
   });
 
   it('requires authentication', async () => {
