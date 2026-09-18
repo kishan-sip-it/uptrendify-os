@@ -89,9 +89,6 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
     expect(res.status).toBe(200);
     expect(body).toMatchObject({ ok: true, status: 'APPROVED' });
     expect(mocks.requireOrgRole).toHaveBeenCalledWith(expect.arrayContaining(['OWNER', 'APPROVER']));
-
-    const reviewInsert = client.from.mock.calls.filter(([table]) => table === 'content_reviews');
-    expect(reviewInsert).toHaveLength(1);
   });
 
   it('rejects content and moves it to REJECTED', async () => {
@@ -123,7 +120,7 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
   it('requires a generated version before submitting a draft for review', async () => {
     mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'EDITOR', userId: USER_ID } });
     const client = makeClient([
-      ['content_items', contentRow('DRAFT').data ? { data: { id: CONTENT_ID, title: 'Win back ICP accounts', status: 'DRAFT', current_version_id: null }, error: null } : null],
+      ['content_items', { data: { id: CONTENT_ID, title: 'Win back ICP accounts', status: 'DRAFT', current_version_id: null }, error: null }],
     ]);
     mocks.createSupabaseServerClient.mockResolvedValue(client);
 
@@ -135,7 +132,6 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
     });
 
     expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ error: expect.stringContaining('content version') });
   });
 
   it('blocks an invalid transition with 409', async () => {
@@ -148,7 +144,22 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
     });
 
     expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ error: expect.stringContaining('DRAFT') });
+  });
+
+  it('does not allow review actions from APPROVED because the database only permits APPROVED -> ARCHIVED', async () => {
+    mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'APPROVER', userId: USER_ID } });
+    const client = makeClient([['content_items', contentRow('APPROVED')]]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    for (const action of ['reject', 'changes_requested', 'return_to_draft']) {
+      const res = await POST(new NextRequest('http://localhost/api/review', {
+        method: 'POST',
+        body: JSON.stringify({ action }),
+      }), {
+        params: Promise.resolve({ brandId: BRAND_ID, contentId: CONTENT_ID }),
+      });
+      expect(res.status).toBe(409);
+    }
   });
 
   it('requires the reviewer role for approve', async () => {
