@@ -139,12 +139,65 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     });
 
     if (await isReplayOrganization(supabase, auth.context.organizationId)) {
+      const replayIdempotencyKey = body.idempotencyKey ?? `content:replay:${contentId}:${crypto.randomUUID()}`;
+      const replayTaskInsert = await supabase
+        .from('ai_tasks')
+        .insert({
+          organization_id: auth.context.organizationId,
+          brand_id: brand.id,
+          content_item_id: contentId,
+          task_type: CONTENT_TASK_TYPE,
+          status: 'RUNNING',
+          idempotency_key: replayIdempotencyKey,
+          input_metadata: { replay: true, intentType: intent.type, intentChannel: intent.channel },
+          started_at: new Date().toISOString(),
+          ...(auth.context.userId ? { created_by: auth.context.userId } : {}),
+        })
+        .select('id')
+        .single();
+
+      if (replayTaskInsert.error) {
+        if (replayTaskInsert.error.code === '23505') {
+          const prior = await supabase
+            .from('ai_tasks')
+            .select('id,status,output_metadata,provider,model')
+            .eq('organization_id', auth.context.organizationId)
+            .eq('idempotency_key', replayIdempotencyKey)
+            .maybeSingle();
+          if (!prior.error && prior.data?.status === 'SUCCEEDED') {
+            const metadata = (prior.data.output_metadata ?? {}) as { version?: number };
+            return NextResponse.json(
+              { ok: true, version: metadata.version ?? null, status: 'SUCCEEDED', provider: prior.data.provider, model: prior.data.model, replay: true },
+              { status: 200 },
+            );
+          }
+
+          const concurrentReplay = await supabase
+            .from('ai_tasks')
+            .select('id,status')
+            .eq('content_item_id', contentId)
+            .eq('organization_id', auth.context.organizationId)
+            .eq('task_type', CONTENT_TASK_TYPE)
+            .in('status', ['QUEUED', 'RUNNING'])
+            .limit(1)
+            .maybeSingle();
+          if (!concurrentReplay.error && concurrentReplay.data) {
+            return NextResponse.json(
+              { error: 'A generation is already running for this content item', aiTaskId: concurrentReplay.data.id, status: concurrentReplay.data.status },
+              { status: 409 },
+            );
+          }
+        }
+        throw replayTaskInsert.error;
+      }
+
       const outcome = await completeReplayContentGeneration(supabase, {
         organizationId: auth.context.organizationId,
         brandId: brand.id,
         contentId,
         userId: auth.context.userId,
         intent,
+        aiTaskId: replayTaskInsert.data.id,
       });
       return NextResponse.json(
         { ok: true, status: outcome.status, version: outcome.version, replay: true },
