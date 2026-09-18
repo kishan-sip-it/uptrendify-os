@@ -20,7 +20,7 @@ export const TRANSIENT_PROVIDER_ERROR_PATTERNS = [
 
 export function isTransientProviderError(error: unknown): boolean {
   if (error instanceof AiProviderError) {
-    return error.status === 429 || error.status === 502 || error.status === 503;
+    return error.status === 429 || error.status === 502 || error.status === 503 || error.status === 504;
   }
   const message = error instanceof Error ? error.message : String(error);
   return TRANSIENT_PROVIDER_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
