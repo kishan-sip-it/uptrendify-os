@@ -203,28 +203,40 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
       const bodyChanged = !previous || (previous.body as string) !== body.body;
       if (bodyChanged) {
         const previousMetadata = (previous?.metadata ?? {}) as Record<string, unknown>;
-        const insert = await supabase
-          .from('content_versions')
-          .insert({
-            organization_id: auth.context.organizationId,
-            content_item_id: contentId,
-            version: nextVersion,
-            body: body.body,
-            headline: (body.title ?? previous?.headline ?? item.title) as string,
-            cta: (previous?.cta as string | null) ?? null,
-            strategy_id: item.strategy_id as string | null,
-            provider: null,
-            model: null,
-            author_user_id: auth.context.userId,
-            rationale: (previous?.rationale as string | null) ?? null,
-            brand_fact_references: (previous?.brand_fact_references ?? []) as unknown[],
-            strategy_references: (previous?.strategy_references ?? []) as unknown[],
-            metadata: { ...previousMetadata, manualEdit: true },
-          })
-          .select('id')
-          .single();
-        if (insert.error) throw insert.error;
-        manualVersionId = insert.data.id;
+        let candidateVersion = nextVersion;
+
+        for (let attempt = 0; attempt < 4 && !manualVersionId; attempt += 1) {
+          const insert = await supabase
+            .from('content_versions')
+            .insert({
+              organization_id: auth.context.organizationId,
+              content_item_id: contentId,
+              version: candidateVersion,
+              body: body.body,
+              headline: (body.title ?? previous?.headline ?? item.title) as string,
+              cta: (previous?.cta as string | null) ?? null,
+              strategy_id: item.strategy_id as string | null,
+              provider: null,
+              model: null,
+              author_user_id: auth.context.userId,
+              rationale: (previous?.rationale as string | null) ?? null,
+              brand_fact_references: (previous?.brand_fact_references ?? []) as unknown[],
+              strategy_references: (previous?.strategy_references ?? []) as unknown[],
+              metadata: { ...previousMetadata, manualEdit: true },
+            })
+            .select('id')
+            .single();
+
+          if (!insert.error) {
+            manualVersionId = insert.data.id;
+            break;
+          }
+
+          if (insert.error.code !== '23505') throw insert.error;
+          candidateVersion += 1;
+        }
+
+        if (!manualVersionId) throw new Error('CONTENT_VERSION_CONFLICT');
       }
     }
 
@@ -253,6 +265,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
     return NextResponse.json({ ok: true, item: refreshed ? normalizeItem(refreshed) : null });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid content update' }, { status: 400 });
+    if (error instanceof Error && error.message === 'CONTENT_VERSION_CONFLICT') {
+      return NextResponse.json({ error: 'A newer content version was saved concurrently. Reload and try again.' }, { status: 409 });
+    }
     obs.error('Content update failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Could not update content item' }, { status: 500 });
   }
