@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { env } from '@/lib/env';
 import { obs } from '@/lib/obs/logger';
-import { assertPublicHttpUrl, assertResolvablePublicHost, readBoundedBody } from './url-security';
+import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from './url-security';
 import { extractPage } from './extract';
 
 export const RESEARCH_TERMINAL_STATUSES = ['COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'] as const;
@@ -118,7 +118,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         const timeout = setTimeout(() => controller.abort(), e.RESEARCH_TIMEOUT_MS);
         let response: Response;
         try {
-          response = await fetch(target, {
+          response = await fetchPublicHttp(target, {
             signal: controller.signal,
             redirect: 'manual',
             headers: { 'user-agent': e.RESEARCH_USER_AGENT, accept: 'text/html,application/xhtml+xml' },
