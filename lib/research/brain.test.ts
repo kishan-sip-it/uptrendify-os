@@ -208,7 +208,7 @@ describe('analyzeResearchEvidence', () => {
     const outcome = await analyzeResearchEvidence(client as any, { organizationId: ORG_ID, brandId: BRAND_ID, researchRunId: RUN_ID }, { provider: failingProvider as any });
     expect(outcome.status).toBe('FAILED');
     expect(outcome.aiTaskId).toBe(TASK_ID);
-    expect(outcome.errorCode).toBe('AI_ANALYSIS_FAILED');
+    expect(outcome.errorCode).toBe('RATE_LIMITED');
     expect(outcome.provider).toBe('groq');
     expect(outcome.model).toBe('llama');
   });
