@@ -24,7 +24,7 @@ export default function LoginPage() {
     if (!response.ok) {
       throw new Error(payload?.error || 'Your account is valid, but the workspace could not be loaded.');
     }
-    window.location.href = '/';
+    window.location.href = '/dashboard';
   }
 
   async function checkSession() {
