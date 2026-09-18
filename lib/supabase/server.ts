@@ -1,7 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getSupabaseConfig } from './config';
-import { env } from '@/lib/env';
 
 export async function createSupabaseServerClient() {
   const { url, key } = getSupabaseConfig();
