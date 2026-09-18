@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { icon: LayoutGrid, label: 'Dashboard', href: '/dashboard', soon: false },
   { icon: Users, label: 'Brands', href: '/brands', soon: false },
   { icon: Target, label: 'Strategy', soon: true },
-  { icon: FileText, label: 'Content Studio', soon: true },
+  { icon: FileText, label: 'Content Studio', href: '/content', soon: false },
   { icon: Boxes, label: 'Campaigns', soon: true },
   { icon: CheckCircle2, label: 'Approvals', soon: true },
 ];

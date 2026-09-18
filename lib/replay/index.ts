@@ -5,9 +5,11 @@ import { persistSuggestionDrafts, isEmptyValue, type EvidenceItem, type Evidence
 import { checkApprovalGate, GATE_MIN_APPROVED, loadSuggestionRows } from '@/lib/brain/review';
 import { BRAIN_TASK_TYPE, INSIGHT_ORIGIN, persistInsights, type BrainInsightRow } from '@/lib/research/brain';
 import type { StrategyOutput } from '@/lib/strategy/schema';
+import type { ContentIntentLike } from '@/lib/content/schema';
 import fixtureJson from './fixtures/aurora.json';
 
 const REPLAY_STRATEGY_TASK_TYPE = 'strategy_generation';
+const REPLAY_CONTENT_TASK_TYPE = 'content_generation';
 
 const CHUNK_MAX_CHARS = 2000;
 const CHUNK_OVERLAP = 150;
@@ -65,6 +67,18 @@ export const fixture = fixtureJson as unknown as {
   suggestions: FixtureSuggestionEntry[];
   insights: Array<{ category: string; title: string; description: string; priority: number; claimUrl?: string | null }>;
   strategy: StrategyOutput;
+  content: {
+    samples: Array<{
+      type: string;
+      channel: string;
+      headline: string;
+      body: string;
+      cta: string;
+      rationale: string;
+      strategyReferences: string[];
+      brandFactReferences: string[];
+    }>;
+  };
 };
 
 export const REPLAY_ORG_SLUG = fixture.meta.organizationSlug;
@@ -544,4 +558,142 @@ export async function regenerateReplaySuggestion(
   if (updateError) throw updateError;
 
   return draft;
+}
+
+export type ContentSample = {
+  type: string;
+  channel: string;
+  headline: string;
+  body: string;
+  cta: string;
+  rationale: string;
+  strategyReferences: string[];
+  brandFactReferences: string[];
+};
+
+export function fixtureContentSample(type: string, channel?: string): ContentSample {
+  const matchChannel = fixture.content.samples.find((sample) => sample.type === type && sample.channel === (channel ?? sample.channel));
+  const matchType = fixture.content.samples.find((sample) => sample.type === type);
+  const sample = matchChannel ?? matchType ?? fixture.content.samples[0];
+  if (!sample) throw new Error('REPLAY_CONTENT_FIXTURE_MISSING');
+  return sample;
+}
+
+export type ReplayContentOutcome = {
+  status: 'SUCCEEDED' | 'FAILED';
+  version: number;
+  errorCode?: string;
+  errorMessage?: string;
+};
+
+export async function completeReplayContentGeneration(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    brandId: string;
+    contentId: string;
+    userId?: string | null;
+    intent: Pick<ContentIntentLike, 'type' | 'channel' | 'title'>;
+  },
+): Promise<ReplayContentOutcome> {
+  const { organizationId, brandId, contentId, userId, intent } = args;
+  const now = new Date().toISOString();
+  const sample = fixtureContentSample(intent.type, intent.channel);
+
+  const versionsResult = await supabase
+    .from('content_versions')
+    .select('version')
+    .eq('content_item_id', contentId)
+    .eq('organization_id', organizationId)
+    .order('version', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (versionsResult.error) throw versionsResult.error;
+  const version = ((versionsResult.data?.version as number | undefined) ?? 0) + 1;
+
+  const strategyResult = await supabase
+    .from('strategies')
+    .select('id')
+    .eq('brand_id', brandId)
+    .eq('organization_id', organizationId)
+    .eq('status', 'SUCCEEDED')
+    .order('version', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (strategyResult.error) throw strategyResult.error;
+  const strategyId = strategyResult.data?.id ?? null;
+
+  const versionInsert = await supabase
+    .from('content_versions')
+    .insert({
+      organization_id: organizationId,
+      content_item_id: contentId,
+      version,
+      body: sample.body,
+      headline: sample.headline,
+      cta: sample.cta,
+      strategy_id: strategyId,
+      provider: REPLAY_PROVIDER,
+      model: REPLAY_MODEL,
+      author_user_id: userId ?? null,
+      rationale: sample.rationale,
+      brand_fact_references: sample.brandFactReferences,
+      strategy_references: sample.strategyReferences,
+      metadata: {
+        formatted: true,
+        content_type: intent.type,
+        channel: intent.channel,
+        intent: {},
+        replay: true,
+      },
+    })
+    .select('id')
+    .single();
+  if (versionInsert.error) throw versionInsert.error;
+  const contentVersionId = versionInsert.data.id;
+
+  const itemUpdate = await supabase
+    .from('content_items')
+    .update({ current_version_id: contentVersionId, updated_at: now })
+    .eq('id', contentId)
+    .eq('organization_id', organizationId);
+  if (itemUpdate.error) throw itemUpdate.error;
+
+  const aiInsert = await supabase.from('ai_tasks').insert({
+    organization_id: organizationId,
+    brand_id: brandId,
+    content_item_id: contentId,
+    strategy_id: strategyId,
+    task_type: REPLAY_CONTENT_TASK_TYPE,
+    status: 'SUCCEEDED',
+    provider: REPLAY_PROVIDER,
+    model: REPLAY_MODEL,
+    idempotency_key: `content:${contentId}:${Date.now()}`,
+    input_metadata: { replay: true, intentType: intent.type, intentChannel: intent.channel },
+    output_metadata: {
+      replay: true,
+      version,
+      contentVersionId,
+      headline: sample.headline,
+      bodyChars: sample.body.length,
+    },
+    latency_ms: 0,
+    started_at: now,
+    finished_at: now,
+  });
+  if (aiInsert.error) throw aiInsert.error;
+
+  if (userId) {
+    await supabase.from('audit_logs').insert({
+      organization_id: organizationId,
+      actor_user_id: userId,
+      action: 'content.generated',
+      entity_type: 'content',
+      entity_id: contentId,
+      metadata: { replay: true, provider: REPLAY_PROVIDER, version, aiTaskStatus: 'SUCCEEDED' },
+    });
+  }
+
+  obs.info('Replay content generation completed', { contentId, brandId, organizationId, version });
+  return { status: 'SUCCEEDED', version };
 }

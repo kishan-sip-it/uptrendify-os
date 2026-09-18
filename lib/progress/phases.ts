@@ -86,8 +86,12 @@ export const PROJECT_PHASES: readonly ProjectPhase[] = [
     phase: 10,
     title: 'Content Studio',
     description: 'Brand-directed content creation for ads, social and web using the approved Brand Brain and strategy.',
-    status: 'PENDING',
-    evidence: [],
+    status: 'COMPLETED',
+    evidence: [
+      '0008 migration: content_items intent fields, versioned content_versions, content_reviews, REJECTED status',
+      'content_generation pipeline grounded in approved Brand Brain + latest strategy, with ai_tasks traceability',
+      'Review state machine (submit → IN_REVIEW → approve/reject/…) + replay content generation',
+    ],
   },
   {
     phase: 11,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CAN_CREATE_BRANDS, CAN_RUN_RESEARCH, CAN_VIEW_DASHBOARD, ROLES } from './roles';
+import { CAN_CREATE_BRANDS, CAN_RUN_RESEARCH, CAN_REVIEW_CONTENT, CAN_VIEW_DASHBOARD, ROLES } from './roles';
 
 describe('role constants', () => {
   it('includes all expected roles', () => {
@@ -28,5 +28,14 @@ describe('role constants', () => {
     for (const role of Object.values(ROLES)) {
       expect(CAN_VIEW_DASHBOARD).toContain(role);
     }
+  });
+
+  it('CAN_REVIEW_CONTENT reserves approval to owner/admin/strategist/approver', () => {
+    expect(CAN_REVIEW_CONTENT).toContain(ROLES.OWNER);
+    expect(CAN_REVIEW_CONTENT).toContain(ROLES.ADMIN);
+    expect(CAN_REVIEW_CONTENT).toContain(ROLES.STRATEGIST);
+    expect(CAN_REVIEW_CONTENT).toContain(ROLES.APPROVER);
+    expect(CAN_REVIEW_CONTENT).not.toContain(ROLES.EDITOR);
+    expect(CAN_REVIEW_CONTENT).not.toContain(ROLES.CLIENT);
   });
 });

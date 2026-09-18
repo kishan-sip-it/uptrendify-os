@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/app/shell';
+import { Analytics } from "@vercel/analytics/next"
 import { CAN_VIEW_DASHBOARD, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isReplayOrgSlug } from '@/lib/replay';

@@ -1052,5 +1052,63 @@
         "impact": "Reinforced in messaging and campaigns"
       }
     ]
+  },
+  "content": {
+    "samples": [
+      {
+        "type": "social_post",
+        "channel": "linkedin",
+        "headline": "Stop debating opinions. Start working from evidence.",
+        "body": "Fractional CMOs are expected to own a defensible point of view on the brand within their first two weeks. That deadline does not leave room for research that runs for a quarter.\n\nAurora Labs turns public web research into a human-approved brand brain, so growth teams get from scattered opinions to defensible positioning in days, not quarters. Every brand fact is traceable to a cited public source and signed off by a person — no undocumented claims, no agency retainer, no endless doc debate.\n\nIt is the same discipline we publish in the Fractional CMO's Guide to Faster Brand Research: capture pages, extract claims with sources, cluster into themes, and get one human sign-off per theme. Teams that follow it report up to 70% faster research with every assertion backed by evidence.\n\nIf you ship a brand POV in the next two weeks, this is how you do it.",
+        "cta": "Start your 14-day free trial",
+        "rationale": "The post leads with the fractional CMO two-week trigger from the approved audience insight, mirrors the approved value proposition and differentiators, and references the published playbook claim (up to 70% faster research) from the approved brand brain.",
+        "strategyReferences": [
+          "Messaging — core message",
+          "Content strategy — Fractional CMO playbooks pillar",
+          "Insight — fractional CMOs deliver a brand POV within two weeks"
+        ],
+        "brandFactReferences": [
+          "Value proposition — human-approved brand brain in days",
+          "Differentiators — evidence-first, traceable research",
+          "Benefits — up to 70% faster brand research"
+        ]
+      },
+      {
+        "type": "ad_copy",
+        "channel": "google_ads",
+        "headline": "Brand research software for evidence-first teams",
+        "body": "Turn public web research into a human-approved brand brain. Aurora Labs captures cited evidence, surfaces suggestions for your team to review, and keeps every brand fact traceable — so positioning is defensible instead of opinionated.\n\nIdeal for fractional CMOs and heads of marketing at product-led B2B SaaS companies who need defensible positioning in days, not quarters.",
+        "cta": "Try Aurora Labs free",
+        "rationale": "Copy targets the commercial intent cluster 'brand research software' from the approved SEO strategy while leaning on the approved value proposition and ICP pain points.",
+        "strategyReferences": [
+          "SEO strategy — commercial investigation intent",
+          "ICP — product-led B2B SaaS marketing leaders",
+          "Messaging — traceable, human-approved claims"
+        ],
+        "brandFactReferences": [
+          "Industry — B2B SaaS brand & growth intelligence",
+          "Value proposition — defensible positioning in days",
+          "Pain points — slow, subjective research"
+        ]
+      },
+      {
+        "type": "email",
+        "channel": "email",
+        "headline": "The 2-week brand POV sprint",
+        "body": "Hi there,\n\nWhen a fractional CMO engagement starts, the clock starts too: a defensible brand POV is usually expected inside two weeks. That is exactly why we built the 2-Week Brand POV Sprint.\n\nIt is a step-by-step, evidence-first workflow: capture the public pages, extract claims with sources, cluster them into themes, and get one human sign-off per theme. No opinion roulette. No spreadsheet archaeology.\n\nTeams using the playbook report up to 70% faster brand research, with every assertion traceable to a public source.\n\nInside this email you will find the links to run the sprint in Aurora Labs: the template download, the playbook guide, and a free trial so you can see your own brand brain form in days, not quarters.",
+        "cta": "Download the sprint template",
+        "rationale": "Nurture message built on the approved campaign '2-Week Brand POV Sprint', the email nurture channel role, and the speed/evidence proof points approved in the brand brain.",
+        "strategyReferences": [
+          "Campaigns — The 2-Week Brand POV Sprint",
+          "Channels — Email nurture (activation and retention)",
+          "Insight — fractional CMO two-week pressure"
+        ],
+        "brandFactReferences": [
+          "Target audience — fractional and in-house marketing leaders",
+          "Benefits — up to 70% faster research",
+          "Calls to action — start free trial, read the guide"
+        ]
+      }
+    ]
   }
 }
