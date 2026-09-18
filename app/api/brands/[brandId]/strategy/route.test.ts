@@ -138,6 +138,7 @@ describe('POST /api/brands/[brandId]/strategy', () => {
       ['strategies', { data: null, error: null }],
       ['strategies', { data: { version: 1 }, error: null }],
       ['strategies', { data: null, error: { code: '23505', message: 'duplicate key' } }],
+      ['strategies', { data: null, error: null }],
       ['strategies', { data: { version: 4 }, error: null }],
       ['strategies', { data: { id: STRATEGY_ID, status: 'QUEUED', version: 5 }, error: null }],
     ]);
