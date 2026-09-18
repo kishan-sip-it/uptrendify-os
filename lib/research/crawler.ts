@@ -151,8 +151,15 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         if (truncated) { partial = true; }
 
         const extracted = extractPage(content, target);
-        const canonicalRaw = extracted.canonicalUrl ? new URL(extracted.canonicalUrl, target).toString() : target;
-        const canonical = normalizeUrl(canonicalRaw);
+        let canonical = target;
+        if (extracted.canonicalUrl) {
+          try {
+            const candidateCanonical = normalizeUrl(new URL(extracted.canonicalUrl, target).toString());
+            if (sameOrigin(root, candidateCanonical)) canonical = candidateCanonical;
+          } catch {
+            canonical = target;
+          }
+        }
         const contentHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(extracted.text)).then(buf => Buffer.from(buf).toString('hex'));
 
         const source = await supabase.from('brand_sources').upsert({
