@@ -13,8 +13,6 @@ const REVIEW_ACTIONS = [
   'changes_requested',
   'return_to_draft',
   'archive',
-  'schedule',
-  'publish',
 ] as const;
 type ReviewAction = (typeof REVIEW_ACTIONS)[number];
 
@@ -32,11 +30,9 @@ const TRANSITIONS: Record<ReviewAction, { from: string[]; to: string }> = {
   changes_requested: { from: ['IN_REVIEW', 'CLIENT_REVIEW', 'APPROVED'], to: 'CHANGES_REQUESTED' },
   return_to_draft: { from: ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'APPROVED'], to: 'DRAFT' },
   archive: { from: ['DRAFT', 'IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED', 'SCHEDULED', 'PUBLISHED'], to: 'ARCHIVED' },
-  schedule: { from: ['APPROVED'], to: 'SCHEDULED' },
-  publish: { from: ['APPROVED', 'SCHEDULED'], to: 'PUBLISHED' },
 };
 
-const REVIEWER_ACTIONS: ReviewAction[] = ['approve', 'reject', 'changes_requested', 'schedule', 'publish'];
+const REVIEWER_ACTIONS: ReviewAction[] = ['approve', 'reject', 'changes_requested'];
 const GENERATOR_ACTIONS: ReviewAction[] = ['submit', 'return_to_draft', 'archive'];
 
 async function loadItem(
@@ -67,6 +63,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     const supabase = await createSupabaseServerClient();
     const item = await loadItem(supabase, { brandId, contentId, organizationId: auth.context.organizationId });
     if (!item) return NextResponse.json({ error: 'Content not found' }, { status: 404 });
+
+    if (body.action === 'submit' && !item.current_version_id) {
+      return NextResponse.json(
+        { error: 'Generate at least one content version before submitting for review' },
+        { status: 409 },
+      );
+    }
 
     const transition = TRANSITIONS[body.action];
     if (!transition.from.includes(item.status)) {
