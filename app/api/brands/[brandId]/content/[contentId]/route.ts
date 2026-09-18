@@ -140,15 +140,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
     }
 
-    if (body.clientId) {
-      const client = await supabase
-        .from('clients')
-        .select('id')
-        .eq('id', body.clientId)
+    if (body.clientId !== undefined) {
+      const brandContext = await supabase
+        .from('brands')
+        .select('client_id')
+        .eq('id', brandId)
         .eq('organization_id', auth.context.organizationId)
         .maybeSingle();
-      if (client.error) throw client.error;
-      if (!client.data) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+      if (brandContext.error) throw brandContext.error;
+      if (!brandContext.data) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+
+      if (body.clientId !== null && body.clientId !== brandContext.data.client_id) {
+        return NextResponse.json({ error: 'Client does not own this brand' }, { status: 409 });
+      }
+
+      if (body.clientId === null) {
+        return NextResponse.json({ error: 'Content client attribution cannot be cleared from a brand-owned content item' }, { status: 409 });
+      }
     }
 
     const itemRow: Record<string, unknown> = {
