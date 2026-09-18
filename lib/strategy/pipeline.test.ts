@@ -180,7 +180,7 @@ describe('runStrategyGeneration', () => {
       { provider: fakeProvider(generate) },
     );
 
-    expect(outcome).toMatchObject({ status: 'FAILED', errorCode: 'STRATEGY_VALIDATION_FAILED' });
+    expect(outcome).toMatchObject({ status: 'FAILED', errorCode: 'VALIDATION_ERROR' });
     expect(generate).toHaveBeenCalledTimes(2);
   });
 
