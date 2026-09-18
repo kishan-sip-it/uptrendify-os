@@ -47,9 +47,9 @@ export async function requireOrgRole(allowed: OrgRole[]): Promise<AuthResult> {
 
   const { data: memberships, error } = await supabase
     .from('organization_members')
-    .select('organization_id, role')
+    .select('organization_id, role, created_at')
     .eq('user_id', user.id)
-    .order('organization_id', { ascending: true })
+    .order('created_at', { ascending: true })
     .limit(50);
 
   if (error) return { error: { status: 500, body: { error: 'Failed to resolve organization membership' } }, context: null };
