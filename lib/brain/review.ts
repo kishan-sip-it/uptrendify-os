@@ -158,11 +158,6 @@ export async function approveSuggestion(
     throw new Error('SUGGESTION_HAS_NO_APPROVABLE_VALUE');
   }
 
-  const proposal = row.proposed_value as SuggestionDraft['proposedValue'];
-  const value = proposal === null || proposal === undefined ? null : proposal;
-  const evidenceIds = (row.evidence as EvidenceItem[])
-    .map((item) => item.sourceId)
-    .filter((id): id is string => Boolean(id));
   const evidence = row.evidence as EvidenceItem[];
 
   await writeCuratedEvidenceInsights(supabase, { organizationId, brandId, evidence });
