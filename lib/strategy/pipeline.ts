@@ -116,7 +116,7 @@ async function loadBrainSnapshot(
   const facts: StrategyFact[] = [
     ...approvedSuggestionRows.map((row) => ({ key: row.label || row.field, value: row.proposed_value })),
   ];
-  const approvedSuggestionKeys = new Set(suggestionRows.map((row) => row.field));
+  const approvedSuggestionKeys = new Set(approvedSuggestionRows.map((row) => row.field));
   for (const row of ((factsResult.data ?? []) as Array<{ key: string; value: unknown }>)) {
     if (!approvedSuggestionKeys.has(row.key)) facts.push({ key: row.key, value: row.value });
   }
@@ -153,8 +153,10 @@ async function loadBrainSnapshot(
         targetAudience: brandResult.data?.target_audience ?? null,
       },
       facts,
-      insights,
-      evidenceClaims,
+      // AI-generated insights/evidence are analysis artifacts, not human-approved
+      // truth. Keep them out of strategy-generation context.
+      insights: [],
+      evidenceClaims: [],
       sources,
       researchRunId: runsResult.data?.[0]?.id ?? null,
     },
