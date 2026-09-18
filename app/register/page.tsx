@@ -9,6 +9,8 @@ import { AuthLayout } from '@/components/auth/auth-layout';
 
 type Step = 'checking' | 'auth' | 'confirm';
 
+const PENDING_WORKSPACE_KEY = 'uptrendify_pending_workspace';
+
 export default function RegisterPage() {
   const [step, setStep] = useState<Step>('checking');
   const [loading, setLoading] = useState(false);
@@ -28,6 +30,23 @@ export default function RegisterPage() {
         window.location.href = '/';
         return;
       }
+
+      // If the account is signed in but the workspace is not yet created,
+      // restore the agency name captured before email confirmation.
+      const pendingWorkspace = window.localStorage.getItem(PENDING_WORKSPACE_KEY);
+      if (pendingWorkspace) {
+        const bootstrap = await fetch('/api/auth/bootstrap', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ organizationName: pendingWorkspace }),
+        });
+        if (bootstrap.ok) {
+          window.localStorage.removeItem(PENDING_WORKSPACE_KEY);
+          window.location.href = '/';
+          return;
+        }
+      }
+
       setStep('auth');
     }
     check().catch(() => setStep('auth'));
@@ -55,6 +74,16 @@ export default function RegisterPage() {
         return;
       }
       if (!data.user) {
+        setError('Account creation did not return a user. Please try again.');
+        return;
+      }
+
+      // Supabase can create the user without an active session when email
+      // confirmation is required. In that case, calling the protected
+      // bootstrap endpoint immediately produces "Authentication required".
+      // Save the workspace name and wait until the user confirms/signs in.
+      if (!data.session) {
+        window.localStorage.setItem(PENDING_WORKSPACE_KEY, organizationName);
         setStep('confirm');
         return;
       }
@@ -105,7 +134,7 @@ export default function RegisterPage() {
       >
         <div className="card auth-card-form auth-success-card">
           <span className="auth-success-icon"><MailCheck size={22} /></span>
-          <p>No email yet? Resend by submitting the form again.</p>
+          <p>After confirming your email, sign in once. We’ll finish creating the workspace using the agency name you entered.</p>
           <Link href="/login" className="badge" style={{ justifyContent: 'center', textDecoration: 'none' }}>Go to sign in</Link>
         </div>
       </AuthLayout>
