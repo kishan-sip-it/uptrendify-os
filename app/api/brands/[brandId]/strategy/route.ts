@@ -133,6 +133,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
             return NextResponse.json({ ok: true, ...replayResponse(existing.data) }, { status: 200 });
           }
         }
+
+        const concurrent = await supabase
+          .from('strategies')
+          .select('id,status,version')
+          .eq('brand_id', brand.id)
+          .eq('organization_id', auth.context.organizationId)
+          .in('status', [...STRATEGY_ACTIVE_STATUSES])
+          .limit(1)
+          .maybeSingle();
+
+        if (!concurrent.error && concurrent.data) {
+          return NextResponse.json(
+            { error: 'A strategy is already being generated for this brand', strategyId: concurrent.data.id, status: concurrent.data.status },
+            { status: 409 },
+          );
+        }
+
+        // Otherwise the conflict came from the (brand_id, version) uniqueness
+        // constraint; advance once and retry without masking unrelated errors.
         const retryVersion = await supabase
           .from('strategies')
           .select('version')
