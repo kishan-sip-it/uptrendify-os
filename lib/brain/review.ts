@@ -338,7 +338,7 @@ export async function regenerateSuggestion(
       .from('ai_tasks')
       .update({
         status: 'FAILED',
-        error_code: 'FIELD_REGEN_FAILED',
+        error_code: classifyProviderFailure(error).code,
         error_message: message.slice(0, 600),
         finished_at: new Date().toISOString(),
       })
