@@ -25,7 +25,7 @@ export default function RegisterPage() {
       const response = await fetch('/api/auth/bootstrap');
       const body = response.ok ? await response.json() : null;
       if (body?.organization) {
-        window.location.href = '/';
+        window.location.href = '/dashboard';
         return;
       }
 
