@@ -33,8 +33,34 @@ export async function POST(request: Request) {
     if (client.error) throw client.error;
     if (!client.data) {
       const createdClient = await supabase.from('clients').insert({ organization_id: organizationId, name: body.clientName, slug: clientSlug }).select('id').single();
-      if (createdClient.error) throw createdClient.error;
-      client = { data: createdClient.data, error: null } as typeof client;
+      if (createdClient.error) {
+        if (createdClient.error.code === '23505') {
+          const racedClient = await supabase
+            .from('clients')
+            .select('id')
+            .eq('organization_id', organizationId)
+            .eq('slug', clientSlug)
+            .maybeSingle();
+          if (racedClient.error || !racedClient.data) throw createdClient.error;
+          client = { data: racedClient.data, error: null } as typeof client;
+        } else {
+          throw createdClient.error;
+        }
+      } else {
+        client = { data: createdClient.data, error: null } as typeof client;
+      }
+    }
+
+    const existingBrand = await supabase
+      .from('brands')
+      .select('id,name,website_url')
+      .eq('organization_id', organizationId)
+      .eq('client_id', client.data!.id)
+      .eq('slug', brandSlug)
+      .maybeSingle();
+    if (existingBrand.error) throw existingBrand.error;
+    if (existingBrand.data) {
+      return NextResponse.json({ ok: true, brand: existingBrand.data, existing: true }, { status: 200 });
     }
 
     const createdBrand = await supabase.from('brands').insert({
@@ -48,7 +74,20 @@ export async function POST(request: Request) {
       target_audience: body.targetAudience || null,
     }).select('id,name,website_url').single();
 
-    if (createdBrand.error) throw createdBrand.error;
+    if (createdBrand.error) {
+      if (createdBrand.error.code === '23505') {
+        const racedBrand = await supabase
+          .from('brands')
+          .select('id,name,website_url')
+          .eq('organization_id', organizationId)
+          .eq('client_id', client.data!.id)
+          .eq('slug', brandSlug)
+          .maybeSingle();
+        if (racedBrand.error || !racedBrand.data) throw createdBrand.error;
+        return NextResponse.json({ ok: true, brand: racedBrand.data, existing: true }, { status: 200 });
+      }
+      throw createdBrand.error;
+    }
 
     obs.info('Brand created', { organizationId, brandId: createdBrand.data.id, actorRole: auth.context.role });
     return NextResponse.json({ ok: true, brand: createdBrand.data }, { status: 201 });
