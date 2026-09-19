@@ -38,28 +38,60 @@ export type AuthResult =
   | { error: null; context: AuthContext };
 
 export async function requireOrgRole(allowed: OrgRole[]): Promise<AuthResult> {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: { status: 401, body: { error: 'Authentication required' } }, context: null };
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-  const cookieStore = await cookies();
-  const preferredOrgId = cookieStore.get(ORG_SWITCH_COOKIE)?.value ?? null;
+    if (userError) {
+      return { error: { status: 401, body: { error: 'Authentication required' } }, context: null };
+    }
+    if (!user) {
+      return { error: { status: 401, body: { error: 'Authentication required' } }, context: null };
+    }
 
-  const { data: memberships, error } = await supabase
-    .from('organization_members')
-    .select('organization_id, role, created_at')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: true })
-    .limit(50);
+    const cookieStore = await cookies();
+    const preferredOrgId = cookieStore.get(ORG_SWITCH_COOKIE)?.value ?? null;
 
-  if (error) return { error: { status: 500, body: { error: 'Failed to resolve organization membership' } }, context: null };
+    const { data: memberships, error } = await supabase
+      .from('organization_members')
+      .select('organization_id, role, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+      .limit(50);
 
-  let membership: { organization_id: string; role: string } | undefined;
-  if (preferredOrgId) membership = memberships?.find((row) => row.organization_id === preferredOrgId);
-  if (!membership) membership = memberships?.[0];
+    if (error) {
+      return { error: { status: 500, body: { error: 'Failed to resolve organization membership' } }, context: null };
+    }
 
-  if (!membership) return { error: { status: 403, body: { error: 'No organization membership found' } }, context: null };
-  if (!allowed.includes(membership.role as OrgRole)) return { error: { status: 403, body: { error: 'Insufficient permissions for this action' } }, context: null };
+    let membership: { organization_id: string; role: string } | undefined;
+    if (preferredOrgId) membership = memberships?.find((row) => row.organization_id === preferredOrgId);
+    if (!membership) membership = memberships?.[0];
 
-  return { error: null, context: { organizationId: membership.organization_id, role: membership.role as OrgRole, userId: user.id } };
+    if (!membership) {
+      return { error: { status: 403, body: { error: 'No organization membership found' } }, context: null };
+    }
+
+    if (!allowed.includes(membership.role as OrgRole)) {
+      return { error: { status: 403, body: { error: 'Insufficient permissions for this action' } }, context: null };
+    }
+
+    return {
+      error: null,
+      context: {
+        organizationId: membership.organization_id,
+        role: membership.role as OrgRole,
+        userId: user.id,
+      },
+    };
+  } catch (error) {
+    return {
+      error: {
+        status: 500,
+        body: {
+          error: 'Authentication service unavailable',
+        },
+      },
+      context: null,
+    };
+  }
 }
