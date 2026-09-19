@@ -47,7 +47,7 @@ function mapAuthRegistrationError(message: string) {
 
   return {
     status: 400,
-    error: 'Could not create your account.',
+    error: message.length <= 240 ? `Registration failed: ${message}` : 'Registration failed. Please review your account details and try again.',
   };
 }
 
