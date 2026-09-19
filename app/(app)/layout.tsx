@@ -11,85 +11,112 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const auth = await requireOrgRole(CAN_VIEW_DASHBOARD);
   if (auth.error) redirect('/login');
 
-  const supabase = await createSupabaseServerClient();
-  const [userResult, organizationResult, brandsResult, profileResult] = await Promise.allSettled([
-    supabase.auth.getUser(),
-    supabase
-      .from('organizations')
-      .select('name,slug')
-      .eq('id', auth.context.organizationId)
-      .maybeSingle(),
-    supabase
-      .from('brands')
-      .select('id,name,website_url,status')
-      .eq('organization_id', auth.context.organizationId)
-      .order('created_at', { ascending: true })
-      .limit(100),
-    supabase
-      .from('user_profiles')
-      .select('first_name,last_name,onboarding_completed')
-      .eq('user_id', auth.context.userId)
-      .maybeSingle(),
-  ]);
+  // Authorization above is the hard requirement. Workspace/profile/brand
+  // presentation data is best-effort so a transient Supabase read cannot turn
+  // the whole authenticated application into a global Next.js error page.
+  let organization = { name: 'Your workspace', slug: '' as string | null };
+  let brands: Array<{ id: string; name: string; website_url: string | null; status: string | null }> = [];
+  let userEmail = '';
+  let userFirstName: string | null = null;
+  let onboardingCompleted = true;
 
-  const user =
-    userResult.status === 'fulfilled' && !userResult.value.error
-      ? userResult.value.data.user
-      : null;
-  const organization =
-    organizationResult.status === 'fulfilled' && !organizationResult.value.error
-      ? organizationResult.value.data
-      : null;
-  const brands =
-    brandsResult.status === 'fulfilled' && !brandsResult.value.error
-      ? brandsResult.value.data ?? []
-      : [];
-  const profile =
-    profileResult.status === 'fulfilled' && !profileResult.value.error
-      ? profileResult.value.data
-      : null;
+  try {
+    const supabase = await createSupabaseServerClient();
+    const [userResult, organizationResult, brandsResult, profileResult] = await Promise.allSettled([
+      supabase.auth.getUser(),
+      supabase
+        .from('organizations')
+        .select('name,slug')
+        .eq('id', auth.context.organizationId)
+        .maybeSingle(),
+      supabase
+        .from('brands')
+        .select('id,name,website_url,status')
+        .eq('organization_id', auth.context.organizationId)
+        .order('created_at', { ascending: true })
+        .limit(100),
+      supabase
+        .from('user_profiles')
+        .select('first_name,last_name,onboarding_completed')
+        .eq('user_id', auth.context.userId)
+        .maybeSingle(),
+    ]);
 
-  if (userResult.status === 'rejected') {
-    obs.error('Authenticated user lookup failed in app shell', { error: String(userResult.reason) });
-  }
-  if (organizationResult.status === 'rejected') {
-    obs.error('Organization shell lookup failed', { organizationId: auth.context.organizationId, error: String(organizationResult.reason) });
-  } else if (organizationResult.status === 'fulfilled' && organizationResult.value.error) {
-    obs.error('Organization shell query failed', { organizationId: auth.context.organizationId, error: organizationResult.value.error.message });
-  }
-  if (brandsResult.status === 'rejected') {
-    obs.error('Brand shell lookup failed', { organizationId: auth.context.organizationId, error: String(brandsResult.reason) });
-  } else if (brandsResult.status === 'fulfilled' && brandsResult.value.error) {
-    obs.error('Brand shell query failed', { organizationId: auth.context.organizationId, error: brandsResult.value.error.message });
-  }
-  if (profileResult.status === 'rejected') {
-    obs.error('Profile shell lookup failed', { userId: auth.context.userId, error: String(profileResult.reason) });
-  } else if (profileResult.status === 'fulfilled' && profileResult.value.error) {
-    obs.error('Profile shell query failed', { userId: auth.context.userId, error: profileResult.value.error.message });
+    if (userResult.status === 'fulfilled' && !userResult.value.error) {
+      userEmail = userResult.value.data.user?.email ?? '';
+    }
+    if (organizationResult.status === 'fulfilled' && !organizationResult.value.error && organizationResult.value.data) {
+      organization = organizationResult.value.data;
+    }
+    if (brandsResult.status === 'fulfilled' && !brandsResult.value.error) {
+      brands = brandsResult.value.data ?? [];
+    }
+    if (profileResult.status === 'fulfilled' && !profileResult.value.error && profileResult.value.data) {
+      userFirstName = profileResult.value.data.first_name ?? null;
+      onboardingCompleted = profileResult.value.data.onboarding_completed === true;
+    } else if (profileResult.status === 'fulfilled' && profileResult.value.data === null) {
+      onboardingCompleted = false;
+    }
+
+    if (userResult.status === 'rejected') {
+      obs.error('Authenticated user lookup failed in app shell', { error: String(userResult.reason) });
+    }
+    if (organizationResult.status === 'rejected' || (organizationResult.status === 'fulfilled' && organizationResult.value.error)) {
+      obs.error('Organization shell lookup failed', {
+        organizationId: auth.context.organizationId,
+        error: organizationResult.status === 'rejected'
+          ? String(organizationResult.reason)
+          : organizationResult.value.error?.message,
+      });
+    }
+    if (brandsResult.status === 'rejected' || (brandsResult.status === 'fulfilled' && brandsResult.value.error)) {
+      obs.error('Brand shell lookup failed', {
+        organizationId: auth.context.organizationId,
+        error: brandsResult.status === 'rejected'
+          ? String(brandsResult.reason)
+          : brandsResult.value.error?.message,
+      });
+    }
+    if (profileResult.status === 'rejected' || (profileResult.status === 'fulfilled' && profileResult.value.error)) {
+      obs.error('Profile shell lookup failed', {
+        userId: auth.context.userId,
+        error: profileResult.status === 'rejected'
+          ? String(profileResult.reason)
+          : profileResult.value.error?.message,
+      });
+    }
+  } catch (error) {
+    // Authorization already succeeded, so keep the shell usable even when
+    // optional workspace hydration fails. Profile absence still routes to
+    // onboarding below when we were able to inspect it.
+    obs.error('App shell hydration failed', {
+      organizationId: auth.context.organizationId,
+      userId: auth.context.userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
-  // A missing profile is an incomplete onboarding state. A transient profile
-  // query error should not crash the whole application shell; route the user
-  // through onboarding instead, where the profile can be repaired.
-  if (!profile || profile.onboarding_completed !== true) redirect('/onboarding');
+  if (!onboardingCompleted) redirect('/onboarding');
 
   let replayActive = false;
   try {
-    replayActive = isReplayOrgSlug(organization?.slug ?? '');
+    replayActive = isReplayOrgSlug(organization.slug ?? '');
   } catch (error) {
-    obs.error('Replay mode configuration could not be evaluated', { error: error instanceof Error ? error.message : String(error) });
+    obs.error('Replay mode configuration could not be evaluated', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   return (
     <AppShell
       organization={{
         id: auth.context.organizationId,
-        name: organization?.name ?? 'Your workspace',
+        name: organization.name || 'Your workspace',
         role: auth.context.role,
       }}
       brands={brands}
-      userEmail={user?.email ?? ''}
-      userFirstName={profile.first_name ?? null}
+      userEmail={userEmail}
+      userFirstName={userFirstName}
       replayActive={replayActive}
     >
       {children}
