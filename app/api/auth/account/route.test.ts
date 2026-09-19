@@ -2,17 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { DELETE } from './route';
 
-const USER_ID = '00000000-0000-4000-8000-000000000001';
 const mocks = vi.hoisted(() => ({
   createSupabaseServerClient: vi.fn(),
-  createSupabaseAdminClient: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
   createSupabaseServerClient: mocks.createSupabaseServerClient,
-}));
-vi.mock('@/lib/supabase/admin', () => ({
-  createSupabaseAdminClient: mocks.createSupabaseAdminClient,
 }));
 
 function request(body: unknown) {
@@ -31,77 +26,45 @@ describe('DELETE /api/auth/account', () => {
     expect(response.status).toBe(400);
   });
 
-  it('blocks deletion when the user is the sole workspace owner', async () => {
-    mocks.createSupabaseServerClient.mockResolvedValue({
-      auth: { getUser: async () => ({ data: { user: { id: USER_ID } }, error: null }) },
+  it('requires all workspaces to be deleted first', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: 'WORKSPACES_MUST_BE_DELETED_FIRST' },
     });
-    let membershipQuery = 0;
-    const from = vi.fn((table: string) => {
-      if (table !== 'organization_members') throw new Error(`Unexpected table: ${table}`);
-      membershipQuery += 1;
-      if (membershipQuery === 1) {
-        return {
-          select: () => ({
-            eq: () => Promise.resolve({ data: [{ organization_id: 'org-1', role: 'OWNER' }], error: null }),
-          }),
-        };
-      }
-      return {
-        select: () => ({
-          in: () => ({
-            eq: () => Promise.resolve({
-              data: [{ organization_id: 'org-1', user_id: USER_ID, role: 'OWNER' }],
-              error: null,
-            }),
-          }),
-        }),
-      };
-    });
-    mocks.createSupabaseAdminClient.mockReturnValue({ from });
+    mocks.createSupabaseServerClient.mockResolvedValue({ rpc });
+
     const response = await DELETE(request({ confirmation: 'DELETE' }));
+
     expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      requiresWorkspaceDeletion: true,
+    });
   });
 
-  it('removes the account and detaches historical user references', async () => {
-    mocks.createSupabaseServerClient.mockResolvedValue({
-      auth: { getUser: async () => ({ data: { user: { id: USER_ID } }, error: null }) },
+  it('deletes the authenticated account through the secure RPC', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: { ok: true },
+      error: null,
     });
-
-    const update = vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }));
-    const remove = vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }));
-    const deleteUser = vi.fn().mockResolvedValue({ data: null, error: null });
-    const rows: Record<string, any> = {
-      organization_members: [{ organization_id: 'org-1', role: 'ADMIN' }],
-    };
-    const from = vi.fn((table: string) => ({
-      select: () => ({
-        eq: () => Promise.resolve({ data: rows[table] ?? [], error: null }),
-        in: () => ({
-          eq: () => Promise.resolve({ data: [], error: null }),
-        }),
-      }),
-      update,
-      delete: remove,
-    }));
-    mocks.createSupabaseAdminClient.mockReturnValue({
-      from,
-      auth: { admin: { deleteUser } },
-    });
+    mocks.createSupabaseServerClient.mockResolvedValue({ rpc });
 
     const response = await DELETE(request({ confirmation: 'DELETE' }));
 
     expect(response.status).toBe(200);
-    expect(deleteUser).toHaveBeenCalledWith(USER_ID);
-    expect(update).toHaveBeenCalledTimes(3);
-    expect(remove).toHaveBeenCalledTimes(2);
+    expect(await response.json()).toMatchObject({ ok: true });
+    expect(rpc).toHaveBeenCalledWith('delete_current_account');
   });
 
-  it('requires an authenticated session', async () => {
+  it('maps authentication failure', async () => {
     mocks.createSupabaseServerClient.mockResolvedValue({
-      auth: { getUser: async () => ({ data: { user: null }, error: null }) },
+      rpc: vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'AUTHENTICATION_REQUIRED' },
+      }),
     });
 
     const response = await DELETE(request({ confirmation: 'DELETE' }));
+
     expect(response.status).toBe(401);
   });
 });
