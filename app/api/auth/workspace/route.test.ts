@@ -51,9 +51,10 @@ describe('DELETE /api/auth/workspace', () => {
       error: null,
       context: { organizationId: ORG_ID, role: 'OWNER', userId: USER_ID },
     });
+
     mocks.createSupabaseServerClient.mockResolvedValue({
       from: (table: string) => {
-        if (table !== 'organizations') throw new Error('unexpected table');
+        if (table !== 'organizations') throw new Error('unexpected table: ' + table);
         return {
           select: () => ({
             eq: () => ({
@@ -63,42 +64,38 @@ describe('DELETE /api/auth/workspace', () => {
         };
       },
     });
-    const deleteOrg = vi.fn(() => ({ eq: async () => ({ error: null }) }));
-    mocks.createSupabaseAdminClient.mockReturnValue({
-      from: (table: string) => {
-        if (table !== 'organization_members') throw new Error('unexpected table');
+
+    const adminFrom = vi.fn((table: string) => {
+      if (table === 'organization_members') {
+        const chain = {
+          select: () => chain,
+          eq: () => chain,
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ data: [{ user_id: USER_ID, role: 'OWNER' }], error: null }).then(resolve),
+        };
+        return chain;
+      }
+
+      if (table === 'organizations') {
         return {
-          select: () => ({
-            eq: () => Promise.resolve({ data: [{ user_id: USER_ID, role: 'OWNER' }], error: null }),
+          delete: () => ({
+            eq: async () => ({ error: null }),
           }),
         };
-      },
-      auth: { admin: {} },
-      deleteOrg,
+      }
+
+      throw new Error('unexpected table: ' + table);
     });
 
-    const admin = mocks.createSupabaseAdminClient.mock.results[0]?.value;
-    if (admin) {
-      admin.from = (table: string) => {
-        if (table === 'organization_members') {
-          return {
-            select: () => ({
-              eq: () => Promise.resolve({ data: [{ user_id: USER_ID, role: 'OWNER' }], error: null }),
-            }),
-          };
-        }
-        if (table === 'organizations') {
-          return { delete: () => ({ eq: async () => ({ error: null }) }) };
-        }
-        throw new Error('unexpected table: ' + table);
-      };
-    }
+    mocks.createSupabaseAdminClient.mockReturnValue({ from: adminFrom });
 
     const response = await DELETE(new NextRequest('http://localhost/api/auth/workspace', {
       method: 'DELETE',
       body: JSON.stringify({ confirmation: 'DELETE WORKSPACE' }),
     }));
+
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true });
-  });
+    expect(adminFrom).toHaveBeenCalledWith('organizations');
+  });;
 });
