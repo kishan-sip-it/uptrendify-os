@@ -113,8 +113,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Could not create your workspace' }, { status: 500 });
     }
 
-    const bootstrapData = data as { id: string; role: string; name: string } | null;
-    if (!bootstrapData) return NextResponse.json({ error: 'Could not create your workspace' }, { status: 500 });
+    const rawData = Array.isArray(data) ? data[0] : data;
+    const bootstrapData = rawData as { id: string; role: string; name: string } | null | undefined;
+    if (!bootstrapData?.id) return NextResponse.json({ error: 'Could not create your workspace' }, { status: 500 });
 
     return NextResponse.json({
       organization: {

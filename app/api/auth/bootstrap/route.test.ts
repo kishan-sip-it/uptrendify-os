@@ -46,7 +46,7 @@ describe('POST /api/auth/bootstrap', () => {
   it('calls the authenticated bootstrap RPC instead of requiring a service-role key', async () => {
     const client = makeClient({
       user: { id: USER_ID },
-      rpcResult: { id: ORG_ID, role: 'OWNER', name: 'Aurora Labs' },
+      rpcResult: [{ id: ORG_ID, role: 'OWNER', name: 'Aurora Labs' }],
     });
     mocks.createSupabaseServerClient.mockResolvedValue(client);
 
@@ -58,6 +58,8 @@ describe('POST /api/auth/bootstrap', () => {
     );
 
     expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.organization).toEqual({ id: ORG_ID, role: 'OWNER', name: 'Aurora Labs' });
     expect(client.rpc).toHaveBeenCalledWith('bootstrap_organization', { organization_name: 'Aurora Labs' });
   });
 
