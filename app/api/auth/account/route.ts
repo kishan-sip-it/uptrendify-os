@@ -41,7 +41,10 @@ export async function DELETE(request: Request) {
 
       if (soleOwnerOrg) {
         return NextResponse.json(
-          { error: 'You are the only owner of a workspace. Transfer ownership before deleting your account.' },
+          {
+            error: 'You are the only owner of a workspace. Delete the workspace first, then you can delete your account.',
+            requiresWorkspaceDeletion: true,
+          },
           { status: 409 },
         );
       }
