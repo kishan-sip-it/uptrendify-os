@@ -82,3 +82,58 @@ describe('POST /api/auth/register', () => {
     expect(response.status).toBe(400);
   });
 });
+
+
+describe('Supabase registration error mapping', () => {
+  it('treats "already been registered" as an existing-account conflict', async () => {
+    const createUser = vi.fn().mockResolvedValue({
+      data: { user: null },
+      error: { message: 'A user with this email address has already been registered' },
+    });
+    mocks.createSupabaseAdminClient.mockReturnValue({
+      auth: { admin: { createUser } },
+    });
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: 'existing@example.com',
+          password: 'strong-password',
+          organizationName: 'Aurora Lab',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: 'An account with this email already exists. Sign in instead.',
+    });
+  });
+
+  it('surfaces a safe password-policy message instead of a generic error', async () => {
+    const createUser = vi.fn().mockResolvedValue({
+      data: { user: null },
+      error: { message: 'Password should contain at least one character from the following classes: lower case, upper case, numbers and symbols' },
+    });
+    mocks.createSupabaseAdminClient.mockReturnValue({
+      auth: { admin: { createUser } },
+    });
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: 'new@example.com',
+          password: 'strong-password',
+          organizationName: 'Aurora Lab',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: 'Password should contain at least one character from the following classes: lower case, upper case, numbers and symbols',
+    });
+  });
+});
