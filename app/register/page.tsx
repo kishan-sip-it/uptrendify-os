@@ -140,21 +140,28 @@ export default function RegisterPage() {
     const supabase = createSupabaseBrowserClient();
 
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, password, organizationName }),
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { organizationName },
+        },
       });
-      const body = await response.json().catch(() => null);
 
-      if (!response.ok) {
-        setError(body?.error || 'Could not create your account.');
+      if (signUpError) {
+        const message = signUpError.message.toLowerCase();
+        if (message.includes('already registered') || message.includes('already been registered') || message.includes('already exists')) {
+          setError('An account with this email already exists. Sign in instead.');
+        } else if (message.includes('rate limit') || message.includes('too many requests')) {
+          setError('Registration is temporarily rate-limited by Supabase Auth. Please wait and try again.');
+        } else {
+          setError(signUpError.message);
+        }
         return;
       }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-      if (signInError) {
-        setError(signInError.message);
+      if (!signUpData.session) {
+        setError('Registration succeeded, but Supabase did not create a session. Confirm Email must be OFF for this testing environment.');
         return;
       }
 
