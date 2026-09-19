@@ -79,6 +79,9 @@ export function AppShell({
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [workspaceRequired, setWorkspaceRequired] = useState(false);
+  const [workspaceConfirmation, setWorkspaceConfirmation] = useState('');
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -136,6 +139,36 @@ export function AppShell({
     window.location.href = '/login';
   }
 
+  async function deleteWorkspace() {
+    if (workspaceConfirmation !== 'DELETE WORKSPACE') {
+      setDeleteError('Type DELETE WORKSPACE exactly to confirm workspace deletion.');
+      return;
+    }
+
+    setWorkspaceLoading(true);
+    setDeleteError('');
+    try {
+      const response = await fetch('/api/auth/workspace', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ confirmation: 'DELETE WORKSPACE' }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        setDeleteError(body?.error || 'Could not delete the workspace.');
+        return;
+      }
+
+      setWorkspaceRequired(false);
+      setWorkspaceConfirmation('');
+      setDeleteError(body?.message || 'Workspace deleted. You can now delete your account.');
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Could not delete the workspace.');
+    } finally {
+      setWorkspaceLoading(false);
+    }
+  }
+
   async function deleteAccount() {
     if (deleteConfirmation !== 'DELETE') {
       setDeleteError('Type DELETE exactly to confirm account deletion.');
@@ -152,6 +185,7 @@ export function AppShell({
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) {
+        setWorkspaceRequired(Boolean(body?.requiresWorkspaceDeletion));
         setDeleteError(body?.error || 'Could not delete your account.');
         return;
       }
@@ -405,6 +439,35 @@ export function AppShell({
                 style={{ marginTop: 7, width: '100%' }}
               />
             </label>
+
+            {workspaceRequired ? (
+              <div className="card" style={{ marginTop: 14, borderColor: 'rgba(248,113,113,.35)', background: 'rgba(248,113,113,.07)' }}>
+                <div className="eyebrow" style={{ color: '#f87171' }}>Workspace required</div>
+                <p style={{ margin: '6px 0 10px' }}>
+                  You are the only owner of this workspace. Delete the workspace first; after that you can delete your account.
+                </p>
+                <label>
+                  Type <strong>DELETE WORKSPACE</strong>
+                  <input
+                    value={workspaceConfirmation}
+                    onChange={(event) => setWorkspaceConfirmation(event.target.value)}
+                    placeholder="DELETE WORKSPACE"
+                    autoComplete="off"
+                    disabled={workspaceLoading}
+                    style={{ marginTop: 7, width: '100%' }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="badge"
+                  onClick={deleteWorkspace}
+                  disabled={workspaceLoading || workspaceConfirmation !== 'DELETE WORKSPACE'}
+                  style={{ marginTop: 10, borderColor: 'rgba(248,113,113,.45)', color: '#f87171' }}
+                >
+                  {workspaceLoading ? 'Deleting workspace…' : <><Trash2 size={14} /> Delete workspace first</>}
+                </button>
+              </div>
+            ) : null}
 
             {deleteError ? (
               <div role="alert" className="card" style={{ marginTop: 12, borderColor: 'rgba(239,68,68,.35)', background: 'rgba(239,68,68,.08)' }}>
