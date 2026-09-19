@@ -32,8 +32,22 @@ async function loadBrand(supabase: Awaited<ReturnType<typeof createSupabaseServe
 
 export async function POST(request: Request, { params }: { params: Promise<{ brandId: string }> }) {
   try {
-    const { brandId } = paramsSchema.parse(await params);
-    const body = bodySchema.parse(await request.json().catch(() => ({})));
+    let brandId: string;
+    try {
+      const resolvedParams = await params;
+      brandId = paramsSchema.parse(resolvedParams).brandId;
+    } catch {
+      return NextResponse.json({ error: 'Invalid brand id' }, { status: 400 });
+    }
+
+    let rawBody: unknown = {};
+    try {
+      const json = await request.json();
+      if (json && typeof json === 'object') rawBody = json;
+    } catch {
+      rawBody = {};
+    }
+    const body = bodySchema.parse(rawBody);
 
     const auth = await requireOrgRole(CAN_RUN_RESEARCH);
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });

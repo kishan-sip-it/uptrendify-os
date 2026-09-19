@@ -126,6 +126,21 @@ describe('POST /api/brands/[brandId]/research', () => {
   it('returns 400 for an invalid brand id', async () => {
     const res = await POST(REQ, { params: Promise.resolve({ brandId: 'not-a-uuid' }) });
     expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Invalid brand id' });
+  });
+
+  it('handles empty request body gracefully without failing validation', async () => {
+    const client = makeClient([
+      ['brands', { data: { id: BRAND_ID, name: 'Aurora', website_url: 'https://example.com/' }, error: null }],
+      ['research_runs', { data: null, error: null }],
+      ['research_runs', { data: { id: RUN_ID, status: 'QUEUED' }, error: null }],
+    ]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const emptyBodyReq = new NextRequest('http://localhost/api/brands', { method: 'POST' });
+    const res = await POST(emptyBodyReq, { params: Promise.resolve({ brandId: BRAND_ID }) });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ ok: true, researchRunId: RUN_ID, status: 'QUEUED' });
   });
 
   it('returns 401 when authentication is missing', async () => {

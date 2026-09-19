@@ -105,7 +105,11 @@ export default function OnboardingPage() {
     setError('');
     try {
       if (runResearch && createdBrandId) {
-        const research = await fetch(`/api/brands/${createdBrandId}/research`, { method: 'POST' });
+        const research = await fetch(`/api/brands/${createdBrandId}/research`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({}),
+        });
         if (!research.ok) {
           const body = await research.json().catch(() => null);
           if (research.status !== 409) throw new Error(body?.error || 'Could not start research');
