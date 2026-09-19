@@ -35,15 +35,27 @@ describe('DELETE /api/auth/account', () => {
     mocks.createSupabaseServerClient.mockResolvedValue({
       auth: { getUser: async () => ({ data: { user: { id: USER_ID } }, error: null }) },
     });
+    let membershipQuery = 0;
     const from = vi.fn((table: string) => {
-      const membership = {
-        select: () => ({ eq: () => Promise.resolve({ data: [{ organization_id: 'org-1', role: 'OWNER' }], error: null }) }),
+      if (table !== 'organization_members') throw new Error(`Unexpected table: ${table}`);
+      membershipQuery += 1;
+      if (membershipQuery === 1) {
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ data: [{ organization_id: 'org-1', role: 'OWNER' }], error: null }),
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          in: () => ({
+            eq: () => Promise.resolve({
+              data: [{ organization_id: 'org-1', user_id: USER_ID, role: 'OWNER' }],
+              error: null,
+            }),
+          }),
+        }),
       };
-      const owners = {
-        select: () => ({ in: () => ({ eq: () => Promise.resolve({ data: [{ organization_id: 'org-1', user_id: USER_ID, role: 'OWNER' }], error: null }) }) }),
-      };
-      if (table === 'organization_members') return membership;
-      return owners;
     });
     mocks.createSupabaseAdminClient.mockReturnValue({ from });
     const response = await DELETE(request({ confirmation: 'DELETE' }));
