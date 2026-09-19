@@ -28,15 +28,27 @@ async function loadBrand(supabase: Awaited<ReturnType<typeof createSupabaseServe
   return result.data as { id: string; name: string; website_url: string | null } | null;
 }
 
+async function abandonRun(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  { researchRunId, organizationId, errorMessage }: { researchRunId: string; organizationId: string; errorMessage: string },
+) {
+  const result = await supabase
+    .from('research_runs')
+    .update({ status: 'FAILED', finished_at: new Date().toISOString(), error_code: 'RESEARCH_START_FAILED', error_message: errorMessage })
+    .eq('id', researchRunId)
+    .eq('organization_id', organizationId)
+    .in('status', [...RESEARCH_ACTIVE_STATUSES]);
+  if (result.error) {
+    obs.error('Failed to release research run after start failure', { researchRunId, error: result.error.message });
+  }
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ brandId: string }> }) {
+  let startedRun: { id: string; organizationId: string } | null = null;
   try {
-    let brandId: string;
-    try {
-      const resolvedParams = await params;
-      brandId = paramsSchema.parse(resolvedParams).brandId;
-    } catch {
-      return NextResponse.json({ error: 'Invalid brand id' }, { status: 400 });
-    }
+    const resolvedParams = paramsSchema.safeParse(await params);
+    if (!resolvedParams.success) return NextResponse.json({ error: 'Invalid brand id' }, { status: 400 });
+    const brandId = resolvedParams.data.brandId;
 
     let rawBody: unknown = {};
     try {
@@ -45,7 +57,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     } catch {
       rawBody = {};
     }
-    const body = bodySchema.parse(rawBody);
+    const parsedBody = bodySchema.safeParse(rawBody);
+    if (!parsedBody.success) {
+      obs.warn('Invalid research request body', { issues: parsedBody.error.issues.map((issue) => issue.path.join('.')) });
+      return NextResponse.json({ error: 'Invalid research request', details: parsedBody.error.flatten() }, { status: 400 });
+    }
+    const body = parsedBody.data;
 
     const auth = await requireOrgRole(CAN_RUN_RESEARCH);
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
@@ -131,6 +148,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       throw inserted.error;
     }
     const runId = inserted.data.id;
+    startedRun = { id: runId, organizationId: auth.context.organizationId };
 
     obs.info('Research run created', { researchRunId: runId, brandId: brand.id, organizationId: auth.context.organizationId, actorRole: auth.context.role });
 
@@ -141,6 +159,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
         researchRunId: runId,
         userId: auth.context.userId,
       });
+      startedRun = null;
       return NextResponse.json({ ok: true, researchRunId: runId, status: 'COMPLETED', replay: true }, { status: 201 });
     }
 
@@ -152,14 +171,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       researchRunId: runId,
     });
 
+    startedRun = null;
     return NextResponse.json({ ok: true, researchRunId: runId, status: 'QUEUED' }, { status: 201 });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      obs.warn('Invalid research request validation', { errors: error.errors });
-      return NextResponse.json({ error: 'Invalid research request', details: error.flatten() }, { status: 400 });
-    }
     if (error instanceof Error && isNoRowsError(error as unknown as { code?: string })) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
-    obs.error('Research request failed', { error: error instanceof Error ? error.message : String(error) });
+    const message = error instanceof Error ? error.message : String(error);
+    obs.error('Research request failed', { error: message });
+    if (startedRun) {
+      // An active run left behind makes every later attempt return 409.
+      const supabase = await createSupabaseServerClient();
+      await abandonRun(supabase, { researchRunId: startedRun.id, organizationId: startedRun.organizationId, errorMessage: 'Research could not be started' });
+    }
     return NextResponse.json({ error: 'Could not start research' }, { status: 500 });
   }
 }

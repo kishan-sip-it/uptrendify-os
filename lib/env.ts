@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { obs } from '@/lib/obs/logger';
 
 function optionalString(field: string) {
   return z.preprocess(
@@ -57,13 +58,63 @@ export const envSchema = z.object({
   ),
 });
 
-let cached: z.infer<typeof envSchema> | null = null;
+export type Env = z.infer<typeof envSchema>;
 
-export function env() {
-  if (!cached) cached = envSchema.parse(process.env);
+let cached: Env | null = null;
+let invalidKeys: string[] = [];
+
+/**
+ * Thrown only when the environment cannot be resolved even after dropping
+ * invalid values. It is deliberately not a ZodError so that request handlers
+ * never report a deployment misconfiguration as invalid client input.
+ */
+export class EnvConfigurationError extends Error {
+  readonly invalidKeys: string[];
+
+  constructor(keys: string[]) {
+    super(`Invalid environment configuration: ${keys.join(', ')}`);
+    this.name = 'EnvConfigurationError';
+    this.invalidKeys = keys;
+  }
+}
+
+function issueKeys(error: z.ZodError): string[] {
+  return Array.from(new Set(error.issues.map((issue) => String(issue.path[0] ?? 'ENV')))).sort();
+}
+
+function loadEnv(source: NodeJS.ProcessEnv): { value: Env; invalidKeys: string[] } {
+  const parsed = envSchema.safeParse(source);
+  if (parsed.success) return { value: parsed.data, invalidKeys: [] };
+
+  const rejected = issueKeys(parsed.error);
+  const sanitized: NodeJS.ProcessEnv = { ...source };
+  for (const key of rejected) delete sanitized[key];
+
+  const fallback = envSchema.safeParse(sanitized);
+  if (!fallback.success) {
+    throw new EnvConfigurationError(issueKeys(fallback.error));
+  }
+
+  obs.error('Invalid environment configuration; falling back to defaults', { invalidKeys: rejected });
+  return { value: fallback.data, invalidKeys: rejected };
+}
+
+export function env(): Env {
+  if (!cached) {
+    const loaded = loadEnv(process.env);
+    cached = loaded.value;
+    invalidKeys = loaded.invalidKeys;
+  }
   return cached;
+}
+
+/** Names (never values) of environment variables that failed validation. */
+export function invalidEnvKeys(): string[] {
+  env();
+  return invalidKeys;
 }
 
 export function resetEnv() {
   cached = null;
+  invalidKeys = [];
 }

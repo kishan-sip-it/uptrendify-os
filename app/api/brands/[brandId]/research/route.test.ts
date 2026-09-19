@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST, GET } from './route';
+import { resetEnv } from '@/lib/env';
 
 const ORG_ID = '00000000-0000-4000-8000-000000000001';
 const USER_ID = '00000000-0000-4000-8000-000000000002';
@@ -19,6 +20,7 @@ vi.mock('@/lib/research/pipeline', () => ({ scheduleResearchExecution: mocks.sch
 
 function makeClient(overrides: Array<[string, unknown]> = []) {
   const queues = new Map<string, Array<unknown>>();
+  const calls: Array<{ table: string; method: string; args: unknown[] }> = [];
   for (const [table, payload] of overrides) {
     const existing = queues.get(table) ?? [];
     existing.push(payload);
@@ -38,6 +40,12 @@ function makeClient(overrides: Array<[string, unknown]> = []) {
         if (prop in target || prop === 'then' || prop === 'catch') return Reflect.get(target, prop);
         const name = String(prop);
         if (name === 'maybeSingle') return async () => execute();
+        if (name === 'update' || name === 'insert') {
+          return (...args: unknown[]) => {
+            calls.push({ table, method: name, args });
+            return chain(table);
+          };
+        }
         if (name === 'single') {
           return async () => {
             const value = (await execute()) as any;
@@ -53,6 +61,7 @@ function makeClient(overrides: Array<[string, unknown]> = []) {
   const from = vi.fn((table: string) => chain(String(table)));
   return {
     from,
+    calls,
     queue: (table: string, payload: unknown) => {
       const existing = queues.get(table) ?? [];
       existing.push(payload);
@@ -67,6 +76,11 @@ describe('POST /api/brands/[brandId]/research', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireOrgRole.mockResolvedValue({ context: { organizationId: ORG_ID, userId: USER_ID, role: 'STRATEGIST' } });
+  });
+
+  afterEach(() => {
+    delete process.env.MAX_RESEARCH_PAGES;
+    resetEnv();
   });
 
   it('starts a research run and schedules execution', async () => {
@@ -141,6 +155,48 @@ describe('POST /api/brands/[brandId]/research', () => {
     const res = await POST(emptyBodyReq, { params: Promise.resolve({ brandId: BRAND_ID }) });
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ ok: true, researchRunId: RUN_ID, status: 'QUEUED' });
+  });
+
+  it('starts research on the first request when an unrelated env var is misconfigured', async () => {
+    process.env.MAX_RESEARCH_PAGES = '999';
+    resetEnv();
+
+    const client = makeClient([
+      ['brands', { data: { id: BRAND_ID, name: 'Aurora', website_url: 'https://example.com/' }, error: null }],
+      ['research_runs', { data: null, error: null }],
+      ['research_runs', { data: { id: RUN_ID, status: 'QUEUED' }, error: null }],
+    ]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const res = await POST(REQ, { params: Promise.resolve({ brandId: BRAND_ID }) });
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ ok: true, researchRunId: RUN_ID, status: 'QUEUED' });
+    expect(mocks.scheduleResearchExecution).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the created run instead of leaving it active when starting fails', async () => {
+    const client = makeClient([
+      ['brands', { data: { id: BRAND_ID, name: 'Aurora', website_url: 'https://example.com/' }, error: null }],
+      ['research_runs', { data: null, error: null }],
+      ['research_runs', { data: { id: RUN_ID, status: 'QUEUED' }, error: null }],
+    ]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+    mocks.scheduleResearchExecution.mockImplementationOnce(() => {
+      throw new Error('scheduling unavailable');
+    });
+
+    const res = await POST(REQ, { params: Promise.resolve({ brandId: BRAND_ID }) });
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Could not start research' });
+    expect(client.calls).toContainEqual(
+      expect.objectContaining({
+        table: 'research_runs',
+        method: 'update',
+        args: [expect.objectContaining({ status: 'FAILED', error_code: 'RESEARCH_START_FAILED' })],
+      }),
+    );
   });
 
   it('returns 401 when authentication is missing', async () => {
