@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { envSchema } from './env';
+import { describe, it, expect, afterEach } from 'vitest';
+import { env, envSchema, invalidEnvKeys, resetEnv } from './env';
 
 describe('env schema', () => {
   const base: Record<string, string> = {
@@ -73,5 +73,31 @@ describe('env schema', () => {
     expect(result.GROQ_MODEL).toBe('openai/gpt-oss-20b');
     expect(result.ANTHROPIC_MODEL).toBe('claude-3-5-haiku-latest');
     expect(result.DEFAULT_AI_PROVIDER).toBe('groq');
+  });
+});
+
+describe('env()', () => {
+  afterEach(() => {
+    delete process.env.MAX_RESEARCH_PAGES;
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    resetEnv();
+  });
+
+  it('reports no invalid keys for a valid environment', () => {
+    process.env.MAX_RESEARCH_PAGES = '20';
+    resetEnv();
+
+    expect(env().MAX_RESEARCH_PAGES).toBe(20);
+    expect(invalidEnvKeys()).toEqual([]);
+  });
+
+  it('falls back to the documented default for an invalid value and reports the key', () => {
+    process.env.MAX_RESEARCH_PAGES = '999';
+    process.env.NEXT_PUBLIC_APP_URL = 'not-a-url';
+    resetEnv();
+
+    expect(env().MAX_RESEARCH_PAGES).toBe(15);
+    expect(env().NEXT_PUBLIC_APP_URL).toBe('http://localhost:3000');
+    expect(invalidEnvKeys()).toEqual(['MAX_RESEARCH_PAGES', 'NEXT_PUBLIC_APP_URL']);
   });
 });

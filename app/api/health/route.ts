@@ -1,7 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseConfig } from '@/lib/supabase/config';
+import { EnvConfigurationError, invalidEnvKeys } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
+
+function envDiagnostics(): { valid: boolean; invalidKeys: string[] } {
+  try {
+    const keys = invalidEnvKeys();
+    return { valid: keys.length === 0, invalidKeys: keys };
+  } catch (error) {
+    if (error instanceof EnvConfigurationError) return { valid: false, invalidKeys: error.invalidKeys };
+    throw error;
+  }
+}
 
 export async function GET() {
   const { url, key } = getSupabaseConfig();
@@ -26,6 +37,7 @@ export async function GET() {
         supabaseDbReachable: Boolean(url && key),
         aiProvider: process.env.DEFAULT_AI_PROVIDER ?? 'groq',
       },
+      config: envDiagnostics(),
     },
     { headers: { 'Cache-Control': 'no-store' } },
   );
