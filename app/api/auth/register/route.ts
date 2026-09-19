@@ -3,22 +3,31 @@ import { z } from 'zod';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 const schema = z.object({
-  email: z.string().trim().email().max(320),
-  password: z.string().min(8).max(72),
-  organizationName: z.string().trim().min(2).max(120),
+  email: z.string().trim().email('Enter a valid email address.').max(320),
+  password: z.string().min(8, 'Password must be at least 8 characters.').max(72, 'Password must be 72 characters or fewer.'),
+  organizationName: z.string().trim().min(2, 'Agency name must be at least 2 characters.').max(120, 'Agency name is too long.'),
 }).strict();
 
 export async function POST(request: Request) {
   try {
-    const parsed = schema.parse(await request.json());
+    const raw = await request.json();
+    const parsed = schema.safeParse(raw);
+
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return NextResponse.json(
+        { error: issue?.message || 'Invalid registration details', field: issue?.path?.[0] ?? null },
+        { status: 400 },
+      );
+    }
 
     const admin = createSupabaseAdminClient();
     const { data, error } = await admin.auth.admin.createUser({
-      email: parsed.email,
-      password: parsed.password,
+      email: parsed.data.email,
+      password: parsed.data.password,
       email_confirm: true,
       user_metadata: {
-        organizationName: parsed.organizationName,
+        organizationName: parsed.data.organizationName,
       },
     });
 
@@ -34,8 +43,8 @@ export async function POST(request: Request) {
       userId: data.user?.id ?? null,
     }, { status: 201 });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: 'Invalid registration details' }, { status: 400 });
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: 'Invalid registration request.' }, { status: 400 });
     }
     return NextResponse.json({ error: 'Registration service is not configured' }, { status: 500 });
   }
