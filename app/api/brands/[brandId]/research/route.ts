@@ -9,11 +9,9 @@ import { obs } from '@/lib/obs/logger';
 
 const paramsSchema = z.object({ brandId: z.string().uuid() });
 
-const bodySchema = z
-  .object({
-    idempotencyKey: z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9:_-]+$/).optional(),
-  })
-  .strict();
+const bodySchema = z.object({
+  idempotencyKey: z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9:_-]+$/).optional(),
+});
 
 function isNoRowsError(error: { code?: string } | null): boolean {
   return error?.code === 'PGRST116';
@@ -156,7 +154,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
 
     return NextResponse.json({ ok: true, researchRunId: runId, status: 'QUEUED' }, { status: 201 });
   } catch (error) {
-    if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid research request' }, { status: 400 });
+    if (error instanceof z.ZodError) {
+      obs.warn('Invalid research request validation', { errors: error.errors });
+      return NextResponse.json({ error: 'Invalid research request', details: error.flatten() }, { status: 400 });
+    }
     if (error instanceof Error && isNoRowsError(error as unknown as { code?: string })) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
     obs.error('Research request failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Could not start research' }, { status: 500 });
