@@ -3,12 +3,10 @@ import { NextRequest } from 'next/server';
 import { DELETE } from './route';
 
 const ORG_ID = '00000000-0000-4000-8000-000000000001';
-const USER_ID = '00000000-0000-4000-8000-000000000002';
 
 const mocks = vi.hoisted(() => ({
   requireOrgRole: vi.fn(),
   createSupabaseServerClient: vi.fn(),
-  createSupabaseAdminClient: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/roles', () => ({
@@ -17,9 +15,6 @@ vi.mock('@/lib/auth/roles', () => ({
 }));
 vi.mock('@/lib/supabase/server', () => ({
   createSupabaseServerClient: mocks.createSupabaseServerClient,
-}));
-vi.mock('@/lib/supabase/admin', () => ({
-  createSupabaseAdminClient: mocks.createSupabaseAdminClient,
 }));
 
 describe('DELETE /api/auth/workspace', () => {
@@ -46,48 +41,16 @@ describe('DELETE /api/auth/workspace', () => {
     expect(response.status).toBe(403);
   });
 
-  it('deletes only the selected organization through the admin client', async () => {
+  it('deletes the selected workspace through the authenticated RPC', async () => {
     mocks.requireOrgRole.mockResolvedValue({
       error: null,
-      context: { organizationId: ORG_ID, role: 'OWNER', userId: USER_ID },
+      context: { organizationId: ORG_ID, role: 'OWNER', userId: 'user-1' },
     });
-
-    mocks.createSupabaseServerClient.mockResolvedValue({
-      from: (table: string) => {
-        if (table !== 'organizations') throw new Error('unexpected table: ' + table);
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: { id: ORG_ID, name: 'Aurora Lab' }, error: null }),
-            }),
-          }),
-        };
-      },
+    const rpc = vi.fn().mockResolvedValue({
+      data: { ok: true, organization_name: 'Aurora Lab' },
+      error: null,
     });
-
-    const adminFrom = vi.fn((table: string) => {
-      if (table === 'organization_members') {
-        const chain = {
-          select: () => chain,
-          eq: () => chain,
-          then: (resolve: (value: unknown) => unknown) =>
-            Promise.resolve({ data: [{ user_id: USER_ID, role: 'OWNER' }], error: null }).then(resolve),
-        };
-        return chain;
-      }
-
-      if (table === 'organizations') {
-        return {
-          delete: () => ({
-            eq: async () => ({ error: null }),
-          }),
-        };
-      }
-
-      throw new Error('unexpected table: ' + table);
-    });
-
-    mocks.createSupabaseAdminClient.mockReturnValue({ from: adminFrom });
+    mocks.createSupabaseServerClient.mockResolvedValue({ rpc });
 
     const response = await DELETE(new NextRequest('http://localhost/api/auth/workspace', {
       method: 'DELETE',
@@ -96,6 +59,28 @@ describe('DELETE /api/auth/workspace', () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true });
-    expect(adminFrom).toHaveBeenCalledWith('organizations');
-  });;
+    expect(rpc).toHaveBeenCalledWith('delete_current_workspace', {
+      target_organization_id: ORG_ID,
+    });
+  });
+
+  it('maps workspace RPC authorization errors', async () => {
+    mocks.requireOrgRole.mockResolvedValue({
+      error: null,
+      context: { organizationId: ORG_ID, role: 'OWNER', userId: 'user-1' },
+    });
+    mocks.createSupabaseServerClient.mockResolvedValue({
+      rpc: vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'WORKSPACE_OWNER_REQUIRED' },
+      }),
+    });
+
+    const response = await DELETE(new NextRequest('http://localhost/api/auth/workspace', {
+      method: 'DELETE',
+      body: JSON.stringify({ confirmation: 'DELETE WORKSPACE' }),
+    }));
+
+    expect(response.status).toBe(403);
+  });
 });
