@@ -123,6 +123,10 @@ export default function RegisterPage() {
       setError('Password must be 72 characters or fewer.');
       return;
     }
+    if (/^\d+$/.test(password)) {
+      setError('Password is too weak. Use a mix of letters, numbers and symbols.');
+      return;
+    }
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
       return;
