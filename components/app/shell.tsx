@@ -70,17 +70,16 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [greeting, setGreeting] = useState('Welcome back');
   const [orgs, setOrgs] = useState<OrgOption[] | null>(null);
   const [orgLoading, setOrgLoading] = useState(false);
   const [orgError, setOrgError] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const greeting = (() => {
+  useEffect(() => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  })();
+    setGreeting(hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening');
+  }, []);
 
   async function loadOrganizations() {
     if (orgs) {
