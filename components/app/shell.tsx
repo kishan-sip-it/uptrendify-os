@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  ArrowUpRight, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Sparkles, Target, Users, X,
+  ArrowUpRight, Boxes, CheckCircle2, ChevronDown, Eye, EyeOff, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Sparkles, Target, Trash2, Users, X,
 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 
@@ -75,6 +75,10 @@ export function AppShell({
   const [orgLoading, setOrgLoading] = useState(false);
   const [orgError, setOrgError] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -130,6 +134,36 @@ export function AppShell({
     const supabase = createSupabaseBrowserClient();
     await supabase.auth.signOut();
     window.location.href = '/login';
+  }
+
+  async function deleteAccount() {
+    if (deleteConfirmation !== 'DELETE') {
+      setDeleteError('Type DELETE exactly to confirm account deletion.');
+      return;
+    }
+
+    setDeleteLoading(true);
+    setDeleteError('');
+    try {
+      const response = await fetch('/api/auth/account', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ confirmation: 'DELETE' }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        setDeleteError(body?.error || 'Could not delete your account.');
+        return;
+      }
+
+      const supabase = createSupabaseBrowserClient();
+      await supabase.auth.signOut();
+      window.location.href = '/login';
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Could not delete your account.');
+    } finally {
+      setDeleteLoading(false);
+    }
   }
 
   const displayName = userFirstName || userEmail || 'Account';
@@ -307,6 +341,19 @@ export function AppShell({
                   <button type="button" className="switch-option" onClick={() => { close(); logout(); }}>
                     <LogOut size={13} /> Sign out
                   </button>
+                  <button
+                    type="button"
+                    className="switch-option"
+                    onClick={() => {
+                      close();
+                      setDeleteConfirmation('');
+                      setDeleteError('');
+                      setDeleteOpen(true);
+                    }}
+                    style={{ color: '#f87171' }}
+                  >
+                    <Trash2 size={13} /> Delete account
+                  </button>
                 </div>
               )}
             </SwitchMenu>
@@ -315,6 +362,78 @@ export function AppShell({
 
         {children}
       </section>
+
+      {deleteOpen ? (
+        <div
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !deleteLoading) setDeleteOpen(false);
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            display: 'grid',
+            placeItems: 'center',
+            padding: 20,
+            background: 'rgba(3,7,12,.72)',
+            backdropFilter: 'blur(7px)',
+          }}
+        >
+          <section
+            className="card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-account-title"
+            style={{ maxWidth: 520, width: '100%', borderColor: 'rgba(248,113,113,.35)' }}
+          >
+            <div className="eyebrow" style={{ color: '#f87171' }}>Danger zone</div>
+            <h2 id="delete-account-title" style={{ margin: '6px 0 8px' }}>Delete your account?</h2>
+            <p className="subtitle">
+              This removes your sign-in, workspace memberships and profile. Existing organization data and audit history are preserved where possible. If you are the only owner of a workspace, ownership must be transferred first.
+            </p>
+
+            <label style={{ display: 'block', marginTop: 18 }}>
+              Type <strong>DELETE</strong> to confirm
+              <input
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                autoComplete="off"
+                autoFocus
+                placeholder="DELETE"
+                disabled={deleteLoading}
+                style={{ marginTop: 7, width: '100%' }}
+              />
+            </label>
+
+            {deleteError ? (
+              <div role="alert" className="card" style={{ marginTop: 12, borderColor: 'rgba(239,68,68,.35)', background: 'rgba(239,68,68,.08)' }}>
+                {deleteError}
+              </div>
+            ) : null}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="badge"
+                onClick={() => setDeleteOpen(false)}
+                disabled={deleteLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="badge"
+                onClick={deleteAccount}
+                disabled={deleteLoading || deleteConfirmation !== 'DELETE'}
+                style={{ borderColor: 'rgba(248,113,113,.45)', color: '#f87171' }}
+              >
+                {deleteLoading ? 'Deleting…' : <><Trash2 size={14} /> Delete account</>}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
