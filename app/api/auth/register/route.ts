@@ -8,6 +8,49 @@ const schema = z.object({
   organizationName: z.string().trim().min(2, 'Agency name must be at least 2 characters.').max(120, 'Agency name is too long.'),
 }).strict();
 
+function mapAuthRegistrationError(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes('already registered') ||
+    normalized.includes('already been registered') ||
+    normalized.includes('already exists') ||
+    normalized.includes('user already') ||
+    normalized.includes('email address already')
+  ) {
+    return {
+      status: 409,
+      error: 'An account with this email already exists. Sign in instead.',
+    };
+  }
+
+  if (normalized.includes('rate limit') || normalized.includes('too many requests')) {
+    return {
+      status: 429,
+      error: 'Registration is temporarily rate-limited. Please wait a moment and try again.',
+    };
+  }
+
+  if (normalized.includes('password')) {
+    return {
+      status: 400,
+      error: message.length <= 180 ? message : 'The password does not meet the current security requirements.',
+    };
+  }
+
+  if (normalized.includes('email')) {
+    return {
+      status: 400,
+      error: message.length <= 180 ? message : 'The email address was rejected by the authentication service.',
+    };
+  }
+
+  return {
+    status: 400,
+    error: 'Could not create your account.',
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const raw = await request.json();
@@ -41,18 +84,8 @@ export async function POST(request: Request) {
     });
 
     if (error) {
-      if (/already registered|already exists/i.test(error.message)) {
-        return NextResponse.json({ error: 'An account with this email already exists. Sign in instead.' }, { status: 409 });
-      }
-
-      if (/rate limit|too many requests/i.test(error.message)) {
-        return NextResponse.json(
-          { error: 'Registration is temporarily rate-limited. Please wait a moment and try again.' },
-          { status: 429 },
-        );
-      }
-
-      return NextResponse.json({ error: 'Could not create your account' }, { status: 400 });
+      const mapped = mapAuthRegistrationError(error.message);
+      return NextResponse.json({ error: mapped.error }, { status: mapped.status });
     }
 
     return NextResponse.json({
