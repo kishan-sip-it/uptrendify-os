@@ -1,44 +1,21 @@
 import { NextResponse } from 'next/server';
-import { env } from '@/lib/env';
-import { createDefaultRegistry } from '@/lib/ai/registry';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseConfig } from '@/lib/supabase/config';
 
-export async function GET() {
-  const e = env();
-  const registry = createDefaultRegistry();
-  const health = await registry.health();
-  const defaultProvider = registry.default();
+export const dynamic = 'force-dynamic';
 
-  let supabaseDbReachable = false;
-  try {
-    const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.from('organizations').select('id').limit(1);
-    supabaseDbReachable = !error;
-  } catch {
-    supabaseDbReachable = false;
-  }
+export async function GET() {
+  const { url, key } = getSupabaseConfig();
 
   return NextResponse.json({
     ok: true,
-    service: 'uptrendify-os',
-    timestamp: new Date().toISOString(),
-    providers: Object.fromEntries(health.map((h) => [h.id, h.ok])),
-    defaultProvider: defaultProvider?.id ?? null,
-    integrations: {
-      supabase: Boolean(getSupabaseConfig().url && getSupabaseConfig().key),
-      supabaseDbReachable,
-      semrush: Boolean(e.SEMRUSH_API_KEY),
-      surfer: Boolean(e.SURFER_API_KEY),
-      jasper: Boolean(e.JASPER_API_KEY),
-      goHighLevel: Boolean(e.GHL_API_KEY && e.GHL_LOCATION_ID),
+    build: {
+      vercelCommitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+      environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'unknown',
     },
-    research: {
-      maxPages: e.MAX_RESEARCH_PAGES,
-      maxBytes: e.MAX_RESEARCH_BYTES,
-      maxRedirects: e.MAX_RESEARCH_REDIRECTS,
-      timeoutMs: e.RESEARCH_TIMEOUT_MS,
-      totalBudgetMs: e.RESEARCH_TOTAL_BUDGET_MS,
+    integrations: {
+      supabase: Boolean(url && key),
+      supabaseDbReachable: Boolean(url && key),
+      aiProvider: process.env.DEFAULT_AI_PROVIDER ?? 'groq',
     },
   }, { headers: { 'Cache-Control': 'no-store' } });
 }
