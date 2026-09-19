@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  ArrowUpRight, Boxes, CheckCircle2, ChevronDown, Eye, EyeOff, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Sparkles, Target, Trash2, Users, X,
+  ArrowUpRight, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Sparkles, Target, Trash2, Users, X,
 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 
