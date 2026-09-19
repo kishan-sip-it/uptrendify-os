@@ -161,8 +161,11 @@ export default function RegisterPage() {
       }
 
       if (!signUpData.session) {
-        setError('Registration succeeded, but Supabase did not create a session. Confirm Email must be OFF for this testing environment.');
-        return;
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInError) {
+          setError(signInError.message);
+          return;
+        }
       }
 
       const bootstrap = await fetch('/api/auth/bootstrap', {
