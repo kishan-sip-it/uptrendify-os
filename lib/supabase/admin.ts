@@ -9,7 +9,10 @@ export function createSupabaseAdminClient() {
   const { url } = getSupabaseConfig();
   const adminKey =
     process.env.SUPABASE_SECRET_KEY?.trim() ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+    process.env.SUPABASE_SERVICE_ROLE?.trim() ||
+    process.env.SUPABASE_SERVICE_KEY?.trim() ||
+    process.env.SUPABASE_SECRET?.trim();
 
   if (!url || !adminKey) {
     throw new Error('Supabase admin environment is not configured');
