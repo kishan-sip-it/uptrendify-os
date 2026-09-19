@@ -21,7 +21,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const admin = createSupabaseAdminClient();
+    let admin;
+    try {
+      admin = createSupabaseAdminClient();
+    } catch {
+      return NextResponse.json(
+        { error: 'Registration service is not configured on the server.' },
+        { status: 503 },
+      );
+    }
+
     const { data, error } = await admin.auth.admin.createUser({
       email: parsed.data.email,
       password: parsed.data.password,
@@ -35,6 +44,14 @@ export async function POST(request: Request) {
       if (/already registered|already exists/i.test(error.message)) {
         return NextResponse.json({ error: 'An account with this email already exists. Sign in instead.' }, { status: 409 });
       }
+
+      if (/rate limit|too many requests/i.test(error.message)) {
+        return NextResponse.json(
+          { error: 'Registration is temporarily rate-limited. Please wait a moment and try again.' },
+          { status: 429 },
+        );
+      }
+
       return NextResponse.json({ error: 'Could not create your account' }, { status: 400 });
     }
 
@@ -46,6 +63,6 @@ export async function POST(request: Request) {
     if (error instanceof SyntaxError) {
       return NextResponse.json({ error: 'Invalid registration request.' }, { status: 400 });
     }
-    return NextResponse.json({ error: 'Registration service is not configured' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not process registration.' }, { status: 500 });
   }
 }
