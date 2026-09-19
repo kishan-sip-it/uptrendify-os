@@ -32,28 +32,19 @@ jobs:
       - name: Production build
         run: npm run build
 
-      - name: Supabase Auth API-key smoke test
+      - name: Supabase config unit smoke test
         shell: bash
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-
           const source = fs.readFileSync('lib/supabase/config.ts', 'utf8');
-          const urlMatch = source.match(/PRODUCTION_SUPABASE_URL = '([^']+)'/);
-          const anonMatch = source.match(/PRODUCTION_SUPABASE_ANON_KEY = "([^"]+)"/);
-          if (!urlMatch?.[1] || !anonMatch?.[1]) {
-            throw new Error('Production Supabase compatibility config is incomplete');
+          if (!source.includes('NEXT_PUBLIC_SUPABASE_URL') || !source.includes('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY')) {
+            throw new Error('Supabase config must use deployment environment variables');
           }
-
-          const response = await fetch(urlMatch[1] + '/auth/v1/settings', {
-            headers: { apikey: anonMatch[1] },
-            cache: 'no-store',
-          });
-          const body = await response.text();
-          console.log('Supabase Auth gateway with production public key -> ' + response.status);
-          if (!response.ok) {
-            throw new Error('Supabase rejected the production public key: HTTP ' + response.status + ' ' + body.slice(0, 300));
+          if (/PRODUCTION_SUPABASE|SUPABASE_ANON_KEY = ['"]/.test(source)) {
+            throw new Error('Supabase credentials must not be hardcoded');
           }
+          console.log('Supabase config is environment-driven');
           NODE
 
       - name: Runtime smoke test
