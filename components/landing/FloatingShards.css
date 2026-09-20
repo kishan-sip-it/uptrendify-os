@@ -12,14 +12,13 @@
   left: var(--shard-left);
   top: var(--shard-top);
   width: var(--shard-size);
-  height: calc(var(--shard-size) * 0.7);
+  height: var(--shard-height);
   opacity: var(--shard-opacity);
   background: linear-gradient(135deg, rgba(137, 106, 189, .9), rgba(168, 85, 247, .2));
   clip-path: polygon(0 50%, 68% 0, 100% 38%, 55% 100%);
   filter: drop-shadow(0 0 8px rgba(168, 85, 247, .12));
-  transform: translate3d(0, 0, 0) rotate(var(--shard-rotation));
+  transform: translate(0, 0) rotate(var(--shard-rotation));
   animation: floating-shard var(--shard-duration) ease-in-out var(--shard-delay) infinite alternate;
-  will-change: transform;
 }
 
 .floating-shard:nth-child(3n) {
@@ -35,11 +34,11 @@
 
 @keyframes floating-shard {
   0% {
-    transform: translate3d(0, 0, 0) rotate(var(--shard-rotation));
+    transform: translate(0, 0) rotate(var(--shard-rotation));
   }
   100% {
     transform:
-      translate3d(var(--shard-drift-x), var(--shard-drift-y), 0)
+      translate(var(--shard-drift-x), var(--shard-drift-y))
       rotate(calc(var(--shard-rotation) + 12deg));
   }
 }
