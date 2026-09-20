@@ -8,7 +8,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import BorderGlow from '@/components/react-bits/BorderGlow';
-import GridScan from '@/components/react-bits/GridScan';
+import GridScan from '@/components/ui/GridScan';
 import SwarmCursor from '@/components/react-bits/SwarmCursor';
 import WarpText from '@/components/react-bits/WarpText';
 
@@ -198,10 +198,34 @@ export function Landing() {
 
       <section className="landing-hero">
         <GridScan
-          backgroundColor="#120F17"
-          gridColor="#1e1829"
-          scanColor="#A855F7"
-          density={1}
+          enableWebcam={false}
+          showPreview={false}
+          sensitivity={0.55}
+          lineThickness={1}
+          linesColor="#2F293A"
+          gridScale={0.1}
+          scanColor="#FF9FFC"
+          scanOpacity={0.4}
+          lineStyle="solid"
+          lineJitter={0.1}
+          scanDirection="pingpong"
+          enablePost={true}
+          bloomIntensity={0.6}
+          bloomThreshold={0}
+          bloomSmoothing={0}
+          chromaticAberration={0.002}
+          noiseIntensity={0.01}
+          scanGlow={0.5}
+          scanSoftness={2}
+          scanPhaseTaper={0.9}
+          scanDuration={2.0}
+          scanDelay={2.0}
+          enableGyro={false}
+          scanOnClick={false}
+          snapBackDelay={250}
+          lightMode={false}
+          className=""
+          style={{}}
         />
         <Reveal>
           <div className="landing-eyebrow"><Sparkles size={13} /> AI Marketing Agency OS</div>
