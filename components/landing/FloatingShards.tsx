@@ -38,6 +38,7 @@ function shardStyle(
     '--shard-left': String(left),
     '--shard-top': String(top),
     '--shard-size': `${size}px`,
+    '--shard-height': `${Math.max(6, Number(size) * 0.7)}px`,
     '--shard-drift-x': `${dx}px`,
     '--shard-drift-y': `${dy}px`,
     '--shard-rotation': `${rotation}deg`,
