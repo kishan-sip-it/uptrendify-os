@@ -1,0 +1,57 @@
+.floating-shards {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  background: #120f17;
+}
+
+.floating-shard {
+  position: absolute;
+  left: var(--shard-left);
+  top: var(--shard-top);
+  width: var(--shard-size);
+  height: calc(var(--shard-size) * 0.7);
+  opacity: var(--shard-opacity);
+  background: linear-gradient(135deg, rgba(137, 106, 189, .9), rgba(168, 85, 247, .2));
+  clip-path: polygon(0 50%, 68% 0, 100% 38%, 55% 100%);
+  filter: drop-shadow(0 0 8px rgba(168, 85, 247, .12));
+  transform: translate3d(0, 0, 0) rotate(var(--shard-rotation));
+  animation: floating-shard var(--shard-duration) ease-in-out var(--shard-delay) infinite alternate;
+  will-change: transform;
+}
+
+.floating-shard:nth-child(3n) {
+  clip-path: polygon(0 65%, 38% 0, 100% 28%, 68% 100%);
+  background: linear-gradient(135deg, rgba(168, 85, 247, .72), rgba(137, 106, 189, .18));
+}
+
+.floating-shard:nth-child(4n) {
+  width: calc(var(--shard-size) * .72);
+  height: calc(var(--shard-size) * .52);
+  opacity: calc(var(--shard-opacity) * .84);
+}
+
+@keyframes floating-shard {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(var(--shard-rotation));
+  }
+  100% {
+    transform:
+      translate3d(var(--shard-drift-x), var(--shard-drift-y), 0)
+      rotate(calc(var(--shard-rotation) + 12deg));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-shard {
+    animation: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .floating-shard {
+    filter: none;
+  }
+}
