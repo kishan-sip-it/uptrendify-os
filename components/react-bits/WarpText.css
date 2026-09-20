@@ -58,3 +58,5 @@
     text-shadow: none;
   }
 }
+
+.warp-text__word:not(:last-child) { margin-inline-end: .28em; }
