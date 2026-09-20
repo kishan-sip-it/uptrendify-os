@@ -1,6 +1,5 @@
 'use client';
 
-import * as faceapi from 'face-api.js';
 import { BloomEffect, ChromaticAberrationEffect, EffectComposer, EffectPass, RenderPass } from 'postprocessing';
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
@@ -353,6 +352,7 @@ export const GridScan = ({
 }: GridScanProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const faceApiRef = useRef<typeof import('face-api.js') | null>(null);
 
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
@@ -480,7 +480,12 @@ export const GridScan = ({
 
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('webgl2', { antialias: true, alpha: true });
+      if (!context) {
+        throw new Error('WebGL2 is unavailable');
+      }
+      renderer = new THREE.WebGLRenderer({ canvas, context, antialias: true, alpha: true });
       setWebglFailed(false);
     } catch {
       setWebglFailed(true);
@@ -734,6 +739,7 @@ export const GridScan = ({
 
   useEffect(() => {
     let canceled = false;
+    faceApiRef.current = null;
 
     if (!enableWebcam) {
       setModelsReady(false);
@@ -744,12 +750,17 @@ export const GridScan = ({
 
     const load = async () => {
       try {
+        const faceapi = await import('face-api.js');
+        if (canceled) return;
+        faceApiRef.current = faceapi;
+
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(modelsPath),
           faceapi.nets.faceLandmark68TinyNet.loadFromUri(modelsPath)
         ]);
         if (!canceled) setModelsReady(true);
       } catch {
+        faceApiRef.current = null;
         if (!canceled) setModelsReady(false);
       }
     };
@@ -758,6 +769,7 @@ export const GridScan = ({
 
     return () => {
       canceled = true;
+      faceApiRef.current = null;
     };
   }, [enableWebcam, modelsPath]);
 
@@ -765,9 +777,10 @@ export const GridScan = ({
     let stop = false;
     let lastDetect = 0;
     const video = videoRef.current;
+    const faceapi = faceApiRef.current;
 
     const start = async () => {
-      if (!enableWebcam || !modelsReady) return;
+      if (!enableWebcam || !modelsReady || !faceapi) return;
       if (!video) return;
 
       try {
@@ -866,12 +879,7 @@ export const GridScan = ({
 
   return (
     <div ref={containerRef} className={`gridscan${className ? ` ${className}` : ''}`} style={style}>
-      {webglFailed ? (
-        <div className="gridscan__fallback" aria-hidden="true">
-          <div className="gridscan__fallback-floor" />
-          <div className="gridscan__fallback-beam" />
-        </div>
-      ) : null}
+      {webglFailed ? <div className="gridscan__fallback" aria-hidden="true" /> : null}
       {!webglFailed && showPreview && (
         <div className="gridscan__preview">
           <video ref={videoRef} muted playsInline autoPlay className="gridscan__video" />
