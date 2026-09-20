@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from 'react';
 
+import './CanvasShards.css';
+
 type CanvasShardsProps = {
   className?: string;
   backgroundColor?: string;
