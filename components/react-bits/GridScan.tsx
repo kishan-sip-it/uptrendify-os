@@ -1,5 +1,7 @@
 'use client';
 
+import type { CSSProperties } from 'react';
+
 import './GridScan.css';
 
 type GridScanProps = {
@@ -28,7 +30,7 @@ export default function GridScan({
         '--grid-scan-accent': scanColor,
         '--grid-scan-size': `${Math.max(34, 58 / safeDensity)}px`,
         '--grid-scan-duration': `${Math.max(3.8, 7.5 / safeDensity)}s`,
-      } as React.CSSProperties}
+      } as CSSProperties}
       aria-hidden="true"
     >
       <div className="grid-scan__grid" />
