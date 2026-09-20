@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
-import CanvasShards from '@/components/react-bits/CanvasShards';
+import FloatingShards from '@/components/landing/FloatingShards';
 
 type StepState = 'pending' | 'running' | 'done';
 
@@ -193,17 +193,7 @@ export function Landing() {
       </header>
 
       <section className="landing-hero">
-        <div className="landing-aero-shards" aria-hidden="true">
-          <CanvasShards
-            backgroundColor="#120F17"
-            shardColor="#896ABD"
-            accentColor="#A855F7"
-            density={1}
-            speed={0.75}
-            interactionRadius={220}
-            interactionStrength={0.55}
-          />
-        </div>
+        <FloatingShards />
         <Reveal>
           <div className="landing-eyebrow"><Sparkles size={13} /> AI Marketing Agency OS</div>
         </Reveal>
