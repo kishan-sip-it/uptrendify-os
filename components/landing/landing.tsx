@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
-import AeroShards from '@/components/react-bits/AeroShards';
+import CanvasShards from '@/components/react-bits/CanvasShards';
 
 type StepState = 'pending' | 'running' | 'done';
 
@@ -144,7 +144,6 @@ function WorkflowDemo() {
 export function Landing() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [aeroShardsVisible, setAeroShardsVisible] = useState(true);
 
   async function handleStart() {
     setLoading(true);
@@ -194,41 +193,17 @@ export function Landing() {
       </header>
 
       <section className="landing-hero">
-        {aeroShardsVisible ? (
-          <div className="landing-aero-shards" aria-hidden="true">
-            <AeroShards
-              backgroundColor="#120F17"
-              shardColor="#896ABD"
-              accentColor="#A855F7"
-              placement="full"
-              flow="stream"
-              material="pearl"
-              detail="balanced"
-              effect="none"
-              scale={1}
-              spread={1}
-              depth={1}
-              speed={1}
-              spin={1}
-              interaction="repel"
-              density={1.5}
-              shardSize={1.1}
-              stretch={1}
-              turbulence={1}
-              glow={1}
-              edgeSoftness={2}
-              bloom={0.5}
-              grain={0.05}
-              chromaticAberration={0.0075}
-              transitionDuration={1}
-              interactionRadius={1.5}
-              interactionStrength={0.5}
-              rippleIntensity={1}
-              holdToGather={true}
-              onError={() => setAeroShardsVisible(false)}
-            />
-          </div>
-        ) : null}
+        <div className="landing-aero-shards" aria-hidden="true">
+          <CanvasShards
+            backgroundColor="#120F17"
+            shardColor="#896ABD"
+            accentColor="#A855F7"
+            density={1}
+            speed={0.75}
+            interactionRadius={220}
+            interactionStrength={0.55}
+          />
+        </div>
         <Reveal>
           <div className="landing-eyebrow"><Sparkles size={13} /> AI Marketing Agency OS</div>
         </Reveal>
