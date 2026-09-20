@@ -480,12 +480,7 @@ export const GridScan = ({
 
     let renderer: THREE.WebGLRenderer;
     try {
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('webgl2', { antialias: true, alpha: true });
-      if (!context) {
-        throw new Error('WebGL2 is unavailable');
-      }
-      renderer = new THREE.WebGLRenderer({ canvas, context, antialias: true, alpha: true });
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       setWebglFailed(false);
     } catch {
       setWebglFailed(true);
