@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, type CSSProperties, type PointerEvent } from 'react';
 
 import './WarpText.css';
 
@@ -27,7 +27,7 @@ export default function WarpText({
 }: WarpTextProps) {
   const rootRef = useRef<HTMLHeadingElement | null>(null);
 
-  function handlePointerMove(event: React.PointerEvent<HTMLHeadingElement>) {
+  function handlePointerMove(event: PointerEvent<HTMLHeadingElement>) {
     const root = rootRef.current;
     if (!root || event.pointerType === 'touch') return;
 
@@ -91,7 +91,7 @@ export default function WarpText({
         '--warp-size': fontSize,
         '--warp-weight': String(fontWeight),
         '--warp-duration': `${Math.max(0.2, 1.2 - speed)}s`,
-      } as React.CSSProperties}
+      } as CSSProperties}
       onPointerMove={handlePointerMove}
       onPointerLeave={resetPointer}
     >
