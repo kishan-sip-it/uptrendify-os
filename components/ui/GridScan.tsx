@@ -363,6 +363,7 @@ export const GridScan = ({
 
   const [modelsReady, setModelsReady] = useState<boolean>(false);
   const [uiFaceActive, setUiFaceActive] = useState<boolean>(false);
+  const [webglFailed, setWebglFailed] = useState<boolean>(false);
 
   const lookTarget = useRef(new THREE.Vector2(0, 0));
   const tiltTarget = useRef(0);
@@ -477,7 +478,14 @@ export const GridScan = ({
     const container = containerRef.current;
     if (!container) return;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      setWebglFailed(false);
+    } catch {
+      setWebglFailed(true);
+      return;
+    }
     rendererRef.current = renderer;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -726,6 +734,14 @@ export const GridScan = ({
 
   useEffect(() => {
     let canceled = false;
+
+    if (!enableWebcam) {
+      setModelsReady(false);
+      return () => {
+        canceled = true;
+      };
+    }
+
     const load = async () => {
       try {
         await Promise.all([
@@ -737,11 +753,13 @@ export const GridScan = ({
         if (!canceled) setModelsReady(false);
       }
     };
+
     load();
+
     return () => {
       canceled = true;
     };
-  }, [modelsPath]);
+  }, [enableWebcam, modelsPath]);
 
   useEffect(() => {
     let stop = false;
@@ -848,7 +866,13 @@ export const GridScan = ({
 
   return (
     <div ref={containerRef} className={`gridscan${className ? ` ${className}` : ''}`} style={style}>
-      {showPreview && (
+      {webglFailed ? (
+        <div className="gridscan__fallback" aria-hidden="true">
+          <div className="gridscan__fallback-floor" />
+          <div className="gridscan__fallback-beam" />
+        </div>
+      ) : null}
+      {!webglFailed && showPreview && (
         <div className="gridscan__preview">
           <video ref={videoRef} muted playsInline autoPlay className="gridscan__video" />
           <div className="gridscan__badge">
