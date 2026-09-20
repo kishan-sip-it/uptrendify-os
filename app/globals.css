@@ -396,3 +396,7 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
   .org-switcher, .brand-switcher { flex:1; }
   .brand-switcher-trigger { width:100%; justify-content:center; }
 }
+
+.danger-hold-button { border: 1px solid rgba(248,113,113,.34); min-width: 180px; }
+.danger-hold-button:hover:not(:disabled) { border-color: rgba(248,113,113,.58); }
+@media (max-width: 700px) { .danger-hold-button { width: 100%; justify-content: center; } }
