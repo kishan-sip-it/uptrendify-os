@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 
 import './SwarmCursor.css';
 
@@ -64,7 +64,7 @@ export default function SwarmCursor({ color = '#A855F7', opacity = 0.32 }: { col
         const scale = 1 - index * 0.045;
         const size = 1 - index / PARTICLE_COUNT;
         const opacityValue = (0.85 - index / (PARTICLE_COUNT * 1.15)) * opacity;
-        particles[index].style.transform = `translate3d(${point.x}px, ${point.y}px, 0) scale(${scale})`;
+        particles[index].style.transform = `translate(${point.x}px, ${point.y}px) scale(${scale})`;
         particles[index].style.opacity = String(Math.max(0, opacityValue * size));
       });
 
@@ -88,7 +88,7 @@ export default function SwarmCursor({ color = '#A855F7', opacity = 0.32 }: { col
         <span
           key={index}
           className="swarm-cursor__particle"
-          style={{ '--particle-index': String(index), background: color } as React.CSSProperties}
+          style={{ '--particle-index': String(index), background: color } as CSSProperties}
         />
       ))}
     </div>
