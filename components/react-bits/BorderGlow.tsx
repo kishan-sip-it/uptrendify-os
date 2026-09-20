@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, type ReactNode } from 'react';
+import { useRef, useCallback, useEffect, type CSSProperties, type ReactNode } from 'react';
 import './BorderGlow.css';
 
 interface BorderGlowProps {
@@ -188,7 +188,7 @@ const BorderGlow: React.FC<BorderGlowProps> = ({
         '--fill-opacity': fillOpacity,
         ...glowVars,
         ...buildGradientVars(colors),
-      } as React.CSSProperties}
+      } as CSSProperties}
     >
       <span className="edge-light" />
       <div className="border-glow-inner">{children}</div>
