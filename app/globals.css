@@ -296,7 +296,7 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .landing-mobile a { padding:11px 12px; border-radius:10px; color:var(--muted); }
 .landing-mobile a:hover { color:var(--text); background:var(--panel-2); }
 .landing-hero { position:relative; isolation:isolate; overflow:hidden; padding:84px 28px 40px; max-width:1080px; margin:0 auto; text-align:center; }
-.landing-hero > .landing-floating-shards { position:absolute; inset:0; z-index:0; pointer-events:none; }
+.landing-hero > .floating-shards { position:absolute; inset:0; z-index:0; pointer-events:none; }
 .landing-hero > .landing-reveal { position:relative; z-index:1; }
 .landing-eyebrow { display:inline-flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px; border:1px solid rgba(110,231,199,.25); background:rgba(110,231,199,.07); color:var(--accent); font-size:12px; font-weight:600; letter-spacing:.05em; }
 .landing-hero h1 { font-size:clamp(40px, 7vw, 72px); line-height:1.05; margin:22px 0 18px; }
