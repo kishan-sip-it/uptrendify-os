@@ -30,6 +30,7 @@
     "@types/node": "^24.4.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/three": "0.180.0",
     "supabase": "2.117.0",
     "typescript": "^5.9.2",
     "vitest": "^5.0.1"
