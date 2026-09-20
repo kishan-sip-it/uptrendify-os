@@ -87,7 +87,7 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-type DraftIntent = ContentIntentLike & { clientId?: string | null };
+type DraftIntent = ContentIntentLike & { clientId?: string | null; campaignId?: string | null };
 
 const EMPTY_INTENT: DraftIntent = {
   type: 'social_post',
@@ -99,6 +99,7 @@ const EMPTY_INTENT: DraftIntent = {
   tone: '',
   cta: '',
   instructions: '',
+  campaignId: '',
 };
 
 function CreateForm({ brandId, onCreated }: { brandId: string; onCreated: () => void }) {
@@ -106,6 +107,21 @@ function CreateForm({ brandId, onCreated }: { brandId: string; onCreated: () => 
   const [intent, setIntent] = useState<DraftIntent>(EMPTY_INTENT);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [campaignOptions, setCampaignOptions] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch(`/api/brands/${brandId}/campaigns?limit=100`, { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => {
+        if (!cancelled) setCampaignOptions((body?.campaigns ?? []).map((campaign: { id: string; name: string }) => ({ id: campaign.id, name: campaign.name })));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open, brandId]);
 
   const set = <K extends keyof DraftIntent>(key: K, value: DraftIntent[K]) => setIntent((prev) => ({ ...prev, [key]: value }));
 
@@ -123,6 +139,7 @@ function CreateForm({ brandId, onCreated }: { brandId: string; onCreated: () => 
         const value = intent[key];
         if (typeof value === 'string' && value.trim()) payload[key] = value.trim();
       }
+      if (intent.campaignId) payload.campaignId = intent.campaignId;
       const response = await fetch(`/api/brands/${brandId}/content`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -172,6 +189,12 @@ function CreateForm({ brandId, onCreated }: { brandId: string; onCreated: () => 
           </label>
           <label>Campaign / context (optional)
             <textarea value={intent.context ?? ''} onChange={(event) => set('context', event.target.value)} placeholder="Launch, campaign, season, context the model should know" />
+          </label>
+          <label>Link to a campaign (optional)
+            <select value={intent.campaignId ?? ''} onChange={(event) => set('campaignId', event.target.value || undefined)}>
+              <option value="">No campaign</option>
+              {campaignOptions.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+            </select>
           </label>
           <label>Tone / style (optional)
             <input value={intent.tone ?? ''} onChange={(event) => set('tone', event.target.value)} placeholder="e.g. confident, evidence-first" />

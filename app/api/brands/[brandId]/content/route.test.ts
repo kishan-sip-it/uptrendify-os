@@ -118,6 +118,42 @@ describe('POST /api/brands/[brandId]/content', () => {
     const res = await POST(req, { params: Promise.resolve({ brandId: BRAND_ID }) });
     expect(res.status).toBe(401);
   });
+
+  it('links a content brief to an existing campaign', async () => {
+    const CAMPAIGN_ID = '00000000-0000-4000-8000-00000000000c';
+    const client = makeClient([
+      ['brands', BRAND],
+      ['campaigns', { data: { id: CAMPAIGN_ID }, error: null }],
+      ['content_items', { data: [{ id: CONTENT_ID, type: 'social_post', title: 'Win back ICP accounts', status: 'DRAFT', channel: 'linkedin', created_at: '2026-01-01T00:00:00.000Z' }], error: null }],
+    ]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const req = new NextRequest('http://localhost/api/brands', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'social_post', channel: 'linkedin', title: 'Win back ICP accounts', campaignId: CAMPAIGN_ID }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ brandId: BRAND_ID }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body).toMatchObject({ ok: true, contentId: CONTENT_ID });
+  });
+
+  it('returns 404 when the linked campaign does not exist', async () => {
+    const CAMPAIGN_ID = '00000000-0000-4000-8000-00000000000c';
+    const client = makeClient([
+      ['brands', BRAND],
+      ['campaigns', { data: null, error: null }],
+    ]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const req = new NextRequest('http://localhost/api/brands', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'social_post', channel: 'linkedin', title: 'x', campaignId: CAMPAIGN_ID }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ brandId: BRAND_ID }) });
+    expect(res.status).toBe(404);
+  });
 });
 
 describe('GET /api/brands/[brandId]/content', () => {

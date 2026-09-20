@@ -24,6 +24,8 @@ export const CAN_VIEW_BRAND: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITO
 export const CAN_GENERATE_CONTENT: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR'];
 export const CAN_REVIEW_CONTENT: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'APPROVER'];
 export const CAN_VIEW_CONTENT: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR', 'APPROVER', 'CLIENT'];
+export const CAN_MANAGE_CAMPAIGNS: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR'];
+export const CAN_VIEW_CAMPAIGNS: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR', 'APPROVER', 'CLIENT'];
 
 export type AuthContext = {
   organizationId: string;

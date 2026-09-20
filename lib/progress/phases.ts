@@ -97,8 +97,14 @@ export const PROJECT_PHASES: readonly ProjectPhase[] = [
     phase: 11,
     title: 'Campaign Management',
     description: 'Campaigns built from approved strategy pillars with budget, channels and publish workflow.',
-    status: 'PENDING',
-    evidence: [],
+    status: 'IN_PROGRESS',
+    evidence: [
+      '0025_campaign_management.sql: campaign_status lifecycle (DRAFT→PLANNED→ACTIVE→COMPLETED/ARCHIVED) with client attribution, budget/currency/dates/channels, transition + lineage triggers (strategy must be SUCCEEDED, client matches brand) — applied to the linked Supabase project',
+      'REST API: GET/POST /api/brands/[brandId]/campaigns, GET/PATCH …/campaigns/[campaignId], POST …/status — RBAC (CAN_MANAGE/CAN_VIEW_CAMPAIGNS), tenant isolation and approved-strategy grounding',
+      'Campaign UI: organization-wide /campaigns hub grouped by client → brand, brand campaign workspace (list + create + strategy gate), campaign detail (edit, lifecycle actions, budget/dates/channels, related content)',
+      'Content Studio linkage: content briefs can be linked to a campaign (campaign_id); the campaign detail lists its related content',
+      'Verification so far: npm test 333 passing, npm run typecheck clean, npm run build clean, migration applied via supabase db push. Pending: manual end-to-end verification of the deployed campaign workflow before this phase can close.',
+    ],
   },
   {
     phase: 12,

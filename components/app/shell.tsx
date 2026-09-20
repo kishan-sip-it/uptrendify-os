@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { icon: Users, label: 'Brands', href: '/brands', soon: false },
   { icon: Target, label: 'Strategy', soon: true },
   { icon: FileText, label: 'Content Studio', href: '/content', soon: false },
-  { icon: Boxes, label: 'Campaigns', soon: true },
+  { icon: Boxes, label: 'Campaigns', href: '/campaigns', soon: false },
   { icon: CheckCircle2, label: 'Approvals', soon: true },
 ];
 

@@ -155,7 +155,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     return NextResponse.json({ ok: true, researchRunId: runId, status: 'QUEUED' }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      obs.warn('Invalid research request validation', { errors: error.errors });
+      obs.warn('Invalid research request validation', { errors: error.issues });
       return NextResponse.json({ error: 'Invalid research request', details: error.flatten() }, { status: 400 });
     }
     if (error instanceof Error && isNoRowsError(error as unknown as { code?: string })) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
