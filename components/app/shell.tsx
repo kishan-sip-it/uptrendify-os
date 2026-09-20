@@ -5,6 +5,7 @@ import {
   ArrowUpRight, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Sparkles, Target, Trash2, Users, X,
 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
+import HoldButton from '@/components/react-bits/HoldButton';
 
 export type ShellBrand = { id: string; name: string; website_url: string | null; status: string | null };
 export type ShellOrganization = { id: string; name: string; role: string };
@@ -457,15 +458,20 @@ export function AppShell({
                     style={{ marginTop: 7, width: '100%' }}
                   />
                 </label>
-                <button
-                  type="button"
-                  className="badge"
-                  onClick={deleteWorkspace}
+                <HoldButton
+                  size="sm"
+                  holdTime={1800}
+                  resetAfter={1400}
+                  backgroundColor="#24121A"
+                  fillColor="#DC2626"
+                  textColor="#fca5a5"
+                  fillTextColor="#ffffff"
+                  className="danger-hold-button"
                   disabled={workspaceLoading || workspaceConfirmation !== 'DELETE WORKSPACE'}
-                  style={{ marginTop: 10, borderColor: 'rgba(248,113,113,.45)', color: '#f87171' }}
+                  onHold={deleteWorkspace}
                 >
-                  {workspaceLoading ? 'Deleting workspace…' : <><Trash2 size={14} /> Delete workspace first</>}
-                </button>
+                  <Trash2 size={14} /> Hold to delete workspace
+                </HoldButton>
               </div>
             ) : null}
 
@@ -484,15 +490,20 @@ export function AppShell({
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                className="badge"
-                onClick={deleteAccount}
+              <HoldButton
+                size="md"
+                holdTime={2000}
+                resetAfter={1400}
+                backgroundColor="#24121A"
+                fillColor="#DC2626"
+                textColor="#fca5a5"
+                fillTextColor="#ffffff"
+                className="danger-hold-button"
                 disabled={deleteLoading || deleteConfirmation !== 'DELETE'}
-                style={{ borderColor: 'rgba(248,113,113,.45)', color: '#f87171' }}
+                onHold={deleteAccount}
               >
-                {deleteLoading ? 'Deleting…' : <><Trash2 size={14} /> Delete account</>}
-              </button>
+                <Trash2 size={14} /> Hold to delete account
+              </HoldButton>
             </div>
           </section>
         </div>
