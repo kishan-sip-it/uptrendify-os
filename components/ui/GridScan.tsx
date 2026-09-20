@@ -379,7 +379,7 @@ export const GridScan = ({
   const MAX_SCANS = 8;
   const scanStartsRef = useRef<number[]>([]);
 
-  const pushScan = t => {
+  const pushScan = (t: number) => {
     const arr = scanStartsRef.current.slice();
     if (arr.length >= MAX_SCANS) arr.shift();
     arr.push(t);
@@ -856,8 +856,8 @@ export const GridScan = ({
     return () => {
       stop = true;
       if (video) {
-        const stream = video.srcObject;
-        if (stream) stream.getTracks().forEach(t => t.stop());
+        const stream = video.srcObject as MediaStream | null;
+        if (stream) stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
         video.pause();
         video.srcObject = null;
       }
@@ -890,7 +890,7 @@ export const GridScan = ({
   );
 };
 
-function srgbColor(hex) {
+function srgbColor(hex: string): THREE.Color {
   const c = new THREE.Color(hex);
   return c.convertSRGBToLinear();
 }
