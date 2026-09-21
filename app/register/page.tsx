@@ -150,17 +150,32 @@ export default function RegisterPage() {
 
       if (signUpError) {
         const message = signUpError.message.toLowerCase();
-        if (message.includes('already registered') || message.includes('already been registered') || message.includes('already exists')) {
-          setError('An account with this email already exists. Sign in instead.');
-        } else if (message.includes('rate limit') || message.includes('too many requests')) {
-          setError('Registration is temporarily rate-limited by Supabase Auth. Please wait and try again.');
-        } else {
-          setError(signUpError.message);
-        }
-        return;
-      }
 
-      if (!signUpData.session) {
+        if (message.includes('rate limit') || message.includes('too many requests')) {
+          setError('Registration is temporarily rate-limited by Supabase Auth. Please wait and try again.');
+          return;
+        }
+
+        const alreadyExists =
+          message.includes('already registered') ||
+          message.includes('already been registered') ||
+          message.includes('already exists') ||
+          message.includes('user already exists');
+
+        if (!alreadyExists) {
+          setError(signUpError.message);
+          return;
+        }
+
+        // Recovery path for a user created by a previous signup attempt whose
+        // workspace bootstrap failed. Password authentication proves ownership;
+        // the bootstrap endpoint is idempotent and reuses an existing workspace.
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInError) {
+          setError('An account with this email already exists. Sign in instead.');
+          return;
+        }
+      } else if (!signUpData.session) {
         const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) {
           setError(signInError.message);
@@ -175,7 +190,10 @@ export default function RegisterPage() {
       });
       const bootstrapBody = await bootstrap.json().catch(() => null);
       if (!bootstrap.ok) {
-        setError(bootstrapBody?.error || 'Could not create your workspace.');
+        setError(
+          bootstrapBody?.error ||
+            'Your account was created, but workspace setup could not be completed. Please try registration again.',
+        );
         return;
       }
 
