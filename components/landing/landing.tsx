@@ -179,6 +179,7 @@ export function Landing() {
         scatterOnClick
         enabled
         repelRef={heroRef}
+        excludeSelector=".landing-nav, .landing-links, .landing-actions, .landing-mobile, .landing-hero, a, button, input, textarea, select, [role='button'], [data-swarm-exclude], .landing-metric, .landing-feature-card, .landing-how-card, .border-glow-card"
       />
       <header className="landing-nav">
         <a href="/" className="landing-logo" aria-label="UpTrendifyOS home">

@@ -24,6 +24,7 @@ type SwarmCursorProps = {
   className?: string;
   style?: CSSProperties;
   repelRef?: RefObject<HTMLElement | null>;
+  excludeSelector?: string;
 };
 
 const FIELD_VERT = `
@@ -186,6 +187,23 @@ export default function SwarmCursor({
   className = '',
   style,
   repelRef,
+  excludeSelector = [
+    'header',
+    'nav',
+    'aside',
+    'button',
+    'a',
+    'input',
+    'textarea',
+    'select',
+    '[role="button"]',
+    '[data-swarm-exclude]',
+    '.landing-hero',
+    '.landing-metric',
+    '.landing-feature-card',
+    '.landing-how-card',
+    '.border-glow-card',
+  ].join(', '),
 }: SwarmCursorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const propsRef = useRef<SwarmCursorProps>({
@@ -221,6 +239,7 @@ export default function SwarmCursor({
     scatterOnClick,
     enabled,
     repelRef,
+    excludeSelector,
   };
 
   useEffect(() => {
@@ -386,17 +405,24 @@ export default function SwarmCursor({
     let cursorInsideRepelZone = false;
     let reentryPending = false;
 
-    const isInsideRepelZone = (event: PointerEvent) => {
+    const isInsideExcludedZone = (event: PointerEvent) => {
       const node = propsRef.current.repelRef?.current;
-      if (!node) return false;
 
-      const rect = node.getBoundingClientRect();
-      return (
-        event.clientX >= rect.left &&
-        event.clientX <= rect.right &&
-        event.clientY >= rect.top &&
-        event.clientY <= rect.bottom
-      );
+      if (node) {
+        const rect = node.getBoundingClientRect();
+        const insideReferencedZone =
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom;
+
+        if (insideReferencedZone) return true;
+      }
+
+      const target = document.elementFromPoint(event.clientX, event.clientY);
+      if (!(target instanceof Element)) return false;
+
+      return Boolean(target.closest(propsRef.current.excludeSelector ?? ''));
     };
 
     const resetHistoryAtCurrentPositions = (count: number) => {
@@ -447,12 +473,13 @@ export default function SwarmCursor({
       cursor.y = event.clientY - rect.top;
       cursor.has = true;
 
-      const insideRepelZone = isInsideRepelZone(event);
+      const insideExcludedZone = isInsideExcludedZone(event);
 
-      if (insideRepelZone && !cursorInsideRepelZone) {
+      if (insideExcludedZone && !cursorInsideRepelZone) {
         cursorInsideRepelZone = true;
+        reentryPending = false;
         beginRepel();
-      } else if (!insideRepelZone && cursorInsideRepelZone) {
+      } else if (!insideExcludedZone && cursorInsideRepelZone) {
         cursorInsideRepelZone = false;
         reentryPending = true;
       }
