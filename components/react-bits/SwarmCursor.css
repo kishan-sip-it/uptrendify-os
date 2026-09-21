@@ -6,15 +6,6 @@
   pointer-events: none;
   overflow: hidden;
   z-index: 35;
-  opacity: 1;
-  visibility: visible;
-  transition: opacity 180ms ease, visibility 180ms ease;
-}
-
-.swarm-cursor[data-active='false'] {
-  opacity: 0;
-  visibility: hidden;
-}
 
 .swarm-cursor__canvas {
   position: absolute;
