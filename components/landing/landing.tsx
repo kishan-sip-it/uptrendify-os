@@ -7,6 +7,10 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
+import BorderGlow from '@/components/react-bits/BorderGlow';
+import GridScan from '@/components/ui/GridScan';
+import SwarmCursor from '@/components/react-bits/SwarmCursor';
+import WarpText from '@/components/react-bits/WarpText';
 
 type StepState = 'pending' | 'running' | 'done';
 
@@ -158,6 +162,7 @@ export function Landing() {
 
   return (
     <div className="landing">
+      <SwarmCursor color="#A855F7" opacity={0.22} />
       <header className="landing-nav">
         <a href="/" className="landing-logo" aria-label="UpTrendifyOS home">
           <span className="logo" style={{ width: 22, height: 22 }} /> UpTrendifyOS
@@ -192,15 +197,49 @@ export function Landing() {
       </header>
 
       <section className="landing-hero">
+        <GridScan
+          enableWebcam={false}
+          showPreview={false}
+          sensitivity={0.55}
+          lineThickness={1}
+          linesColor="#2F293A"
+          gridScale={0.1}
+          scanColor="#FF9FFC"
+          scanOpacity={0.4}
+          lineStyle="solid"
+          lineJitter={0.1}
+          scanDirection="pingpong"
+          enablePost={true}
+          bloomIntensity={0.6}
+          bloomThreshold={0}
+          bloomSmoothing={0}
+          chromaticAberration={0.002}
+          noiseIntensity={0.01}
+          scanGlow={0.5}
+          scanSoftness={2}
+          scanPhaseTaper={0.9}
+          scanDuration={2.0}
+          scanDelay={2.0}
+          enableGyro={false}
+          scanOnClick={false}
+          snapBackDelay={250}
+          lightMode={false}
+          className=""
+          style={{}}
+        />
         <Reveal>
           <div className="landing-eyebrow"><Sparkles size={13} /> AI Marketing Agency OS</div>
         </Reveal>
         <Reveal delay={80}>
-          <h1>
-            Every client brand.
-            <br />
-            <span className="landing-gradient">One operating system.</span>
-          </h1>
+          <WarpText
+            text="Every client brand. One operating system."
+            color="#f8f5ff"
+            fontSize="clamp(2.5rem, 6vw, 5rem)"
+            fontWeight={800}
+            warpStrength={0.05}
+            speed={0.4}
+            pointerStrength={0.3}
+          />
         </Reveal>
         <Reveal delay={160}>
           <p className="landing-hero-sub">
@@ -219,10 +258,20 @@ export function Landing() {
         <Reveal delay={320}>
           <div className="landing-pipeline" aria-hidden="true">
             {PIPELINE.map((item) => (
-              <div className="landing-pipeline-step" key={item.step}>
-                <span className="landing-pipeline-badge">{item.step}</span>
-                <span className="landing-pipeline-label">{item.label}</span>
-              </div>
+              <BorderGlow
+                key={item.step}
+                className="landing-pipeline-glow"
+                backgroundColor="#120F17"
+                borderRadius={999}
+                glowRadius={18}
+                glowIntensity={0.6}
+                colors={['#A855F7', '#D946EF', '#8B5CF6']}
+              >
+                <div className="landing-pipeline-step">
+                  <span className="landing-pipeline-badge">{item.step}</span>
+                  <span className="landing-pipeline-label">{item.label}</span>
+                </div>
+              </BorderGlow>
             ))}
           </div>
         </Reveal>
