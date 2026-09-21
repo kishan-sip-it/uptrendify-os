@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, ChevronRight, FileText, LoaderCircle, PlayCircle, RefreshCw } from 'lucide-react';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/feedback';
-import type { StrategyOutput } from '@/lib/strategy/schema';
+import { normalizeStrategyOutputForPresentation, type StrategyOutput } from '@/lib/strategy/schema';
 
 type VersionMeta = {
   id: string;
@@ -19,7 +19,7 @@ type VersionMeta = {
   finishedAt: string | null;
 };
 
-type LatestStrategy = {
+export type LatestStrategy = {
   id: string;
   title: string;
   status: string;
@@ -42,6 +42,24 @@ type StrategyData = {
 };
 
 const LIVE_STATUSES = new Set(['QUEUED', 'RUNNING']);
+
+export type StrategyView =
+  | { kind: 'empty' }
+  | { kind: 'live'; status: string }
+  | { kind: 'failed' }
+  | { kind: 'content' }
+  | { kind: 'missing' }
+  | { kind: 'unknown' };
+
+export function resolveStrategyView(latest: LatestStrategy | null): StrategyView {
+  if (!latest) return { kind: 'empty' };
+  if (LIVE_STATUSES.has(latest.status)) return { kind: 'live', status: latest.status };
+  if (latest.status === 'FAILED') return { kind: 'failed' };
+  if (latest.status === 'SUCCEEDED') {
+    return normalizeStrategyOutputForPresentation(latest.output) === null ? { kind: 'missing' } : { kind: 'content' };
+  }
+  return { kind: 'unknown' };
+}
 
 function toneFor(status: string): string {
   if (status === 'SUCCEEDED') return 'tone-good';
@@ -179,11 +197,12 @@ function CampaignCards({ campaigns }: { campaigns: StrategyOutput['campaigns'] }
   );
 }
 
-function RoadmapColumns({ roadmap }: { roadmap: StrategyOutput['roadmap'] }) {
+function RoadmapColumns({ roadmap }: { roadmap: StrategyOutput['roadmap'] | null | undefined }) {
+  const safeRoadmap = roadmap ?? { days1To30: [], days31To60: [], days61To90: [] };
   const columns: Array<{ label: string; items: StrategyOutput['roadmap']['days1To30'] }> = [
-    { label: 'Days 1–30', items: roadmap.days1To30 },
-    { label: 'Days 31–60', items: roadmap.days31To60 },
-    { label: 'Days 61–90', items: roadmap.days61To90 },
+    { label: 'Days 1–30', items: safeRoadmap.days1To30 ?? [] },
+    { label: 'Days 31–60', items: safeRoadmap.days31To60 ?? [] },
+    { label: 'Days 61–90', items: safeRoadmap.days61To90 ?? [] },
   ];
   const hasAny = columns.some((column) => column.items.length > 0);
   if (!hasAny) return null;
@@ -267,8 +286,30 @@ function VersionHistory({ versions }: { versions: VersionMeta[] }) {
   );
 }
 
+function StrategyMissingState({ canGenerate, onRegenerate }: { canGenerate: boolean; onRegenerate: () => void }) {
+  return (
+    <div className="grid" style={{ gap: 16 }}>
+      <div className="card" style={{ borderColor: 'rgba(251,191,36,.4)' }}>
+        <div className="eyebrow" style={{ color: '#fbbf24' }}>Outdated strategy version</div>
+        <p style={{ margin: '8px 0 4px' }}>This strategy version is missing required fields. Regenerate strategy.</p>
+        <p className="subtitle" style={{ margin: '0 0 14px' }}>
+          The stored output does not match the current strategy schema. The version is preserved in history.
+        </p>
+        {canGenerate ? (
+          <button type="button" className="badge" onClick={onRegenerate} disabled={false} style={{ border: 0, cursor: 'pointer', padding: '8px 12px' }}>
+            <RefreshCw size={14} /> Regenerate strategy
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function StrategyContent({ strategy, versions }: { strategy: LatestStrategy; versions: VersionMeta[] }) {
-  const output = strategy.output ?? ({} as StrategyOutput);
+  const output = normalizeStrategyOutputForPresentation(strategy.output);
+  if (!output) {
+    return <StrategyMissingState canGenerate={false} onRegenerate={() => undefined} />;
+  }
   const { executiveSummary, businessUnderstanding, objectives, icp, positioning, messaging, contentStrategy, seoStrategy, channels, campaigns, roadmap, kpis, risksAndGaps, assumptions } = output;
 
   return (
@@ -471,6 +512,7 @@ export function BrandStrategy({ brandId, brandName }: { brandId: string; brandNa
 
   const latest = data?.latest ?? null;
   const live = latest && LIVE_STATUSES.has(latest.status);
+  const view = resolveStrategyView(latest);
 
   useEffect(() => {
     if (!live) {
@@ -537,7 +579,7 @@ export function BrandStrategy({ brandId, brandName }: { brandId: string; brandNa
 
       {loading ? (
         <LoadingState label="Loading strategy…" />
-      ) : error ? null : !latest ? (
+      ) : error ? null : view.kind === 'empty' ? (
         <EmptyState
           title="No strategy yet"
           description="There is no strategy for this brand yet. Get research running (or reset a run) to build the brand brain, then generate the strategy here."
@@ -547,9 +589,25 @@ export function BrandStrategy({ brandId, brandName }: { brandId: string; brandNa
             </button>
           ) : undefined}
         />
-      ) : latest.status === 'FAILED' ? (
+      ) : view.kind === 'live' ? (
+        <div className="card" style={{ borderColor: 'rgba(139,124,255,.45)' }}>
+          <div className="section-title" style={{ flexWrap: 'wrap', gap: 10 }}>
+            <div>
+              <div className="eyebrow">Generating strategy</div>
+              <h2 style={{ margin: '5px 0' }}>Building {brandName}’s strategy</h2>
+            </div>
+            <LoaderCircle size={18} className="spin" color="var(--accent-2)" />
+          </div>
+          <p className="subtitle" style={{ marginBottom: 10 }}>
+            {view.status === 'QUEUED'
+              ? 'The strategy is queued and will start generating shortly. This page refreshes automatically.'
+              : 'The strategy is being generated from the brand brain. It usually takes under a minute.'}
+          </p>
+          <div className="progress" style={{ animation: 'none' }}><span style={{ width: '65%' }} /></div>
+        </div>
+      ) : view.kind === 'failed' ? (
         <div className="grid" style={{ gap: 16 }}>
-          <ErrorState message={latest.errorMessage || 'Strategy generation did not complete.'} />
+          <ErrorState message={latest?.errorMessage || 'Strategy generation did not complete.'} />
           {canGenerate ? (
             <div className="card" style={{ textAlign: 'center', padding: '26px 20px' }}>
               <p className="subtitle" style={{ margin: '0 0 14px' }}>Fix the underlying issue (check AI provider configuration) and regenerate when ready.</p>
@@ -559,8 +617,20 @@ export function BrandStrategy({ brandId, brandName }: { brandId: string; brandNa
             </div>
           ) : null}
         </div>
+      ) : view.kind === 'content' ? (
+        <StrategyContent strategy={latest!} versions={data?.versions ?? []} />
+      ) : view.kind === 'missing' ? (
+        <StrategyMissingState canGenerate={canGenerate} onRegenerate={regenerate} />
       ) : (
-        <StrategyContent strategy={latest} versions={data?.versions ?? []} />
+        <EmptyState
+          title="Unknown strategy status"
+          description={`This strategy has an unexpected status. Regenerate it to rebuild it from the current Brand Brain.`}
+          action={canGenerate ? (
+            <button type="button" className="badge" onClick={start} disabled={generating} style={{ border: 0, cursor: 'pointer', padding: '8px 12px' }}>
+              {generating ? <><LoaderCircle size={14} className="spin" /> Starting…</> : <><RefreshCw size={14} /> Regenerate strategy</>}
+            </button>
+          ) : undefined}
+        />
       )}
     </div>
   );

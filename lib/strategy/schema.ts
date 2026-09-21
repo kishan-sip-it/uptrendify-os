@@ -173,3 +173,52 @@ export class StrategyValidationError extends Error {
 export function isStrategyValidationError(error: unknown): error is StrategyValidationError {
   return error instanceof StrategyValidationError;
 }
+
+const requiredPresentationGroups = [
+  'executiveSummary',
+  'businessUnderstanding',
+  'objectives',
+  'icp',
+  'positioning',
+  'messaging',
+  'contentStrategy',
+  'seoStrategy',
+  'channels',
+  'campaigns',
+  'roadmap',
+  'kpis',
+  'risksAndGaps',
+  'assumptions',
+] as const;
+
+function toRoadmapItems(value: unknown): StrategyOutput['roadmap']['days1To30'] {
+  return Array.isArray(value) ? value : [];
+}
+
+/**
+ * Presentation-only normalization for already-persisted strategy output.
+ *
+ * Generation stays on the strict `strategySchema`; this does NOT weaken it.
+ * It is used purely to decide whether a SUCCEEDED strategy carries enough
+ * current-schema structure to be rendered safely, and to fill safe defaults
+ * for legacy/incomplete nested output (e.g. a roadmap object with no columns).
+ *
+ * Returns null when the output is missing required current-schema groups, so
+ * callers can show a regeneration prompt instead of rendering incomplete data.
+ */
+export function normalizeStrategyOutputForPresentation(raw: unknown): StrategyOutput | null {
+  const output = (raw && typeof raw === 'object' ? raw : null) as Record<string, unknown> | null;
+  if (!output) return null;
+  for (const key of requiredPresentationGroups) {
+    if (output[key] == null) return null;
+  }
+  const roadmap = output.roadmap as Record<string, unknown> | null | undefined;
+  return {
+    ...output,
+    roadmap: {
+      days1To30: toRoadmapItems(roadmap?.days1To30),
+      days31To60: toRoadmapItems(roadmap?.days31To60),
+      days61To90: toRoadmapItems(roadmap?.days61To90),
+    },
+  } as unknown as StrategyOutput;
+}

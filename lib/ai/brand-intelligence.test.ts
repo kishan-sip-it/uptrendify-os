@@ -11,14 +11,14 @@ import {
 } from './brand-intelligence';
 
 function fakeProvider(outputs: Array<string | Error>, model = 'fake-model') {
-  const calls: Array<{ prompt: string }> = [];
+  const calls: Array<{ prompt: string; maxTokens?: number; json?: boolean }> = [];
   const provider = {
     id: 'fake',
     defaultModel: model,
     configured: () => true,
     health: async () => ({ id: 'fake', configured: true, ok: true }),
-    generate: vi.fn(async (input: { prompt: string; json?: boolean }) => {
-      calls.push({ prompt: input.prompt });
+    generate: vi.fn(async (input: { prompt: string; json?: boolean; maxTokens?: number }) => {
+      calls.push({ prompt: input.prompt, json: input.json, maxTokens: input.maxTokens });
       const output = outputs.shift();
       if (output instanceof Error) throw output;
       return { text: output ?? '{}', model };
@@ -138,5 +138,19 @@ describe('extractBrandIntelligence', () => {
     const provider = fakeProvider([new AiProviderError('fake', 'quota exceeded') as any]);
     await expect(extractBrandIntelligence(provider as any, fragments)).rejects.toThrow(AiProviderError);
     expect(provider.__calls).toHaveLength(1);
+  });
+
+  it.each(['allam-2-7b', 'openai/gpt-oss-20b'])('budgets %s requests to a bounded extraction size', async (model) => {
+    const largeEvidence = Array.from({ length: 10 }, (_, i) => ({
+      url: `https://example.com/page-${i}`,
+      title: `Page ${i}`,
+      text: 'x'.repeat(8000),
+    }));
+    const provider = fakeProvider([VALID_INTELLIGENCE], model);
+    await extractBrandIntelligence(provider as any, largeEvidence);
+    expect(provider.__calls).toHaveLength(1);
+    expect(provider.__calls[0].json).toBe(true);
+    expect(provider.__calls[0].maxTokens).toBe(900);
+    expect(provider.__calls[0].prompt.length).toBeLessThan(9_000);
   });
 });

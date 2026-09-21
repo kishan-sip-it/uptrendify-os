@@ -7,6 +7,50 @@ export const EVIDENCE_MAX_SOURCE_CHARS = 8_000;
 export const EVIDENCE_MAX_TOTAL_CHARS = 60_000;
 export const EVIDENCE_MAX_CLAIMS = 60;
 export const BRAIN_MAX_TOKENS = 4096;
+type ExtractionLimits = {
+  maxEvidenceChars: number;
+  maxSources: number;
+  maxTokens: number;
+};
+
+const DEFAULT_EXTRACTION_LIMITS: ExtractionLimits = {
+  maxEvidenceChars: 50_000,
+  maxSources: 10,
+  maxTokens: BRAIN_MAX_TOKENS,
+};
+
+// Keep the extraction request small for constrained/usage-limited Groq models.
+// GPT-OSS also needs explicit budgeting because the free/on-demand org TPM limit
+// is much lower than its model context window.
+function extractionLimitsForModel(model: string): ExtractionLimits {
+  const normalized = model.toLowerCase();
+  if (normalized === 'allam-2-7b' || normalized.startsWith('openai/gpt-oss-')) {
+    return {
+      maxEvidenceChars: 4_000,
+      maxSources: 4,
+      maxTokens: 900,
+    };
+  }
+  return DEFAULT_EXTRACTION_LIMITS;
+}
+
+function fitEvidenceToBudget(evidence: EvidenceFragment[], limits: ExtractionLimits): EvidenceFragment[] {
+  const usable = evidence
+    .filter((source) => Boolean(source.url) && Boolean(source.text?.trim()))
+    .slice(0, limits.maxSources);
+  if (usable.length === 0) return [];
+
+  const perSource = Math.max(600, Math.floor(limits.maxEvidenceChars / usable.length));
+  let remaining = limits.maxEvidenceChars;
+
+  return usable.flatMap((source) => {
+    if (remaining < 200) return [];
+    const take = Math.min(perSource, remaining, source.text.trim().length);
+    if (take < 200) return [];
+    remaining -= take;
+    return [{ ...source, text: source.text.trim().slice(0, take) }];
+  });
+}
 
 export type EvidenceFragment = {
   url: string;
@@ -234,35 +278,55 @@ export async function extractBrandIntelligence(
   evidence: EvidenceFragment[],
   model?: string,
 ): Promise<ExtractionOutcome> {
-  const prompt = buildBrandIntelligencePrompt(evidence);
+  const selectedModel = model ?? provider.defaultModel;
+  const limits = extractionLimitsForModel(selectedModel);
+  const boundedEvidence = fitEvidenceToBudget(evidence, limits);
+  const prompt = buildBrandIntelligencePrompt(boundedEvidence);
+
   const input: Parameters<AiProvider['generate']>[0] = {
     prompt,
     system: SYSTEM_PROMPT,
     json: true,
-    maxTokens: BRAIN_MAX_TOKENS,
+    maxTokens: limits.maxTokens,
     temperature: 0.2,
-    ...(model ? { model } : {}),
+    model: selectedModel,
   };
 
-  const attempt = async (promptText: string): Promise<GenerateResult> => provider.generate({ ...input, prompt: promptText });
+  const attempt = async (promptText: string): Promise<GenerateResult> =>
+    provider.generate({ ...input, prompt: promptText });
 
   const first = await attempt(prompt);
   try {
-    const result = sanitizeEvidence(parseBrandIntelligence(first.text), evidence);
+    const result = sanitizeEvidence(parseBrandIntelligence(first.text), boundedEvidence);
     return { result, model: first.model, usage: first.usage };
   } catch (error) {
     if (error instanceof AiProviderError) throw error;
     const validationMessage = error instanceof Error ? error.message : 'invalid response';
 
+    let repairPrompt = buildRepairPrompt(prompt, validationMessage, first.text);
+    if (selectedModel.toLowerCase() === 'allam-2-7b') {
+      repairPrompt = [
+        'Return ONLY corrected strict JSON matching this schema.',
+        '',
+        `Validation error: ${validationMessage}`,
+        '',
+        SCHEMA_DOC,
+        '',
+        'Use only the website evidence below. Do not invent facts.',
+        '',
+        prompt,
+      ].join('\n');
+    }
+
     let second: GenerateResult;
     try {
-      second = await attempt(buildRepairPrompt(prompt, validationMessage, first.text));
+      second = await attempt(repairPrompt);
     } catch (repairError) {
       if (repairError instanceof AiProviderError) throw repairError;
       throw new BrandIntelligenceValidationError('AI output was invalid and the repair attempt failed');
     }
 
     const safe = parseBrandIntelligence(second.text);
-    return { result: sanitizeEvidence(safe, evidence), model: second.model, usage: second.usage };
+    return { result: sanitizeEvidence(safe, boundedEvidence), model: second.model, usage: second.usage };
   }
 }

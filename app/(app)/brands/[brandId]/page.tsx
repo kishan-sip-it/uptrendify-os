@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { ArrowLeft, FileText, Plus } from 'lucide-react';
+import { ArrowLeft, Boxes, FileText, Plus } from 'lucide-react';
 import { CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { BrandOverview } from '@/components/brand/brand-overview';
@@ -47,6 +47,9 @@ export default async function BrandPage({ params }: { params: Promise<{ brandId:
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
         <a className="badge" href={`/brands/${brandId}/content`} style={{ padding: '9px 14px' }}>
           <FileText size={14} /> Open Content Studio
+        </a>
+        <a className="badge" href={`/brands/${brandId}/campaigns`} style={{ padding: '9px 14px' }}>
+          <Boxes size={14} /> Open Campaigns
         </a>
       </div>
 

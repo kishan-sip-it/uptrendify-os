@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { strategySchema } from './schema';
+import { strategySchema, normalizeStrategyOutputForPresentation } from './schema';
 
 function objective(seed: number) {
   return {
@@ -160,6 +160,70 @@ describe('strategySchema', () => {
   it('requires the executive summary to be present', () => {
     const input = validStrategy();
     (input.executiveSummary as unknown) = { currentSituation: null, strategicDirection: null };
+    expect(strategySchema.safeParse(input).success).toBe(false);
+  });
+});
+describe('normalizeStrategyOutputForPresentation', () => {
+  function presentableOutput() {
+    return {
+      executiveSummary: { summary: 'x' },
+      businessUnderstanding: {},
+      objectives: [],
+      icp: {},
+      positioning: {},
+      messaging: {},
+      contentStrategy: {},
+      seoStrategy: {},
+      channels: [],
+      campaigns: [],
+      roadmap: { days1To30: [], days31To60: [], days61To90: [] },
+      kpis: {},
+      risksAndGaps: {},
+      assumptions: [],
+    };
+  }
+
+  it('returns null for non-object values', () => {
+    expect(normalizeStrategyOutputForPresentation(null)).toBeNull();
+    expect(normalizeStrategyOutputForPresentation(undefined)).toBeNull();
+    expect(normalizeStrategyOutputForPresentation('legacy')).toBeNull();
+    expect(normalizeStrategyOutputForPresentation(123)).toBeNull();
+  });
+
+  it('returns null when the roadmap group is missing entirely (legacy output)', () => {
+    const output = presentableOutput();
+    delete (output as { roadmap?: unknown }).roadmap;
+    expect(normalizeStrategyOutputForPresentation(output)).toBeNull();
+  });
+
+  it('returns null when any required top-level group is missing', () => {
+    const output = presentableOutput();
+    delete (output as { kpis?: unknown }).kpis;
+    expect(normalizeStrategyOutputForPresentation(output)).toBeNull();
+  });
+
+  it('fills missing roadmap columns with empty arrays', () => {
+    const output = presentableOutput();
+    (output as { roadmap: unknown }).roadmap = {};
+    const normalized = normalizeStrategyOutputForPresentation(output);
+    expect(normalized).not.toBeNull();
+    expect(normalized!.roadmap.days1To30).toEqual([]);
+    expect(normalized!.roadmap.days31To60).toEqual([]);
+    expect(normalized!.roadmap.days61To90).toEqual([]);
+  });
+
+  it('preserves existing roadmap items', () => {
+    const output = presentableOutput();
+    (output as { roadmap: unknown }).roadmap = { days1To30: [{ action: 'Launch' }], days31To60: null, days61To90: undefined };
+    const normalized = normalizeStrategyOutputForPresentation(output);
+    expect(normalized!.roadmap.days1To30).toEqual([{ action: 'Launch' }]);
+    expect(normalized!.roadmap.days31To60).toEqual([]);
+    expect(normalized!.roadmap.days61To90).toEqual([]);
+  });
+
+  it('does not weaken the strict generation schema', () => {
+    const input = validStrategy();
+    delete (input as { roadmap?: unknown }).roadmap;
     expect(strategySchema.safeParse(input).success).toBe(false);
   });
 });

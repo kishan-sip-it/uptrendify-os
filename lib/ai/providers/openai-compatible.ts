@@ -18,8 +18,15 @@ export function createOpenAiCompatibleProvider(
         { role: 'user', content: input.prompt },
       ],
       ...(input.json ? { response_format: { type: 'json_object' } } : {}),
-      ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
+      ...(input.maxTokens
+        ? model.startsWith('openai/gpt-oss-')
+          ? { max_completion_tokens: input.maxTokens }
+          : { max_tokens: input.maxTokens }
+        : {}),
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+      ...(model.startsWith('openai/gpt-oss-')
+        ? { include_reasoning: false, reasoning_effort: 'low' }
+        : {}),
     };
 
     const data = await postJson(`${baseUrl}/chat/completions`, {
