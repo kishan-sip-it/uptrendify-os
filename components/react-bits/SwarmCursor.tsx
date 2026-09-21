@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { Geometry, Mesh, Program, RenderTarget, Renderer, Triangle } from 'ogl';
 
 import './SwarmCursor.css';
@@ -23,6 +23,7 @@ type SwarmCursorProps = {
   children?: ReactNode;
   className?: string;
   style?: CSSProperties;
+  repelRef?: RefObject<HTMLElement | null>;
 };
 
 const FIELD_VERT = `
@@ -184,6 +185,7 @@ export default function SwarmCursor({
   children,
   className = '',
   style,
+  repelRef,
 }: SwarmCursorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const propsRef = useRef<SwarmCursorProps>({
@@ -218,6 +220,7 @@ export default function SwarmCursor({
     trail,
     scatterOnClick,
     enabled,
+    repelRef,
   };
 
   useEffect(() => {
@@ -380,12 +383,79 @@ export default function SwarmCursor({
     const cursor = { x: cssW * 0.5, y: cssH * 0.5, has: false };
     let burst = 0;
     let activeCount = Math.max(1, Math.min(MAX, Math.round(propsRef.current.count ?? 10)));
+    let cursorInsideRepelZone = false;
+    let reentryPending = false;
+
+    const isInsideRepelZone = (event: PointerEvent) => {
+      const node = propsRef.current.repelRef?.current;
+      if (!node) return false;
+
+      const rect = node.getBoundingClientRect();
+      return (
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom
+      );
+    };
+
+    const resetHistoryAtCurrentPositions = (count: number) => {
+      histHead = 0;
+      histLen = 0;
+      lastSample = -1;
+
+      for (let h = 0; h < HISTORY; h += 1) {
+        histT[h] = 0;
+        for (let i = 0; i < count; i += 1) {
+          histX[h * MAX + i] = px[i];
+          histY[h * MAX + i] = py[i];
+        }
+      }
+    };
+
+    const beginReentry = () => {
+      const count = Math.max(1, Math.min(MAX, Math.round(propsRef.current.count ?? 10)));
+      const entryY = cursor.has ? cursor.y : cssH * 0.5;
+      const sideOffset = 70;
+
+      for (let i = 0; i < count; i += 1) {
+        const fromLeft = i % 2 === 0;
+        px[i] = fromLeft ? -sideOffset - Math.random() * 50 : cssW + sideOffset + Math.random() * 50;
+        py[i] = Math.max(0, Math.min(cssH, entryY + (Math.random() - 0.5) * 180));
+        vx[i] = fromLeft ? 120 : -120;
+        vy[i] = (entryY - py[i]) * 0.25;
+      }
+
+      resetHistoryAtCurrentPositions(count);
+      reentryPending = false;
+    };
+
+    const beginRepel = () => {
+      const count = Math.max(1, Math.min(MAX, Math.round(propsRef.current.count ?? 10)));
+      const centerX = cssW * 0.5;
+
+      for (let i = 0; i < count; i += 1) {
+        const direction = px[i] < centerX ? -1 : px[i] > centerX ? 1 : i % 2 === 0 ? -1 : 1;
+        vx[i] = direction * (280 + Math.random() * 140);
+        vy[i] += (Math.random() - 0.5) * 100;
+      }
+    };
 
     const onMove = (event: PointerEvent) => {
       const rect = container.getBoundingClientRect();
       cursor.x = event.clientX - rect.left;
       cursor.y = event.clientY - rect.top;
       cursor.has = true;
+
+      const insideRepelZone = isInsideRepelZone(event);
+
+      if (insideRepelZone && !cursorInsideRepelZone) {
+        cursorInsideRepelZone = true;
+        beginRepel();
+      } else if (!insideRepelZone && cursorInsideRepelZone) {
+        cursorInsideRepelZone = false;
+        reentryPending = true;
+      }
     };
 
     const onLeave = () => {
@@ -394,7 +464,7 @@ export default function SwarmCursor({
 
     const onDown = (event: PointerEvent) => {
       const props = propsRef.current;
-      if (!props.scatterOnClick || !props.enabled) return;
+      if (!props.scatterOnClick || !props.enabled || cursorInsideRepelZone) return;
 
       const rect = container.getBoundingClientRect();
       const cx = event.clientX - rect.left;
@@ -440,6 +510,11 @@ export default function SwarmCursor({
       }
 
       const particleCount = Math.max(1, Math.min(MAX, Math.round(props.count ?? 10)));
+
+      if (reentryPending && !cursorInsideRepelZone) {
+        beginReentry();
+      }
+
       const anchorX = cursor.has ? cursor.x : cssW * 0.5;
       const anchorY = cursor.has ? cursor.y : cssH * 0.5;
 
@@ -455,6 +530,32 @@ export default function SwarmCursor({
       const steerRate = 4.5 + Math.max(0.1, props.speed ?? 2.5) * 1.15;
       const maxForce = particleSpeed * 9;
       const band = Math.max(20, (props.spread ?? 100) * 0.55);
+
+      if (cursorInsideRepelZone) {
+        const exitMargin = 80;
+        for (let i = 0; i < particleCount; i += 1) {
+          const toLeft = px[i] < cssW * 0.5;
+          const sideTarget = toLeft ? -exitMargin : cssW + exitMargin;
+          const dx = sideTarget - px[i];
+          const dy = anchorY - py[i];
+          const distance = Math.hypot(dx, dy) || 1;
+          const outwardSpeed = 360;
+          const desiredX = (dx / distance) * outwardSpeed;
+          const desiredY = (dy / distance) * Math.min(110, Math.abs(dy) * 0.35);
+          const escapeForce = 8.5;
+          vx[i] += (desiredX - vx[i]) * escapeForce * dt;
+          vy[i] += (desiredY - vy[i]) * escapeForce * dt;
+
+          px[i] += vx[i] * dt;
+          py[i] += vy[i] * dt;
+
+          if (toLeft && px[i] > -exitMargin) {
+            px[i] = Math.min(px[i], -exitMargin);
+          } else if (!toLeft && px[i] < cssW + exitMargin) {
+            px[i] = Math.max(px[i], cssW + exitMargin);
+          }
+        }
+      }
       const sepDist = Math.max(
         1,
         (props.spread ?? 100) * 0.42 * (0.35 + (props.separation ?? 0.15)),
@@ -464,8 +565,9 @@ export default function SwarmCursor({
       const baseScale = 0.0016;
       const fineScale = baseScale * 3.6;
 
-      for (let i = 0; i < particleCount; i += 1) {
-        const dx = anchorX - px[i];
+      if (!cursorInsideRepelZone) {
+        for (let i = 0; i < particleCount; i += 1) {
+          const dx = anchorX - px[i];
         const dy = anchorY - py[i];
         const distance = Math.hypot(dx, dy) || 1e-4;
         const ux = dx / distance;
@@ -561,8 +663,9 @@ export default function SwarmCursor({
           vy[i] = (vy[i] / currentSpeed) * lowSpeed;
         }
 
-        px[i] += vx[i] * dt;
-        py[i] += vy[i] * dt;
+          px[i] += vx[i] * dt;
+          py[i] += vy[i] * dt;
+        }
       }
 
       const nowSec = now * 0.001;
@@ -706,7 +809,6 @@ export default function SwarmCursor({
       ref={containerRef}
       className={`swarm-cursor ${className}`.trim()}
       style={style}
-      data-active={enabled ? 'true' : 'false'}
       aria-hidden="true"
     >
       {children ? <div className="swarm-cursor__content">{children}</div> : null}
