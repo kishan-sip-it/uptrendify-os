@@ -77,11 +77,9 @@ export function AppShell({
   const [orgError, setOrgError] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [workspaceRequired, setWorkspaceRequired] = useState(false);
-  const [workspaceConfirmation, setWorkspaceConfirmation] = useState('');
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
 
   useEffect(() => {
@@ -141,11 +139,6 @@ export function AppShell({
   }
 
   async function deleteWorkspace() {
-    if (workspaceConfirmation !== 'DELETE WORKSPACE') {
-      setDeleteError('Type DELETE WORKSPACE exactly to confirm workspace deletion.');
-      return;
-    }
-
     setWorkspaceLoading(true);
     setDeleteError('');
     try {
@@ -161,7 +154,6 @@ export function AppShell({
       }
 
       setWorkspaceRequired(false);
-      setWorkspaceConfirmation('');
       setDeleteError(body?.message || 'Workspace deleted. You can now delete your account.');
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'Could not delete the workspace.');
@@ -171,11 +163,6 @@ export function AppShell({
   }
 
   async function deleteAccount() {
-    if (deleteConfirmation !== 'DELETE') {
-      setDeleteError('Type DELETE exactly to confirm account deletion.');
-      return;
-    }
-
     setDeleteLoading(true);
     setDeleteError('');
     try {
@@ -381,7 +368,6 @@ export function AppShell({
                     className="switch-option"
                     onClick={() => {
                       close();
-                      setDeleteConfirmation('');
                       setDeleteError('');
                       setDeleteOpen(true);
                     }}
@@ -428,46 +414,25 @@ export function AppShell({
               This removes your sign-in, workspace memberships and profile. Existing organization data and audit history are preserved where possible. If you are the only owner of a workspace, ownership must be transferred first.
             </p>
 
-            <label style={{ display: 'block', marginTop: 18 }}>
-              Type <strong>DELETE</strong> to confirm
-              <input
-                value={deleteConfirmation}
-                onChange={(event) => setDeleteConfirmation(event.target.value)}
-                autoComplete="off"
-                autoFocus
-                placeholder="DELETE"
-                disabled={deleteLoading}
-                style={{ marginTop: 7, width: '100%' }}
-              />
-            </label>
-
             {workspaceRequired ? (
               <div className="card" style={{ marginTop: 14, borderColor: 'rgba(248,113,113,.35)', background: 'rgba(248,113,113,.07)' }}>
                 <div className="eyebrow" style={{ color: '#f87171' }}>Workspace required</div>
                 <p style={{ margin: '6px 0 10px' }}>
                   You are the only owner of this workspace. Delete the workspace first; after that you can delete your account.
                 </p>
-                <label>
-                  Type <strong>DELETE WORKSPACE</strong>
-                  <input
-                    value={workspaceConfirmation}
-                    onChange={(event) => setWorkspaceConfirmation(event.target.value)}
-                    placeholder="DELETE WORKSPACE"
-                    autoComplete="off"
-                    disabled={workspaceLoading}
-                    style={{ marginTop: 7, width: '100%' }}
-                  />
-                </label>
+                <p className="subtitle" style={{ margin: '6px 0 12px' }}>
+                  Press and hold the button for 2 seconds to permanently delete this workspace.
+                </p>
                 <HoldButton
                   size="sm"
-                  holdTime={1800}
+                  holdTime={2000}
                   resetAfter={1400}
                   backgroundColor="#24121A"
                   fillColor="#DC2626"
                   textColor="#fca5a5"
                   fillTextColor="#ffffff"
                   className="danger-hold-button"
-                  disabled={workspaceLoading || workspaceConfirmation !== 'DELETE WORKSPACE'}
+                  disabled={workspaceLoading}
                   onHold={deleteWorkspace}
                 >
                   <Trash2 size={14} /> Hold to delete workspace
@@ -499,7 +464,7 @@ export function AppShell({
                 textColor="#fca5a5"
                 fillTextColor="#ffffff"
                 className="danger-hold-button"
-                disabled={deleteLoading || deleteConfirmation !== 'DELETE'}
+                disabled={deleteLoading}
                 onHold={deleteAccount}
               >
                 <Trash2 size={14} /> Hold to delete account
