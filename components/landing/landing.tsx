@@ -162,7 +162,22 @@ export function Landing() {
 
   return (
     <div className="landing">
-      <SwarmCursor color="#A855F7" opacity={0.22} />
+      <SwarmCursor
+        color="#ffffff"
+        accentColor="#ffffff"
+        count={8}
+        size={5}
+        merge={0.77}
+        glow={0.75}
+        opacity={1}
+        spread={100}
+        separation={0.15}
+        speed={2.5}
+        wander={0.25}
+        trail={0.75}
+        scatterOnClick
+        enabled
+      />
       <header className="landing-nav">
         <a href="/" className="landing-logo" aria-label="UpTrendifyOS home">
           <span className="logo" style={{ width: 22, height: 22 }} /> UpTrendifyOS
