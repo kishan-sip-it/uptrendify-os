@@ -50,6 +50,24 @@ function formatDate(value: string | null): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function contentStatusTone(status: string): string {
+  switch (status) {
+    case 'APPROVED':
+    case 'READY_TO_PUBLISH':
+    case 'PUBLISHED':
+      return 'tone-good';
+    case 'REJECTED':
+      return 'tone-danger';
+    case 'IN_REVIEW':
+    case 'CLIENT_REVIEW':
+    case 'CHANGES_REQUESTED':
+    case 'SCHEDULED':
+      return 'tone-info';
+    default:
+      return 'tone-muted';
+  }
+}
+
 function EditForm({
   brandId,
   campaignId,
@@ -386,7 +404,7 @@ export function CampaignDetail({
               <a className="card hover-lift" href={`/brands/${brandId}/content/${item.id}`} key={item.id} style={{ padding: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <span className="activity-title">{item.title}</span>
-                  <span className="badge tone-muted">{item.status.toLowerCase().replaceAll('_', ' ')}</span>
+                  <span className={`badge ${contentStatusTone(item.status)}`}>{item.status.toLowerCase().replaceAll('_', ' ')}</span>
                 </div>
               </a>
             ))}

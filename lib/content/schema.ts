@@ -41,10 +41,23 @@ export const CONTENT_CHANNELS = [
 export const CONTENT_CHANNEL_VALUES: string[] = [...CONTENT_CHANNELS];
 export type ContentChannel = (typeof CONTENT_CHANNELS)[number];
 
-export const CONTENT_STATUSES = ['DRAFT', 'IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED', 'SCHEDULED', 'PUBLISHED', 'ARCHIVED'] as const;
+export const CONTENT_STATUSES = ['DRAFT', 'IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED', 'READY_TO_PUBLISH', 'SCHEDULED', 'PUBLISHED', 'ARCHIVED'] as const;
 export type ContentStatus = (typeof CONTENT_STATUSES)[number];
 
-export const CONTENT_CREATE_ACTIVE_STATUSES: ContentStatus[] = ['DRAFT', 'IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED'];
+export const CONTENT_CREATE_ACTIVE_STATUSES: ContentStatus[] = ['DRAFT', 'IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED', 'READY_TO_PUBLISH'];
+
+export const CONTENT_STATUS_LABELS: Record<ContentStatus, string> = {
+  DRAFT: 'Draft',
+  IN_REVIEW: 'In review',
+  CLIENT_REVIEW: 'Client review',
+  CHANGES_REQUESTED: 'Changes requested',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+  READY_TO_PUBLISH: 'Ready to publish',
+  SCHEDULED: 'Scheduled',
+  PUBLISHED: 'Published',
+  ARCHIVED: 'Archived',
+};
 
 export const CONTENT_GEN_MAX_TOKENS = 3072;
 export const CONTENT_BODY_MAX = 20_000;

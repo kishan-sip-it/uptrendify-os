@@ -16,7 +16,7 @@ const NAV_ITEMS = [
   { icon: Target, label: 'Strategy', soon: true },
   { icon: FileText, label: 'Content Studio', href: '/content', soon: false },
   { icon: Boxes, label: 'Campaigns', href: '/campaigns', soon: false },
-  { icon: CheckCircle2, label: 'Approvals', soon: true },
+  { icon: CheckCircle2, label: 'Approvals', href: '/approvals', soon: false },
 ];
 
 type OrgOption = { id: string; name: string; role: string };
