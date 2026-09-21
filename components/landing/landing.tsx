@@ -147,6 +147,23 @@ function WorkflowDemo() {
 export function Landing() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [swarmActive, setSwarmActive] = useState(false);
+  const heroRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const hero = heroRef.current;
+    if (!hero) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setSwarmActive(!entry.isIntersecting);
+      },
+      { threshold: 0 },
+    );
+
+    observer.observe(hero);
+    return () => observer.disconnect();
+  }, []);
 
   async function handleStart() {
     setLoading(true);
@@ -169,14 +186,14 @@ export function Landing() {
         size={5}
         merge={0.77}
         glow={0.75}
-        opacity={1}
+        opacity={0.6}
         spread={100}
         separation={0.15}
-        speed={2.5}
+        speed={1.25}
         wander={0.25}
         trail={0.75}
         scatterOnClick
-        enabled
+        enabled={swarmActive}
       />
       <header className="landing-nav">
         <a href="/" className="landing-logo" aria-label="UpTrendifyOS home">
@@ -211,7 +228,7 @@ export function Landing() {
         ) : null}
       </header>
 
-      <section className="landing-hero">
+      <section ref={heroRef} className="landing-hero">
         <GridScan
           enableWebcam={false}
           showPreview={false}
