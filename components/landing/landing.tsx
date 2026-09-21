@@ -303,15 +303,15 @@ export function Landing() {
             <BorderGlow
               className="landing-card-glow landing-metric-glow"
               borderRadius={16}
-              edgeSensitivity={20}
+              edgeSensitivity={16}
                 glowColor="280 85 85"
                 backgroundColor="#0B111C"
-                glowRadius={34}
-                glowIntensity={1}
+                glowRadius={48}
+                glowIntensity={1.45}
                 coneSpread={28}
                 animated={false}
                 colors={['#B794F6', '#F472B6', '#8B5CF6']}
-                fillOpacity={0.38}
+                fillOpacity={0.55}
             >
               <div className="landing-metric">
                 <div className="landing-metric-value">{metric.value}</div>
@@ -338,15 +338,15 @@ export function Landing() {
                 <BorderGlow
                   className="landing-card-glow landing-feature-glow hover-lift"
                   borderRadius={16}
-                  edgeSensitivity={20}
+                  edgeSensitivity={16}
                 glowColor="280 85 85"
                 backgroundColor="#0B111C"
-                glowRadius={34}
-                glowIntensity={1}
+                glowRadius={48}
+                glowIntensity={1.45}
                 coneSpread={28}
                 animated={false}
                 colors={['#B794F6', '#F472B6', '#8B5CF6']}
-                fillOpacity={0.38}
+                fillOpacity={0.55}
                 >
                   <div className="landing-feature-card">
                     <span className="landing-feature-icon"><Icon size={19} /></span>
@@ -381,15 +381,15 @@ export function Landing() {
                 <BorderGlow
                   className="landing-card-glow landing-how-glow"
                   borderRadius={16}
-                  edgeSensitivity={20}
+                  edgeSensitivity={16}
                 glowColor="280 85 85"
                 backgroundColor="#0B111C"
-                glowRadius={34}
-                glowIntensity={1}
+                glowRadius={48}
+                glowIntensity={1.45}
                 coneSpread={28}
                 animated={false}
                 colors={['#B794F6', '#F472B6', '#8B5CF6']}
-                fillOpacity={0.38}
+                fillOpacity={0.55}
                 >
                   <div className="landing-how-card">
                     <span className="landing-how-icon"><Icon size={18} /></span>
