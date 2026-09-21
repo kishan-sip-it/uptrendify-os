@@ -20,6 +20,7 @@ export function createOpenAiCompatibleProvider(
       ...(input.json ? { response_format: { type: 'json_object' } } : {}),
       ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+      ...(model.startsWith('openai/gpt-oss-') ? { include_reasoning: false } : {}),
     };
 
     const data = await postJson(`${baseUrl}/chat/completions`, {
