@@ -150,7 +150,7 @@ describe('extractBrandIntelligence', () => {
     await extractBrandIntelligence(provider as any, largeEvidence);
     expect(provider.__calls).toHaveLength(1);
     expect(provider.__calls[0].json).toBe(true);
-    expect(provider.__calls[0].maxTokens).toBe(1600);
+    expect(provider.__calls[0].maxTokens).toBe(1200);
     expect(provider.__calls[0].prompt.length).toBeLessThan(12_000);
   });
 });
