@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { LoaderCircle, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, LoaderCircle, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [step, setStep] = useState<'checking' | 'auth'>('checking');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   async function resolveWorkspace() {
     const response = await fetch('/api/auth/bootstrap', {
@@ -93,7 +94,36 @@ export default function LoginPage() {
         </label>
         <label>
           Password
-          <input name="password" type="password" required autoComplete="current-password" placeholder="••••••••" />
+          <span style={{ position: 'relative', display: 'block' }}>
+            <input
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              required
+              autoComplete="current-password"
+              placeholder="••••••••"
+              style={{ width: '100%', paddingRight: 44 }}
+            />
+            <button
+              type="button"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              onClick={() => setShowPassword((value) => !value)}
+              style={{
+                position: 'absolute',
+                right: 10,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                border: 0,
+                background: 'transparent',
+                color: 'var(--muted)',
+                cursor: 'pointer',
+                display: 'grid',
+                placeItems: 'center',
+                padding: 4,
+              }}
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </span>
         </label>
         <button type="submit" disabled={loading} className="badge auth-submit">
           {loading ? <><LoaderCircle size={15} className="spin" /> Working…</> : <>Sign in <Sparkles size={15} /></>}
