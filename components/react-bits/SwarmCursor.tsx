@@ -320,11 +320,16 @@ export default function SwarmCursor({
 
       const w = Math.max(1, Math.round(gl.drawingBufferWidth));
       const h = Math.max(1, Math.round(gl.drawingBufferHeight));
-      target = new RenderTarget(gl, {
-        width: w,
-        height: h,
-        depth: false,
-      });
+
+      if (target) {
+        target.setSize(w, h);
+      } else {
+        target = new RenderTarget(gl, {
+          width: w,
+          height: h,
+          depth: false,
+        });
+      }
     };
 
     const resizeObserver = new ResizeObserver(resize);
@@ -416,10 +421,8 @@ export default function SwarmCursor({
       burst = 1;
     };
 
-    container.addEventListener('pointermove', onMove, { passive: true });
-    container.addEventListener('pointerenter', onMove, { passive: true });
-    container.addEventListener('pointerleave', onLeave);
-    container.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('pointerdown', onDown);
 
     let raf = 0;
     let last = performance.now();
@@ -684,10 +687,8 @@ export default function SwarmCursor({
     return () => {
       cancelAnimationFrame(raf);
       resizeObserver.disconnect();
-      container.removeEventListener('pointermove', onMove);
-      container.removeEventListener('pointerenter', onMove);
-      container.removeEventListener('pointerleave', onLeave);
-      container.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerdown', onDown);
 
       if (gl.canvas.parentElement === container) {
         container.removeChild(gl.canvas);
