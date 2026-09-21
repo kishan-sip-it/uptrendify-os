@@ -22,7 +22,8 @@ const DEFAULT_EXTRACTION_LIMITS: ExtractionLimits = {
 // ALLaM-2-7B has a 4K context window. Keep the user's model choice intact,
 // but budget requests to fit that model's actual input + output capacity.
 function extractionLimitsForModel(model: string): ExtractionLimits {
-  if (model.toLowerCase() === 'allam-2-7b') {
+  const normalized = model.toLowerCase();
+  if (normalized === 'allam-2-7b' || normalized.startsWith('openai/gpt-oss-')) {
     return {
       maxEvidenceChars: 4_000,
       maxSources: 4,
