@@ -435,7 +435,7 @@ export default function SwarmCursor({
       last = now;
 
       if (!props.enabled) {
-        renderer.render({ scene: compMesh });
+        gl.clear(gl.COLOR_BUFFER_BIT);
         return;
       }
 
@@ -706,6 +706,7 @@ export default function SwarmCursor({
       ref={containerRef}
       className={`swarm-cursor ${className}`.trim()}
       style={style}
+      data-active={enabled ? 'true' : 'false'}
       aria-hidden="true"
     >
       {children ? <div className="swarm-cursor__content">{children}</div> : null}
