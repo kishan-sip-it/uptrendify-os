@@ -74,6 +74,38 @@ function isPrivateIp(ip: string) {
   return false;
 }
 
+export type LookupAddress = { address: string; family: number };
+
+const dnsLookupTimeoutMs = 5_000;
+
+async function resolveAllAddresses(hostname: string): Promise<LookupAddress[]> {
+  const addresses = await Promise.race([
+    dns.lookup(hostname, { all: true, verbatim: true }),
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Research hostname lookup timed out')), dnsLookupTimeoutMs);
+    }),
+  ]);
+  const seen = new Set<string>();
+  const unique: LookupAddress[] = [];
+  for (const entry of addresses) {
+    if (seen.has(entry.address)) continue;
+    seen.add(entry.address);
+    unique.push(entry);
+  }
+  return unique;
+}
+
+export async function resolvePublicAddresses(hostname: string): Promise<LookupAddress[]> {
+  const unique = await resolveAllAddresses(hostname);
+  return orderPublicAddresses(unique.filter((entry) => !isPrivateIp(entry.address)));
+}
+
+// Prefer reachable public IPv4 first (virtually always routable), keep public
+// IPv6 as a fallback so IPv6-only targets still work where the network allows.
+export function orderPublicAddresses(addresses: LookupAddress[]): LookupAddress[] {
+  return [...addresses.filter((a) => a.family === 4), ...addresses.filter((a) => a.family === 6)];
+}
+
 export function assertPublicHttpUrl(raw: string) {
   const url = new URL(raw);
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only http/https URLs are allowed');
@@ -84,20 +116,39 @@ export function assertPublicHttpUrl(raw: string) {
 }
 
 
+export type DnsLookupCallback = (
+  error: Error | null,
+  address: string | LookupAddress[],
+  family?: number,
+) => void;
+
+export function publicAddressLookup(hostname: string, options: { all?: boolean }, callback: DnsLookupCallback): void {
+  void resolvePublicAddresses(hostname)
+    .then((addresses) => {
+      if (!addresses.length) {
+        callback(new Error('Research hostname resolves to a non-public address'), '', 0);
+        return;
+      }
+      if (options.all === true) {
+        // Node autoSelectFamily path: hand over the full ordered list and let
+        // the socket layer fall back across addresses.
+        callback(null, addresses, undefined);
+        return;
+      }
+      const first = addresses[0];
+      callback(null, first.address, first.family);
+    })
+    .catch((error) => callback(error instanceof Error ? error : new Error(String(error)), '', 0));
+}
+
 export const publicLookupDispatcher = new Agent({
   connect: {
-    lookup(hostname, options, callback) {
-      void dns.lookup(hostname, { all: true, verbatim: true })
-        .then((addresses) => {
-          const publicAddress = addresses.find((entry) => !isPrivateIp(entry.address));
-          if (!publicAddress) {
-            callback(new Error('Research hostname resolves to a non-public address'), '', 0);
-            return;
-          }
-          callback(null, publicAddress.address, publicAddress.family);
-        })
-        .catch((error) => callback(error instanceof Error ? error : new Error(String(error)), '', 0));
-    },
+    // Happy Eyeballs: Node tries every public address we return until one
+    // connects, so an unreachable first DNS record (e.g. IPv6 without a route)
+    // no longer makes otherwise-reachable sites fail.
+    autoSelectFamily: true,
+    autoSelectFamilyAttemptTimeout: 400,
+    lookup: publicAddressLookup,
   },
 });
 
@@ -109,7 +160,7 @@ export function fetchPublicHttp(url: string, init: RequestInit = {}): Promise<Re
 }
 
 export async function assertResolvablePublicHost(hostname: string) {
-  const addresses = await dns.lookup(hostname, { all: true, verbatim: true });
+  const addresses = await resolveAllAddresses(hostname);
   if (!addresses.length) throw new Error('Unable to resolve research hostname');
   for (const entry of addresses) {
     if (isPrivateIp(entry.address)) {

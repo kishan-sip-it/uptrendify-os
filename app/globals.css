@@ -401,3 +401,14 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .danger-hold-button { border: 1px solid rgba(248,113,113,.34); min-width: 180px; }
 .danger-hold-button:hover:not(:disabled) { border-color: rgba(248,113,113,.58); }
 @media (max-width: 700px) { .danger-hold-button { width: 100%; justify-content: center; } }
+
+/* Campaign management */
+.chip-row { display:flex; flex-wrap:wrap; gap:6px; }
+.chip-toggle { cursor:pointer; border:1px solid var(--line); }
+.chip-toggle:hover { border-color: rgba(139,124,255,.45); color: var(--text); }
+.chip-toggle-active { border-color: rgba(139,124,255,.55); background: rgba(139,124,255,.12); color: var(--text); }
+.detail-list { display:grid; gap:12px; margin:0; }
+.detail-list .detail-row { display:flex; align-items:flex-start; gap:12px; }
+.detail-list dt { width:120px; flex-shrink:0; color:var(--muted); font-size:13px; margin:0; }
+.detail-list dd { margin:0; color:var(--text); font-size:13px; line-height:1.5; min-width:0; word-break:break-word; }
+.strategy-objectives { list-style:disc; font-size:13px; line-height:1.5; }

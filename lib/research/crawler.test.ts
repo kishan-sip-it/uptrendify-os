@@ -29,31 +29,46 @@ function htmlPage(title: string, links = '<a href="/about">About</a>') {
 
 function mockSupabase() {
   const updates: string[] = [];
+  const updatesPayload: Array<Record<string, unknown>> = [];
+  const sourceUpserts: Array<Record<string, unknown>> = [];
+  const researchSourceUpserts: Array<Record<string, unknown>> = [];
   const client = {
     from: vi.fn((table: string) => {
       if (table === 'research_runs') {
         return {
           update: vi.fn((payload: Record<string, unknown>) => {
             updates.push(String(payload.status));
+            updatesPayload.push(payload);
             return { eq: vi.fn(async () => ({ data: payload, error: null })) };
           }),
         };
       }
       if (table === 'brand_sources') {
         return {
-          upsert: vi.fn(() => ({
-            select: vi.fn(() => ({
-              single: vi.fn(async () => ({ data: { id: SOURCE_ID }, error: null })),
-            })),
-          })),
+          upsert: vi.fn((payload: Record<string, unknown>) => {
+            sourceUpserts.push(payload);
+            return {
+              select: vi.fn(() => ({
+                single: vi.fn(async () => ({ data: { id: SOURCE_ID }, error: null })),
+              })),
+            };
+          }),
         };
       }
       if (table === 'research_sources') {
-        return { upsert: vi.fn(async () => ({ error: null })) };
+        return {
+          upsert: vi.fn((payload: Record<string, unknown>) => {
+            researchSourceUpserts.push(payload);
+            return { error: null };
+          }),
+        };
       }
       return {};
     }),
     __updates: updates,
+    __updatesPayload: updatesPayload,
+    __sourceUpserts: sourceUpserts,
+    __researchSourceUpserts: researchSourceUpserts,
   };
   return client;
 }
@@ -148,5 +163,46 @@ describe('crawlBrand', () => {
     const result = await crawlBrand(client, { organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'http://8.8.8.8', researchRunId: RUN_ID });
     expect(result.status).toBe('FAILED');
     expect(fetchMock.mock.calls.map((c) => c[0])).not.toContain('https://evil.example.com/');
+  });
+
+  it('persists the real transport error code in the FAILED run and sources', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => {
+      const error = Object.assign(new Error('connect ECONNREFUSED 8.8.8.8'), { code: 'ECONNREFUSED' });
+      return Promise.reject(error);
+    }));
+
+    const client = mockSupabase() as any;
+    const result = await crawlBrand(client, { organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'http://8.8.8.8', researchRunId: RUN_ID });
+    expect(result.status).toBe('FAILED');
+
+    const failedUpdate = client.__updatesPayload.find((payload: any) => payload.status === 'FAILED');
+    expect(failedUpdate?.error_code).toBe('CONNECTION_REFUSED');
+    expect(failedUpdate?.error_message).toContain('ECONNREFUSED');
+
+    const source = client.__sourceUpserts[0];
+    expect(source?.status).toBe('FAILED');
+    expect(source?.http_status).toBe(0);
+    expect(source?.metadata).toMatchObject({ error_code: 'CONNECTION_REFUSED', error: expect.stringContaining('ECONNREFUSED') });
+
+    const researchSource = client.__researchSourceUpserts[0];
+    expect(researchSource?.status).toBe('FAILED');
+    expect(researchSource?.error_message).toContain('[CONNECTION_REFUSED]');
+  });
+
+  it('persists the real HTTP status for non-2xx responses', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response('nope', { status: 503, headers: { 'content-type': 'text/html' } })
+    ));
+
+    const client = mockSupabase() as any;
+    const result = await crawlBrand(client, { organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'http://8.8.8.8', researchRunId: RUN_ID });
+    expect(result.status).toBe('FAILED');
+
+    const source = client.__sourceUpserts[0];
+    expect(source?.http_status).toBe(503);
+    expect(source?.metadata).toMatchObject({ error_code: 'HTTP_503' });
+
+    const failedUpdate = client.__updatesPayload.find((payload: any) => payload.status === 'FAILED');
+    expect(failedUpdate?.error_code).toBe('HTTP_503');
   });
 });

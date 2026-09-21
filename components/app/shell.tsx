@@ -15,7 +15,7 @@ const NAV_ITEMS = [
   { icon: Users, label: 'Brands', href: '/brands', soon: false },
   { icon: Target, label: 'Strategy', soon: true },
   { icon: FileText, label: 'Content Studio', href: '/content', soon: false },
-  { icon: Boxes, label: 'Campaigns', soon: true },
+  { icon: Boxes, label: 'Campaigns', href: '/campaigns', soon: false },
   { icon: CheckCircle2, label: 'Approvals', soon: true },
 ];
 
@@ -79,8 +79,10 @@ export function AppShell({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [workspaceRequired, setWorkspaceRequired] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [workspaceConfirmation, setWorkspaceConfirmation] = useState('');
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -369,6 +371,8 @@ export function AppShell({
                     onClick={() => {
                       close();
                       setDeleteError('');
+                      setDeleteConfirmation('');
+                      setWorkspaceConfirmation('');
                       setDeleteOpen(true);
                     }}
                     style={{ color: '#f87171' }}
@@ -421,8 +425,18 @@ export function AppShell({
                   You are the only owner of this workspace. Delete the workspace first; after that you can delete your account.
                 </p>
                 <p className="subtitle" style={{ margin: '6px 0 12px' }}>
-                  Press and hold the button for 2 seconds to permanently delete this workspace.
+                  Type <strong>DELETE WORKSPACE</strong> and hold the button for 2 seconds to permanently delete this workspace.
                 </p>
+                <input
+                  type="text"
+                  value={workspaceConfirmation}
+                  onChange={(event) => setWorkspaceConfirmation(event.target.value)}
+                  placeholder="Type DELETE WORKSPACE"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  style={{ width: '100%', marginBottom: 10 }}
+                />
                 <HoldButton
                   size="sm"
                   holdTime={2000}
@@ -432,7 +446,7 @@ export function AppShell({
                   textColor="#fca5a5"
                   fillTextColor="#ffffff"
                   className="danger-hold-button"
-                  disabled={workspaceLoading}
+                  disabled={workspaceLoading || workspaceConfirmation !== 'DELETE WORKSPACE'}
                   onHold={deleteWorkspace}
                 >
                   <Trash2 size={14} /> Hold to delete workspace
@@ -445,6 +459,22 @@ export function AppShell({
                 {deleteError}
               </div>
             ) : null}
+
+            <div style={{ marginTop: 16 }}>
+              <label className="subtitle" style={{ display: 'block', marginBottom: 6 }}>
+                Type <strong>DELETE</strong> then hold to confirm deleting your account.
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                placeholder="Type DELETE"
+                autoComplete="off"
+                autoCapitalize="characters"
+                spellCheck={false}
+                style={{ width: '100%' }}
+              />
+            </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
               <button
@@ -464,7 +494,7 @@ export function AppShell({
                 textColor="#fca5a5"
                 fillTextColor="#ffffff"
                 className="danger-hold-button"
-                disabled={deleteLoading}
+                disabled={deleteLoading || deleteConfirmation !== 'DELETE'}
                 onHold={deleteAccount}
               >
                 <Trash2 size={14} /> Hold to delete account

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { env } from '@/lib/env';
 import { obs } from '@/lib/obs/logger';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from './url-security';
+import { translateResearchError } from './errors';
 import { extractPage } from './extract';
 
 export const RESEARCH_TERMINAL_STATUSES = ['COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'] as const;
@@ -44,7 +45,7 @@ function sameOrigin(a: string, b: string) {
 
 async function recordPageFailure(
   supabase: SupabaseClient,
-  args: { organizationId: string; brandId: string; researchRunId: string; url: string; message: string },
+  args: { organizationId: string; brandId: string; researchRunId: string; url: string; code: string; message: string; httpStatus?: number },
 ): Promise<void> {
   try {
     const canonical = args.url;
@@ -58,11 +59,11 @@ async function recordPageFailure(
         title: null,
         content_type: 'text/html',
         status: 'FAILED',
-        http_status: 0,
+        http_status: args.httpStatus ?? 0,
         retrieved_at: new Date().toISOString(),
         content_hash: null,
         extracted_text: '',
-        metadata: { error: args.message },
+        metadata: { error_code: args.code, error: args.message },
       }, { onConflict: 'brand_id,canonical_url' })
       .select('id')
       .single();
@@ -75,7 +76,7 @@ async function recordPageFailure(
           organization_id: args.organizationId,
           source_id: source.data.id,
           status: 'FAILED',
-          error_message: args.message.slice(0, 400),
+          error_message: `[${args.code}] ${args.message}`.slice(0, 400),
         },
         { onConflict: 'research_run_id,source_id' },
       );
@@ -100,6 +101,8 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
   let pagesProcessed = 0;
   let pagesDiscovered = 0;
   let partial = false;
+  let runFailureCode: string | null = null;
+  let runFailureMessage: string | null = null;
   const processedPages: ProcessedPage[] = [];
 
   try {
@@ -109,6 +112,12 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
       const target = normalizeUrl(queue.shift()!);
       if (seen.has(target)) continue;
       seen.add(target);
+      const recordRunFailure = (code: string, message: string) => {
+        if (target === root || runFailureCode === null) {
+          runFailureCode = code;
+          runFailureMessage = message;
+        }
+      };
 
       try {
         const host = new URL(target).hostname;
@@ -140,12 +149,27 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           continue;
         }
 
-        if (!response.ok) { partial = true; await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, message: `HTTP ${response.status}` }); continue; }
+        if (!response.ok) {
+          partial = true;
+          recordRunFailure(`HTTP_${response.status}`, `HTTP ${response.status}`);
+          await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: `HTTP_${response.status}`, message: `HTTP ${response.status}`, httpStatus: response.status });
+          continue;
+        }
         const contentType = response.headers.get('content-type') || '';
-        if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) { partial = true; await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, message: 'Not an HTML page' }); continue; }
+        if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
+          partial = true;
+          recordRunFailure('NOT_HTML', 'Not an HTML page');
+          await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: 'NOT_HTML', message: 'Not an HTML page', httpStatus: response.status });
+          continue;
+        }
 
         const contentLength = Number(response.headers.get('content-length') || 0);
-        if (contentLength > e.MAX_RESEARCH_BYTES) { partial = true; continue; }
+        if (contentLength > e.MAX_RESEARCH_BYTES) {
+          partial = true;
+          recordRunFailure('CONTENT_TOO_LARGE', `Content exceeds ${e.MAX_RESEARCH_BYTES} bytes`);
+          await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: 'CONTENT_TOO_LARGE', message: `Content exceeds ${e.MAX_RESEARCH_BYTES} bytes`, httpStatus: response.status });
+          continue;
+        }
 
         const { content, truncated } = await readBoundedBody(response, e.MAX_RESEARCH_BYTES);
         if (truncated) { partial = true; }
@@ -195,8 +219,10 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
       } catch (error) {
         partial = true;
         pagesDiscovered = seen.size;
-        obs.warn('Research page failed', { brandId, url: target, error: error instanceof Error ? error.message : String(error) });
-        await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, message: error instanceof Error ? error.message : String(error) });
+        const info = translateResearchError(error);
+        recordRunFailure(info.code, info.message);
+        obs.warn('Research page failed', { brandId, url: target, error: info.message, errorCode: info.code });
+        await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: info.code, message: info.message });
       }
 
       const progress = await supabase.from('research_runs').update({ pages_processed: pagesProcessed, pages_discovered: seen.size }).eq('id', researchRunId);
@@ -209,9 +235,9 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
       pages_processed: pagesProcessed,
       pages_discovered: seen.size,
       finished_at: new Date().toISOString(),
-      error_code: finalStatus === 'FAILED' ? 'NO_PAGES_PROCESSED' : partial ? 'PARTIAL' : null,
+      error_code: finalStatus === 'FAILED' ? (runFailureCode ?? 'NO_PAGES_PROCESSED') : partial ? 'PARTIAL' : null,
       error_message: finalStatus === 'FAILED'
-        ? 'No pages could be processed during this research run.'
+        ? (runFailureMessage ?? 'No pages could be processed during this research run.')
         : partial
           ? 'Some pages could not be processed; review source status.'
           : null,
@@ -222,11 +248,12 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
 
     return { status: finalStatus, pagesProcessed, pagesDiscovered: seen.size, processedPages };
   } catch (error) {
+    const info = translateResearchError(error);
     const failed = await supabase.from('research_runs').update({
       status: 'FAILED',
       finished_at: new Date().toISOString(),
-      error_code: 'RESEARCH_FAILED',
-      error_message: error instanceof Error ? error.message : 'Research failed',
+      error_code: info.code === 'RESEARCH_FAILED' ? 'RESEARCH_FAILED' : info.code,
+      error_message: info.message,
     }).eq('id', researchRunId);
     if (failed.error) obs.error('Failed to mark research run as failed', { researchRunId, error: failed.error.message });
     throw error;

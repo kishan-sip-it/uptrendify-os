@@ -26,7 +26,7 @@ function isContentChannel(value: string): value is ContentChannel {
 const paramsSchema = z.object({ brandId: z.string().uuid() });
 
 const createSchema = contentItemInputSchema
-  .extend({ clientId: z.string().uuid().nullish() })
+  .extend({ clientId: z.string().uuid().nullish(), campaignId: z.string().uuid().nullish() })
   .strict();
 
 async function loadBrand(
@@ -175,12 +175,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
 
     const effectiveClientId = brand.client_id ?? null;
 
+    let campaignId: string | null = null;
+    if (body.campaignId) {
+      const campaign = await supabase
+        .from('campaigns')
+        .select('id')
+        .eq('id', body.campaignId)
+        .eq('brand_id', brandId)
+        .eq('organization_id', auth.context.organizationId)
+        .maybeSingle();
+      if (campaign.error) throw campaign.error;
+      if (!campaign.data) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
+      campaignId = body.campaignId;
+    }
+
     const insert = await supabase
       .from('content_items')
       .insert({
         organization_id: auth.context.organizationId,
         brand_id: brand.id,
         client_id: effectiveClientId,
+        campaign_id: campaignId,
         type: body.type,
         channel: body.channel,
         title: body.title,
