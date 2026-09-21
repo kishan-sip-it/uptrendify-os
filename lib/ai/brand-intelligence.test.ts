@@ -140,13 +140,13 @@ describe('extractBrandIntelligence', () => {
     expect(provider.__calls).toHaveLength(1);
   });
 
-  it('budgets ALLaM-2-7B requests to fit its 4K context window', async () => {
+  it.each(['allam-2-7b', 'openai/gpt-oss-20b'])('budgets %s requests to a bounded extraction size', async (model) => {
     const largeEvidence = Array.from({ length: 10 }, (_, i) => ({
       url: `https://example.com/page-${i}`,
       title: `Page ${i}`,
       text: 'x'.repeat(8000),
     }));
-    const provider = fakeProvider([VALID_INTELLIGENCE], 'allam-2-7b');
+    const provider = fakeProvider([VALID_INTELLIGENCE], model);
     await extractBrandIntelligence(provider as any, largeEvidence);
     expect(provider.__calls).toHaveLength(1);
     expect(provider.__calls[0].json).toBe(true);
