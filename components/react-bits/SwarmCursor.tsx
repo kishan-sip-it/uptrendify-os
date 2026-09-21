@@ -436,8 +436,8 @@ export default function SwarmCursor({
 
       for (let i = 0; i < count; i += 1) {
         const direction = px[i] < centerX ? -1 : px[i] > centerX ? 1 : i % 2 === 0 ? -1 : 1;
-        vx[i] = direction * (280 + Math.random() * 140);
-        vy[i] += (Math.random() - 0.5) * 100;
+        vx[i] = direction * (70 + Math.random() * 40);
+        vy[i] *= 0.35;
       }
     };
 
@@ -539,10 +539,10 @@ export default function SwarmCursor({
           const dx = sideTarget - px[i];
           const dy = anchorY - py[i];
           const distance = Math.hypot(dx, dy) || 1;
-          const outwardSpeed = 360;
+          const outwardSpeed = 150;
           const desiredX = (dx / distance) * outwardSpeed;
-          const desiredY = (dy / distance) * Math.min(110, Math.abs(dy) * 0.35);
-          const escapeForce = 8.5;
+          const desiredY = (dy / distance) * Math.min(55, Math.abs(dy) * 0.22);
+          const escapeForce = 3;
           vx[i] += (desiredX - vx[i]) * escapeForce * dt;
           vy[i] += (desiredY - vy[i]) * escapeForce * dt;
 
@@ -568,7 +568,7 @@ export default function SwarmCursor({
       if (!cursorInsideRepelZone) {
         for (let i = 0; i < particleCount; i += 1) {
           const dx = anchorX - px[i];
-        const dy = anchorY - py[i];
+          const dy = anchorY - py[i];
         const distance = Math.hypot(dx, dy) || 1e-4;
         const ux = dx / distance;
         const uy = dy / distance;
