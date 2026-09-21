@@ -222,7 +222,9 @@ export function AppShell({
     <main className={`shell${mobileOpen ? ' shell-mobile-open' : ''}`}>
       <aside className="sidebar">
         <div className="brand-mark">
-          <span className="logo" /> UpTrendifyOS
+          <a className="brand-mark-link" href="/" aria-label="Go to the UpTrendifyOS landing page">
+            <span className="logo" aria-hidden="true" /> UpTrendifyOS
+          </a>
           <button type="button" className="sidebar-close" aria-label="Close navigation" onClick={() => setMobileOpen(false)}>
             <X size={18} />
           </button>
