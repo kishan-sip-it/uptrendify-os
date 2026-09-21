@@ -24,9 +24,9 @@ const DEFAULT_EXTRACTION_LIMITS: ExtractionLimits = {
 function extractionLimitsForModel(model: string): ExtractionLimits {
   if (model.toLowerCase() === 'allam-2-7b') {
     return {
-      maxEvidenceChars: 6_000,
+      maxEvidenceChars: 5_500,
       maxSources: 4,
-      maxTokens: 1_600,
+      maxTokens: 1_200,
     };
   }
   return DEFAULT_EXTRACTION_LIMITS;
