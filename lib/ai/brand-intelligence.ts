@@ -19,8 +19,9 @@ const DEFAULT_EXTRACTION_LIMITS: ExtractionLimits = {
   maxTokens: BRAIN_MAX_TOKENS,
 };
 
-// ALLaM-2-7B has a 4K context window. Keep the user's model choice intact,
-// but budget requests to fit that model's actual input + output capacity.
+// Keep the extraction request small for constrained/usage-limited Groq models.
+// GPT-OSS also needs explicit budgeting because the free/on-demand org TPM limit
+// is much lower than its model context window.
 function extractionLimitsForModel(model: string): ExtractionLimits {
   const normalized = model.toLowerCase();
   if (normalized === 'allam-2-7b' || normalized.startsWith('openai/gpt-oss-')) {
