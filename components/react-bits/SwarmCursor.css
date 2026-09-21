@@ -6,6 +6,7 @@
   pointer-events: none;
   overflow: hidden;
   z-index: 35;
+}
 
 .swarm-cursor__canvas {
   position: absolute;
