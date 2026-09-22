@@ -301,10 +301,24 @@ export function Landing() {
       <section className="landing-metrics" aria-label="Platform at a glance">
         {METRICS.map((metric, i) => (
           <Reveal delay={i * 70} key={metric.label}>
-            <div className="landing-metric">
-              <div className="landing-metric-value">{metric.value}</div>
-              <div className="landing-metric-label">{metric.label}</div>
-            </div>
+            <BorderGlow
+              className="landing-card-glow landing-metric-glow"
+              borderRadius={16}
+              edgeSensitivity={16}
+              glowColor="280 85 85"
+              backgroundColor="#0B111C"
+              glowRadius={48}
+              glowIntensity={1.45}
+              coneSpread={28}
+              animated={false}
+              colors={['#B794F6', '#F472B6', '#8B5CF6']}
+              fillOpacity={0.55}
+            >
+              <div className="landing-metric">
+                <div className="landing-metric-value">{metric.value}</div>
+                <div className="landing-metric-label">{metric.label}</div>
+              </div>
+            </BorderGlow>
           </Reveal>
         ))}
       </section>
@@ -322,11 +336,25 @@ export function Landing() {
             const Icon = feature.icon;
             return (
               <Reveal delay={(i % 3) * 80} key={feature.title}>
-                <div className="landing-feature-card hover-lift">
-                  <span className="landing-feature-icon"><Icon size={19} /></span>
-                  <h3>{feature.title}</h3>
-                  <p>{feature.description}</p>
-                </div>
+                <BorderGlow
+                  className="landing-card-glow landing-feature-glow hover-lift"
+                  borderRadius={16}
+                  edgeSensitivity={16}
+                  glowColor="280 85 85"
+                  backgroundColor="#0B111C"
+                  glowRadius={48}
+                  glowIntensity={1.45}
+                  coneSpread={28}
+                  animated={false}
+                  colors={['#B794F6', '#F472B6', '#8B5CF6']}
+                  fillOpacity={0.55}
+                >
+                  <div className="landing-feature-card">
+                    <span className="landing-feature-icon"><Icon size={19} /></span>
+                    <h3>{feature.title}</h3>
+                    <p>{feature.description}</p>
+                  </div>
+                </BorderGlow>
               </Reveal>
             );
           })}
@@ -351,11 +379,25 @@ export function Landing() {
             const Icon = step.icon;
             return (
               <Reveal delay={i * 90} key={step.title}>
-                <div className="landing-how-card">
-                  <span className="landing-how-icon"><Icon size={18} /></span>
-                  <h3>{step.title}</h3>
-                  <p>{step.description}</p>
-                </div>
+                <BorderGlow
+                  className="landing-card-glow landing-how-glow"
+                  borderRadius={16}
+                  edgeSensitivity={16}
+                  glowColor="280 85 85"
+                  backgroundColor="#0B111C"
+                  glowRadius={48}
+                  glowIntensity={1.45}
+                  coneSpread={28}
+                  animated={false}
+                  colors={['#B794F6', '#F472B6', '#8B5CF6']}
+                  fillOpacity={0.55}
+                >
+                  <div className="landing-how-card">
+                    <span className="landing-how-icon"><Icon size={18} /></span>
+                    <h3>{step.title}</h3>
+                    <p>{step.description}</p>
+                  </div>
+                </BorderGlow>
               </Reveal>
             );
           })}
