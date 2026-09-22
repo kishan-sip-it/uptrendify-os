@@ -56,6 +56,12 @@ export default function TeamSettingsPage() {
     else void load();
   }
 
+  async function revoke(id: string) {
+    const r = await fetch('/api/team/invitations', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) });
+    const b = await r.json().catch(() => null);
+    if (!r.ok) setError(b?.error || 'Could not revoke invitation'); else void load();
+  }
+
   async function remove(userId: string) {
     if (!window.confirm('Remove this member from the workspace?')) return;
     const r = await fetch('/api/team/members/' + userId, { method: 'DELETE' });
@@ -134,7 +140,7 @@ export default function TeamSettingsPage() {
                 <strong>{inv.email}</strong>
                 <span className="activity-meta">{inv.role} · expires {new Date(inv.expires_at).toLocaleDateString()}</span>
               </div>
-              <span className="badge tone-muted">{inv.revoked_at ? 'Revoked' : 'Pending'}</span>
+              {data.canManage && !inv.revoked_at ? <button className="badge tone-danger" onClick={() => revoke(inv.id)}>Revoke</button> : <span className="badge tone-muted">{inv.revoked_at ? 'Revoked' : 'Pending'}</span>}
             </div>
           ))}
         </div>
