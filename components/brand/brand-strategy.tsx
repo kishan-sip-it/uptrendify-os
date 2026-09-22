@@ -88,7 +88,7 @@ function timeAgo(iso: string | null): string {
 function TextBlock({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
   return (
-    <div className="strategy-block">
+    <div id="strategy" className="strategy-block">
       <div className="strategy-block-label">{label}</div>
       <p style={{ margin: 0, lineHeight: 1.55 }}>{value}</p>
     </div>
