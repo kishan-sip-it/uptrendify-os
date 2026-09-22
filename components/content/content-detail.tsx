@@ -57,11 +57,13 @@ type DetailData = {
   reviews: Review[];
   canGenerate: boolean;
   canReview: boolean;
+  canPublish: boolean;
 };
 
 function toneFor(status: string): string {
   switch (status) {
     case 'APPROVED':
+    case 'READY_TO_PUBLISH':
     case 'SCHEDULED':
     case 'PUBLISHED':
       return 'tone-good';
@@ -92,6 +94,8 @@ function decisionLabel(decision: string): string {
     archive: 'Archived',
     schedule: 'Scheduled',
     publish: 'Published',
+    queue_for_publish: 'Queued for publishing',
+    back_to_approved: 'Returned to approved',
   }[decision] ?? decision.replaceAll('_', ' ');
 }
 
@@ -112,14 +116,20 @@ function ReviewActions({
   versionId,
   canGenerate,
   canReview,
+  canPublish,
+  channel,
   onAction,
+  onPublish,
   busy,
 }: {
   status: string;
   versionId: string | null;
   canGenerate: boolean;
   canReview: boolean;
+  canPublish: boolean;
+  channel: string | null;
   onAction: (action: string, comment?: string) => Promise<void>;
+  onPublish: () => Promise<void>;
   busy: boolean;
 }) {
   const [comment, setComment] = useState('');
@@ -131,14 +141,20 @@ function ReviewActions({
     actions.push({ action: 'changes_requested', label: 'Request changes', tone: 'tone-info', allowed: canReview });
     actions.push({ action: 'reject', label: 'Reject', tone: 'tone-danger', allowed: canReview });
   }
-  if (['DRAFT', 'IN_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'APPROVED'].includes(status) && canGenerate) {
+  if (status === 'APPROVED') {
+    actions.push({ action: 'queue_for_publish', label: 'Queue for publishing', tone: 'tone-good', allowed: canReview });
+  }
+  if (status === 'READY_TO_PUBLISH') {
+    actions.push({ action: 'back_to_approved', label: 'Back to approved', tone: 'tone-info', allowed: canReview });
+  }
+  if (['DRAFT', 'IN_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'APPROVED', 'READY_TO_PUBLISH'].includes(status) && canGenerate) {
     actions.push({ action: 'return_to_draft', label: 'Return to draft', tone: 'tone-muted', allowed: true });
   }
-  if (['DRAFT', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'SCHEDULED', 'PUBLISHED', 'CHANGES_REQUESTED'].includes(status)) {
+  if (['DRAFT', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'READY_TO_PUBLISH', 'SCHEDULED', 'PUBLISHED', 'CHANGES_REQUESTED'].includes(status)) {
     actions.push({ action: 'archive', label: 'Archive', tone: 'tone-muted', allowed: canGenerate || canReview });
   }
 
-  if (actions.length === 0) return null;
+  if (actions.length === 0 && !(status === 'READY_TO_PUBLISH' && canPublish)) return null;
 
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -157,6 +173,17 @@ function ReviewActions({
           {action.label}
         </button>
       ))}
+      {status === 'READY_TO_PUBLISH' && canPublish ? (
+        <button
+          type="button"
+          className="badge tone-good"
+          disabled={busy}
+          onClick={() => onPublish()}
+          style={{ border: 0, cursor: busy ? 'not-allowed' : 'pointer', padding: '8px 12px', opacity: busy ? 0.6 : 1 }}
+        >
+          {channel ? `Publish to ${channelLabel(channel)}` : 'Publish now'}
+        </button>
+      ) : null}
       <input
         className="content-filter-input"
         style={{ flex: 1, minWidth: 200 }}
@@ -354,6 +381,7 @@ export function ContentDetail({ brandId }: { brandId: string }) {
   const [generating, setGenerating] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [publishNote, setPublishNote] = useState<string | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const generatingRef = useRef(false);
@@ -461,6 +489,43 @@ export function ContentDetail({ brandId }: { brandId: string }) {
     }
   }, [brandId, contentId, load]);
 
+  const publish = useCallback(async () => {
+    if (!contentId) return;
+    const channel = data?.item?.channel ?? null;
+    if (!channel) {
+      setActionError('Set a channel for this content item before publishing.');
+      return;
+    }
+    setActionBusy(true);
+    setActionError(null);
+    setPublishNote(null);
+    try {
+      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/publish`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ channel }),
+      });
+      if (response.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || 'Could not publish content');
+      if (body?.status === 'NOT_CONNECTED') {
+        setPublishNote(
+          `No ${channelLabel(channel)} channel is connected yet, so this publish was recorded but not delivered. Connect the channel and publish again.`,
+        );
+      } else if (body?.status === 'SUCCEEDED') {
+        setPublishNote(`Published to ${channelLabel(channel)}.`);
+      }
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not publish content');
+    } finally {
+      setActionBusy(false);
+    }
+  }, [brandId, contentId, load, data]);
+
   const item = data?.item ?? null;
   const current = item ? (data?.versions.find((version) => version.id === item.currentVersionId) ?? null) : null;
   const selected = data?.versions.find((version) => version.id === selectedVersionId) ?? current ?? data?.versions[0] ?? null;
@@ -512,9 +577,15 @@ export function ContentDetail({ brandId }: { brandId: string }) {
               versionId={item.currentVersionId}
               canGenerate={canGenerate}
               canReview={data?.canReview ?? false}
+              canPublish={data?.canPublish ?? false}
+              channel={item.channel ?? null}
               onAction={review}
+              onPublish={publish}
               busy={actionBusy}
             />
+            {publishNote ? (
+              <p className="activity-meta" style={{ marginTop: 14, color: 'var(--accent)' }}>{publishNote}</p>
+            ) : null}
             {generatingLive ? (
               <div style={{ marginTop: 14 }}>
                 <div className="progress" style={{ animation: 'none' }}><span style={{ width: '65%' }} /></div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  ArrowRight, BarChart3, Blocks, Bot, FileCheck2, Globe2, Layers,
+  ArrowRight, BarChart3, Blocks, Bot, Boxes, CheckCircle2, FileCheck2, Globe2, Layers,
   LockKeyhole, Menu, Search, ShieldCheck, Sparkles, Target, Users, Workflow, X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -15,18 +15,20 @@ import WarpText from '@/components/react-bits/WarpText';
 type StepState = 'pending' | 'running' | 'done';
 
 const WORKFLOW: { icon: LucideIcon; label: string; note: string; tone: string }[] = [
-  { icon: Search, label: 'Crawl your site', note: 'Public pages discovered', tone: '#60a5fa' },
-  { icon: Bot, label: 'Extract intelligence', note: 'Facts with honest evidence', tone: '#c084fc' },
-  { icon: FileCheck2, label: 'Review suggestions', note: 'Approve · edit · reject', tone: '#34d399' },
-  { icon: Target, label: 'Generate strategy', note: 'From approved truth only', tone: '#fbbf24' },
-  { icon: Workflow, label: 'Execute & iterate', note: 'Content, campaigns, playbooks', tone: '#fb923c' },
+  { icon: Search, label: 'Research', note: 'Understand the business from its website', tone: '#278b69' },
+  { icon: Bot, label: 'Brand Intelligence', note: 'Turn evidence into structured suggestions', tone: '#3b8f7a' },
+  { icon: FileCheck2, label: 'Brand review', note: 'Approve the facts you trust', tone: '#4f9f89' },
+  { icon: Target, label: 'Strategy', note: 'Build the marketing plan', tone: '#5cae96' },
+  { icon: Sparkles, label: 'Content Studio', note: 'Create the assets to publish', tone: '#69bfa5' },
+  { icon: Boxes, label: 'Campaigns', note: 'Organize assets around initiatives', tone: '#4da98d' },
+  { icon: CheckCircle2, label: 'Approval → Publishing', note: 'Approve the exact version, then connect a channel', tone: '#278b69' },
 ];
 
 const FEATURES: { icon: LucideIcon; title: string; description: string }[] = [
   { icon: Globe2, title: 'Audit any public site', description: 'Crawl hundreds of pages, extract honest facts with cited, verified evidence — never guessed AI output.' },
   { icon: FileCheck2, title: 'Human-in-the-loop review', description: 'Every brand-intelligence suggestion lands in a review inbox. Approve, edit, reject, or ask the AI to regenerate each field.' },
   { icon: LockKeyhole, title: 'Strategies from approved truth', description: 'The strategy engine is gated: it only consumes facts you approved, so nothing made-up ever ships to a client.' },
-  { icon: Users, title: 'Multi-client workspace', description: 'One command center for every brand across your agency — with roles, brand switchers and cross-brand visibility.' },
+  { icon: Users, title: 'Agency + business workspaces', description: 'Agencies can manage multiple brands while a business can focus on its own brand — with roles, brand switchers and tenant isolation.' },
   { icon: BarChart3, title: 'Live run dashboard', description: 'Watch research jobs, approval pipelines and strategy versions stream in real time as your AI works.' },
   { icon: Layers, title: 'One system, forever', description: 'Research, brand intelligence, strategy, content and campaigns — a single OS your whole team runs on.' },
 ];
@@ -38,12 +40,10 @@ const METRICS: { value: string; label: string }[] = [
   { value: '10×', label: 'Faster from brief to campaign' },
 ];
 
-const PIPELINE: { step: string; label: string }[] = [
-  { step: 'A', label: 'Research' },
-  { step: 'B', label: 'Review' },
-  { step: 'C', label: 'Strategy' },
-  { step: 'D', label: 'Execute' },
-];
+const PIPELINE: { step: string; label: string }[] = WORKFLOW.map((item, index) => ({
+  step: String(index + 1).padStart(2, '0'),
+  label: item.label,
+}));
 
 function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -220,9 +220,9 @@ export function Landing() {
           showPreview={false}
           sensitivity={0.55}
           lineThickness={1}
-          linesColor="#2F293A"
+          linesColor="#FFFFFF"
           gridScale={0.1}
-          scanColor="#FF9FFC"
+          scanColor="#A8E6C5"
           scanOpacity={0.4}
           lineStyle="solid"
           lineJitter={0.1}
@@ -241,7 +241,7 @@ export function Landing() {
           enableGyro={false}
           scanOnClick={false}
           snapBackDelay={250}
-          lightMode={false}
+          lightMode={true}
           className=""
           style={{}}
         />
@@ -250,8 +250,8 @@ export function Landing() {
         </Reveal>
         <Reveal delay={80}>
           <WarpText
-            text="Every client brand. One operating system."
-            color="#f8f5ff"
+            text="From a brand website to a complete marketing workflow."
+            color="#173126"
             fontSize="clamp(2.5rem, 6vw, 5rem)"
             fontWeight={800}
             warpStrength={0.05}
@@ -261,8 +261,7 @@ export function Landing() {
         </Reveal>
         <Reveal delay={160}>
           <p className="landing-hero-sub">
-            UpTrendifyOS researches public websites with AI, then makes every claim checkable — so
-            you approve the truth, the AI drafts the strategy, and your agency ships faster.
+            Research the business. Review what AI discovered. Build the strategy. Create content, organize campaigns, approve the exact version, and prepare it for publishing.
           </p>
         </Reveal>
         <Reveal delay={240}>
@@ -279,11 +278,11 @@ export function Landing() {
               <BorderGlow
                 key={item.step}
                 className="landing-pipeline-glow"
-                backgroundColor="#120F17"
+                backgroundColor="#f3faf6"
                 borderRadius={999}
                 glowRadius={18}
                 glowIntensity={0.6}
-                colors={['#A855F7', '#D946EF', '#8B5CF6']}
+                colors={['#67C79F', '#278B69', '#9AD9BE']}
               >
                 <div className="landing-pipeline-step">
                   <span className="landing-pipeline-badge">{item.step}</span>
@@ -306,12 +305,12 @@ export function Landing() {
               borderRadius={16}
               edgeSensitivity={16}
               glowColor="280 85 85"
-              backgroundColor="#0B111C"
+              backgroundColor="hsl(160 20% 98%)"
               glowRadius={48}
               glowIntensity={1.45}
               coneSpread={28}
               animated={false}
-              colors={['#B794F6', '#F472B6', '#8B5CF6']}
+              colors={['#67C79F', '#278B69', '#9AD9BE']}
               fillOpacity={0.55}
             >
               <div className="landing-metric">
@@ -328,7 +327,7 @@ export function Landing() {
           <div className="landing-section-head">
             <div className="landing-eyebrow"><Blocks size={13} /> The platform</div>
             <h2>Built like mission control for growth, not a chat wrapper.</h2>
-            <p>Every AI claim has a source. Every strategy has a review. Every client has a workspace.</p>
+            <p>Every AI claim has a source. Every strategy has a review. Every brand has a clear workspace and next action.</p>
           </div>
         </Reveal>
         <div className="landing-features">
@@ -341,7 +340,7 @@ export function Landing() {
                   borderRadius={16}
                   edgeSensitivity={16}
                   glowColor="280 85 85"
-                  backgroundColor="#0B111C"
+                  backgroundColor="#f8fcfa"
                   glowRadius={48}
                   glowIntensity={1.45}
                   coneSpread={28}
@@ -371,10 +370,13 @@ export function Landing() {
         </Reveal>
         <div className="landing-how">
           {[
-            { icon: Search, title: '1 · Research', description: 'Give us a URL. The crawler maps your client\u2019s public site and extracts raw brand intelligence with sources.' },
-            { icon: ShieldCheck, title: '2 · Review', description: '26 suggestion cards land in your review inbox — each with strong, partial or weak evidence and a cited excerpt to check.' },
-            { icon: FileCheck2, title: '3 · Approve', description: 'Approve what\u2019s true, edit what\u2019s close, reject what\u2019s not. Nothing becomes authoritative without you.' },
-            { icon: Target, title: '4 · Strategy', description: 'Only approved facts feed the strategy engine, so the positioning, messaging and roadmap are grounded in reality.' },
+            { icon: Search, title: '1 · Research', description: 'Give UpTrendifyOS a public brand website. The system crawls it, extracts evidence and reports what it could actually verify.' },
+            { icon: Bot, title: '2 · Brand Intelligence', description: 'AI organizes the evidence into identity, audience, offer, positioning, messaging, SEO and competition topics.' },
+            { icon: FileCheck2, title: '3 · Brand review', description: 'Approve, edit or reject the suggestions. Nothing becomes an authoritative brand fact without a human decision.' },
+            { icon: Target, title: '4 · Strategy', description: 'Once the Brand Brain gate is satisfied, generate a marketing plan grounded in the approved intelligence.' },
+            { icon: Sparkles, title: '5 · Content Studio', description: 'Turn the strategy into actual content assets with versioning and the existing content workflow.' },
+            { icon: Boxes, title: '6 · Campaigns', description: 'Group content around an objective, audience, channels, dates and budget.' },
+            { icon: CheckCircle2, title: '7 · Approval & Publishing', description: 'Approve the exact content version. Publishing remains honest: unconnected channels stay READY TO PUBLISH.' },
           ].map((step, i) => {
             const Icon = step.icon;
             return (
@@ -384,7 +386,7 @@ export function Landing() {
                   borderRadius={16}
                   edgeSensitivity={16}
                   glowColor="280 85 85"
-                  backgroundColor="#0B111C"
+                  backgroundColor="#f8fcfa"
                   glowRadius={48}
                   glowIntensity={1.45}
                   coneSpread={28}
@@ -409,7 +411,7 @@ export function Landing() {
           <div className="landing-section-head">
             <div className="landing-eyebrow"><Globe2 size={13} /> Try it live</div>
             <h2>Give it a URL. Watch it work.</h2>
-            <p>UpTrendifyOS is free to start — your first brand audit takes minutes, not days.</p>
+            <p>Understand your brand first. Then move forward with evidence, strategy and clear next actions.</p>
           </div>
         </Reveal>
         <Reveal delay={120}>

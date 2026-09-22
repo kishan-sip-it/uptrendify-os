@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { CAN_GENERATE_CONTENT, CAN_REVIEW_CONTENT, CAN_VIEW_CONTENT, requireOrgRole } from '@/lib/auth/roles';
+import { CAN_GENERATE_CONTENT, CAN_PUBLISH_CONTENT, CAN_REVIEW_CONTENT, CAN_VIEW_CONTENT, requireOrgRole } from '@/lib/auth/roles';
 import { contentItemInputSchema } from '@/lib/content/schema';
 import { CONTENT_BODY_MAX } from '@/lib/content/schema';
 import { obs } from '@/lib/obs/logger';
@@ -114,6 +114,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
         reviews,
         canGenerate: CAN_GENERATE_CONTENT.includes(auth.context.role),
         canReview: CAN_REVIEW_CONTENT.includes(auth.context.role),
+        canPublish: CAN_PUBLISH_CONTENT.includes(auth.context.role),
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );

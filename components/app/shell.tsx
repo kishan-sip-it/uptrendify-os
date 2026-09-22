@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import {
-  ArrowUpRight, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Sparkles, Target, Trash2, Users, X,
+  ArrowUpRight, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Settings, Sparkles, Target, Trash2, Users, X,
 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import HoldButton from '@/components/react-bits/HoldButton';
+import { GuidedTour } from '@/components/tours/GuidedTour';
 
 export type ShellBrand = { id: string; name: string; website_url: string | null; status: string | null };
 export type ShellOrganization = { id: string; name: string; role: string };
@@ -13,10 +15,9 @@ export type ShellOrganization = { id: string; name: string; role: string };
 const NAV_ITEMS = [
   { icon: LayoutGrid, label: 'Dashboard', href: '/dashboard', soon: false },
   { icon: Users, label: 'Brands', href: '/brands', soon: false },
-  { icon: Target, label: 'Strategy', soon: true },
   { icon: FileText, label: 'Content Studio', href: '/content', soon: false },
   { icon: Boxes, label: 'Campaigns', href: '/campaigns', soon: false },
-  { icon: CheckCircle2, label: 'Approvals', soon: true },
+  { icon: CheckCircle2, label: 'Approvals', href: '/approvals', soon: false },
 ];
 
 type OrgOption = { id: string; name: string; role: string };
@@ -83,6 +84,7 @@ export function AppShell({
   const [workspaceRequired, setWorkspaceRequired] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceConfirmation, setWorkspaceConfirmation] = useState('');
+  const pathname = usePathname();
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -190,6 +192,26 @@ export function AppShell({
     }
   }
 
+  const currentLocation = pathname === '/dashboard' ? 'Dashboard' : pathname.startsWith('/brands/') ? 'Brand workspace' : pathname === '/brands' ? 'Brands' : pathname.startsWith('/content') ? 'Content Studio' : pathname.startsWith('/campaigns') ? 'Campaigns' : pathname.startsWith('/approvals') ? 'Content Approval' : pathname.startsWith('/settings') ? 'Settings' : pathname.startsWith('/onboarding') ? 'Setup' : 'Workspace';
+  const guideStage = pathname.startsWith('/brands/') ? 'brand' : pathname.startsWith('/content') ? 'content' : pathname.startsWith('/campaigns') ? 'campaigns' : pathname.startsWith('/approvals') ? 'approvals' : pathname === '/dashboard' ? 'dashboard' : null;
+  const guideSteps = guideStage === 'dashboard' ? [
+    { target: '#workflow', title: 'This is your command center', body: 'Use the workflow bar to see what is complete, what needs your attention, and the single next action to take.' },
+    { target: '#workflow .workflow-next', title: 'Follow the next action', body: 'Open the highlighted action instead of guessing which section comes next. UpTrendifyOS moves from research to strategy to content to approval.' },
+    { target: 'nav.nav', title: 'You can always see where you are', body: 'The sidebar and current-stage indicator stay visible so you never need to inspect the URL.' },
+  ] : guideStage === 'brand' ? [
+    { target: '#intelligence', title: 'Start with evidence', body: 'Research reads the public website, then Brand Brain turns the evidence into suggestions for human review.' },
+    { target: '#intelligence .brain-topic-nav', title: 'Review before strategy', body: 'Open Brand Intelligence suggestions, inspect their evidence, then approve or edit the facts you trust.' },
+    { target: '#intelligence', title: 'Strategy comes after the gate', body: 'Once the Brand Brain gate is satisfied, the strategy workspace becomes the next guided step.' },
+  ] : guideStage === 'content' ? [
+    { target: 'nav a[href="/content"]', title: 'Content Studio creates assets', body: 'Use approved brand intelligence and strategy context to create content you may actually publish.' },
+    { target: 'main', title: 'Versions matter', body: 'Edits create new versions when required. Approval always applies to an exact content version.' },
+  ] : guideStage === 'campaigns' ? [
+    { target: 'nav a[href="/campaigns"]', title: 'Campaigns are initiatives', body: 'A campaign groups content around a marketing objective, audience, dates, channels and budget.' },
+    { target: 'main', title: 'Content and campaigns are different', body: 'A campaign can contain many content items. Each content item keeps its own approval lifecycle.' },
+  ] : guideStage === 'approvals' ? [
+    { target: 'nav a[href="/approvals"]', title: 'Approval protects the exact version', body: 'Review the content that is actually awaiting a decision. A later edited version does not inherit an older approval.' },
+    { target: 'main', title: 'Then queue for publishing', body: 'Approved content can move to Ready to Publish. External publishing remains honest about channel connections.' },
+  ] : [];
   const displayName = userFirstName || userEmail || 'Account';
   const initials = userFirstName
     ? userFirstName.slice(0, 2).toUpperCase()
@@ -206,13 +228,32 @@ export function AppShell({
             </span>
           );
         }
+        const active =
+          item.label === 'Dashboard'
+            ? pathname === '/dashboard'
+            : item.label === 'Brands'
+              ? pathname === '/brands' || pathname.startsWith('/brands/')
+              : item.label === 'Content Studio'
+                ? pathname.startsWith('/content')
+                : item.label === 'Campaigns'
+                  ? pathname.startsWith('/campaigns')
+                  : item.label === 'Approvals'
+                    ? pathname.startsWith('/approvals')
+                    : false;
+
         return (
-          <a className="nav-item" href={item.href} key={item.label} onClick={() => setMobileOpen(false)}>
+          <a
+            className={'nav-item' + (active ? ' active' : '')}
+            href={item.href}
+            key={item.label}
+            onClick={() => setMobileOpen(false)}
+            aria-current={active ? 'page' : undefined}
+          >
             <Icon size={17} /> {item.label}
           </a>
         );
       })}
-      <a className="nav-item nav-item-accent" href="/brands/new" onClick={() => setMobileOpen(false)}>
+      <a className={'nav-item' + (pathname.startsWith('/settings') ? ' active' : '')} href="/settings" aria-current={pathname.startsWith('/settings') ? 'page' : undefined} onClick={() => setMobileOpen(false)}><Settings size={17}/> <span>Settings</span></a>\n      <a className="nav-item nav-item-accent" href="/brands/new" onClick={() => setMobileOpen(false)}>
         <Plus size={17} /> Add brand
       </a>
     </nav>
@@ -387,7 +428,9 @@ export function AppShell({
           </div>
         </div>
 
+        <div className="current-location" aria-live="polite">Current: {currentLocation}</div>
         {children}
+        {guideStage && guideSteps.length ? <GuidedTour stageKey={guideStage} steps={guideSteps} /> : null}
       </section>
 
       {deleteOpen ? (

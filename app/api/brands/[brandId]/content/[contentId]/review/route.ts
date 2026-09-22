@@ -13,6 +13,8 @@ const REVIEW_ACTIONS = [
   'changes_requested',
   'return_to_draft',
   'archive',
+  'queue_for_publish',
+  'back_to_approved',
 ] as const;
 type ReviewAction = (typeof REVIEW_ACTIONS)[number];
 
@@ -28,11 +30,16 @@ const TRANSITIONS: Record<ReviewAction, { from: string[]; to: string }> = {
   approve: { from: ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED'], to: 'APPROVED' },
   reject: { from: ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED'], to: 'REJECTED' },
   changes_requested: { from: ['IN_REVIEW', 'CLIENT_REVIEW'], to: 'CHANGES_REQUESTED' },
-  return_to_draft: { from: ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'REJECTED'], to: 'DRAFT' },
-  archive: { from: ['DRAFT', 'IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED'], to: 'ARCHIVED' },
+  return_to_draft: { from: ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'APPROVED', 'READY_TO_PUBLISH'], to: 'DRAFT' },
+  archive: {
+    from: ['DRAFT', 'IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED', 'READY_TO_PUBLISH'],
+    to: 'ARCHIVED',
+  },
+  queue_for_publish: { from: ['APPROVED'], to: 'READY_TO_PUBLISH' },
+  back_to_approved: { from: ['READY_TO_PUBLISH'], to: 'APPROVED' },
 };
 
-const REVIEWER_ACTIONS: ReviewAction[] = ['approve', 'reject', 'changes_requested'];
+const REVIEWER_ACTIONS: ReviewAction[] = ['approve', 'reject', 'changes_requested', 'queue_for_publish', 'back_to_approved'];
 const GENERATOR_ACTIONS: ReviewAction[] = ['submit', 'return_to_draft', 'archive'];
 
 async function loadItem(
@@ -64,9 +71,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     const item = await loadItem(supabase, { brandId, contentId, organizationId: auth.context.organizationId });
     if (!item) return NextResponse.json({ error: 'Content not found' }, { status: 404 });
 
-    if (body.action === 'submit' && !item.current_version_id) {
+    if ((body.action === 'submit' || body.action === 'queue_for_publish') && !item.current_version_id) {
+      const label = body.action === 'submit' ? 'submitting for review' : 'queuing for publishing';
       return NextResponse.json(
-        { error: 'Generate at least one content version before submitting for review' },
+        { error: `Generate at least one content version before ${label}` },
         { status: 409 },
       );
     }

@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { after } from 'next/server';
 import { runResearchPipeline, scheduleResearchExecution, persistSourceChunks, MAX_CHUNKS_PER_SOURCE } from './pipeline';
 
-vi.mock('next/server', () => ({ after: vi.fn((fn: () => void) => fn()) }));
+vi.mock('next/server', () => ({
+  after: vi.fn((fn: () => unknown) => fn()),
+}));
 
 const mocks = vi.hoisted(() => ({
   crawlBrand: vi.fn(),
@@ -79,6 +81,7 @@ describe('runResearchPipeline', () => {
   beforeEach(() => {
     mocks.crawlBrand.mockReset();
     mocks.analyzeResearchEvidence.mockReset();
+    vi.mocked(after).mockClear();
   });
 
   it('crawls, persists chunks and runs AI analysis when pages were processed', async () => {
@@ -167,22 +170,47 @@ describe('scheduleResearchExecution', () => {
     scheduleResearchExecution({ supabase: client as any, organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'https://example.com/', researchRunId: RUN_ID });
 
     expect(after).toHaveBeenCalledTimes(1);
+    const callbackResult = vi.mocked(after).mock.results[0]?.value;
+    expect(callbackResult).toBeInstanceOf(Promise);
+    await callbackResult;
     expect(mocks.crawlBrand).toHaveBeenCalledTimes(1);
     expect(client.calls.some((call) => call.table === 'research_runs')).toBe(false);
   });
 
   it('marks the run as FAILED when the pipeline throws', async () => {
-    const client = makeSupabaseMock();
-    client.on('research_runs', () => ({ data: null, error: null }));
+    const updates: Array<Record<string, unknown>> = [];
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table !== 'research_runs') throw new Error('unexpected table');
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: null, error: null }),
+              }),
+            }),
+          }),
+          update: (payload: Record<string, unknown>) => {
+            updates.push(payload);
+            return {
+              eq: () => ({
+                eq: async () => ({ data: null, error: null }),
+              }),
+            };
+          },
+        };
+      }),
+    };
+
     mocks.crawlBrand.mockRejectedValue(new Error('boom'));
 
     scheduleResearchExecution({ supabase: client as any, organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'https://example.com/', researchRunId: RUN_ID });
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const callbackResult = vi.mocked(after).mock.results[0]?.value;
+    expect(callbackResult).toBeInstanceOf(Promise);
+    await callbackResult;
 
-    const update = client.calls.find((call) => call.table === 'research_runs' && call.method === 'update');
-    expect(update).toBeDefined();
-    const args = update!.args[0] as { status: string; error_code: string };
-    expect(args.status).toBe('FAILED');
-    expect(args.error_code).toBe('PIPELINE_FAILED');
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.status).toBe('FAILED');
+    expect(updates[0]?.error_code).toBe('PIPELINE_FAILED');
   });
 });
