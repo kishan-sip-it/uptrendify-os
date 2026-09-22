@@ -2,11 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { after } from 'next/server';
 import { runResearchPipeline, scheduleResearchExecution, persistSourceChunks, MAX_CHUNKS_PER_SOURCE } from './pipeline';
 
-const afterHarness = vi.hoisted(() => ({ callbacks: [] as Array<() => unknown> }));
 vi.mock('next/server', () => ({
-  after: vi.fn((fn: () => unknown) => {
-    afterHarness.callbacks.push(fn);
-  }),
+  after: vi.fn((fn: () => unknown) => fn()),
 }));
 
 const mocks = vi.hoisted(() => ({
@@ -84,7 +81,7 @@ describe('runResearchPipeline', () => {
   beforeEach(() => {
     mocks.crawlBrand.mockReset();
     mocks.analyzeResearchEvidence.mockReset();
-    afterHarness.callbacks.length = 0;
+    vi.mocked(after).mockClear();
   });
 
   it('crawls, persists chunks and runs AI analysis when pages were processed', async () => {
@@ -173,8 +170,7 @@ describe('scheduleResearchExecution', () => {
     scheduleResearchExecution({ supabase: client as any, organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'https://example.com/', researchRunId: RUN_ID });
 
     expect(after).toHaveBeenCalledTimes(1);
-    expect(afterHarness.callbacks).toHaveLength(1);
-    const callbackResult = afterHarness.callbacks[0]?.();
+    const callbackResult = vi.mocked(after).mock.results[0]?.value;
     expect(callbackResult).toBeInstanceOf(Promise);
     await callbackResult;
     expect(mocks.crawlBrand).toHaveBeenCalledTimes(1);
@@ -187,7 +183,9 @@ describe('scheduleResearchExecution', () => {
     mocks.crawlBrand.mockRejectedValue(new Error('boom'));
 
     scheduleResearchExecution({ supabase: client as any, organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'https://example.com/', researchRunId: RUN_ID });
-    await afterHarness.callbacks[0]?.();
+    const callbackResult = vi.mocked(after).mock.results[0]?.value;
+    expect(callbackResult).toBeInstanceOf(Promise);
+    await callbackResult;
 
     const update = client.calls.find((call) => call.table === 'research_runs' && call.method === 'update');
     expect(update).toBeDefined();
