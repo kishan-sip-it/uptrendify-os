@@ -194,7 +194,6 @@ export function AppShell({
   }
 
   const currentLocation = pathname === '/dashboard' ? 'Dashboard' : pathname.startsWith('/brands/') ? 'Brand workspace' : pathname === '/brands' ? 'Brands' : pathname.startsWith('/content') ? 'Content Studio' : pathname.startsWith('/campaigns') ? 'Campaigns' : pathname.startsWith('/approvals') ? 'Content Approval' : pathname.startsWith('/settings') ? 'Settings' : pathname.startsWith('/onboarding') ? 'Setup' : 'Workspace';
-  const currentLocation = pathname === '/dashboard' ? 'Dashboard' : pathname.startsWith('/brands/') ? 'Brand workspace' : pathname === '/brands' ? 'Brands' : pathname.startsWith('/content') ? 'Content Studio' : pathname.startsWith('/campaigns') ? 'Campaigns' : pathname.startsWith('/approvals') ? 'Content Approval' : pathname.startsWith('/settings') ? 'Settings' : pathname.startsWith('/onboarding') ? 'Setup' : 'Workspace';
   const guideStage = pathname.startsWith('/brands/') ? 'brand' : pathname.startsWith('/content') ? 'content' : pathname.startsWith('/campaigns') ? 'campaigns' : pathname.startsWith('/approvals') ? 'approvals' : pathname === '/dashboard' ? 'dashboard' : null;
   const guideSteps = guideStage === 'dashboard' ? [
     { target: '#workflow', title: 'This is your command center', body: 'Use the workflow bar to see what is complete, what needs your attention, and the single next action to take.' },
