@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import {
-  ArrowUpRight, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Sparkles, Target, Trash2, Users, X,
+  ArrowUpRight, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Settings, Sparkles, Target, Trash2, Users, X,
 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import HoldButton from '@/components/react-bits/HoldButton';
@@ -83,6 +84,7 @@ export function AppShell({
   const [workspaceRequired, setWorkspaceRequired] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceConfirmation, setWorkspaceConfirmation] = useState('');
+  const pathname = usePathname();
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -212,7 +214,7 @@ export function AppShell({
           </a>
         );
       })}
-      <a className="nav-item nav-item-accent" href="/brands/new" onClick={() => setMobileOpen(false)}>
+      <a className={'nav-item' + (pathname.startsWith('/settings') ? ' active' : '')} href="/settings" aria-current={pathname.startsWith('/settings') ? 'page' : undefined} onClick={() => setMobileOpen(false)}><Settings size={17}/> <span>Settings</span></a>\n      <a className="nav-item nav-item-accent" href="/brands/new" onClick={() => setMobileOpen(false)}>
         <Plus size={17} /> Add brand
       </a>
     </nav>
