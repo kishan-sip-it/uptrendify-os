@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { GuidedTour } from '@/components/tours/GuidedTour';
+import { completedStepsWith, mergeOnboardingDraft } from '@/lib/onboarding/state';
 
 type Draft = {
   workspaceType: 'AGENCY' | 'BUSINESS';
@@ -52,11 +53,6 @@ const STEPS = [
 
 const TIMEZONES = ['UTC', 'Asia/Kolkata', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Asia/Singapore', 'Asia/Tokyo'];
 
-function mergeDraft(value: unknown): Draft {
-  if (!value || typeof value !== 'object') return { ...EMPTY_DRAFT };
-  const source = value as Record<string, unknown>;
-  return { ...EMPTY_DRAFT, ...Object.fromEntries(Object.keys(EMPTY_DRAFT).map((key) => [key, source[key] ?? EMPTY_DRAFT[key as keyof Draft]])) } as Draft;
-}
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -78,7 +74,7 @@ export default function OnboardingPage() {
         const body = await response.json().catch(() => null);
         if (response.status === 401) { window.location.href = '/login'; return; }
         if (!response.ok) throw new Error(body?.error || 'Could not load onboarding');
-        const stored = mergeDraft(body?.progress?.draft_data);
+        const stored = mergeOnboardingDraft(EMPTY_DRAFT, body?.progress?.draft_data);
         const timezone = body?.organization?.timezone || body?.profile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         const next = { ...stored, timezone, firstName: stored.firstName || body?.profile?.first_name || '', lastName: stored.lastName || body?.profile?.last_name || '' };
         if (cancelled) return;
