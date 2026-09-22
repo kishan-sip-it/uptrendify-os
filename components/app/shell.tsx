@@ -409,7 +409,9 @@ export function AppShell({
           </div>
         </div>
 
+        <div className="current-location" aria-live="polite">Current: {pathname.split('/').filter(Boolean).slice(-1)[0]?.replaceAll('-', ' ') || 'dashboard'}</div>
         {children}
+        {guideStage && guideSteps.length ? <GuidedTour stageKey={guideStage} steps={guideSteps} /> : null}
       </section>
 
       {deleteOpen ? (
