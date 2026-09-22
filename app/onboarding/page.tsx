@@ -97,6 +97,32 @@ export default function OnboardingPage() {
     setError('');
   };
 
+  useEffect(() => {
+    if (loading) return;
+    const timer = window.setTimeout(() => {
+      void fetch('/api/onboarding', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ step, completed: false, data: draft }),
+      });
+    }, 550);
+    return () => window.clearTimeout(timer);
+  }, [draft, step, loading]);
+
+  async function jumpToStep(nextStep: number) {
+    if (nextStep >= step || nextStep < 0) return;
+    setSaving(true);
+    setError('');
+    try {
+      await saveProgress(nextStep, false);
+      setStep(nextStep);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save your progress');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveProgress(nextStep = step, completed = false, complete = false) {
     const response = await fetch('/api/onboarding', {
       method: 'PUT',
@@ -250,7 +276,7 @@ export default function OnboardingPage() {
           <div className="onboarding-stepper-track"><span style={{ width: progressPercent + '%' }} /></div>
           <div className="onboarding-stepper-items">
             {STEPS.map((item, index) => (
-              <button type="button" key={item.key} className={'onboarding-step-node ' + (index === step ? 'current ' : '') + (index < step ? 'done' : '')} onClick={() => index < step && setStep(index)} aria-label={item.label}>
+              <button type="button" key={item.key} className={'onboarding-step-node ' + (index === step ? 'current ' : '') + (index < step ? 'done' : '')} onClick={() => void jumpToStep(index)} aria-label={item.label}>
                 <span className="onboarding-step-number">{index < step ? <Check size={13} /> : index + 1}</span><span>{item.label}</span>
               </button>
             ))}
