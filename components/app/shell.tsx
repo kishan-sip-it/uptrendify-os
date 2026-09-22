@@ -15,7 +15,6 @@ export type ShellOrganization = { id: string; name: string; role: string };
 const NAV_ITEMS = [
   { icon: LayoutGrid, label: 'Dashboard', href: '/dashboard', soon: false },
   { icon: Users, label: 'Brands', href: '/brands', soon: false },
-  { icon: Target, label: 'Workflow', href: '/dashboard#workflow', soon: false },
   { icon: FileText, label: 'Content Studio', href: '/content', soon: false },
   { icon: Boxes, label: 'Campaigns', href: '/campaigns', soon: false },
   { icon: CheckCircle2, label: 'Approvals', href: '/approvals', soon: false },
@@ -229,8 +228,27 @@ export function AppShell({
             </span>
           );
         }
+        const active =
+          item.label === 'Dashboard'
+            ? pathname === '/dashboard'
+            : item.label === 'Brands'
+              ? pathname === '/brands' || pathname.startsWith('/brands/')
+              : item.label === 'Content Studio'
+                ? pathname.startsWith('/content')
+                : item.label === 'Campaigns'
+                  ? pathname.startsWith('/campaigns')
+                  : item.label === 'Approvals'
+                    ? pathname.startsWith('/approvals')
+                    : false;
+
         return (
-          <a className="nav-item" href={item.href} key={item.label} onClick={() => setMobileOpen(false)}>
+          <a
+            className={'nav-item' + (active ? ' active' : '')}
+            href={item.href}
+            key={item.label}
+            onClick={() => setMobileOpen(false)}
+            aria-current={active ? 'page' : undefined}
+          >
             <Icon size={17} /> {item.label}
           </a>
         );
