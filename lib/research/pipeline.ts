@@ -102,7 +102,7 @@ export async function runResearchPipeline(input: ResearchPipelineInput): Promise
 
 export function scheduleResearchExecution(input: ResearchPipelineInput): void {
   after(() => {
-    runResearchPipeline(input).catch(async (error) => {
+    return runResearchPipeline(input).catch(async (error) => {
       const message = error instanceof Error ? error.message : String(error);
       obs.error('Research pipeline failed', { researchRunId: input.researchRunId, brandId: input.brandId, error: message });
       try {
