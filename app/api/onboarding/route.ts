@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireOrgRole, CAN_VIEW_DASHBOARD, type OrgRole } from '@/lib/auth/roles';
 import { obs } from '@/lib/obs/logger';
+import { completedStepsWith } from '@/lib/onboarding/state';
 
 const stepSchema = z.object({
   step: z.number().int().min(0).max(5),
@@ -55,9 +56,7 @@ export async function PUT(request: Request) {
     const previousData = (existing.data?.draft_data ?? {}) as Record<string, unknown>;
     const nextData = { ...previousData, ...(body.data ?? {}) };
     const previousCompleted = Array.isArray(existing.data?.completed_steps) ? existing.data!.completed_steps : [];
-    const nextCompleted = body.completed
-      ? Array.from(new Set([...previousCompleted, body.step])).sort((a, b) => a - b)
-      : previousCompleted;
+    const nextCompleted = body.completed ? completedStepsWith(previousCompleted, body.step) : previousCompleted;
 
     const row = {
       user_id: auth.context.userId,
