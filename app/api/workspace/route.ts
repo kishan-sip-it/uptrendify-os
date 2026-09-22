@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireOrgRole } from '@/lib/auth/roles';
 import { obs } from '@/lib/obs/logger';
+import { normalizeTimezone } from '@/lib/timezone';
 
 const schema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
@@ -16,7 +17,7 @@ export async function GET() {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.from('organizations').select('id,name,workspace_type,timezone').eq('id',auth.context.organizationId).single();
   if (error) return NextResponse.json({ error:'Could not load workspace' },{status:500});
-  return NextResponse.json({ok:true,workspace:data});
+  return NextResponse.json({ok:true,workspace:data ? { ...data, timezone: normalizeTimezone(data.timezone) } : data});
 }
 
 export async function PATCH(request: Request) {
