@@ -14,6 +14,7 @@ export default function TeamSettingsPage() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('EDITOR');
   const [message, setMessage] = useState('');
+  const [inviteLink, setInviteLink] = useState('');
   const [error, setError] = useState('');
 
   const load = () => fetch('/api/team', { cache: 'no-store' })
@@ -28,6 +29,7 @@ export default function TeamSettingsPage() {
 
   async function invite() {
     setMessage('');
+    setInviteLink('');
     setError('');
     const r = await fetch('/api/team', {
       method: 'POST',
@@ -40,7 +42,8 @@ export default function TeamSettingsPage() {
       return;
     }
     setEmail('');
-    setMessage('Invitation created. Copy the generated invite link and send it to the teammate.');
+    setInviteLink(b.inviteLink || '');
+    setMessage('Invitation created. Send this link to the invited email address.');
     if (b.inviteLink) await navigator.clipboard?.writeText(b.inviteLink).catch(() => undefined);
     void load();
   }
@@ -87,6 +90,7 @@ export default function TeamSettingsPage() {
 
       {error ? <p className="field-note" role="alert">{error}</p> : null}
       {message ? <p className="field-note">{message}</p> : null}
+      {inviteLink ? <div className="card" style={{ marginBottom: 16 }}><div className="eyebrow">Invite link</div><div className="field-help" style={{ marginTop: 8, wordBreak: 'break-all' }}>{inviteLink}</div><button className="badge" style={{ marginTop: 10 }} onClick={() => navigator.clipboard?.writeText(inviteLink)}>Copy link</button></div> : null}
 
       {data.canManage ? (
         <section className="card" style={{ marginBottom: 16 }}>
