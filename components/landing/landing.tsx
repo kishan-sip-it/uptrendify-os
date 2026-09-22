@@ -261,8 +261,7 @@ export function Landing() {
         </Reveal>
         <Reveal delay={160}>
           <p className="landing-hero-sub">
-            UpTrendifyOS researches public websites with AI, then makes every claim checkable — so
-            you approve the truth, the AI drafts the strategy, and your agency ships faster.
+            Research the business. Review what AI discovered. Build the strategy. Create content, organize campaigns, approve the exact version, and prepare it for publishing.
           </p>
         </Reveal>
         <Reveal delay={240}>
@@ -328,7 +327,7 @@ export function Landing() {
           <div className="landing-section-head">
             <div className="landing-eyebrow"><Blocks size={13} /> The platform</div>
             <h2>Built like mission control for growth, not a chat wrapper.</h2>
-            <p>Every AI claim has a source. Every strategy has a review. Every client has a workspace.</p>
+            <p>Every AI claim has a source. Every strategy has a review. Every brand has a clear workspace and next action.</p>
           </div>
         </Reveal>
         <div className="landing-features">
