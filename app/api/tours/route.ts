@@ -46,3 +46,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Could not save guide state' }, { status: 500 });
   }
 }
+
+
+export async function DELETE(request: Request) {
+  try {
+    const stageKey = new URL(request.url).searchParams.get('stageKey');
+    const supabase = await createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    let query = supabase.from('user_tour_state').delete().eq('user_id', user.id);
+    if (stageKey) query = query.eq('stage_key', stageKey);
+    const { error } = await query;
+    if (error) throw error;
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    obs.error('Tour reset failed', { error: error instanceof Error ? error.message : String(error) });
+    return NextResponse.json({ error: 'Could not reset guide' }, { status: 500 });
+  }
+}
