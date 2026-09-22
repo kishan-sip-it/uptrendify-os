@@ -356,6 +356,7 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [tab, setTab] = useState<'review' | 'approved' | 'notfound' | 'rejected' | 'all'>('review');
+  const [sectionIndex, setSectionIndex] = useState(0);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [role, setRole] = useState<ReviewRole>('view');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -488,6 +489,8 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
     return map;
   }, [filtered]);
 
+  useEffect(() => { setSectionIndex((current) => Math.min(current, Math.max(0, grouped.size - 1))); }, [grouped]);
+
   const canManage = role === 'manage';
   const tabs = [
     { key: 'review' as const, label: `Needs review`, count: counts.pending },
@@ -576,36 +579,35 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
             </div>
           </div>
 
-          {Array.from(grouped.entries()).map(([sectionLabel, items]) => (
-            <div key={sectionLabel} className="grid" style={{ gap: 12 }}>
-              <div className="section-title suggestion-section-title">
-                <h3 style={{ margin: 0 }}>{sectionLabel}</h3>
-                {canManage && tab === 'review' ? (
-                  <button
-                    type="button"
-                    className="badge text-button"
-                    onClick={() => batch('dismiss_all', items.map((item) => item.field))}
-                    disabled={busyKey !== null}
-                    style={{ border: 0, background: 'transparent', color: 'var(--muted)', cursor: 'pointer', padding: '4px 8px', fontSize: 12 }}
-                  >
-                    <X size={12} /> Dismiss pending in this section
+          {grouped.size > 0 ? (
+            <>
+              <div className="brain-topic-nav" aria-label="Brand intelligence topics">
+                {Array.from(grouped.entries()).map(([sectionLabel], index) => (
+                  <button key={sectionLabel} type="button" className={'brain-topic-button ' + (sectionIndex === index ? 'active' : '')} onClick={() => setSectionIndex(index)}>
+                    <span>{String(index + 1).padStart(2, '0')}</span>{sectionLabel}
                   </button>
-                ) : null}
+                ))}
               </div>
-              {items.map((suggestion) => (
-                <SuggestionCard
-                  key={suggestion.id}
-                  suggestion={suggestion}
-                  canManage={canManage}
-                  busyKey={busyKey}
-                  onApprove={(id) => applyAction(id, 'approve')}
-                  onReject={(id) => applyAction(id, 'reject')}
-                  onRegenerate={(id) => applyAction(id, 'regenerate')}
-                  onEdit={(id, value) => applyAction(id, 'edit', value)}
-                />
-              ))}
-            </div>
-          ))}
+              {(() => {
+                const entry = Array.from(grouped.entries())[sectionIndex];
+                if (!entry) return null;
+                const [sectionLabel, items] = entry;
+                return <div className="brain-topic-panel">
+                  <div className="section-title suggestion-section-title">
+                    <div><div className="eyebrow">Topic {sectionIndex + 1} of {grouped.size}</div><h3 style={{ margin: '4px 0 0' }}>{sectionLabel}</h3></div>
+                    {canManage && tab === 'review' ? <button type="button" className="badge text-button" onClick={() => batch('dismiss_all', items.map((item) => item.field))} disabled={busyKey !== null} style={{ border: 0, background: 'transparent', color: 'var(--muted)', cursor: 'pointer', padding: '4px 8px', fontSize: 12 }}><X size={12}/> Dismiss pending</button> : null}
+                  </div>
+                  <div className="grid" style={{ gap: 12 }}>
+                    {items.map((suggestion) => <SuggestionCard key={suggestion.id} suggestion={suggestion} canManage={canManage} busyKey={busyKey} onApprove={(id) => applyAction(id, 'approve')} onReject={(id) => applyAction(id, 'reject')} onRegenerate={(id) => applyAction(id, 'regenerate')} onEdit={(id, value) => applyAction(id, 'edit', value)} />)}
+                  </div>
+                  <div className="brain-topic-actions">
+                    <button type="button" className="badge" disabled={sectionIndex === 0} onClick={() => setSectionIndex((v) => Math.max(0, v - 1))}>← Previous topic</button>
+                    <button type="button" className="badge auth-submit" disabled={sectionIndex >= grouped.size - 1} onClick={() => setSectionIndex((v) => Math.min(grouped.size - 1, v + 1))}>Next topic →</button>
+                  </div>
+                </div>;
+              })()}
+            </>
+          ) : <EmptyState title="No suggestions in this view" description="Change the review filter to inspect another part of the Brand Brain." />}
         </>
       )}
     </div>
