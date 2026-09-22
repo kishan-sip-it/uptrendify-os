@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Check, LoaderCircle, Rocket, Save } from 'lucide
 import { useRouter } from 'next/navigation';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
+import { GuidedTour } from '@/components/tours/GuidedTour';
 
 type Draft = {
   workspaceType: 'AGENCY' | 'BUSINESS';
@@ -286,7 +287,7 @@ export default function OnboardingPage() {
   return (
     <AuthLayout eyebrow={'Step ' + (step + 1) + ' of ' + STEPS.length} title={current.title} subtitle={current.body} footer={null}>
       <div className="onboarding-shell">
-        <div className="onboarding-stepper" aria-label={'Onboarding progress: ' + current.label}>
+        <div className="onboarding-stepper" id="onboarding-stepper" aria-label={'Onboarding progress: ' + current.label}>
           <div className="onboarding-stepper-track"><span style={{ width: progressPercent + '%' }} /></div>
           <div className="onboarding-stepper-items">
             {STEPS.map((item, index) => (
@@ -299,7 +300,7 @@ export default function OnboardingPage() {
 
         <section className="card onboarding-card">
           {step === 0 && (
-            <div className="choice-grid">
+            <div className="choice-grid" id="onboarding-workspace">
               <button type="button" className={'choice-card ' + (draft.workspaceType === 'AGENCY' ? 'selected' : '')} onClick={() => update('workspaceType', 'AGENCY')}>
                 <span className="choice-kicker">Agency</span><strong>Manage multiple brands</strong><span>Use one workspace for teams, clients, research, strategy, content and campaigns.</span>
               </button>
@@ -363,7 +364,7 @@ export default function OnboardingPage() {
 
           {error && <div style={{ marginTop: 14 }}><ErrorState message={error} /></div>}
 
-          <div className="onboarding-actions" style={{ marginTop: 18 }}>
+          <div className="onboarding-actions" id="onboarding-actions" style={{ marginTop: 18 }}>
             <button type="button" className="badge" onClick={back} disabled={step === 0 || saving || researching} style={{ border: 0, cursor: step === 0 ? 'not-allowed' : 'pointer' }}><ArrowLeft size={15} /> Back</button>
             <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
               {step < 5 ? <button type="button" className="badge" onClick={() => saveProgress(step, false)} disabled={saving || researching} style={{ border: 0 }}><Save size={14} /> Save</button> : null}
@@ -373,6 +374,14 @@ export default function OnboardingPage() {
           {resumable && <p className="field-note"><Check size={13} /> Your progress is saved. You can close the browser and resume here.</p>}
         </section>
       </div>
+      <GuidedTour
+        stageKey="onboarding"
+        steps={[
+          { target: '#onboarding-workspace', title: 'Choose how you will use UpTrendifyOS', body: 'Agency workspaces can manage multiple brands. Business workspaces are designed primarily around your own brand.' },
+          { target: '#onboarding-stepper', title: 'Your setup is resumable', body: 'Each step is saved. You can go back, refresh, or close the browser without losing the information you entered.' },
+          { target: '#onboarding-actions', title: 'Save and continue when you are ready', body: 'The final action explicitly starts Research. You will see the research status after setup finishes.' },
+        ]}
+      />
     </AuthLayout>
   );
 }
