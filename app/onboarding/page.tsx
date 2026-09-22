@@ -7,6 +7,7 @@ import { ErrorState, LoadingState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { GuidedTour } from '@/components/tours/GuidedTour';
 import { completedStepsWith, mergeOnboardingDraft } from '@/lib/onboarding/state';
+import { normalizeTimezone } from '@/lib/timezone';
 
 type Draft = {
   workspaceType: 'AGENCY' | 'BUSINESS';
@@ -75,7 +76,7 @@ export default function OnboardingPage() {
         if (response.status === 401) { window.location.href = '/login'; return; }
         if (!response.ok) throw new Error(body?.error || 'Could not load onboarding');
         const stored = mergeOnboardingDraft(EMPTY_DRAFT, body?.progress?.draft_data);
-        const timezone = body?.organization?.timezone || body?.profile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        const timezone = normalizeTimezone(body?.organization?.timezone || body?.profile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
         const next = { ...stored, timezone, firstName: stored.firstName || body?.profile?.first_name || '', lastName: stored.lastName || body?.profile?.last_name || '' };
         if (cancelled) return;
         setDraft(next);
