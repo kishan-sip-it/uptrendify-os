@@ -104,9 +104,23 @@ export default function OnboardingPage() {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ step, completed: false, data: draft }),
-      });
-    }, 550);
+      }).catch(() => undefined);
+    }, 450);
     return () => window.clearTimeout(timer);
+  }, [draft, step, loading]);
+
+  useEffect(() => {
+    if (loading) return;
+    const persistBeforeLeave = () => {
+      void fetch('/api/onboarding', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ step, completed: false, data: draft }),
+        keepalive: true,
+      }).catch(() => undefined);
+    };
+    window.addEventListener('pagehide', persistBeforeLeave);
+    return () => window.removeEventListener('pagehide', persistBeforeLeave);
   }, [draft, step, loading]);
 
   async function jumpToStep(nextStep: number) {
