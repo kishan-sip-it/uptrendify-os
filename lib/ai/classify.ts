@@ -36,6 +36,10 @@ function failure(code: ProviderFailureCode, retryable: boolean, actionable: bool
 
 export function classifyProviderFailure(error: unknown): ProviderFailure {
   if (error instanceof AiProviderError) {
+    const providerMessage = error.message.toLowerCase();
+    if (UNCONFIGURED_MARKERS.some((marker) => providerMessage.includes(marker)) || providerMessage.includes('api key is not configured')) {
+      return failure('PROVIDER_UNCONFIGURED', false, true, 'No AI provider is configured with valid credentials.');
+    }
     if (error.status === 0) {
       return failure('NETWORK_ERROR', true, false, 'Could not reach the AI provider. Retrying with backoff.');
     }
