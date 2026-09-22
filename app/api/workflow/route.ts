@@ -25,6 +25,7 @@ export async function GET() {
 
     if(brands.length===0) return NextResponse.json({ok:true,stages:STAGES,currentKey:'research',nextAction:'Create your first brand',message:'Add a brand so the system can research it.'});
 
+    const currentBrandId=brands[0].id;
     const brandIds=brands.map((b)=>b.id);
     const [runs,suggestions,strategies,content,campaigns]=await Promise.all([
       supabase.from('research_runs').select('id,brand_id,status,created_at').in('brand_id',brandIds).order('created_at',{ascending:false}).limit(20),
@@ -39,16 +40,16 @@ export async function GET() {
     if(content.error) throw content.error;
     if(campaigns.error) throw campaigns.error;
 
-    const runData=runs.data??[];
-    const suggestionData=suggestions.data??[];
+    const runData=(runs.data??[]).filter((r)=>r.brand_id===currentBrandId);
+    const suggestionData=(suggestions.data??[]).filter((s)=>s.brand_id===currentBrandId);
     const gateFields=new Set(suggestionData.filter((s)=>s.status==='APPROVED'||s.status==='EDITED').map((s)=>s.field));
     const gatePassed=gateFields.size>=4 && gateFields.has('brand_name');
     const researchDone=runData.some((r)=>r.status==='COMPLETED'||r.status==='PARTIAL');
     const researchActive=runData.some((r)=>r.status==='QUEUED'||r.status==='RUNNING');
 
-    const latestStrategy=(strategies.data??[]).find((s)=>s.status==='SUCCEEDED');
-    const contentRows=content.data??[];
-    const campaignRows=campaigns.data??[];
+    const latestStrategy=(strategies.data??[]).find((s)=>s.brand_id===currentBrandId&&s.status==='SUCCEEDED');
+    const contentRows=(content.data??[]).filter((c)=>c.brand_id===currentBrandId);
+    const campaignRows=(campaigns.data??[]).filter((c)=>c.brand_id===currentBrandId);
 
     let currentKey='research';
     let nextAction='Start research';
@@ -60,10 +61,9 @@ export async function GET() {
     else if(!gatePassed){currentKey='brand_brain';nextAction='Review Brand Intelligence';}
     else if(!latestStrategy){currentKey='strategy';nextAction='Generate strategy';}
     else if(contentRows.length===0){currentKey='content';nextAction='Create your first content';}
-    else if(campaignRows.length===0){currentKey='campaigns';nextAction='Create a campaign';}
     else if(contentRows.some((c)=>['IN_REVIEW','CLIENT_REVIEW','APPROVED','READY_TO_PUBLISH'].includes(c.status))){currentKey=contentRows.some((c)=>c.status==='READY_TO_PUBLISH')?'publishing':'approval';nextAction=currentKey==='publishing'?'Publish approved content':'Review content awaiting approval';}
+    else if(campaignRows.length===0){currentKey='campaigns';nextAction='Create a campaign';}
     else{currentKey='campaigns';nextAction='Review campaign performance and add content';}
-    currentBrandId = brands[0]?.id ?? null;
 
     const index=STAGES.findIndex((s)=>s.key===currentKey);
     const nextHref = !currentBrandId ? '/brands/new' : currentKey==='research' ? '/brands/'+currentBrandId : currentKey==='brand_brain' ? '/brands/'+currentBrandId+'#intelligence' : currentKey==='strategy' ? '/brands/'+currentBrandId+'#strategy' : currentKey==='content' ? '/content' : currentKey==='campaigns' ? '/campaigns' : currentKey==='approval' ? '/approvals' : '/approvals?status=READY_TO_PUBLISH';
