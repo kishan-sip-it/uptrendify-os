@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { after } from 'next/server';
 import { runResearchPipeline, scheduleResearchExecution, persistSourceChunks, MAX_CHUNKS_PER_SOURCE } from './pipeline';
 
-vi.mock('next/server', () => ({ after: vi.fn((fn: () => void) => fn()) }));
+const afterHarness = vi.hoisted(() => ({ callbacks: [] as Array<() => unknown> }));
+vi.mock('next/server', () => ({
+  after: vi.fn((fn: () => unknown) => {
+    afterHarness.callbacks.push(fn);
+  }),
+}));
 
 const mocks = vi.hoisted(() => ({
   crawlBrand: vi.fn(),
@@ -79,6 +84,7 @@ describe('runResearchPipeline', () => {
   beforeEach(() => {
     mocks.crawlBrand.mockReset();
     mocks.analyzeResearchEvidence.mockReset();
+    afterHarness.callbacks.length = 0;
   });
 
   it('crawls, persists chunks and runs AI analysis when pages were processed', async () => {
@@ -167,6 +173,10 @@ describe('scheduleResearchExecution', () => {
     scheduleResearchExecution({ supabase: client as any, organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'https://example.com/', researchRunId: RUN_ID });
 
     expect(after).toHaveBeenCalledTimes(1);
+    expect(afterHarness.callbacks).toHaveLength(1);
+    const callbackResult = afterHarness.callbacks[0]?.();
+    expect(callbackResult).toBeInstanceOf(Promise);
+    await callbackResult;
     expect(mocks.crawlBrand).toHaveBeenCalledTimes(1);
     expect(client.calls.some((call) => call.table === 'research_runs')).toBe(false);
   });
@@ -177,7 +187,7 @@ describe('scheduleResearchExecution', () => {
     mocks.crawlBrand.mockRejectedValue(new Error('boom'));
 
     scheduleResearchExecution({ supabase: client as any, organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'https://example.com/', researchRunId: RUN_ID });
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await afterHarness.callbacks[0]?.();
 
     const update = client.calls.find((call) => call.table === 'research_runs' && call.method === 'update');
     expect(update).toBeDefined();
