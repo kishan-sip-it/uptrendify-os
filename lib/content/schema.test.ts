@@ -112,6 +112,36 @@ describe('parseContentGeneration', () => {
     ).toThrow(/wrong content type/);
   });
 
+  it('accepts human-readable label variants with correct intent', () => {
+    const result = parseContentGeneration(
+      JSON.stringify({ headline: 'H', body: 'B', channel: 'LinkedIn', content_type: 'Social Post' }),
+      intent,
+    );
+    expect(result.channel).toBe('linkedin');
+    expect(result.content_type).toBe('social_post');
+  });
+
+  it('accepts snake-case spacing variants with correct intent', () => {
+    const result = parseContentGeneration(
+      JSON.stringify({ headline: 'H', body: 'B', channel: 'linkedin ads', content_type: 'social post' }),
+      { type: 'social_post', channel: 'linkedin_ads' },
+    );
+    expect(result.channel).toBe('linkedin_ads');
+    expect(result.content_type).toBe('social_post');
+  });
+
+  it('throws when label variant resolves to the wrong content type', () => {
+    expect(() =>
+      parseContentGeneration(JSON.stringify({ headline: 'H', body: 'B', channel: 'linkedin', content_type: 'Ad Copy' }), intent),
+    ).toThrow(/wrong content type/);
+  });
+
+  it('throws when label variant resolves to the wrong channel', () => {
+    expect(() =>
+      parseContentGeneration(JSON.stringify({ headline: 'H', body: 'B', channel: 'Instagram', content_type: 'social_post' }), intent),
+    ).toThrow(/wrong channel/);
+  });
+
   it('throws on structural validation errors', () => {
     expect(() =>
       parseContentGeneration(JSON.stringify({ headline: 'H' }), intent),

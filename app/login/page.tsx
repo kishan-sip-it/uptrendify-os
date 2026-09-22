@@ -15,7 +15,13 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  async function resolveWorkspace() {
+  function getNextPath(): string | null {
+    const raw = new URL(window.location.href).searchParams.get('next');
+    if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return null;
+    return raw;
+  }
+
+  async function resolveWorkspace(next: string | null) {
     const response = await fetch('/api/auth/bootstrap', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -23,9 +29,13 @@ export default function LoginPage() {
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
+      if (payload?.code === 'INVITATION_PENDING_ACCEPTANCE' && next) {
+        window.location.href = next;
+        return;
+      }
       throw new Error(payload?.error || 'Your account is valid, but the workspace could not be loaded.');
     }
-    window.location.href = '/dashboard';
+    window.location.href = next ?? '/dashboard';
   }
 
   async function checkSession() {
@@ -35,7 +45,7 @@ export default function LoginPage() {
       setStep('auth');
       return;
     }
-    await resolveWorkspace();
+    await resolveWorkspace(getNextPath());
   }
 
   useEffect(() => {
@@ -58,7 +68,7 @@ export default function LoginPage() {
         setError(authError.message);
         return;
       }
-      await resolveWorkspace();
+      await resolveWorkspace(getNextPath());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     } finally {

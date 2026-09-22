@@ -28,6 +28,21 @@ export const CAN_MANAGE_CAMPAIGNS: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 
 export const CAN_VIEW_CAMPAIGNS: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR', 'APPROVER', 'CLIENT'];
 export const CAN_PUBLISH_CONTENT: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST'];
 
+export const CAN_VIEW_TEAM: OrgRole[] = ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR', 'APPROVER', 'CLIENT'];
+export const CAN_MANAGE_MEMBERS: OrgRole[] = ['OWNER', 'ADMIN'];
+export const CAN_INVITE_MEMBERS: OrgRole[] = ['OWNER', 'ADMIN'];
+export const CAN_UPDATE_MEMBER_ROLE: OrgRole[] = ['OWNER', 'ADMIN'];
+export const CAN_REMOVE_MEMBER: OrgRole[] = ['OWNER', 'ADMIN'];
+export const INVITABLE_ROLES: OrgRole[] = ['ADMIN', 'STRATEGIST', 'EDITOR', 'APPROVER', 'CLIENT'];
+export const ASSIGNABLE_ROLES_BY_ROLE: Record<OrgRole, OrgRole[]> = {
+  OWNER: ['OWNER', 'ADMIN', 'STRATEGIST', 'EDITOR', 'APPROVER', 'CLIENT'],
+  ADMIN: ['ADMIN', 'STRATEGIST', 'EDITOR', 'APPROVER', 'CLIENT'],
+  STRATEGIST: [],
+  EDITOR: [],
+  APPROVER: [],
+  CLIENT: [],
+};
+
 export type AuthContext = {
   organizationId: string;
   role: OrgRole;

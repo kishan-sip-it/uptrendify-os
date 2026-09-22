@@ -128,6 +128,32 @@ export function isContentValidationError(error: unknown): error is ContentValida
   return error instanceof ContentValidationError;
 }
 
+function normalizeAssignableToken(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function resolveEnumToken(
+  value: string | null | undefined,
+  values: readonly string[],
+  labels?: Record<string, string>,
+): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const exact = values.find((candidate) => candidate === trimmed);
+  if (exact) return exact;
+  const ci = values.find((candidate) => candidate.toLowerCase() === trimmed.toLowerCase());
+  if (ci) return ci;
+  if (labels) {
+    const byLabel = Object.entries(labels).find(([, label]) => label.toLowerCase() === trimmed.toLowerCase());
+    if (byLabel) return byLabel[0];
+  }
+  return normalizeAssignableToken(trimmed);
+}
+
 export function parseContentGeneration(text: string, intent: Pick<ContentIntentLike, 'type' | 'channel'>): ContentGeneration {
   const trimmed = text.trim();
   const fence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/);
@@ -147,18 +173,21 @@ export function parseContentGeneration(text: string, intent: Pick<ContentIntentL
   }
 
   const result = parsed.data;
-  if (result.channel && result.channel !== intent.channel) {
+  const channelLabels = Object.fromEntries(CONTENT_CHANNELS.map((channel) => [channel, channelLabel(channel)])) as Record<string, string>;
+  const resolvedChannel = resolveEnumToken(result.channel, CONTENT_CHANNEL_VALUES, channelLabels);
+  if (resolvedChannel && resolvedChannel !== intent.channel) {
     throw new ContentValidationError(
       `AI output targeted the wrong channel (${result.channel}); expected ${intent.channel}`,
     );
   }
-  if (result.content_type && result.content_type !== intent.type) {
+  const resolvedType = resolveEnumToken(result.content_type, CONTENT_TYPE_VALUES, CONTENT_TYPE_LABELS);
+  if (resolvedType && resolvedType !== intent.type) {
     throw new ContentValidationError(
       `AI output produced the wrong content type (${result.content_type}); expected ${intent.type}`,
     );
   }
 
-  return result;
+  return { ...result, channel: resolvedChannel ?? result.channel, content_type: resolvedType ?? result.content_type };
 }
 
 export function contentTypeLabel(type: string): string {

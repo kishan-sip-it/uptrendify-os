@@ -7,6 +7,7 @@ const PUBLIC_PATHS = new Set([
   '/progress',
   '/login',
   '/register',
+  '/invite',
   '/forgot-password',
   '/reset-password',
 ]);

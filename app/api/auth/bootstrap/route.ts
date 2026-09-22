@@ -110,6 +110,15 @@ export async function POST(request: Request) {
       if (error.message.includes('AUTHENTICATION_REQUIRED')) {
         return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
       }
+      if (error.message.includes('INVITATION_PENDING_ACCEPTANCE')) {
+        return NextResponse.json(
+          {
+            error: 'You have a pending team invitation. Open your invitation link to join your team.',
+            code: 'INVITATION_PENDING_ACCEPTANCE',
+          },
+          { status: 409 },
+        );
+      }
       return NextResponse.json({ error: 'Could not create your workspace' }, { status: 500 });
     }
 

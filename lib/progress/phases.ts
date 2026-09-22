@@ -130,6 +130,23 @@ export const PROJECT_PHASES: readonly ProjectPhase[] = [
     status: 'PENDING',
     evidence: [],
   },
+  {
+    phase: 14,
+    title: 'Team Management & Invitations',
+    description: 'Organization member management with invitations, role assignment and owner safety across the workspace.',
+    status: 'IN_PROGRESS',
+    evidence: [
+      '0027_team_membership_invitations.sql: organization_invitations (expiry, token hash, never exposed via grants) + get_invitation_token RPC limited to managers; tenant RLS via private.auth_user_email() SECURITY DEFINER helper (fixes 42501 from an invitee policy referencing auth.users directly)',
+      'RPCs: bootstrap_organization (creation + INVITATION_PENDING_ACCEPTANCE guard), invite_organization_member, accept_organization_invitation (upserts user_profiles with onboarding_completed=true, classifies INVITATION_ALREADY_ACCEPTED before EXPIRED), list_organization_members_with_email, revoke_organization_invitation (PL/pgSQL FOUND for pending rows) with owner-safety violations (CANNOT_MODIFY_OWNER, LAST_OWNER_PROTECTED, CANNOT_REMOVE_SELF)',
+      'APIs: GET/POST /api/team, GET/POST /api/team/invitations, POST token reveal + DELETE revoke on /api/team/invitations/[invitationId], PATCH/DELETE /api/team/members/[userId], GET/POST /api/invitations/accept (preview + cookie-setting accept) — all via requireOrgRole gates, INVITABLE_ROLES/assignableRoles, and {error, code} mapping (401/403/404/409/410)',
+      'Invite flows: CASE A /register?invite= — locked-email signup then accept, never bootstraps; CASE B /invite?token= — preview + sign-in (next=) or create-an-account; /api/auth/bootstrap returns 409 + INVITATION_PENDING_ACCEPTANCE while an invite is pending',
+      'UI: /settings/team member management + shell/user-menu Team nav; /invite landing with preview and accept/sign-in/create CTAs; token is 48-hex and reached only through the copy-link reveal',
+      'Verified end-to-end against the local app: anonymous 401, owner bootstrap 201, invite 201, token shape, owner self-demote/remove 400, signed-in non-member 403, preview/accept 200, member view, EDITOR cannot invite/change roles 403, spent token 410, pilot and cross-tenant bootstrap 201, cross-tenant isolation 200',
+      'Fixed real DB bugs during verification: ambiguous out-param collisions in bootstrap/invite/accept RPCs, varchar→text cast in list members, and the RLS invitee-select permission failure; regression-tested with route unit suites + gated DB integration tests (lib/team/rpc.integration.test.ts, RUN_DB_TESTS=1)',
+      'Content generation regression fix (found while verifying fresh generation): strict content_type/channel equality rejected human-label echoes from the model ("Social Post" vs social_post); parseContentGeneration now resolves label/spacing variants to canonical tokens (genuine mismatches still throw) and the prompt requires exact snake_case codes. Fresh DRAFT item and the previously stuck AURORA item both regenerate (ai_task SUCCEEDED + new content_versions).',
+      'Verification: npm test 427 passing (+5 gated DB integration tests), typecheck and build clean; HTTP E2E script all checks passed. Pending: final product verification and a live channel connector before this phase can close.',
+    ],
+  },
 ];
 
 const COMPLETED_PHASES = PROJECT_PHASES.filter((phase) => phase.status === 'COMPLETED');

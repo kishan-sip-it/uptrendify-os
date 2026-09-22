@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  ArrowUpRight, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Sparkles, Target, Trash2, Users, X,
+  ArrowUpRight, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Sparkles, Target, Trash2, UserPlus, Users, X,
 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import HoldButton from '@/components/react-bits/HoldButton';
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { icon: FileText, label: 'Content Studio', href: '/content', soon: false },
   { icon: Boxes, label: 'Campaigns', href: '/campaigns', soon: false },
   { icon: CheckCircle2, label: 'Approvals', href: '/approvals', soon: false },
+  { icon: UserPlus, label: 'Team', href: '/settings/team', soon: false },
 ];
 
 type OrgOption = { id: string; name: string; role: string };
@@ -363,6 +364,9 @@ export function AppShell({
                   </a>
                   <a className="switch-option" href="/brands" onClick={close}>
                     <Users size={13} /> Brands
+                  </a>
+                  <a className="switch-option" href="/settings/team" onClick={close}>
+                    <UserPlus size={13} /> Team
                   </a>
                   <button type="button" className="switch-option" onClick={() => { close(); logout(); }}>
                     <LogOut size={13} /> Sign out
