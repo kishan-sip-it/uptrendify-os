@@ -220,9 +220,9 @@ export function Landing() {
           showPreview={false}
           sensitivity={0.55}
           lineThickness={1}
-          linesColor="#2F293A"
+          linesColor="#FFFFFF"
           gridScale={0.1}
-          scanColor="#FF9FFC"
+          scanColor="#A8E6C5"
           scanOpacity={0.4}
           lineStyle="solid"
           lineJitter={0.1}
@@ -241,7 +241,7 @@ export function Landing() {
           enableGyro={false}
           scanOnClick={false}
           snapBackDelay={250}
-          lightMode={false}
+          lightMode={true}
           className=""
           style={{}}
         />
@@ -250,8 +250,8 @@ export function Landing() {
         </Reveal>
         <Reveal delay={80}>
           <WarpText
-            text="Every client brand. One operating system."
-            color="#f8f5ff"
+            text="From a brand website to a complete marketing workflow."
+            color="#173126"
             fontSize="clamp(2.5rem, 6vw, 5rem)"
             fontWeight={800}
             warpStrength={0.05}
@@ -306,12 +306,12 @@ export function Landing() {
               borderRadius={16}
               edgeSensitivity={16}
               glowColor="280 85 85"
-              backgroundColor="#0B111C"
+              backgroundColor="hsl(160 20% 98%)"
               glowRadius={48}
               glowIntensity={1.45}
               coneSpread={28}
               animated={false}
-              colors={['#B794F6', '#F472B6', '#8B5CF6']}
+              colors={['#67C79F', '#278B69', '#9AD9BE']}
               fillOpacity={0.55}
             >
               <div className="landing-metric">
@@ -409,7 +409,7 @@ export function Landing() {
           <div className="landing-section-head">
             <div className="landing-eyebrow"><Globe2 size={13} /> Try it live</div>
             <h2>Give it a URL. Watch it work.</h2>
-            <p>UpTrendifyOS is free to start — your first brand audit takes minutes, not days.</p>
+            <p>Understand your brand first. Then move forward with evidence, strategy and clear next actions.</p>
           </div>
         </Reveal>
         <Reveal delay={120}>
