@@ -562,3 +562,140 @@ html[data-theme="dark"] .current-location { color: var(--muted); }
 
 
 .brain-topic-nav{display:flex;gap:8px;overflow:auto;padding:2px 0 8px}.brain-topic-button{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:12px;padding:10px 12px;white-space:nowrap;cursor:pointer;display:flex;gap:7px;align-items:center;font-size:12px}.brain-topic-button.active{color:var(--text);border-color:color-mix(in srgb,var(--accent) 44%,var(--line));background:color-mix(in srgb,var(--accent) 8%,var(--panel))}.brain-topic-panel{border:1px solid var(--line);border-radius:18px;padding:16px;background:var(--panel)}.brain-topic-actions{display:flex;justify-content:space-between;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.editor-backdrop{position:fixed;inset:0;z-index:1500;background:rgba(20,35,29,.34);backdrop-filter:blur(5px);display:grid;place-items:center;padding:18px;overflow:auto}.editor-modal{max-width:920px;width:100%;max-height:92vh;overflow:auto}.team-list{display:grid;gap:8px;margin-top:12px}.team-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)}
+
+
+/* Modern calm visual system */
+body {
+  background:
+    radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 28%),
+    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--accent-2) 8%, transparent), transparent 28%),
+    var(--bg);
+}
+.sidebar {
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+}
+.card {
+  background: var(--panel);
+  box-shadow: 0 12px 38px color-mix(in srgb, var(--text) 7%, transparent);
+}
+.badge {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  color: var(--accent);
+}
+.badge.tone-good {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel));
+  color: var(--accent);
+}
+.badge.tone-info {
+  border-color: color-mix(in srgb, #4b8db8 24%, var(--line));
+  background: color-mix(in srgb, #4b8db8 8%, var(--panel));
+  color: #2f6f99;
+}
+.progress { background: var(--panel-2); }
+.activity-item,
+.source-item,
+.strategy-acc,
+.obj-card,
+.campaign-card,
+.next-action-card {
+  background: var(--panel-2);
+}
+.activity-item:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel-2));
+}
+.content-filter-input,
+.content-filter-select,
+.content-form input,
+.content-form select,
+.content-form textarea,
+.auth-card-form input,
+.auth-card-form select {
+  background: var(--panel);
+  color: var(--text);
+}
+.org-switcher-trigger,
+.brand-switcher-trigger {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.org-switcher-trigger:hover,
+.brand-switcher-trigger:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+.switch-panel-inner {
+  background: var(--panel);
+  box-shadow: 0 24px 70px color-mix(in srgb, var(--text) 18%, transparent);
+}
+.next-action-card {
+  background: var(--panel-2);
+}
+.next-action-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+}
+.logo {
+  box-shadow: 0 0 28px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.landing {
+  background: var(--bg);
+  color: var(--text);
+}
+.landing-nav {
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  border-color: var(--line);
+}
+.landing-hero {
+  background:
+    radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 38%),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-2) 14%, var(--bg)), var(--bg));
+}
+.landing-eyebrow {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  color: var(--accent);
+}
+.landing-pipeline-glow .landing-pipeline-step,
+.landing-terminal,
+.landing-terminal-bar,
+.landing-step,
+.landing-log,
+.landing-metric,
+.landing-feature-card,
+.landing-how-card {
+  background: var(--panel);
+  color: var(--text);
+}
+.landing-terminal,
+.landing-terminal-bar,
+.landing-step,
+.landing-log,
+.landing-metric,
+.landing-feature-card,
+.landing-how-card {
+  border-color: var(--line);
+}
+.landing-terminal-bar { background: var(--panel-2); }
+.landing-terminal-bar > span { background: color-mix(in srgb, var(--text) 18%, transparent); }
+.landing-terminal-bar > span:nth-child(1) { background: #ef8d8d; }
+.landing-terminal-bar > span:nth-child(2) { background: #e2b95c; }
+.landing-terminal-bar > span:nth-child(3) { background: #67c79f; }
+.landing-pipeline-step { border: 1px solid var(--line); }
+.landing-pipeline-badge {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel-2));
+}
+.landing-alt { background: color-mix(in srgb, var(--panel-2) 72%, transparent); }
+.landing-feature-icon,
+.landing-how-icon {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel-2));
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-reveal { transition: none; transform: none; }
+  .landing-step.running .landing-step-icon { animation: none; }
+  * { scroll-behavior: auto !important; }
+}
