@@ -178,8 +178,30 @@ describe('scheduleResearchExecution', () => {
   });
 
   it('marks the run as FAILED when the pipeline throws', async () => {
-    const client = makeSupabaseMock();
-    client.on('research_runs', () => ({ data: null, error: null }));
+    const updates: Array<Record<string, unknown>> = [];
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table !== 'research_runs') throw new Error('unexpected table');
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: null, error: null }),
+              }),
+            }),
+          }),
+          update: (payload: Record<string, unknown>) => {
+            updates.push(payload);
+            return {
+              eq: () => ({
+                eq: async () => ({ data: null, error: null }),
+              }),
+            };
+          },
+        };
+      }),
+    };
+
     mocks.crawlBrand.mockRejectedValue(new Error('boom'));
 
     scheduleResearchExecution({ supabase: client as any, organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'https://example.com/', researchRunId: RUN_ID });
@@ -187,10 +209,8 @@ describe('scheduleResearchExecution', () => {
     expect(callbackResult).toBeInstanceOf(Promise);
     await callbackResult;
 
-    const update = client.calls.find((call) => call.table === 'research_runs' && call.method === 'update');
-    expect(update).toBeDefined();
-    const args = update!.args[0] as { status: string; error_code: string };
-    expect(args.status).toBe('FAILED');
-    expect(args.error_code).toBe('PIPELINE_FAILED');
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.status).toBe('FAILED');
+    expect(updates[0]?.error_code).toBe('PIPELINE_FAILED');
   });
 });
