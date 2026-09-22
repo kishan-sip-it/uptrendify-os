@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_VIEW_DASHBOARD, requireOrgRole } from '@/lib/auth/roles';
 import { obs } from '@/lib/obs/logger';
+import { deriveWorkflowState } from '@/lib/workflow/derive';
 
 const STAGES = [
   { key: 'research', label: 'Research', description: 'Discover what the business actually does.' },
@@ -110,46 +111,37 @@ export async function GET(request: Request) {
     const reviewableContent = contentRows.some((item) => ['IN_REVIEW', 'CLIENT_REVIEW', 'APPROVED', 'READY_TO_PUBLISH'].includes(item.status));
     const readyToPublish = contentRows.some((item) => item.status === 'READY_TO_PUBLISH');
 
-    let currentKey: (typeof STAGES)[number]['key'] = 'research';
-    let nextAction = 'Start research';
+    const { currentKey, nextAction } = deriveWorkflowState({
+      researchActive: Boolean(activeResearch),
+      researchDone,
+      brandBrainReady: gatePassed,
+      strategyReady: Boolean(latestStrategy),
+      contentCount: contentRows.length,
+      pendingApproval: reviewableContent,
+      readyToPublish,
+      campaignCount: campaignRows.length,
+    });
+
     let blocker: string | null = null;
     let message: string | null = null;
 
-    if (activeResearch) {
-      currentKey = 'research';
-      nextAction = 'Let research finish';
+    if (currentKey === 'research' && activeResearch) {
       message = 'The research job is running in the background. You can leave this page and come back.';
-    } else if (!researchDone) {
-      currentKey = 'research';
-      nextAction = 'Start research';
+    } else if (currentKey === 'research') {
       message = 'Start with your brand website. UpTrendifyOS will collect evidence before asking you to review anything.';
-    } else if (!gatePassed) {
-      currentKey = 'brand_brain';
-      nextAction = 'Review Brand Intelligence';
+    } else if (currentKey === 'brand_brain') {
       message = String(suggestionRows.filter((suggestion) => suggestion.status === 'PENDING').length) + ' suggestion(s) still need a human decision.';
-    } else if (!latestStrategy) {
-      currentKey = 'strategy';
-      nextAction = 'Generate strategy';
+    } else if (currentKey === 'strategy') {
       message = 'Your Brand Brain gate is satisfied. Strategy can now be generated from verified intelligence.';
-    } else if (contentRows.length === 0) {
-      currentKey = 'content';
-      nextAction = 'Create your first content';
+    } else if (currentKey === 'content') {
       message = 'Turn the approved strategy into a concrete content asset.';
-    } else if (campaignRows.length === 0) {
-      currentKey = 'campaigns';
-      nextAction = 'Create a campaign';
-      message = 'Group your content around a marketing initiative, audience, channels, dates and budget.';
-    } else if (readyToPublish) {
-      currentKey = 'publishing';
-      nextAction = 'Publish approved content';
-      message = 'Approved content is ready for a connected external channel.';
-    } else if (reviewableContent) {
-      currentKey = 'approval';
-      nextAction = 'Review content awaiting approval';
+    } else if (currentKey === 'approval') {
       message = 'Review the exact content version before it can move toward publishing.';
+    } else if (currentKey === 'publishing') {
+      message = 'Approved content is ready for a connected external channel.';
+    } else if (campaignRows.length === 0) {
+      message = 'Group your content around a marketing initiative, audience, channels, dates and budget.';
     } else {
-      currentKey = 'campaigns';
-      nextAction = 'Review campaigns';
       message = 'Your campaigns are set up. Add or organize content around the initiatives that matter.';
     }
 
