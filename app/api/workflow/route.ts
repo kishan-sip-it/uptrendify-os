@@ -53,6 +53,7 @@ export async function GET() {
     let currentKey='research';
     let nextAction='Start research';
     let blocker: string | null=null;
+    let currentBrandId: string | null = null;
 
     if(researchActive){currentKey='research';nextAction='Let research finish';}
     else if(!researchDone){currentKey='research';nextAction='Start research';}
@@ -60,18 +61,18 @@ export async function GET() {
     else if(!latestStrategy){currentKey='strategy';nextAction='Generate strategy';}
     else if(contentRows.length===0){currentKey='content';nextAction='Create your first content';}
     else if(campaignRows.length===0){currentKey='campaigns';nextAction='Create a campaign';}
-    else if(contentRows.some((c)=>['IN_REVIEW','CLIENT_REVIEW','APPROVED','READY_TO_PUBLISH'].includes(c.status))){
-      currentKey=contentRows.some((c)=>c.status==='READY_TO_PUBLISH')?'publishing':'approval';
-      nextAction=currentKey==='publishing'?'Publish approved content':'Review content awaiting approval';
-    }else{currentKey='campaigns';nextAction='Review campaign performance and add content';}
+    else if(contentRows.some((c)=>['IN_REVIEW','CLIENT_REVIEW','APPROVED','READY_TO_PUBLISH'].includes(c.status))){currentKey=contentRows.some((c)=>c.status==='READY_TO_PUBLISH')?'publishing':'approval';nextAction=currentKey==='publishing'?'Publish approved content':'Review content awaiting approval';}
+    else{currentKey='campaigns';nextAction='Review campaign performance and add content';}
+    currentBrandId = brands[0]?.id ?? null;
 
     const index=STAGES.findIndex((s)=>s.key===currentKey);
+    const nextHref = !currentBrandId ? '/brands/new' : currentKey==='research' ? '/brands/'+currentBrandId : currentKey==='brand_brain' ? '/brands/'+currentBrandId+'#intelligence' : currentKey==='strategy' ? '/brands/'+currentBrandId+'#strategy' : currentKey==='content' ? '/content' : currentKey==='campaigns' ? '/campaigns' : currentKey==='approval' ? '/approvals' : '/approvals?status=READY_TO_PUBLISH';
     const stageState=STAGES.map((stage,i)=>({
       ...stage,
       status:i<index?'COMPLETED':i===index?'CURRENT':'UPCOMING'
     }));
 
-    return NextResponse.json({ok:true,stages:stageState,currentKey,nextAction,blocker,message:null,progressPercent:Math.round((Math.max(0,index)/STAGES.length)*100)});
+    return NextResponse.json({ok:true,stages:stageState,currentKey,currentBrandId,nextAction,nextHref,blocker,message:null,progressPercent:Math.round((Math.max(0,index)/STAGES.length)*100)});
   }catch(error){
     obs.error('Workflow state load failed',{error:error instanceof Error?error.message:String(error)});
     return NextResponse.json({error:'Could not load workflow state'},{status:500});
