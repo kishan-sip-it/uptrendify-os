@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { obs } from '@/lib/obs/logger';
+import { normalizeTimezone } from '@/lib/timezone';
 
 const schema = z.object({
   theme: z.enum(['light', 'dark', 'system']).optional(),
@@ -14,7 +15,7 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     const { data, error } = await supabase.from('user_profiles').select('theme_preference,timezone').eq('user_id', user.id).maybeSingle();
     if (error) throw error;
-    return NextResponse.json({ ok: true, theme: data?.theme_preference ?? 'light', timezone: data?.timezone ?? null });
+    return NextResponse.json({ ok: true, theme: data?.theme_preference ?? 'light', timezone: normalizeTimezone(data?.timezone, 'UTC') });
   } catch (error) {
     obs.error('Preferences load failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Could not load preferences' }, { status: 500 });
