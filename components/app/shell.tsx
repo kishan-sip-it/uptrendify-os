@@ -15,7 +15,7 @@ export type ShellOrganization = { id: string; name: string; role: string };
 const NAV_ITEMS = [
   { icon: LayoutGrid, label: 'Dashboard', href: '/dashboard', soon: false },
   { icon: Users, label: 'Brands', href: '/brands', soon: false },
-  { icon: Target, label: 'Strategy', soon: true },
+  { icon: Target, label: 'Workflow', href: '/dashboard#workflow', soon: false },
   { icon: FileText, label: 'Content Studio', href: '/content', soon: false },
   { icon: Boxes, label: 'Campaigns', href: '/campaigns', soon: false },
   { icon: CheckCircle2, label: 'Approvals', href: '/approvals', soon: false },
@@ -193,6 +193,7 @@ export function AppShell({
     }
   }
 
+  const currentLocation = pathname === '/dashboard' ? 'Dashboard' : pathname.startsWith('/brands/') ? 'Brand workspace' : pathname === '/brands' ? 'Brands' : pathname.startsWith('/content') ? 'Content Studio' : pathname.startsWith('/campaigns') ? 'Campaigns' : pathname.startsWith('/approvals') ? 'Content Approval' : pathname.startsWith('/settings') ? 'Settings' : pathname.startsWith('/onboarding') ? 'Setup' : 'Workspace';
   const guideStage = pathname.startsWith('/brands/') ? 'brand' : pathname.startsWith('/content') ? 'content' : pathname.startsWith('/campaigns') ? 'campaigns' : pathname.startsWith('/approvals') ? 'approvals' : pathname === '/dashboard' ? 'dashboard' : null;
   const guideSteps = guideStage === 'dashboard' ? [
     { target: '#workflow', title: 'This is your command center', body: 'Use the workflow bar to see what is complete, what needs your attention, and the single next action to take.' },
@@ -409,7 +410,7 @@ export function AppShell({
           </div>
         </div>
 
-        <div className="current-location" aria-live="polite">Current: {pathname.split('/').filter(Boolean).slice(-1)[0]?.replaceAll('-', ' ') || 'dashboard'}</div>
+        <div className="current-location" aria-live="polite">Current: {currentLocation}</div>
         {children}
         {guideStage && guideSteps.length ? <GuidedTour stageKey={guideStage} steps={guideSteps} /> : null}
       </section>
