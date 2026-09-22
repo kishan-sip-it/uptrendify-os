@@ -23,16 +23,16 @@ export const PROJECT_PHASES: readonly ProjectPhase[] = [
   {
     phase: 2,
     title: 'Authentication & RBAC',
-    description: 'Email/password sign-in, session handling and role-based authorization scoped to each organization.',
+    description: 'Email/password sign-in, resumable onboarding, team invitations and role-based authorization scoped to each organization.',
     status: 'COMPLETED',
-    evidence: ['Supabase Auth email/password sessions', 'Role model (OWNER/ADMIN/STRATEGIST/EDITOR/VIEWER) with route + action guards'],
+    evidence: ['Supabase Auth email/password sessions', 'Roles OWNER/ADMIN/STRATEGIST/EDITOR/APPROVER/CLIENT with route + action guards', 'Team invitations and role management with last-owner protection'],
   },
   {
     phase: 3,
-    title: 'Client & Brand Management',
-    description: 'Agency clients and the brands under them, each with its own website URL, slug and tenant isolation.',
+    title: 'Workspace & Brand Management',
+    description: 'Workspace setup for agencies and businesses, with editable brands, brand ground rules and tenant-isolated organization membership.',
     status: 'COMPLETED',
-    evidence: ['Client entities + brand records with website_url', 'Organization-scoped CRUD and membership checks'],
+    evidence: ['Organizations/workspaces + brand records with website_url', 'Organization-scoped CRUD, brand editing and membership checks'],
   },
   {
     phase: 4,
@@ -96,7 +96,7 @@ export const PROJECT_PHASES: readonly ProjectPhase[] = [
   {
     phase: 11,
     title: 'Campaign Management',
-    description: 'Campaigns built from approved strategy pillars with budget, channels and publish workflow.',
+    description: 'Campaigns organize approved strategy into bounded marketing initiatives with audience, budget, channels, dates and linked content.',
     status: 'IN_PROGRESS',
     evidence: [
       '0025_campaign_management.sql: campaign_status lifecycle (DRAFT→PLANNED→ACTIVE→COMPLETED/ARCHIVED) with client attribution, budget/currency/dates/channels, transition + lineage triggers (strategy must be SUCCEEDED, client matches brand)',
@@ -109,7 +109,7 @@ export const PROJECT_PHASES: readonly ProjectPhase[] = [
   {
     phase: 12,
     title: 'Approval & Publishing',
-    description: 'Content review/approval and controlled publishing to connected channels.',
+    description: 'Exact-version content approval and honest publishing orchestration. Unconnected channels remain READY_TO_PUBLISH until a real connector is available.',
     status: 'IN_PROGRESS',
     evidence: [
       '0026_approval_publishing.sql: publication_status + channel_connection_status enums, READY_TO_PUBLISH content status, channel_configurations and content_publications tables with tenant RLS, idempotency key uniqueness, and append-only publication ledger',
@@ -126,7 +126,7 @@ export const PROJECT_PHASES: readonly ProjectPhase[] = [
   {
     phase: 13,
     title: 'Analytics & Learning Loop',
-    description: 'Performance measurement of published work feeding back into the Brand Brain and strategy.',
+    description: 'Future analytics and learning loop: measure published work and feed reliable performance signals back into planning.',
     status: 'PENDING',
     evidence: [],
   },
