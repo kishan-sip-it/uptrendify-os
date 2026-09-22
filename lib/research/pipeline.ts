@@ -131,6 +131,5 @@ export function scheduleResearchExecution(input: ResearchPipelineInput): void {
           error: markError instanceof Error ? markError.message : String(markError),
         });
       }
-    });
-  });
+    }));
 }
