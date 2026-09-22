@@ -49,9 +49,6 @@ export async function POST(request: Request) {
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
     const supabase = await createSupabaseServerClient();
 
-    const existingMember = await supabase.from('organization_members').select('user_id').eq('organization_id', auth.context.organizationId).eq('user_id', (await supabase.from('user_profiles').select('user_id').eq('organization_id',auth.context.organizationId).limit(1)).data?.[0]?.user_id ?? '00000000-0000-0000-0000-000000000000').maybeSingle();
-    void existingMember;
-
     const duplicate = await supabase.from('team_invitations').select('id').eq('organization_id', auth.context.organizationId).eq('email', body.email).is('accepted_at', null).is('revoked_at', null).maybeSingle();
     if (duplicate.data) return NextResponse.json({ error: 'An active invitation already exists for this email.' }, { status: 409 });
 
