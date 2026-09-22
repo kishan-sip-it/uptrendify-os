@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { BrandOverview } from '@/components/brand/brand-overview';
 import { BrandBrainReview } from '@/components/brand/brand-brain-review';
 import { BrandStrategy } from '@/components/brand/brand-strategy';
+import { BrandEditor } from '@/components/brand/brand-editor';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,7 @@ export default async function BrandPage({ params }: { params: Promise<{ brandId:
             {brand.industry ? ` · ${brand.industry}` : ''}
           </p>
         </div>
-        <a className="badge" href="/brands/new"><Plus size={14} /> Add brand</a>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><BrandEditor brandId={brandId} /><a className="badge" href="/brands/new"><Plus size={14} /> Add brand</a></div>
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
