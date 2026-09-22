@@ -2,7 +2,7 @@
 
 > **AI-powered multi-brand marketing agency operating system.**
 
-UpTrendifyOS is a production-oriented platform for agencies that manage multiple clients and brands from one workspace. It turns a brand URL into source-backed intelligence, an editable Brand Brain, marketing strategy, SEO/content opportunities and controlled content workflows.
+UpTrendifyOS is a production-oriented marketing operating system for agencies and businesses. An agency can manage multiple brands from one workspace; a business can focus on its own brand. The product turns a brand website into source-backed research, an editable Brand Brain, strategy, content, campaigns, approvals and controlled publishing workflows.
 
 ## Core loop
 
@@ -25,12 +25,18 @@ The repository has now been initialized around a real production architecture ra
 
 ### Current application foundation
 
-The initial Next.js foundation uses the current Next.js 16 line, TypeScript, Supabase SSR support, Zod validation and a custom premium SaaS design system. The application shell already includes the agency dashboard information architecture and the initial Brand Health / AI Recommendations experience.
+The Next.js foundation uses the current Next.js 16 line, TypeScript, Supabase SSR support, Zod validation and a responsive SaaS design system. The application shell already includes the agency dashboard information architecture and the initial Brand Health / AI Recommendations experience.
+
+## User workflow
+
+Engineering phase numbers are implementation history, not instructions for users. The product guides users through one canonical journey:
+
+**Workspace → Brand → Brand Ground Rules → Research → Brand Intelligence → Strategy → Content → Campaigns → Approval → Publishing**
 
 ## Golden V1 journey
 
-1. Create client.
-2. Add brand and website URL.
+1. Create or join a workspace (Agency or Business).
+2. Add a brand and website URL.
 3. Analyze permitted public website content.
 4. Store evidence and research status.
 5. Build an editable Brand Brain.
@@ -176,10 +182,10 @@ These are integrations, not the application's source of truth.
 
 ## Design direction
 
-UpTrendifyOS should feel like a premium combination of an agency command center, AI workspace and modern SaaS product — not a generic admin template.
+UpTrendifyOS should feel like a calm, modern combination of an agency command center, AI workspace and SaaS product — not a generic admin template. Light is the default for long daily usage; users can switch between Light, Dark and System.
 
 The visual language is:
-- premium dark-first UI with light-theme support later
+- light-first default with a complete dark/system theme
 - Space Grotesk / DM Sans typography
 - subtle gradients and glass/surface depth
 - clean information density
