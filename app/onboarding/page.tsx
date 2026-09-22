@@ -258,8 +258,8 @@ export default function OnboardingPage() {
       await saveProgress(5, true, true);
       const research = await fetch('/api/brands/' + draft.brandId + '/research', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'Idempotency-Key': 'onboarding:' + draft.brandId },
-        body: JSON.stringify({ idempotencyKey: 'onboarding:' + draft.brandId }),
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
       });
       const body = await research.json().catch(() => null);
       if (!research.ok && research.status !== 409) throw new Error(body?.error || 'Could not start research');
