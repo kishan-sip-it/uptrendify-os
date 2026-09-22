@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import HoldButton from '@/components/react-bits/HoldButton';
+import { GuidedTour } from '@/components/tours/GuidedTour';
 
 export type ShellBrand = { id: string; name: string; website_url: string | null; status: string | null };
 export type ShellOrganization = { id: string; name: string; role: string };
@@ -192,6 +193,25 @@ export function AppShell({
     }
   }
 
+  const guideStage = pathname.startsWith('/brands/') ? 'brand' : pathname.startsWith('/content') ? 'content' : pathname.startsWith('/campaigns') ? 'campaigns' : pathname.startsWith('/approvals') ? 'approvals' : pathname === '/dashboard' ? 'dashboard' : null;
+  const guideSteps = guideStage === 'dashboard' ? [
+    { title: 'This is your command center', body: 'Use the workflow bar to see what is complete, what needs your attention, and the single next action to take.' },
+    { title: 'Follow the next action', body: 'Open the highlighted action instead of guessing which section comes next. UpTrendifyOS moves from research to strategy to content to approval.' },
+    { title: 'You can always see where you are', body: 'The sidebar and current-stage indicator stay visible so you never need to inspect the URL.' },
+  ] : guideStage === 'brand' ? [
+    { title: 'Start with evidence', body: 'Research reads the public website, then Brand Brain turns the evidence into suggestions for human review.' },
+    { title: 'Review before strategy', body: 'Open Brand Intelligence suggestions, inspect their evidence, then approve or edit the facts you trust.' },
+    { title: 'Strategy comes after the gate', body: 'Once the Brand Brain gate is satisfied, the strategy workspace becomes the next guided step.' },
+  ] : guideStage === 'content' ? [
+    { title: 'Content Studio creates assets', body: 'Use approved brand intelligence and strategy context to create content you may actually publish.' },
+    { title: 'Versions matter', body: 'Edits create new versions when required. Approval always applies to an exact content version.' },
+  ] : guideStage === 'campaigns' ? [
+    { title: 'Campaigns are initiatives', body: 'A campaign groups content around a marketing objective, audience, dates, channels and budget.' },
+    { title: 'Content and campaigns are different', body: 'A campaign can contain many content items. Each content item keeps its own approval lifecycle.' },
+  ] : guideStage === 'approvals' ? [
+    { title: 'Approval protects the exact version', body: 'Review the content that is actually awaiting a decision. A later edited version does not inherit an older approval.' },
+    { title: 'Then queue for publishing', body: 'Approved content can move to Ready to Publish. External publishing remains honest about channel connections.' },
+  ] : [];
   const displayName = userFirstName || userEmail || 'Account';
   const initials = userFirstName
     ? userFirstName.slice(0, 2).toUpperCase()
