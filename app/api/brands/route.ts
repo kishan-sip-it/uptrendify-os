@@ -13,6 +13,21 @@ const inputSchema = z.object({
   targetAudience: z.string().trim().max(1000).optional(),
 });
 
+function normalizeBrandWebsite(raw: string): string {
+  const url = new URL(raw);
+  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Website must use http or https.');
+  if (url.username || url.password) throw new Error('Website URL cannot contain credentials.');
+  const blocked = ['/dashboard', '/admin', '/login', '/signin', '/signup', '/auth', '/account', '/console', '/app'];
+  const path = url.pathname.replace(/\\/+$/, '').toLowerCase();
+  if (blocked.some((prefix) => path === prefix || path.startsWith(prefix + '/'))) {
+    throw new Error('Use the public brand website, not an internal dashboard, login or account URL.');
+  }
+  url.pathname = '/';
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+
 function slugify(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 70) || 'brand';
 }
@@ -20,6 +35,7 @@ function slugify(value: string) {
 export async function POST(request: Request) {
   try {
     const body = inputSchema.parse(await request.json());
+    const websiteUrl = normalizeBrandWebsite(body.websiteUrl);
 
     const auth = await requireOrgRole(CAN_CREATE_BRANDS);
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
@@ -78,7 +94,7 @@ export async function POST(request: Request) {
       client_id: client.data!.id,
       name: body.brandName,
       slug: brandSlug,
-      website_url: body.websiteUrl,
+      website_url: websiteUrl,
       industry: body.industry || null,
       market_country: body.marketCountry || null,
       target_audience: body.targetAudience || null,
@@ -102,7 +118,8 @@ export async function POST(request: Request) {
     obs.info('Brand created', { organizationId, brandId: createdBrand.data.id, actorRole: auth.context.role });
     return NextResponse.json({ ok: true, brand: createdBrand.data }, { status: 201 });
   } catch (error) {
-    if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid input', details: error.flatten() }, { status: 400 });
+    if (error instanceof z.ZodError) return NextResponse.json({ error: 'Some brand details are invalid. Check the fields and try again.', details: error.flatten() }, { status: 400 });
+    if (error instanceof Error && /Website/.test(error.message)) return NextResponse.json({ error: error.message }, { status: 400 });
     obs.error('Brand creation failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Failed to create brand' }, { status: 500 });
   }
