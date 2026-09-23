@@ -339,7 +339,7 @@ export async function analyzeResearchEvidence(
 
     const aiTaskUpdate = await supabase.from('ai_tasks').update({
       status: 'SUCCEEDED',
-      provider: providerId,
+      provider: provider.id,
       model: extraction.model,
       output_metadata: outputMetadata,
       latency_ms: Date.now() - startedAt,
@@ -351,7 +351,7 @@ export async function analyzeResearchEvidence(
 
     obs.info('Brand intelligence generated', {
       researchRunId, brandId, organizationId,
-      provider: providerId, model: extraction.model,
+      provider: provider.id, model: extraction.model,
       suggestions: suggestionsWritten, found, notFound,
     });
 
@@ -372,12 +372,12 @@ export async function analyzeResearchEvidence(
     obs.error('Brand intelligence analysis failed', {
       researchRunId,
       brandId,
-      provider: providerId,
-      model,
+      provider: provider?.id,
+      model: extraction?.model,
       code,
       error: message,
     });
     await failTask(code, message);
-    return { status: 'FAILED', aiTaskId, provider: providerId, model, errorCode: code, errorMessage: message };
+    return { status: 'FAILED', aiTaskId, provider: provider?.id, model: extraction?.model, errorCode: code, errorMessage: message };
   }
 }
