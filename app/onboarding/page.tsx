@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { GuidedTour } from '@/components/tours/GuidedTour';
+import { BrandWebsiteSuggestions } from '@/components/brand/website-suggestions';
 import { completedStepsWith, mergeOnboardingDraft } from '@/lib/onboarding/state';
 import { normalizeTimezone } from '@/lib/timezone';
 
@@ -319,7 +320,14 @@ export default function OnboardingPage() {
 
           {step === 2 && (
             <div className="onboarding-grid">
-              <label>Brand name<input value={draft.brandName} onChange={(e) => update('brandName', e.target.value)} placeholder="e.g. AURORA" autoFocus /></label>
+              <label className="brand-field">
+              <span>Brand name</span>
+              <div className="brand-suggestion-wrap">
+                <input className="brand-input" value={draft.brandName} onChange={(e) => update('brandName', e.target.value)} placeholder="e.g. AURORA Labs" autoFocus autoComplete="organization" />
+                <BrandWebsiteSuggestions query={draft.brandName} onSelect={(name, url) => { update('brandName', name); update('websiteUrl', url); }} />
+              </div>
+              <small>Start typing the company name and choose the public website when it appears.</small>
+            </label>
               <label>Website<input value={draft.websiteUrl} onChange={(e) => update('websiteUrl', e.target.value)} placeholder="https://example.com" /></label>
               <label>Industry<input value={draft.industry} onChange={(e) => update('industry', e.target.value)} placeholder="e.g. SaaS" /></label>
               <label>Primary audience<textarea value={draft.primaryAudience} onChange={(e) => update('primaryAudience', e.target.value)} rows={4} placeholder="Who should this brand reach?" /></label>
