@@ -10,6 +10,7 @@ export default async function BrandsListPage() {
   if (auth.error) redirect('/login');
 
   const supabase = await createSupabaseServerClient();
+  const { data: workspace } = await supabase.from('organizations').select('workspace_type').eq('id', auth.context.organizationId).single();
   const { data: brands } = await supabase
     .from('brands')
     .select('id,name,website_url,industry,status,created_at')
@@ -23,9 +24,13 @@ export default async function BrandsListPage() {
         <div>
           <a href="/" className="metric-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>Back to command center</a>
           <h1>Brands</h1>
-          <p className="subtitle">Every client brand with its own research run history and Brand Brain.</p>
+          <p className="subtitle">Each brand keeps its own research history, Brand Brain, strategy, content and campaigns.</p>
         </div>
-        <a className="badge" href="/brands/new"><Plus size={14} /> Add brand</a>
+        {workspace?.workspace_type === 'BUSINESS' && (brands ?? []).some((brand) => brand.status === 'ACTIVE') ? (
+          <span className="workspace-rule-note">Business workspace · one primary brand</span>
+        ) : (
+          <a className="badge" href="/brands/new"><Plus size={14} /> Add brand</a>
+        )}
       </div>
 
       {(brands ?? []).length === 0 ? (
@@ -36,7 +41,7 @@ export default async function BrandsListPage() {
               <h2 style={{ margin: '5px 0' }}>No brands yet</h2>
             </div>
           </div>
-          <p className="subtitle">Add your first brand to start analyzing its public website and building strategies.</p>
+          <p className="subtitle">Add the business identity you want UpTrendifyOS to understand first. Research and Brand Ground Rules come next.</p>
           <a className="badge" href="/brands/new" style={{ marginTop: 14 }}><Plus size={13} /> Add your first brand</a>
         </div>
       ) : (
