@@ -208,6 +208,14 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         processedPages.push({ id: source.data.id, url: target, canonicalUrl: canonical, title: extracted.title, text: extracted.text });
         pagesDiscovered = seen.size;
         pagesProcessed += 1;
+        for (const redirectHint of extracted.redirectHints) {
+          try {
+            const candidate = normalizeUrl(redirectHint);
+            if (sameOrigin(root, candidate) && !seen.has(candidate) && queue.length + seen.size < e.MAX_RESEARCH_PAGES * 3) queue.unshift(candidate);
+          } catch {
+            continue;
+          }
+        }
         for (const next of extracted.links) {
           try {
             const candidate = normalizeUrl(next);
