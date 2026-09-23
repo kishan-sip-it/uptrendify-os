@@ -55,7 +55,11 @@ export default function LoginPage() {
     try {
       const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) {
-        setError(authError.message);
+        const message = authError.message.toLowerCase();
+        if (message.includes('invalid login credentials')) setError('No account matched that email and password. Check your details or create an account.');
+        else if (message.includes('email not confirmed')) setError('Your email address has not been confirmed yet. Check your inbox and try again.');
+        else if (message.includes('rate limit') || message.includes('too many requests')) setError('Too many sign-in attempts. Please wait a moment and try again.');
+        else setError('We could not sign you in. Check your email and password and try again.');
         return;
       }
       await resolveWorkspace();
@@ -77,8 +81,8 @@ export default function LoginPage() {
   return (
     <AuthLayout
       eyebrow="Command center"
-      title="Your agency command center."
-      subtitle="Sign in to manage multi-brand research, reviews and strategy."
+      title="Welcome back to your workspace."
+      subtitle="Pick up exactly where your marketing workflow stopped."
       footer={
         <div className="auth-footer-links">
           <Link href="/register">Create an account</Link>
