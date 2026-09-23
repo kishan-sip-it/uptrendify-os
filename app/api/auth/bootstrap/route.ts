@@ -30,8 +30,14 @@ export async function GET() {
 
     const { data: org } = await supabase
       .from('organizations')
-      .select('id,name')
+      .select('id,name,workspace_type,timezone')
       .eq('id', membership.organization_id)
+      .maybeSingle();
+
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('onboarding_completed')
+      .eq('user_id', user.id)
       .maybeSingle();
 
     return NextResponse.json({
@@ -39,6 +45,9 @@ export async function GET() {
         id: membership.organization_id,
         role: membership.role,
         name: org?.name ?? null,
+        workspaceType: org?.workspace_type ?? 'AGENCY',
+        timezone: org?.timezone ?? null,
+        onboardingCompleted: Boolean(profile?.onboarding_completed),
       },
     });
   } catch (error) {
@@ -74,8 +83,14 @@ export async function POST(request: Request) {
     if (existingMembership) {
       const { data: existingOrg } = await supabase
         .from('organizations')
-        .select('id,name')
+        .select('id,name,workspace_type,timezone')
         .eq('id', existingMembership.organization_id)
+        .maybeSingle();
+
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('onboarding_completed')
+        .eq('user_id', user.id)
         .maybeSingle();
 
       return NextResponse.json({
@@ -83,6 +98,9 @@ export async function POST(request: Request) {
           id: existingMembership.organization_id,
           role: existingMembership.role,
           name: existingOrg?.name ?? null,
+          workspaceType: existingOrg?.workspace_type ?? 'AGENCY',
+          timezone: existingOrg?.timezone ?? null,
+          onboardingCompleted: Boolean(profile?.onboarding_completed),
         },
       }, { status: 200 });
     }
@@ -122,6 +140,9 @@ export async function POST(request: Request) {
         id: bootstrapData.id,
         role: bootstrapData.role,
         name: bootstrapData.name,
+        workspaceType: 'AGENCY',
+        timezone: null,
+        onboardingCompleted: false,
       },
     }, { status: 201 });
   } catch (error) {
