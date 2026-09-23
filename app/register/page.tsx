@@ -168,6 +168,7 @@ export default function RegisterPage() {
         }
 
         setError(signUpError.message);
+        return;
       } else if (!signUpData.session) {
         const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) {
