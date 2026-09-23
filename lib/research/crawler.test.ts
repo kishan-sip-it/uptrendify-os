@@ -102,7 +102,7 @@ describe('crawlBrand', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       callCount += 1;
       if (callCount === 1) {
-        const shell = '<!DOCTYPE html><html><head><title>Shell</title></head><body><div id="root"></div><script>window.__next_f.push([])</script></body></html>';
+        const shell = '<!DOCTYPE html><html><head><title>Shell</title></head><body><div id="root"></div><script>window.__next_f.push([])</script><script>' + 'x'.repeat(700) + '</script></body></html>';
         return new Response(shell, { status: 200, headers: { 'content-type': 'text/html' } });
       }
       return new Response('# Aurora\n\nThis is rendered content from the client application with enough detail to be useful for research and brand understanding.', {
