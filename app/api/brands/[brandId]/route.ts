@@ -22,6 +22,21 @@ const updateSchema = z.object({
   status: z.enum(['ACTIVE', 'ARCHIVED']).optional(),
 });
 
+function normalizeBrandWebsite(raw: string): string {
+  const url = new URL(raw);
+  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Website must use http or https.');
+  if (url.username || url.password) throw new Error('Website URL cannot contain credentials.');
+  const blocked = ['/dashboard', '/admin', '/login', '/signin', '/signup', '/auth', '/account', '/console', '/app'];
+  const path = url.pathname.replace(/\\/+$/, '').toLowerCase();
+  if (blocked.some((prefix) => path === prefix || path.startsWith(prefix + '/'))) {
+    throw new Error('Use the public brand website, not an internal dashboard, login or account URL.');
+  }
+  url.pathname = '/';
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+
 function slugify(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 70) || 'brand';
 }
@@ -61,7 +76,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
       update.name = body.name;
       update.slug = slugify(body.name);
     }
-    if (body.websiteUrl !== undefined) update.website_url = body.websiteUrl;
+    if (body.websiteUrl !== undefined) update.website_url = body.websiteUrl === null ? null : normalizeBrandWebsite(body.websiteUrl);
     if (body.description !== undefined) update.description = body.description;
     if (body.industry !== undefined) update.industry = body.industry;
     if (body.marketCountry !== undefined) update.market_country = body.marketCountry;
@@ -89,7 +104,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
 
     return NextResponse.json({ ok: true, brand: data });
   } catch (error) {
-    if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid brand data', details: error.flatten() }, { status: 400 });
+    if (error instanceof z.ZodError) return NextResponse.json({ error: 'Some brand details are invalid. Check the fields and try again.', details: error.flatten() }, { status: 400 });
+    if (error instanceof Error && /Website/.test(error.message)) return NextResponse.json({ error: error.message }, { status: 400 });
     if (error instanceof Error && error.message.includes('duplicate key')) return NextResponse.json({ error: 'Another brand already uses that name.' }, { status: 409 });
     obs.error('Brand update failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Could not update brand' }, { status: 500 });
