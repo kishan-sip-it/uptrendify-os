@@ -92,6 +92,7 @@ export default function NewBrandPage() {
           <label className="brand-field brand-input-span"><span>What does the brand do?</span><textarea className="brand-textarea" name="description" placeholder="Describe the business in your own words." /></label>
         </div>
         </div>
+        </div>
         <div className="brand-form-section">
           <div className="brand-form-section-title">
             <strong>What happens next</strong>
