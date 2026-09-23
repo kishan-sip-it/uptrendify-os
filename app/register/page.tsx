@@ -221,8 +221,8 @@ export default function RegisterPage() {
   return (
     <AuthLayout
       eyebrow="Create your workspace"
-      title="Start your agency command center."
-      subtitle="Research, review and strategy for every client brand — all in one OS."
+      title="Set up your marketing workspace."
+      subtitle="Choose how you work, then UpTrendifyOS will guide you from brand understanding to approved content."
       footer={
         <div className="auth-footer-links">
           <Link href="/login">Already have an account? Sign in</Link>
@@ -256,8 +256,8 @@ export default function RegisterPage() {
           placeholder="Re-enter your password"
         />
         <label>
-          Agency name
-          <input name="organizationName" required minLength={2} maxLength={120} placeholder="e.g. Northwind Agency" />
+          Workspace name
+          <input name="organizationName" required minLength={2} maxLength={120} placeholder="e.g. Northstar Marketing or Aurora Labs" />
         </label>
         <button type="submit" disabled={loading} className="badge auth-submit">
           {loading ? <><LoaderCircle size={15} className="spin" /> Creating…</> : <>Create workspace <Sparkles size={15} /></>}
