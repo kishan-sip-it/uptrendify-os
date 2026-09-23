@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { ArrowLeft, Globe2, LoaderCircle, Sparkles } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Globe2, LoaderCircle, Sparkles } from 'lucide-react';
 import { ErrorState, SuccessState } from '@/components/ui/feedback';
 import { BrandWebsiteSuggestions } from '@/components/brand/website-suggestions';
 
@@ -10,6 +10,7 @@ type Status = { kind: 'success' | 'error' | 'idle'; message: string };
 export default function NewBrandPage() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: 'idle', message: '' });
+  const [createdBrandId, setCreatedBrandId] = useState('');
   const [brandName, setBrandName] = useState('');
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [workspace, setWorkspace] = useState<{ name: string; workspace_type: 'AGENCY' | 'BUSINESS' } | null>(null);
@@ -43,6 +44,7 @@ export default function NewBrandPage() {
         }
         throw new Error(result.error || 'Could not create brand');
       }
+      setCreatedBrandId(String(result.brand.id));
       setStatus({ kind: 'success', message: 'Brand created. Open the brand workspace to start research and continue the workflow.' });
     } catch (error) {
       setStatus({ kind: 'error', message: error instanceof Error ? error.message : 'Something went wrong' });
@@ -85,7 +87,12 @@ export default function NewBrandPage() {
         <button disabled={loading} className="badge" style={{ border:0, justifyContent:'center', padding:14, cursor:'pointer' }}>
           {loading ? <><LoaderCircle size={15} className="spin"/> Creating…</> : <>Create brand workspace <Sparkles size={15}/></>}
         </button>
-        {status.kind === 'success' && <SuccessState message={status.message} />}
+        {status.kind === 'success' && (
+          <div className="card" style={{ background: '#edf5ef', borderColor: '#cfe0d4' }}>
+            <SuccessState message={status.message} />
+            {createdBrandId ? <a className="badge" href={'/brands/' + createdBrandId}><CheckCircle2 size={14} /> Open brand workspace</a> : null}
+          </div>
+        )}
         {status.kind === 'error' && <ErrorState message={status.message} />}
       </form>
     </main>
