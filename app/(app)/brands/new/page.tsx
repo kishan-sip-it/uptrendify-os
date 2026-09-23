@@ -54,12 +54,12 @@ export default function NewBrandPage() {
   }
 
   return (
-    <main className="main" style={{ maxWidth: 980 }}>
-      <a href="/" className="metric-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><ArrowLeft size={15}/> Back to command center</a>
-      <div style={{ marginTop: 28 }}>
+    <main className="main" style={{ maxWidth: 1120 }}>
+      <a href="/dashboard" className="metric-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><ArrowLeft size={15}/> Back to command center</a>
+      <div className="brand-form-header" style={{ marginTop: 24 }}>
         <div className="eyebrow">Brand onboarding</div>
-        <h1>Turn a website into a growth workspace.</h1>
-        <p className="subtitle">{workspace ? `${workspace.name} · ${workspace.workspace_type === 'AGENCY' ? 'Agency workspace' : 'Business workspace'} · ` : ''}Give UpTrendifyOS the public website and basic context. The next stage researches evidence and builds a reviewable Brand Brain.</p>
+        <h1>Give the workspace a brand people can recognize.</h1>
+        <p className="subtitle">{workspace ? `${workspace.name} · ${workspace.workspace_type === 'AGENCY' ? 'Agency workspace' : 'Business workspace'} · ` : ''}Start with the public website and a few human-provided basics. Research comes next, then Brand Intelligence and human review.</p>
         {workspace?.workspace_type === 'BUSINESS' ? (
           <div className="card" style={{ marginTop: 14, padding: 14 }}>
             <div className="eyebrow">Business workspace</div>
@@ -68,8 +68,13 @@ export default function NewBrandPage() {
           </div>
         ) : null}
       </div>
-      <form onSubmit={submit} className="card" style={{ marginTop: 28, display: 'grid', gap: 18 }}>
-        <div className="badge"><Sparkles size={14}/> AI-ready brand onboarding</div>
+      <form onSubmit={submit} className="card brand-form-shell" style={{ marginTop: 18 }}>
+        <div className="brand-form-section">
+          <div className="brand-form-section-title">
+            <strong>Brand identity</strong>
+            <span className="badge">Step 1</span>
+          </div>
+          <div className="brand-input-grid">
         <label className="brand-field">
           <span>Brand name</span>
           <div className="brand-suggestion-wrap">
@@ -80,12 +85,21 @@ export default function NewBrandPage() {
         </label>
         <label className="brand-field"><span>Website URL</span><div style={{ position:'relative' }}><Globe2 size={18} style={{ position:'absolute', left:12, top:13, color:'var(--muted)' }}/><input className="brand-input" name="websiteUrl" type="url" required value={websiteUrl} onChange={(event) => setWebsiteUrl(event.target.value)} placeholder="https://example.com" style={{ paddingLeft:40, width:'100%' }}/></div></label>
         <div className="grid grid-3">
-          <label>Industry<input name="industry" placeholder="B2B SaaS" /></label>
-          <label>Primary market<input name="marketCountry" placeholder="United States" /></label>
-          <label>Target audience<input name="targetAudience" placeholder="Operations leaders at SMBs" /></label>
+          <label className="brand-field"><span>Industry</span><input className="brand-input" name="industry" placeholder="B2B SaaS" /></label>
+          <label className="brand-field"><span>Primary market</span><input className="brand-input" name="marketCountry" placeholder="India" /></label>
+          <label className="brand-field brand-input-span"><span>Primary audience</span><textarea className="brand-textarea" name="targetAudience" placeholder="Who should this brand reach?" /></label>
+          <label className="brand-field brand-input-span"><span>What does the brand do?</span><textarea className="brand-textarea" name="description" placeholder="Describe the business in your own words." /></label>
         </div>
-        <button disabled={loading} className="badge" style={{ border:0, justifyContent:'center', padding:14, cursor:'pointer' }}>
-          {loading ? <><LoaderCircle size={15} className="spin"/> Creating…</> : <>Create brand workspace <Sparkles size={15}/></>}
+        </div>
+        <div className="brand-form-section">
+          <div className="brand-form-section-title">
+            <strong>What happens next</strong>
+            <span className="badge"><Sparkles size={12} /> Research → Brand Intelligence → Strategy</span>
+          </div>
+          <p className="subtitle" style={{ margin: 0 }}>Research gathers evidence first. Brand Intelligence organizes what the system found. Human review decides what becomes trusted brand knowledge.</p>
+        </div>
+        <button disabled={loading} className="brand-form-submit">
+          {loading ? <><LoaderCircle size={15} className="spin"/> Creating…</> : <>Create brand and open workspace <Sparkles size={15}/></>}
         </button>
         {status.kind === 'success' && (
           <div className="card" style={{ background: '#edf5ef', borderColor: '#cfe0d4' }}>
