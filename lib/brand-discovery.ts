@@ -37,13 +37,31 @@ function dedupe(candidates: BrandWebsiteCandidate[]): BrandWebsiteCandidate[] {
   }).slice(0, 5);
 }
 
+async function searchHtml(url: string): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4_500);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'user-agent': 'Mozilla/5.0 (UpTrendifyOS brand discovery)' },
+      cache: 'no-store',
+    });
+    if (!response.ok) return '';
+    return await response.text();
+  } catch {
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function searchBing(query: string): Promise<BrandWebsiteCandidate[]> {
-  const response = await fetch(
+  const html = await searchHtml(
     'https://www.bing.com/search?count=8&setlang=en-US&q=' + encodeURIComponent(query),
-    { headers: { 'user-agent': 'Mozilla/5.0 (UpTrendifyOS brand discovery)' }, cache: 'no-store' },
   );
-  if (!response.ok) return [];
-  const $ = cheerio.load(await response.text());
+  if (!html) return [];
+  if (!html) return [];
+  const $ = cheerio.load(html);
   const results: BrandWebsiteCandidate[] = [];
   $('li.b_algo h2 a').each((_, element) => {
     const href = $(element).attr('href');
@@ -57,12 +75,11 @@ async function searchBing(query: string): Promise<BrandWebsiteCandidate[]> {
 }
 
 async function searchGoogle(query: string): Promise<BrandWebsiteCandidate[]> {
-  const response = await fetch(
+  const html = await searchHtml(
     'https://www.google.com/search?hl=en&num=8&q=' + encodeURIComponent(query),
-    { headers: { 'user-agent': 'Mozilla/5.0 (UpTrendifyOS brand discovery)' }, cache: 'no-store' },
   );
-  if (!response.ok) return [];
-  const $ = cheerio.load(await response.text());
+  if (!html) return [];
+  const $ = cheerio.load(html);
   const results: BrandWebsiteCandidate[] = [];
   $('a[href]').each((_, element) => {
     const href = $(element).attr('href') || '';
