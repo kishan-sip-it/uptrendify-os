@@ -1046,8 +1046,8 @@ html:not([data-theme="dark"]) .auth-shell {
   border-top: 1px solid #ddd5c7;
   transform: translateX(-50%) rotate(45deg);
 }
-.tour-pointer.below { top: calc(var(--tour-pointer-top, 0px) - 7px); }
-.tour-pointer.above { bottom: calc(var(--tour-pointer-top, 0px) - 7px); transform: translateX(-50%) rotate(225deg); }
+.tour-pointer.below { transform: translate(-50%, -50%) rotate(45deg); }
+.tour-pointer.above { transform: translate(-50%, -50%) rotate(225deg); }
 
 @media (max-width: 980px) {
   .auth-layout-grid { grid-template-columns: 1fr; }
