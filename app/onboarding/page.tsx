@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, LoaderCircle, Rocket, Save } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
+import { WebsiteDiscovery } from '@/components/brand/WebsiteDiscovery';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { GuidedTour } from '@/components/tours/GuidedTour';
 import { completedStepsWith, mergeOnboardingDraft } from '@/lib/onboarding/state';
@@ -319,7 +320,7 @@ export default function OnboardingPage() {
 
           {step === 2 && (
             <div className="onboarding-grid">
-              <label>Brand name<input value={draft.brandName} onChange={(e) => update('brandName', e.target.value)} placeholder="e.g. AURORA" autoFocus /></label>
+              <label>Brand name<input value={draft.brandName} onChange={(e) => update('brandName', e.target.value)} placeholder="e.g. AURORA" autoFocus /><WebsiteDiscovery query={draft.brandName} onSelect={(url) => update('websiteUrl', url)} /></label>
               <label>Website<input value={draft.websiteUrl} onChange={(e) => update('websiteUrl', e.target.value)} placeholder="https://example.com" /></label>
               <label>Industry<input value={draft.industry} onChange={(e) => update('industry', e.target.value)} placeholder="e.g. SaaS" /></label>
               <label>Primary audience<textarea value={draft.primaryAudience} onChange={(e) => update('primaryAudience', e.target.value)} rows={4} placeholder="Who should this brand reach?" /></label>
