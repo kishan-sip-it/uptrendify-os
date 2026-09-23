@@ -24,6 +24,8 @@ export function GuidedTour({ stageKey, steps, tourVersion = 1 }: { stageKey: str
 
   useEffect(() => {
     if (!open) return;
+    const target = steps[index]?.target ? document.querySelector(steps[index].target) as HTMLElement | null : null;
+    target?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') void close('SKIPPED');
       if (event.key === 'ArrowRight') setIndex((value) => Math.min(steps.length - 1, value + 1));
@@ -38,14 +40,13 @@ export function GuidedTour({ stageKey, steps, tourVersion = 1 }: { stageKey: str
       window.removeEventListener('resize', onLayout);
       window.removeEventListener('scroll', onLayout, true);
     };
-  }, [open, steps.length]);
+  }, [open, index, steps]);
 
   if (!open || !steps[index]) return null;
   void tick;
 
   const step = steps[index];
   const target = step.target ? document.querySelector(step.target) as HTMLElement | null : null;
-  if (target) target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
   const rect = target?.getBoundingClientRect() ?? null;
 
   const cardStyle: React.CSSProperties = rect
