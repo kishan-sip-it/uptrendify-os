@@ -105,7 +105,7 @@ describe('crawlBrand', () => {
         const shell = '<!DOCTYPE html><html><head><title>Shell</title></head><body><div id="root"></div><script>window.__next_f.push([])</script><script>' + 'x'.repeat(700) + '</script></body></html>';
         return new Response(shell, { status: 200, headers: { 'content-type': 'text/html' } });
       }
-      return new Response('# Aurora\n\nThis is rendered content from the client application with enough detail to be useful for research and brand understanding.', {
+      return new Response('# Aurora\n\nThis is rendered content from the client application with enough detail to be useful for research and brand understanding. '.repeat(4), {
         status: 200,
         headers: { 'content-type': 'text/plain' },
       });
