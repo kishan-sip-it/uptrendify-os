@@ -1178,3 +1178,79 @@ html[data-theme="light"] .landing-feature-card,
 html[data-theme="light"] .landing-how-card {
   background: rgba(255, 253, 248, 0.94);
 }
+
+
+/* Compact auth shell: keep the informative panel visible from the first viewport. */
+@media (min-width: 901px) {
+  .auth-shell {
+    min-height: 100vh;
+    place-items: start center;
+    padding: 18px 24px 28px;
+    box-sizing: border-box;
+  }
+
+  .auth-layout-grid {
+    width: min(1380px, 100%);
+    align-items: start;
+    gap: 28px;
+  }
+
+  .auth-showcase {
+    min-height: 0;
+    padding: 26px 30px;
+    justify-content: flex-start;
+    gap: 18px;
+  }
+
+  .auth-showcase h2 {
+    font-size: clamp(28px, 3.35vw, 44px);
+  }
+
+  .auth-showcase p {
+    line-height: 1.62;
+  }
+
+  .auth-flow-row {
+    padding: 10px 12px;
+  }
+
+  .auth-benefit {
+    padding: 10px;
+  }
+
+  .auth-card-wrap {
+    max-width: 520px;
+    padding-top: 4px;
+  }
+
+  .auth-head {
+    margin-bottom: 18px;
+  }
+}
+
+@media (max-height: 850px) and (min-width: 901px) {
+  .auth-shell { padding-top: 12px; padding-bottom: 16px; }
+  .auth-showcase { padding-block: 20px; gap: 14px; }
+  .auth-showcase-kicker { padding: 6px 9px; }
+  .auth-benefit { padding: 9px; }
+  .auth-flow-row { padding: 9px 11px; }
+}
+
+@media (max-width: 900px) {
+  .auth-shell {
+    min-height: auto;
+    padding: 18px 16px 28px;
+    place-items: stretch;
+  }
+
+  .auth-layout-grid {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .auth-showcase {
+    min-height: auto;
+    padding: 24px;
+    gap: 16px;
+  }
+}
