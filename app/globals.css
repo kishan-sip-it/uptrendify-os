@@ -704,7 +704,7 @@ body {
 /* =========================================================
    CALM / WARM UI FOUNDATION
    ========================================================= */
-html:not([data-theme="dark"]) body {
+html[data-theme="light"] body {
   background:
     radial-gradient(circle at 10% 4%, rgba(183, 207, 191, 0.18), transparent 28%),
     radial-gradient(circle at 88% 10%, rgba(232, 217, 192, 0.16), transparent 31%),
@@ -712,117 +712,117 @@ html:not([data-theme="dark"]) body {
   color: var(--text);
 }
 
-html:not([data-theme="dark"]) body,
-html:not([data-theme="dark"]) button,
-html:not([data-theme="dark"]) input,
-html:not([data-theme="dark"]) textarea,
-html:not([data-theme="dark"]) select {
+html[data-theme="light"] body,
+html[data-theme="light"] button,
+html[data-theme="light"] input,
+html[data-theme="light"] textarea,
+html[data-theme="light"] select {
   font-family: Inter, system-ui, sans-serif;
 }
 
-html:not([data-theme="dark"]) h1,
-html:not([data-theme="dark"]) h2,
-html:not([data-theme="dark"]) h3,
-html:not([data-theme="dark"]) .brand-mark,
-html:not([data-theme="dark"]) .landing-logo,
-html:not([data-theme="dark"]) .auth-brand {
+html[data-theme="light"] h1,
+html[data-theme="light"] h2,
+html[data-theme="light"] h3,
+html[data-theme="light"] .brand-mark,
+html[data-theme="light"] .landing-logo,
+html[data-theme="light"] .auth-brand {
   font-family: "Plus Jakarta Sans", Inter, system-ui, sans-serif;
 }
 
-html:not([data-theme="dark"]) .sidebar {
+html[data-theme="light"] .sidebar {
   background: rgba(249, 246, 239, 0.90);
   box-shadow: 10px 0 40px rgba(74, 65, 53, 0.035);
 }
 
-html:not([data-theme="dark"]) .card,
-html:not([data-theme="dark"]) .next-action-card,
-html:not([data-theme="dark"]) .campaign-card,
-html:not([data-theme="dark"]) .obj-card,
-html:not([data-theme="dark"]) .strategy-acc,
-html:not([data-theme="dark"]) .activity-item,
-html:not([data-theme="dark"]) .source-item,
-html:not([data-theme="dark"]) .content-item {
+html[data-theme="light"] .card,
+html[data-theme="light"] .next-action-card,
+html[data-theme="light"] .campaign-card,
+html[data-theme="light"] .obj-card,
+html[data-theme="light"] .strategy-acc,
+html[data-theme="light"] .activity-item,
+html[data-theme="light"] .source-item,
+html[data-theme="light"] .content-item {
   background: rgba(255, 253, 248, 0.94);
   border-color: var(--line);
   box-shadow: 0 14px 36px rgba(74, 65, 53, 0.06);
 }
 
-html:not([data-theme="dark"]) .card {
+html[data-theme="light"] .card {
   background: linear-gradient(180deg, #fffdf8 0%, #fbf7ef 100%);
 }
 
-html:not([data-theme="dark"]) .nav-item.active,
-html:not([data-theme="dark"]) .nav-item:hover {
+html[data-theme="light"] .nav-item.active,
+html[data-theme="light"] .nav-item:hover {
   background: #ece6da;
 }
 
-html:not([data-theme="dark"]) .progress {
+html[data-theme="light"] .progress {
   background: #e8e0d4;
 }
 
-html:not([data-theme="dark"]) .content-filter-input,
-html:not([data-theme="dark"]) .content-filter-select,
-html:not([data-theme="dark"]) .content-form input,
-html:not([data-theme="dark"]) .content-form select,
-html:not([data-theme="dark"]) .content-form textarea,
-html:not([data-theme="dark"]) .auth-card-form input,
-html:not([data-theme="dark"]) .auth-card-form select,
-html:not([data-theme="dark"]) input,
-html:not([data-theme="dark"]) textarea,
-html:not([data-theme="dark"]) select {
+html[data-theme="light"] .content-filter-input,
+html[data-theme="light"] .content-filter-select,
+html[data-theme="light"] .content-form input,
+html[data-theme="light"] .content-form select,
+html[data-theme="light"] .content-form textarea,
+html[data-theme="light"] .auth-card-form input,
+html[data-theme="light"] .auth-card-form select,
+html[data-theme="light"] input,
+html[data-theme="light"] textarea,
+html[data-theme="light"] select {
   background: #fffdf8;
   color: var(--text);
   border-color: #ddd5c7;
 }
 
-html:not([data-theme="dark"]) input::placeholder,
-html:not([data-theme="dark"]) textarea::placeholder {
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder {
   color: #9b9387;
 }
 
-html:not([data-theme="dark"]) input:focus,
-html:not([data-theme="dark"]) textarea:focus,
-html:not([data-theme="dark"]) select:focus {
+html[data-theme="light"] input:focus,
+html[data-theme="light"] textarea:focus,
+html[data-theme="light"] select:focus {
   border-color: #7fb29a;
   box-shadow: 0 0 0 3px rgba(79, 139, 114, 0.10);
 }
 
-html:not([data-theme="dark"]) .badge {
+html[data-theme="light"] .badge {
   background: #edf5ef;
   border-color: #cfe0d4;
   color: #447d66;
 }
 
-html:not([data-theme="dark"]) .landing-feature-card,
-html:not([data-theme="dark"]) .landing-how-card,
-html:not([data-theme="dark"]) .landing-metric {
+html[data-theme="light"] .landing-feature-card,
+html[data-theme="light"] .landing-how-card,
+html[data-theme="light"] .landing-metric {
   background: rgba(255, 253, 248, 0.94);
   border-color: #e3dbce;
   box-shadow: 0 12px 32px rgba(74, 65, 53, 0.05);
 }
 
-html:not([data-theme="dark"]) .landing-feature-icon,
-html:not([data-theme="dark"]) .landing-how-icon {
+html[data-theme="light"] .landing-feature-icon,
+html[data-theme="light"] .landing-how-icon {
   background: #edf5ef;
   border-color: #d3e3d8;
 }
 
-html:not([data-theme="dark"]) .landing-terminal {
+html[data-theme="light"] .landing-terminal {
   background: #f0ebe1;
   border-color: #ded6c8;
   box-shadow: 0 14px 36px rgba(74, 65, 53, 0.06);
 }
 
-html:not([data-theme="dark"]) .landing-terminal-bar {
+html[data-theme="light"] .landing-terminal-bar {
   background: #e9e1d5;
   border-bottom-color: #dcd3c5;
 }
 
-html:not([data-theme="dark"]) .landing-terminal-body {
+html[data-theme="light"] .landing-terminal-body {
   background: #faf7f1;
 }
 
-html:not([data-theme="dark"]) .auth-shell {
+html[data-theme="light"] .auth-shell {
   background:
     radial-gradient(circle at 13% 12%, rgba(99, 143, 120, 0.14), transparent 34%),
     radial-gradient(circle at 88% 78%, rgba(229, 213, 181, 0.16), transparent 35%),
