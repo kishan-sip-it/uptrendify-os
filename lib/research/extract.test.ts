@@ -51,6 +51,19 @@ describe('extractPage', () => {
     expect(result.text).not.toContain('No-script fallback');
   });
 
+  it('preserves embedded SPA data when visible text is empty', () => {
+    const html = '<html><head><script type="application/ld+json">{"@type":"Organization","name":"AURORA Labs","url":"https://aurora.example"}</script></head><body><div id="root"></div></body></html>';
+    const result = extractPage(html, 'https://aurora.example/');
+    expect(result.text).toContain('AURORA Labs');
+    expect(result.redirectHints).toEqual([]);
+  });
+
+  it('extracts same-page client-side redirect hints', () => {
+    const html = '<html><body><script>window.location.replace("/home");</script></body></html>';
+    const result = extractPage(html, 'https://example.com/');
+    expect(result.redirectHints).toContain('https://example.com/home');
+  });
+
   it('returns null for missing title and description', () => {
     const html = '<html><body></body></html>';
     const result = extractPage(html, 'https://example.com');
