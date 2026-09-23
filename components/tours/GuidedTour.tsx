@@ -108,7 +108,10 @@ export function GuidedTour({
           />
           <div
             className={'tour-pointer ' + placement}
-            style={{ left: Math.min(window.innerWidth - 28, Math.max(28, rect.left + rect.width / 2)) }}
+            style={{
+              left: Math.min(window.innerWidth - 28, Math.max(28, rect.left + rect.width / 2)),
+              top: placement === 'below' ? rect.bottom + 9 : rect.top - 9,
+            }}
             aria-hidden="true"
           />
         </>
