@@ -25,7 +25,7 @@ const WORKFLOW: { icon: LucideIcon; label: string; note: string; tone: string }[
 ];
 
 const FEATURES: { icon: LucideIcon; title: string; description: string }[] = [
-  { icon: Globe2, title: 'Audit any public site', description: 'Crawl hundreds of pages, extract honest facts with cited, verified evidence — never guessed AI output.' },
+  { icon: Globe2, title: 'Audit any public site', description: 'Read relevant public pages, extract evidence and keep the result reviewable instead of pretending a guess is a fact.' },
   { icon: FileCheck2, title: 'Human-in-the-loop review', description: 'Every brand-intelligence suggestion lands in a review inbox. Approve, edit, reject, or ask the AI to regenerate each field.' },
   { icon: LockKeyhole, title: 'Strategies from approved truth', description: 'The strategy engine is gated: it only consumes facts you approved, so nothing made-up ever ships to a client.' },
   { icon: Users, title: 'Agency + business workspaces', description: 'Agencies can manage multiple brands while a business can focus on its own brand — with roles, brand switchers and tenant isolation.' },
@@ -34,10 +34,10 @@ const FEATURES: { icon: LucideIcon; title: string; description: string }[] = [
 ];
 
 const METRICS: { value: string; label: string }[] = [
-  { value: '26', label: 'Intelligence fields per brand' },
-  { value: '4+', label: 'Approvals before a strategy can generate' },
-  { value: '100%', label: 'Evidence-cited facts' },
-  { value: '10×', label: 'Faster from brief to campaign' },
+  { value: '7', label: 'Connected workflow stages' },
+  { value: '1', label: 'Shared brand context' },
+  { value: 'Human', label: 'Approval stays in the loop' },
+  { value: '1', label: 'Workspace for the workflow' },
 ];
 
 const PIPELINE: { step: string; label: string }[] = WORKFLOW.map((item, index) => ({
@@ -86,10 +86,10 @@ function WorkflowDemo() {
     started.current = true;
     const timer = window.setTimeout(() => setStepIndex((prev) => prev.map(() => 'pending')), 500);
     const sequence: { index: number; log: string; wait: number; done?: boolean }[] = [
-      { index: 0, log: 'Crawling sitemap… 3,240 URLs queued', wait: 400 },
-      { index: 1, log: 'Page 21/43 — extracting product claims', wait: 900, done: true },
-      { index: 2, log: '26 suggestions drafted · 4 strong, 9 partial', wait: 1100, done: true },
-      { index: 3, log: '12 approved → strategy unlocked', wait: 900, done: true },
+      { index: 0, log: 'Discovering public pages…', wait: 400 },
+      { index: 1, log: 'Extracting product claims from the available pages', wait: 900, done: true },
+      { index: 2, log: 'Brand intelligence drafted · waiting for human review', wait: 1100, done: true },
+      { index: 3, log: 'Approved intelligence → strategy unlocked', wait: 900, done: true },
       { index: 4, log: 'Roadmap drafted · waiting on client', wait: 600, done: true },
     ];
     const timeouts: number[] = [];
@@ -166,8 +166,8 @@ export function Landing() {
       <SwarmCursor
         color="#8fb5a1"
         accentColor="#a7c3b4"
-        count={8}
-        size={5}
+        count={4}
+        size={3}
         merge={0.77}
         glow={0.2}
         opacity={0.22}
@@ -187,6 +187,7 @@ export function Landing() {
         </a>
         <nav className="landing-links" aria-label="Primary">
           <a href="#platform" onClick={() => setMobileOpen(false)}>Platform</a>
+          <a href="#why" onClick={() => setMobileOpen(false)}>Why it exists</a>
           <a href="#how-it-works" onClick={() => setMobileOpen(false)}>How it works</a>
           <a href="#workflow" onClick={() => setMobileOpen(false)}>Workflow</a>
         </nav>
@@ -206,6 +207,7 @@ export function Landing() {
         {mobileOpen ? (
           <div className="landing-mobile">
             <a href="#platform" onClick={() => setMobileOpen(false)}>Platform</a>
+            <a href="#why" onClick={() => setMobileOpen(false)}>Why it exists</a>
             <a href="#how-it-works" onClick={() => setMobileOpen(false)}>How it works</a>
             <a href="#workflow" onClick={() => setMobileOpen(false)}>Workflow</a>
             <a href="/login" onClick={() => setMobileOpen(false)}>Sign in</a>
@@ -354,6 +356,34 @@ export function Landing() {
                     <p>{feature.description}</p>
                   </div>
                 </BorderGlow>
+              </Reveal>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="landing-section landing-alt" id="why">
+        <Reveal>
+          <div className="landing-section-head">
+            <div className="landing-eyebrow"><Workflow size={13} /> Why it exists</div>
+            <h2>Marketing gets noisy when every stage starts from zero.</h2>
+            <p>UpTrendifyOS keeps the context moving forward so the next stage can use the work that already happened.</p>
+          </div>
+        </Reveal>
+        <div className="landing-features">
+          {[
+            { icon: Search, title: 'Context gets lost', description: 'Research, strategy and content often live in separate tools, so the same brand story gets retyped again and again.' },
+            { icon: Bot, title: 'AI needs guardrails', description: 'AI can produce plausible output. UpTrendifyOS separates discovery from human-approved brand truth.' },
+            { icon: FileCheck2, title: 'Approval belongs in the workflow', description: 'Review is a real stage, so the user knows what is trusted and what can happen next.' },
+          ].map((feature, i) => {
+            const Icon = feature.icon;
+            return (
+              <Reveal delay={(i % 3) * 80} key={feature.title}>
+                <div className="landing-feature-card hover-lift">
+                  <span className="landing-feature-icon"><Icon size={19} /></span>
+                  <h3>{feature.title}</h3>
+                  <p>{feature.description}</p>
+                </div>
               </Reveal>
             );
           })}
