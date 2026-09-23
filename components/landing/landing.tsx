@@ -166,18 +166,18 @@ export function Landing() {
       <SwarmCursor
         color="#ffffff"
         accentColor="#ffffff"
-        count={8}
-        size={5}
+        count={4}
+        size={3}
         merge={0.77}
-        glow={0.75}
-        opacity={0.85}
+        glow={0.25}
+        opacity={0.38}
         spread={100}
         separation={0.15}
-        speed={1.25}
+        speed={0.6}
         wander={0.25}
-        trail={0.75}
+        trail={0.35}
         scatterOnClick
-        enabled
+        enabled={false}
         repelRef={heroRef}
         excludeSelector=".landing-nav, .landing-links, .landing-actions, .landing-mobile, .landing-hero, a, button, input, textarea, select, [role='button'], [data-swarm-exclude], .landing-metric, .landing-feature-card, .landing-how-card, .border-glow-card"
       />
@@ -307,7 +307,7 @@ export function Landing() {
               glowColor="280 85 85"
               backgroundColor="hsl(160 20% 98%)"
               glowRadius={48}
-              glowIntensity={1.45}
+              glowIntensity={0.55}
               coneSpread={28}
               animated={false}
               colors={['#67C79F', '#278B69', '#9AD9BE']}
@@ -340,12 +340,12 @@ export function Landing() {
                   borderRadius={16}
                   edgeSensitivity={16}
                   glowColor="280 85 85"
-                  backgroundColor="#f8fcfa"
+                  backgroundColor="#FFFDF8"
                   glowRadius={48}
-                  glowIntensity={1.45}
+                  glowIntensity={0.55}
                   coneSpread={28}
                   animated={false}
-                  colors={['#B794F6', '#F472B6', '#8B5CF6']}
+                  colors={['#79B39E', '#4B8F78', '#B9D9C8']}
                   fillOpacity={0.55}
                 >
                   <div className="landing-feature-card">
@@ -388,10 +388,10 @@ export function Landing() {
                   glowColor="280 85 85"
                   backgroundColor="#f8fcfa"
                   glowRadius={48}
-                  glowIntensity={1.45}
+                  glowIntensity={0.55}
                   coneSpread={28}
                   animated={false}
-                  colors={['#B794F6', '#F472B6', '#8B5CF6']}
+                  colors={['#79B39E', '#4B8F78', '#B9D9C8']}
                   fillOpacity={0.55}
                 >
                   <div className="landing-how-card">
