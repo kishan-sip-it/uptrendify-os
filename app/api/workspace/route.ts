@@ -27,6 +27,11 @@ export async function PATCH(request: Request) {
     if(auth.error) return NextResponse.json(auth.error.body,{status:auth.error.status});
     const supabase=await createSupabaseServerClient();
     const patch: Record<string,unknown>={};
+    if (body.workspaceType === 'BUSINESS') {
+      const activeBrands = await supabase.from('brands').select('id').eq('organization_id', auth.context.organizationId).eq('status', 'ACTIVE');
+      if (activeBrands.error) throw activeBrands.error;
+      if ((activeBrands.data ?? []).length > 1) return NextResponse.json({ error: 'This workspace already manages multiple active brands. Archive the extras before switching it to Business.' }, { status: 409 });
+    }
     if(body.name!==undefined) patch.name=body.name;
     if(body.workspaceType!==undefined) patch.workspace_type=body.workspaceType;
     if(body.timezone!==undefined) patch.timezone=body.timezone;
