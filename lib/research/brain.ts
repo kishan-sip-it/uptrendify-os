@@ -258,24 +258,57 @@ export async function analyzeResearchEvidence(
     }).eq('id', aiTaskId);
   };
 
-  let provider: AiProvider | null = deps.provider !== undefined ? deps.provider : createDefaultRegistry().default();
-  const providerId = provider?.id;
-  if (!provider) {
+  const registry = createDefaultRegistry();
+  const configuredProviders = deps.provider !== undefined
+    ? (deps.provider ? [deps.provider] : [])
+    : registry.configured();
+  const providerCandidates = configuredProviders.length > 0
+    ? configuredProviders
+    : (registry.default() ? [registry.default()!] : []);
+  if (providerCandidates.length === 0) {
     obs.error('No configured AI provider for brand intelligence', { organizationId, brandId, researchRunId });
     await failTask('PROVIDER_UNCONFIGURED', 'No AI provider is configured.');
     return { status: 'FAILED', aiTaskId, errorCode: 'PROVIDER_UNCONFIGURED', errorMessage: 'No AI provider is configured.' };
   }
 
-  const model = provider.defaultModel;
-  const providerUpdate = await supabase.from('ai_tasks').update({
-    provider: providerId,
-    model,
-  }).eq('id', aiTaskId);
-  if (providerUpdate.error) throw providerUpdate.error;
-
   const startedAt = Date.now();
+  let lastError: unknown = null;
+  let extraction: ExtractionOutcome | null = null;
+  let provider: AiProvider | null = null;
+
+  for (const candidate of providerCandidates) {
+    const providerUpdate = await supabase.from('ai_tasks').update({
+      provider: candidate.id,
+      model: candidate.defaultModel,
+    }).eq('id', aiTaskId);
+    if (providerUpdate.error) throw providerUpdate.error;
+    try {
+      extraction = await extractWithRetry(candidate, evidence);
+      provider = candidate;
+      break;
+    } catch (error) {
+      lastError = error;
+      const classified = classifyProviderFailure(error);
+      obs.warn('Brand intelligence provider attempt failed', {
+        researchRunId,
+        brandId,
+        provider: candidate.id,
+        code: classified.code,
+      });
+      if (!classified.retryable) break;
+    }
+  }
+
+  if (!extraction || !provider) {
+    const error = lastError ?? new Error('No configured AI provider completed brand intelligence.');
+    const message = error instanceof Error ? error.message : String(error);
+    const classified = classifyProviderFailure(error);
+    const code = isBrandValidationError(error) ? 'VALIDATION_ERROR' : classified.code;
+    await failTask(code, message);
+    return { status: 'FAILED', aiTaskId, errorCode: code, errorMessage: message };
+  }
+
   try {
-    const extraction = await extractWithRetry(provider, evidence);
     const { result } = extraction;
 
     const drafts = deriveAllSuggestionDrafts(result, bundle.sources, bundle.sourceIndex);
