@@ -26,7 +26,7 @@ async function fetchRenderedFallback(target: string): Promise<{ text: string; ti
     const text = (await response.text()).trim();
     if (text.length < 180) return null;
     const title = text
-      .split('\\n')
+      .split('\n')
       .map((line) => line.trim())
       .find((line) => line.startsWith('# '))
       ?.slice(2)
