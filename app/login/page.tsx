@@ -77,9 +77,16 @@ export default function LoginPage() {
 
   if (step === 'checking') {
     return (
-      <main className="main" style={{ maxWidth: 520, margin: '0 auto', paddingTop: 120 }}>
-        <LoadingState label="Checking session…" />
-      </main>
+      <AuthLayout
+        eyebrow="Command center"
+        title="Preparing your workspace."
+        subtitle="Checking your session…"
+        footer={null}
+      >
+        <div className="card auth-card-form">
+          <LoadingState label="Checking session…" />
+        </div>
+      </AuthLayout>
     );
   }
 
