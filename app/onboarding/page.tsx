@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, LoaderCircle, Rocket, Save } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
@@ -65,6 +65,8 @@ export default function OnboardingPage() {
   const [researching, setResearching] = useState(false);
   const [error, setError] = useState('');
   const [resumable, setResumable] = useState(false);
+  const autosaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const autosaveControllerRef = useRef<AbortController | null>(null);
 
   const current = STEPS[step];
   const progressPercent = Math.round((step / (STEPS.length - 1)) * 100);
@@ -97,16 +99,32 @@ export default function OnboardingPage() {
   };
 
   useEffect(() => {
-    if (loading) return;
-    const timer = window.setTimeout(() => {
+    if (loading || saving) return;
+
+    if (autosaveTimerRef.current) {
+      window.clearTimeout(autosaveTimerRef.current);
+    }
+
+    autosaveTimerRef.current = window.setTimeout(() => {
+      autosaveControllerRef.current?.abort();
+      const controller = new AbortController();
+      autosaveControllerRef.current = controller;
+
       void fetch('/api/onboarding', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ step, completed: false, data: draft }),
+        signal: controller.signal,
       }).catch(() => undefined);
     }, 450);
-    return () => window.clearTimeout(timer);
-  }, [draft, step, loading]);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        window.clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [draft, step, loading, saving]);
 
   useEffect(() => {
     if (loading) return;
@@ -137,13 +155,20 @@ export default function OnboardingPage() {
   }
 
   async function saveProgress(nextStep = step, completed = false, complete = false) {
+    if (autosaveTimerRef.current) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    autosaveControllerRef.current?.abort();
+    autosaveControllerRef.current = null;
+
     const response = await fetch('/api/onboarding', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ step: nextStep, completed, complete, data: draft }),
     });
     const body = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(body?.error || 'Could not save onboarding');
+    if (!response.ok) throw new Error(body?.error || 'We could not save your onboarding progress. Please try again.');
   }
 
   async function saveWorkspaceAndProfile() {
