@@ -59,7 +59,14 @@ describe('POST /api/auth/bootstrap', () => {
 
     expect(response.status).toBe(201);
     const body = await response.json();
-    expect(body.organization).toEqual({ id: ORG_ID, role: 'OWNER', name: 'Aurora Labs' });
+    expect(body.organization).toEqual({
+      id: ORG_ID,
+      role: 'OWNER',
+      name: 'Aurora Labs',
+      workspaceType: 'AGENCY',
+      timezone: null,
+      onboardingCompleted: false,
+    });
     expect(client.rpc).toHaveBeenCalledWith('bootstrap_organization', { organization_name: 'Aurora Labs' });
   });
 
