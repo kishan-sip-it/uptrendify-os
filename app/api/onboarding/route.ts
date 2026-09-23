@@ -68,7 +68,39 @@ export async function PUT(request: Request) {
       completed_at: body.complete ? new Date().toISOString() : null,
     };
 
-    const saved = await supabase.from('onboarding_progress').upsert(row, { onConflict: 'user_id' }).select('current_step,completed_steps,draft_data,completed_at').single();
+    // Use explicit update/insert instead of a blind upsert. This keeps the
+    // onboarding write path deterministic when an autosave and a manual
+    // "Save & continue" happen close together.
+    const existingProgress = await supabase
+      .from('onboarding_progress')
+      .select('user_id')
+      .eq('user_id', auth.context.userId)
+      .maybeSingle();
+    if (existingProgress.error) throw existingProgress.error;
+
+    let saved = existingProgress.data
+      ? await supabase
+          .from('onboarding_progress')
+          .update(row)
+          .eq('user_id', auth.context.userId)
+          .select('current_step,completed_steps,draft_data,completed_at')
+          .single()
+      : await supabase
+          .from('onboarding_progress')
+          .insert(row)
+          .select('current_step,completed_steps,draft_data,completed_at')
+          .single();
+
+    // A concurrent first write can win the insert between the existence check
+    // and INSERT. Retry that rare conflict as an UPDATE.
+    if (saved.error?.code === '23505') {
+      saved = await supabase
+        .from('onboarding_progress')
+        .update(row)
+        .eq('user_id', auth.context.userId)
+        .select('current_step,completed_steps,draft_data,completed_at')
+        .single();
+    }
     if (saved.error) throw saved.error;
 
     if (body.complete) {
@@ -84,7 +116,13 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: true, progress: saved.data });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid onboarding data', details: error.flatten() }, { status: 400 });
-    obs.error('Onboarding state save failed', { error: error instanceof Error ? error.message : String(error) });
-    return NextResponse.json({ error: 'Could not save onboarding' }, { status: 500 });
+    obs.error('Onboarding state save failed', {
+      error: error instanceof Error ? error.message : String(error),
+      code: typeof error === 'object' && error !== null && 'code' in error ? String((error as { code?: unknown }).code ?? '') : undefined,
+    });
+    return NextResponse.json(
+      { error: 'We could not save your onboarding progress. Your account is still safe — please try Save & continue again.' },
+      { status: 500 },
+    );
   }
 }
