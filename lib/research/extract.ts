@@ -21,8 +21,8 @@ function extractRedirectHints($: cheerio.CheerioAPI, baseUrl: string): string[] 
   $('script').each((_, el) => {
     const script = $(el).html() ?? '';
     const patterns = [
-      /(?:location\\.(?:href|assign|replace)|window\\.location\\.(?:href|assign|replace))\\s*\\(?\\s*['\"]([^'\"]+)['\"]/gi,
-      /(?:router\\.(?:push|replace)|navigate)\\s*\\(\\s*['\"]([^'\"]+)['\"]/gi,
+      /(?:location\.(?:href|assign|replace)|window\.location\.(?:href|assign|replace))\s*\(?\s*['\"]([^'\"]+)['\"]/gi,
+      /(?:router\.(?:push|replace)|navigate)\s*\(\s*['\"]([^'\"]+)['\"]/gi,
     ];
     for (const pattern of patterns) {
       let match: RegExpExecArray | null;
