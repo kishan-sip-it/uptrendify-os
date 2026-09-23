@@ -33,6 +33,7 @@ export default function NewBrandPage() {
       industry: String(form.get('industry') ?? '').trim() || undefined,
       marketCountry: String(form.get('marketCountry') ?? '').trim() || undefined,
       targetAudience: String(form.get('targetAudience') ?? '').trim() || undefined,
+      description: String(form.get('description') ?? '').trim() || undefined,
     };
     try {
       const response = await fetch('/api/brands', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
