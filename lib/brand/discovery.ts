@@ -30,6 +30,7 @@ function decodeDuckDuckGoRedirect(href: string): string | null {
 
 export function parseSearchHtml(html: string): BrandWebsiteSuggestion[] {
   const results: BrandWebsiteSuggestion[] = [];
+  const blockedHosts = new Set(['facebook.com','instagram.com','linkedin.com','x.com','twitter.com','youtube.com','wikipedia.org','crunchbase.com','bloomberg.com','reddit.com']);
   const seen = new Set<string>();
   const anchorPattern = /<a[^>]+class=["'][^"']*result__a[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let match: RegExpExecArray | null;
@@ -38,7 +39,7 @@ export function parseSearchHtml(html: string): BrandWebsiteSuggestion[] {
     if (!url) continue;
     const cleanTitle = match[2].replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
     const host = new URL(url).hostname.replace(/^www\./, '');
-    if (!cleanTitle || seen.has(host)) continue;
+    if (!cleanTitle || blockedHosts.has(host) || seen.has(host)) continue;
     seen.add(host);
     results.push({ title: host, url });
   }
