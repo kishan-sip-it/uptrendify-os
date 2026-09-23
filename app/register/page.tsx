@@ -89,7 +89,7 @@ export default function RegisterPage() {
       const response = await fetch('/api/auth/bootstrap');
       const body = response.ok ? await response.json() : null;
       if (body?.organization) {
-        window.location.href = '/onboarding';
+        window.location.href = body.organization.onboardingCompleted ? '/dashboard' : '/onboarding';
         return;
       }
 
@@ -99,7 +99,7 @@ export default function RegisterPage() {
         body: '{}',
       });
       if (bootstrap.ok) {
-        window.location.href = '/dashboard';
+        window.location.href = '/onboarding';
         return;
       }
       setStep('auth');
@@ -190,7 +190,7 @@ export default function RegisterPage() {
         return;
       }
 
-      window.location.href = '/dashboard';
+      window.location.href = '/onboarding';
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
