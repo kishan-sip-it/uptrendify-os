@@ -46,6 +46,7 @@ export const envSchema = z.object({
   JASPER_API_KEY: optionalString('JASPER_API_KEY'),
   GHL_API_KEY: optionalString('GHL_API_KEY'),
   GHL_LOCATION_ID: optionalString('GHL_LOCATION_ID'),
+  JINA_API_KEY: optionalString('JINA_API_KEY'),
   RESEARCH_USER_AGENT: stringWithDefault('RESEARCH_USER_AGENT', 'UpTrendifyOSBot/1.0'),
   MAX_RESEARCH_PAGES: z.coerce.number().int().positive().max(100).default(15),
   MAX_RESEARCH_BYTES: z.coerce.number().int().positive().max(20_000_000).default(5_000_000),
