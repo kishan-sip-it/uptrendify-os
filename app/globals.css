@@ -1112,3 +1112,69 @@ html[data-theme="light"] .auth-shell {
     border-color: #2b3945;
   }
 }
+
+
+html[data-theme="light"] .progress { background: #e8e0d4; }
+html[data-theme="light"] .activity-item,
+html[data-theme="light"] .source-item,
+html[data-theme="light"] .strategy-acc,
+html[data-theme="light"] .obj-card,
+html[data-theme="light"] .campaign-card,
+html[data-theme="light"] .suggestion-card {
+  background: #fffdf8;
+  border-color: var(--line);
+}
+
+html[data-theme="light"] .activity-item:hover {
+  background: #f6f1e7;
+  border-color: #cbdace;
+}
+
+html[data-theme="light"] .chip {
+  background: #f2eee6;
+  border-color: #ddd5c7;
+  color: #756f63;
+}
+
+html[data-theme="light"] .content-filter-input,
+html[data-theme="light"] .content-filter-select,
+html[data-theme="light"] .content-form input,
+html[data-theme="light"] .content-form select,
+html[data-theme="light"] .content-form textarea,
+html[data-theme="light"] .suggestion-edit-input {
+  background: #fffdf8;
+  border-color: #ddd5c7;
+  color: var(--text);
+}
+
+html[data-theme="light"] .org-switcher-trigger,
+html[data-theme="light"] .brand-switcher-trigger {
+  background: rgba(255, 253, 248, 0.92);
+  border-color: var(--line);
+}
+
+html[data-theme="light"] .landing-pipeline-glow .landing-pipeline-step {
+  background: #f1ece2;
+  border-color: #e0d8ca;
+}
+
+html[data-theme="light"] .landing-terminal {
+  background: #f0ebe1;
+  border-color: #ded6c8;
+  box-shadow: 0 18px 48px rgba(74, 65, 53, 0.08);
+}
+
+html[data-theme="light"] .landing-log {
+  background: #f9f5ed;
+  border-color: #e0d8ca;
+}
+
+html[data-theme="light"] .landing-alt {
+  background: rgba(244, 239, 229, 0.68);
+}
+
+html[data-theme="light"] .landing-metric,
+html[data-theme="light"] .landing-feature-card,
+html[data-theme="light"] .landing-how-card {
+  background: rgba(255, 253, 248, 0.94);
+}
