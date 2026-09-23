@@ -34,10 +34,10 @@ const FEATURES: { icon: LucideIcon; title: string; description: string }[] = [
 ];
 
 const METRICS: { value: string; label: string }[] = [
-  { value: '26', label: 'Intelligence fields per brand' },
-  { value: '4+', label: 'Approvals before a strategy can generate' },
-  { value: '100%', label: 'Evidence-cited facts' },
-  { value: '10×', label: 'Faster from brief to campaign' },
+  { value: '7', label: 'Core workflow stages' },
+  { value: '4+', label: 'Approved facts to unlock strategy' },
+  { value: '1', label: 'Shared brand context per brand' },
+  { value: '2', label: 'Human approval checkpoints' },
 ];
 
 const PIPELINE: { step: string; label: string }[] = WORKFLOW.map((item, index) => ({
