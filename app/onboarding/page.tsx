@@ -65,7 +65,7 @@ export default function OnboardingPage() {
   const [researching, setResearching] = useState(false);
   const [error, setError] = useState('');
   const [resumable, setResumable] = useState(false);
-  const autosaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const autosaveTimerRef = useRef<number | null>(null);
   const autosaveControllerRef = useRef<AbortController | null>(null);
 
   const current = STEPS[step];
