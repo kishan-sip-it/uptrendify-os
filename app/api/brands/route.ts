@@ -5,7 +5,7 @@ import { CAN_CREATE_BRANDS, requireOrgRole } from '@/lib/auth/roles';
 import { obs } from '@/lib/obs/logger';
 
 const inputSchema = z.object({
-  clientName: z.string().trim().min(2).max(120),
+  clientName: z.string().trim().min(2).max(120).optional(),
   brandName: z.string().trim().min(2).max(120),
   websiteUrl: z.string().url(),
   industry: z.string().trim().max(120).optional(),
@@ -26,13 +26,23 @@ export async function POST(request: Request) {
 
     const supabase = await createSupabaseServerClient();
     const organizationId = auth.context.organizationId;
-    const clientSlug = slugify(body.clientName);
+    const organization = await supabase.from('organizations').select('name,workspace_type').eq('id', organizationId).single();
+    if (organization.error) throw organization.error;
+    if (organization.data.workspace_type === 'BUSINESS') {
+      const activeBrands = await supabase.from('brands').select('id,status').eq('organization_id', organizationId).eq('status', 'ACTIVE');
+      if (activeBrands.error) throw activeBrands.error;
+      if ((activeBrands.data ?? []).length >= 1) {
+        return NextResponse.json({ error: 'Business workspaces manage one primary brand. Switch the workspace to Agency before adding another brand.' }, { status: 409 });
+      }
+    }
+    const clientName = body.clientName?.trim() || organization.data.name;
+    const clientSlug = slugify(clientName);
     const brandSlug = slugify(body.brandName);
 
     let client = await supabase.from('clients').select('id').eq('organization_id', organizationId).eq('slug', clientSlug).maybeSingle();
     if (client.error) throw client.error;
     if (!client.data) {
-      const createdClient = await supabase.from('clients').insert({ organization_id: organizationId, name: body.clientName, slug: clientSlug }).select('id').single();
+      const createdClient = await supabase.from('clients').insert({ organization_id: organizationId, name: clientName, slug: clientSlug }).select('id').single();
       if (createdClient.error) {
         if (createdClient.error.code === '23505') {
           const racedClient = await supabase
