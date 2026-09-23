@@ -97,6 +97,33 @@ describe('crawlBrand', () => {
     expect(result.processedPages[0].id).toBe(SOURCE_ID);
   });
 
+  it('uses the rendered fallback for a JavaScript app shell with little extractable text', async () => {
+    let callCount = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      callCount += 1;
+      if (callCount === 1) {
+        const shell = '<!DOCTYPE html><html><head><title>Shell</title></head><body><div id="root"></div><script>window.__next_f.push([])</script><script>' + 'x'.repeat(700) + '</script></body></html>';
+        return new Response(shell, { status: 200, headers: { 'content-type': 'text/html' } });
+      }
+      return new Response('# Aurora\n\n' + 'This is rendered content from the client application with enough detail to be useful for research and brand understanding. '.repeat(8), {
+        status: 200,
+        headers: { 'content-type': 'text/plain' },
+      });
+    }));
+
+    const client = mockSupabase() as any;
+    const result = await crawlBrand(client, {
+      organizationId: ORG_ID,
+      brandId: BRAND_ID,
+      websiteUrl: 'http://8.8.8.8',
+      researchRunId: RUN_ID,
+    });
+
+    expect(result.status).toBe('COMPLETED');
+    expect(result.processedPages[0].title).toBe('Aurora');
+    expect(result.processedPages[0].text).toContain('rendered content from the client application');
+  });
+
   it('returns FAILED when no pages can be processed (all 404)', async () => {
     vi.stubGlobal('fetch', vi.fn(async () =>
       new Response('not found', { status: 404, headers: { 'content-type': 'text/html' } })

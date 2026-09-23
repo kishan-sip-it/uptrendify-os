@@ -23,9 +23,9 @@ export default function LoginPage() {
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
-      throw new Error(payload?.error || 'Your account is valid, but the workspace could not be loaded.');
+      throw new Error(payload?.error || 'We could not load your workspace. Please try again.');
     }
-    window.location.href = '/dashboard';
+    window.location.href = payload?.organization?.onboardingCompleted ? '/dashboard' : '/onboarding';
   }
 
   async function checkSession() {
@@ -55,7 +55,16 @@ export default function LoginPage() {
     try {
       const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) {
-        setError(authError.message);
+        const message = authError.message.toLowerCase();
+        if (message.includes('invalid login credentials') || message.includes('invalid credentials')) {
+          setError('We could not sign you in with those details. Check your email and password, or create an account.');
+        } else if (message.includes('email not confirmed')) {
+          setError('Your email address still needs to be confirmed before you can sign in.');
+        } else if (message.includes('too many requests') || message.includes('rate limit')) {
+          setError('Too many sign-in attempts. Please wait a moment and try again.');
+        } else {
+          setError('We could not sign you in right now. Please check your details and try again.');
+        }
         return;
       }
       await resolveWorkspace();
@@ -77,8 +86,8 @@ export default function LoginPage() {
   return (
     <AuthLayout
       eyebrow="Command center"
-      title="Your agency command center."
-      subtitle="Sign in to manage multi-brand research, reviews and strategy."
+      title="Welcome back."
+      subtitle="Pick up where you left off — your workspace keeps the next step visible."
       footer={
         <div className="auth-footer-links">
           <Link href="/register">Create an account</Link>
@@ -90,7 +99,7 @@ export default function LoginPage() {
       <form onSubmit={handleAuth} className="card auth-card-form">
         <label>
           Email
-          <input name="email" type="email" required autoComplete="email" placeholder="you@agency.com" />
+          <input name="email" type="email" required autoComplete="email" placeholder="you@company.com" />
         </label>
         <label>
           Password

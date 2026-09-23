@@ -10,6 +10,42 @@ export const RESEARCH_ACTIVE_STATUSES = ['QUEUED', 'RUNNING'] as const;
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
+async function fetchRenderedFallback(target: string): Promise<{ text: string; title: string | null } | null> {
+  const key = env().JINA_API_KEY;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.min(env().RESEARCH_TIMEOUT_MS * 2, 20_000));
+  try {
+    const response = await fetch('https://r.jina.ai/' + target, {
+      signal: controller.signal,
+      headers: {
+        accept: 'text/plain',
+        ...(key ? { authorization: 'Bearer ' + key } : {}),
+      },
+    });
+    if (!response.ok) return null;
+    const text = (await response.text()).trim();
+    if (text.length < 180) return null;
+    const title = text
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.startsWith('# '))
+      ?.slice(2)
+      .trim() || null;
+    return { text: text.slice(0, 50_000), title };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function shouldUseRenderedFallback(html: string, extractedText: string, extractedLinks: string[]): boolean {
+  if (extractedText.length >= 320) return false;
+  if (html.length < 400) return false;
+  return extractedLinks.length === 0 ||
+    /(__next|__nuxt|reactroot|vite|webpack|data-reactroot)/i.test(html);
+}
+
 export type ProcessedPage = {
   id: string;
   url: string;
@@ -174,7 +210,23 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         const { content, truncated } = await readBoundedBody(response, e.MAX_RESEARCH_BYTES);
         if (truncated) { partial = true; }
 
-        const extracted = extractPage(content, target);
+        let extracted = extractPage(content, target);
+
+        // Raw HTML is often only an app shell for JS-rendered sites. When the
+        // extracted document is too thin, use Jina Reader's free browser-backed
+        // renderer as a fallback instead of declaring the website unusable.
+        if (shouldUseRenderedFallback(content, extracted.text, extracted.links)) {
+          const rendered = await fetchRenderedFallback(target);
+          if (rendered && rendered.text.length > extracted.text.length) {
+            extracted = {
+              ...extracted,
+              title: rendered.title ?? extracted.title,
+              text: rendered.text,
+            };
+            obs.info('Used rendered research fallback', { researchRunId, brandId, url: target });
+          }
+        }
+
         let canonical = target;
         if (extracted.canonicalUrl) {
           try {

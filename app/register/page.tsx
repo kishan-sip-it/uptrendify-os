@@ -89,7 +89,7 @@ export default function RegisterPage() {
       const response = await fetch('/api/auth/bootstrap');
       const body = response.ok ? await response.json() : null;
       if (body?.organization) {
-        window.location.href = '/dashboard';
+        window.location.href = body.organization.onboardingCompleted ? '/dashboard' : '/onboarding';
         return;
       }
 
@@ -99,7 +99,7 @@ export default function RegisterPage() {
         body: '{}',
       });
       if (bootstrap.ok) {
-        window.location.href = '/dashboard';
+        window.location.href = '/onboarding';
         return;
       }
       setStep('auth');
@@ -162,19 +162,13 @@ export default function RegisterPage() {
           message.includes('already exists') ||
           message.includes('user already exists');
 
-        if (!alreadyExists) {
-          setError(signUpError.message);
+        if (alreadyExists) {
+          setError('An account already exists for this email. Sign in instead.');
           return;
         }
 
-        // Recovery path for a user created by a previous signup attempt whose
-        // workspace bootstrap failed. Password authentication proves ownership;
-        // the bootstrap endpoint is idempotent and reuses an existing workspace.
-        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-        if (signInError) {
-          setError('An account with this email already exists. Sign in instead.');
-          return;
-        }
+        setError(signUpError.message);
+        return;
       } else if (!signUpData.session) {
         const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) {
@@ -197,7 +191,7 @@ export default function RegisterPage() {
         return;
       }
 
-      window.location.href = '/dashboard';
+      window.location.href = '/onboarding';
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
@@ -221,8 +215,8 @@ export default function RegisterPage() {
   return (
     <AuthLayout
       eyebrow="Create your workspace"
-      title="Start your agency command center."
-      subtitle="Research, review and strategy for every client brand — all in one OS."
+      title="Build your marketing workspace."
+      subtitle="Start with your workspace, set your brand rules, then let the workflow guide the rest."
       footer={
         <div className="auth-footer-links">
           <Link href="/login">Already have an account? Sign in</Link>
@@ -256,8 +250,8 @@ export default function RegisterPage() {
           placeholder="Re-enter your password"
         />
         <label>
-          Agency name
-          <input name="organizationName" required minLength={2} maxLength={120} placeholder="e.g. Northwind Agency" />
+          Workspace name
+          <input name="organizationName" required minLength={2} maxLength={120} placeholder="e.g. Northstar Marketing" />
         </label>
         <button type="submit" disabled={loading} className="badge auth-submit">
           {loading ? <><LoaderCircle size={15} className="spin" /> Creating…</> : <>Create workspace <Sparkles size={15} /></>}

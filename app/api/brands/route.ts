@@ -5,9 +5,10 @@ import { CAN_CREATE_BRANDS, requireOrgRole } from '@/lib/auth/roles';
 import { obs } from '@/lib/obs/logger';
 
 const inputSchema = z.object({
-  clientName: z.string().trim().min(2).max(120),
+  clientName: z.string().trim().min(2).max(120).optional(),
   brandName: z.string().trim().min(2).max(120),
   websiteUrl: z.string().url(),
+  description: z.string().trim().max(4000).optional(),
   industry: z.string().trim().max(120).optional(),
   marketCountry: z.string().trim().max(120).optional(),
   targetAudience: z.string().trim().max(1000).optional(),
@@ -26,13 +27,38 @@ export async function POST(request: Request) {
 
     const supabase = await createSupabaseServerClient();
     const organizationId = auth.context.organizationId;
-    const clientSlug = slugify(body.clientName);
+    const { data: organization, error: organizationError } = await supabase
+      .from('organizations')
+      .select('workspace_type,name')
+      .eq('id', organizationId)
+      .single();
+    if (organizationError) throw organizationError;
+
+    if (organization.workspace_type === 'BUSINESS') {
+      const activeBrand = await supabase
+        .from('brands')
+        .select('id,name')
+        .eq('organization_id', organizationId)
+        .eq('status', 'ACTIVE')
+        .limit(1)
+        .maybeSingle();
+      if (activeBrand.error) throw activeBrand.error;
+      if (activeBrand.data) {
+        return NextResponse.json(
+          { error: 'This Business workspace already has an active brand. Edit that brand, archive it, or switch the workspace to Agency to manage multiple brands.' },
+          { status: 409 },
+        );
+      }
+    }
+
+    const organizationOrBrandName = body.clientName?.trim() || body.brandName.trim();
+    const clientSlug = slugify(organizationOrBrandName);
     const brandSlug = slugify(body.brandName);
 
     let client = await supabase.from('clients').select('id').eq('organization_id', organizationId).eq('slug', clientSlug).maybeSingle();
     if (client.error) throw client.error;
     if (!client.data) {
-      const createdClient = await supabase.from('clients').insert({ organization_id: organizationId, name: body.clientName, slug: clientSlug }).select('id').single();
+      const createdClient = await supabase.from('clients').insert({ organization_id: organizationId, name: organizationOrBrandName, slug: clientSlug }).select('id').single();
       if (createdClient.error) {
         if (createdClient.error.code === '23505') {
           const racedClient = await supabase
@@ -69,6 +95,7 @@ export async function POST(request: Request) {
       name: body.brandName,
       slug: brandSlug,
       website_url: body.websiteUrl,
+      description: body.description || null,
       industry: body.industry || null,
       market_country: body.marketCountry || null,
       target_audience: body.targetAudience || null,
