@@ -164,16 +164,16 @@ export function Landing() {
   return (
     <div className="landing">
       <SwarmCursor
-        color="#ffffff"
-        accentColor="#ffffff"
+        color="#8fb5a1"
+        accentColor="#a7c3b4"
         count={8}
         size={5}
         merge={0.77}
-        glow={0.75}
-        opacity={0.85}
+        glow={0.2}
+        opacity={0.22}
         spread={100}
         separation={0.15}
-        speed={1.25}
+        speed={0.65}
         wander={0.25}
         trail={0.75}
         scatterOnClick
@@ -305,13 +305,13 @@ export function Landing() {
               borderRadius={16}
               edgeSensitivity={16}
               glowColor="280 85 85"
-              backgroundColor="hsl(160 20% 98%)"
+              backgroundColor="#fffdf8"
               glowRadius={48}
-              glowIntensity={1.45}
+              glowIntensity={0.65}
               coneSpread={28}
               animated={false}
               colors={['#67C79F', '#278B69', '#9AD9BE']}
-              fillOpacity={0.55}
+              fillOpacity={0.28}
             >
               <div className="landing-metric">
                 <div className="landing-metric-value">{metric.value}</div>
@@ -340,13 +340,13 @@ export function Landing() {
                   borderRadius={16}
                   edgeSensitivity={16}
                   glowColor="280 85 85"
-                  backgroundColor="#f8fcfa"
+                  backgroundColor="#fffdf8"
                   glowRadius={48}
-                  glowIntensity={1.45}
+                  glowIntensity={0.65}
                   coneSpread={28}
                   animated={false}
-                  colors={['#B794F6', '#F472B6', '#8B5CF6']}
-                  fillOpacity={0.55}
+                  colors={['#9FC7B4', '#4F8B72', '#C6DCCF']}
+                  fillOpacity={0.28}
                 >
                   <div className="landing-feature-card">
                     <span className="landing-feature-icon"><Icon size={19} /></span>
@@ -386,13 +386,13 @@ export function Landing() {
                   borderRadius={16}
                   edgeSensitivity={16}
                   glowColor="280 85 85"
-                  backgroundColor="#f8fcfa"
+                  backgroundColor="#fffdf8"
                   glowRadius={48}
-                  glowIntensity={1.45}
+                  glowIntensity={0.65}
                   coneSpread={28}
                   animated={false}
-                  colors={['#B794F6', '#F472B6', '#8B5CF6']}
-                  fillOpacity={0.55}
+                  colors={['#9FC7B4', '#4F8B72', '#C6DCCF']}
+                  fillOpacity={0.28}
                 >
                   <div className="landing-how-card">
                     <span className="landing-how-icon"><Icon size={18} /></span>
