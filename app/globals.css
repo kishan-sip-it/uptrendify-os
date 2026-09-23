@@ -1077,3 +1077,38 @@ html:not([data-theme="dark"]) .auth-shell {
     background: #0c1017;
   }
 }
+
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] .card,
+  html[data-theme="system"] .next-action-card,
+  html[data-theme="system"] .campaign-card,
+  html[data-theme="system"] .obj-card,
+  html[data-theme="system"] .strategy-acc,
+  html[data-theme="system"] .activity-item,
+  html[data-theme="system"] .source-item,
+  html[data-theme="system"] .content-item {
+    background: #121820;
+    border-color: #283341;
+    box-shadow: 0 18px 60px rgba(0,0,0,.16);
+  }
+
+  html[data-theme="system"] .auth-showcase {
+    background: linear-gradient(145deg, #111821 0%, #151d25 100%);
+    border-color: #283341;
+  }
+
+  html[data-theme="system"] .auth-flow-row,
+  html[data-theme="system"] .auth-benefit {
+    background: rgba(19, 28, 36, 0.78);
+    border-color: #2b3945;
+  }
+
+  html[data-theme="system"] input,
+  html[data-theme="system"] textarea,
+  html[data-theme="system"] select {
+    background: #101720;
+    color: #eef4f2;
+    border-color: #2b3945;
+  }
+}
