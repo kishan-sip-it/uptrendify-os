@@ -17,7 +17,14 @@ export function AuthLayout({
 }) {
   return (
     <main className="auth-shell">
-      <div className="auth-layout-grid">
+      <div
+        className="auth-layout-grid"
+        style={{
+          width: 'min(1380px, 100%)',
+          marginInline: 'auto',
+          justifyContent: 'center',
+        }}
+      >
         <aside className="auth-showcase" aria-label="How UpTrendifyOS works">
           <Link href="/" className="auth-brand" aria-label="UpTrendifyOS home" style={{ justifyContent: 'flex-start', marginBottom: 0 }}>
             <span className="logo" /> UpTrendifyOS
@@ -42,7 +49,13 @@ export function AuthLayout({
             <div className="auth-benefit"><strong>Clear next step</strong><span>The workspace keeps the workflow visible as you move.</span></div>
           </div>
         </aside>
-        <section className="auth-card-wrap">
+        <section
+          className="auth-card-wrap"
+          style={{
+            justifySelf: 'center',
+            width: 'min(100%, 520px)',
+          }}
+        >
           <div className="auth-head">
             <div className="eyebrow">{eyebrow}</div>
             <h1>{title}</h1>
