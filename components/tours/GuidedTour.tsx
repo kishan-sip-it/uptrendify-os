@@ -19,6 +19,25 @@ export function GuidedTour({
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    if (!open || !steps[index]?.target) return;
+
+    const target = document.querySelector(steps[index].target);
+    if (!target) return;
+
+    const rect = target.getBoundingClientRect();
+    const safeTop = 128;
+    const safeBottom = window.innerHeight - 180;
+
+    if (rect.top < safeTop || rect.bottom > safeBottom) {
+      target.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'nearest',
+      });
+    }
+  }, [open, index, stageKey, steps]);
+
+  useEffect(() => {
     let cancelled = false;
 
     fetch('/api/tours?stageKey=' + encodeURIComponent(stageKey), { cache: 'no-store' })
