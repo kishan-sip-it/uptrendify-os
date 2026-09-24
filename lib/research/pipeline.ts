@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { crawlBrand, type ProcessedPage } from './crawler';
 import { chunkTextBounded } from './chunk';
 import { analyzeResearchEvidence } from './brain';
+import { translateResearchError } from './errors';
 import { obs } from '@/lib/obs/logger';
 
 export const MAX_CHUNKS_PER_SOURCE = 25;
@@ -100,11 +101,44 @@ export async function runResearchPipeline(input: ResearchPipelineInput): Promise
   };
 }
 
+const TRANSIENT_RESEARCH_ERROR_CODES = new Set([
+  'DNS_TEMPORARY_FAILURE',
+  'REQUEST_TIMEOUT',
+  'CONNECTION_TIMEOUT',
+  'CONNECTION_RESET',
+  'CONNECTION_FAILED',
+  'NETWORK_UNREACHABLE',
+]);
+
+async function executeResearchWithTransientRetry(input: ResearchPipelineInput): Promise<PipelineOutcome> {
+  try {
+    return await runResearchPipeline(input);
+  } catch (error) {
+    const info = translateResearchError(error);
+    if (!TRANSIENT_RESEARCH_ERROR_CODES.has(info.code)) throw error;
+
+    obs.warn('Retrying research pipeline after transient startup/network failure', {
+      researchRunId: input.researchRunId,
+      brandId: input.brandId,
+      errorCode: info.code,
+      error: info.message,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    return runResearchPipeline(input);
+  }
+}
+
 export function scheduleResearchExecution(input: ResearchPipelineInput): void {
   after(() => {
-    return runResearchPipeline(input).catch(async (error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      obs.error('Research pipeline failed', { researchRunId: input.researchRunId, brandId: input.brandId, error: message });
+    return executeResearchWithTransientRetry(input).catch(async (error) => {
+      const info = translateResearchError(error);
+      obs.error('Research pipeline failed', {
+        researchRunId: input.researchRunId,
+        brandId: input.brandId,
+        error: info.message,
+        errorCode: info.code,
+      });
       try {
         const current = await input.supabase
           .from('research_runs')
@@ -121,8 +155,8 @@ export function scheduleResearchExecution(input: ResearchPipelineInput): void {
           .update({
             status: targetStatus,
             finished_at: new Date().toISOString(),
-            error_code: 'PIPELINE_FAILED',
-            error_message: 'Research pipeline failed',
+            error_code: targetStatus === 'PARTIAL' ? 'PARTIAL_PIPELINE_FAILURE' : info.code,
+            error_message: info.message.slice(0, 600),
           })
           .eq('id', input.researchRunId)
           .eq('organization_id', input.organizationId);

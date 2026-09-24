@@ -177,6 +177,34 @@ describe('scheduleResearchExecution', () => {
     expect(client.calls.some((call) => call.table === 'research_runs')).toBe(false);
   });
 
+  it('retries transient network failures once and succeeds', async () => {
+    const client = makeSupabaseMock();
+    client.on('brand_source_chunks', () => ({ data: null, error: null }));
+    mocks.crawlBrand
+      .mockRejectedValueOnce(Object.assign(new Error('DNS lookup temporary failure'), { code: 'EAI_AGAIN' }))
+      .mockResolvedValueOnce({
+        status: 'COMPLETED',
+        pagesProcessed: 1,
+        pagesDiscovered: 1,
+        processedPages: [{ id: SOURCE_ID, url: 'https://example.com/', text: 'Text '.repeat(200) }],
+      });
+    mocks.analyzeResearchEvidence.mockResolvedValue({ status: 'SUCCEEDED', aiTaskId: null, provider: 'gemini', factsWritten: 1, insightsWritten: 1 });
+
+    scheduleResearchExecution({
+      supabase: client as any,
+      organizationId: ORG_ID,
+      brandId: BRAND_ID,
+      websiteUrl: 'https://example.com/',
+      researchRunId: RUN_ID,
+    });
+
+    const callbackResult = vi.mocked(after).mock.results[0]?.value;
+    expect(callbackResult).toBeInstanceOf(Promise);
+    await callbackResult;
+
+    expect(mocks.crawlBrand).toHaveBeenCalledTimes(2);
+  });
+
   it('marks the run as FAILED when the pipeline throws', async () => {
     const updates: Array<Record<string, unknown>> = [];
     const client = {
@@ -211,6 +239,6 @@ describe('scheduleResearchExecution', () => {
 
     expect(updates).toHaveLength(1);
     expect(updates[0]?.status).toBe('FAILED');
-    expect(updates[0]?.error_code).toBe('PIPELINE_FAILED');
+    expect(updates[0]?.error_code).toBe('RESEARCH_FAILED');
   });
 });

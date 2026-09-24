@@ -1280,6 +1280,14 @@ html[data-theme="light"] .landing-how-card {
 
 
 /* Onboarding fields: match the product UI instead of falling back to browser-default controls. */
+.onboarding-grid {
+  align-items: start;
+}
+.onboarding-grid > label {
+  align-self: start;
+  align-content: start;
+  min-width: 0;
+}
 .onboarding-grid input,
 .onboarding-grid select,
 .onboarding-grid textarea,
@@ -1298,7 +1306,14 @@ html[data-theme="light"] .landing-how-card {
   line-height: 1.45;
   transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
 }
-.onboarding-grid textarea { min-height: 110px; resize: vertical; }
+.onboarding-grid input:not([type="color"]),
+.onboarding-grid select {
+  height: 48px;
+}
+.onboarding-grid textarea {
+  min-height: 110px;
+  resize: vertical;
+}
 .onboarding-grid input:hover,
 .onboarding-grid select:hover,
 .onboarding-grid textarea:hover,

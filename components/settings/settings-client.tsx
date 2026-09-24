@@ -8,7 +8,6 @@ import {
   Monitor,
   RotateCcw,
   Settings2,
-  ShieldCheck,
   Trash2,
   Users,
   WandSparkles,
@@ -245,10 +244,6 @@ export function SettingsClient() {
           <a className="settings-tool" href="/settings/team">
             <Users size={16} />
             <span><strong>Manage team</strong><small>Invite members and manage workspace roles.</small></span>
-          </a>
-          <a className="settings-tool" href="/settings/system-health">
-            <ShieldCheck size={16} />
-            <span><strong>System health</strong><small>Inspect production configuration and integration reachability.</small></span>
           </a>
           <button type="button" className="settings-tool" onClick={() => void replayGuides()}>
             <BookOpen size={16} />

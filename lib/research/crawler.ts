@@ -124,11 +124,35 @@ async function recordPageFailure(
 export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Promise<CrawlOutcome> {
   const { organizationId, brandId, websiteUrl, researchRunId } = args;
   const e = env();
-  const root = normalizeUrl(websiteUrl);
-  const rootHost = new URL(root).hostname;
-  await assertResolvablePublicHost(rootHost);
 
-  await supabase.from('research_runs').update({ status: 'RUNNING', started_at: new Date().toISOString(), error_code: null, error_message: null }).eq('id', researchRunId);
+  // Mark the run as started before any network preflight so an early DNS/URL
+  // failure cannot leave the user staring at a permanently queued run.
+  const startedAt = new Date().toISOString();
+  const started = await supabase
+    .from('research_runs')
+    .update({ status: 'RUNNING', started_at: startedAt, error_code: null, error_message: null })
+    .eq('id', researchRunId);
+  if (started.error) throw started.error;
+
+  let root: string;
+  let rootHost: string;
+  try {
+    root = normalizeUrl(websiteUrl);
+    rootHost = new URL(root).hostname;
+    await assertResolvablePublicHost(rootHost);
+  } catch (error) {
+    const info = translateResearchError(error);
+    await supabase
+      .from('research_runs')
+      .update({
+        status: 'FAILED',
+        finished_at: new Date().toISOString(),
+        error_code: info.code,
+        error_message: info.message.slice(0, 600),
+      })
+      .eq('id', researchRunId);
+    throw error;
+  }
 
   const queue = [root];
   const seen = new Set<string>();
