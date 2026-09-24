@@ -544,7 +544,6 @@ export function BrandStrategy({ brandId, brandName }: { brandId: string; brandNa
   const canGenerate = data?.canGenerate ?? false;
   const approvalGate = data?.approvalGate ?? { ok: false, approved: 0, required: 4, missing: ['brand_name'] };
   const busy = generating || Boolean(live);
-  const canStart = canGenerate && approvalGate.ok;
 
   return (
     <div className="grid" style={{ gap: 16 }} id={`strategy-${brandName.split(' ')[0] ?? 'v'}`}>
