@@ -80,9 +80,9 @@ export default function LoginPage() {
       if (authError) {
         const message = authError.message.toLowerCase();
         if (message.includes('invalid login credentials') || message.includes('invalid credentials')) {
-          setError('We could not sign you in with those details. Check your email and password, or create an account.');
+          setError('We could not sign you in with those details. Check your email and password.');
         } else if (message.includes('email not confirmed')) {
-          setError('Your email address still needs to be confirmed before you can sign in.');
+          setError('This account is waiting for email confirmation. Confirm the address, or disable Confirm Email in the Supabase Auth settings for this test environment.');
         } else if (message.includes('too many requests') || message.includes('rate limit')) {
           setError('Too many sign-in attempts. Please wait a moment and try again.');
         } else {
