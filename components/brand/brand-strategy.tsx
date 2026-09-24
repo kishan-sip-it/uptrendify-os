@@ -39,6 +39,12 @@ type StrategyData = {
   latest: LatestStrategy | null;
   versions: VersionMeta[];
   canGenerate: boolean;
+  approvalGate: {
+    ok: boolean;
+    approved: number;
+    required: number;
+    missing: string[];
+  };
 };
 
 const LIVE_STATUSES = new Set(['QUEUED', 'RUNNING']);
@@ -536,7 +542,9 @@ export function BrandStrategy({ brandId, brandName }: { brandId: string; brandNa
   }, [live, load]);
 
   const canGenerate = data?.canGenerate ?? false;
+  const approvalGate = data?.approvalGate ?? { ok: false, approved: 0, required: 4, missing: ['brand_name'] };
   const busy = generating || Boolean(live);
+  const canStart = canGenerate && approvalGate.ok;
 
   return (
     <div className="grid" style={{ gap: 16 }} id={`strategy-${brandName.split(' ')[0] ?? 'v'}`}>
@@ -548,7 +556,7 @@ export function BrandStrategy({ brandId, brandName }: { brandId: string; brandNa
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             {latest ? <span className={`badge ${toneFor(latest.status)}`}>{live ? <span className="status-dot live" style={{ background: 'var(--accent-2)' }} /> : null}{labelFor(latest.status)}</span> : null}
-            {canGenerate ? (
+            {canGenerate && approvalGate.ok ? (
               <button
                 type="button"
                 className="badge"
@@ -576,6 +584,19 @@ export function BrandStrategy({ brandId, brandName }: { brandId: string; brandNa
 
       {actionError ? <div className="card" style={{ borderColor: 'rgba(239,68,68,.35)' }}><ErrorState message={actionError} /></div> : null}
       {error ? <div className="card" style={{ borderColor: 'rgba(239,68,68,.35)' }}><ErrorState message={error} /></div> : null}
+      {!approvalGate.ok && canGenerate && !live ? (
+        <div className="card" style={{ borderColor: 'color-mix(in srgb, var(--accent) 35%, var(--line))' }}>
+          <div className="eyebrow">Strategy gate</div>
+          <h3 style={{ margin: '5px 0 7px' }}>Review Brand Brain before generating strategy</h3>
+          <p className="subtitle" style={{ margin: 0 }}>
+            {approvalGate.approved}/{approvalGate.required} approvals complete.
+            {approvalGate.missing.length > 0 ? ` Required field waiting for approval: ${approvalGate.missing.join(', ')}.` : ' Approve or edit a few more suggestions to continue.'}
+          </p>
+          <div style={{ marginTop: 12 }}>
+            <a className="badge" href="#intelligence">Review Brand Brain</a>
+          </div>
+        </div>
+      ) : null}
 
       {loading ? (
         <LoadingState label="Loading strategy…" />
@@ -583,7 +604,7 @@ export function BrandStrategy({ brandId, brandName }: { brandId: string; brandNa
         <EmptyState
           title="No strategy yet"
           description="There is no strategy for this brand yet. Get research running (or reset a run) to build the brand brain, then generate the strategy here."
-          action={canGenerate ? (
+          action={canGenerate && approvalGate.ok ? (
             <button type="button" className="badge" onClick={start} disabled={generating} style={{ border: 0, cursor: 'pointer', padding: '8px 12px' }}>
               {generating ? <><LoaderCircle size={14} className="spin" /> Starting…</> : <><PlayCircle size={14} /> Generate strategy</>}
             </button>
