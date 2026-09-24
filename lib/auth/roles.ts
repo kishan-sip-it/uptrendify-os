@@ -87,12 +87,25 @@ export async function requireOrgRole(allowed: OrgRole[]): Promise<AuthResult> {
       },
     };
   } catch (error) {
+    const status = Number((error as { status?: number }).status);
+    const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
+    if (
+      status === 401 ||
+      message.includes('auth session missing') ||
+      message.includes('invalid jwt') ||
+      message.includes('jwt expired')
+    ) {
+      return {
+        error: { status: 401, body: { error: 'Authentication required' } },
+        context: null,
+      };
+    }
+
     return {
       error: {
         status: 500,
-        body: {
-          error: 'Authentication service unavailable',
-        },
+        body: { error: 'Authentication request could not be completed' },
       },
       context: null,
     };

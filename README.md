@@ -56,15 +56,15 @@ npm run dev
 
 Then open `http://localhost:3000`.
 
-For Supabase, create a project, enable `pgcrypto` and `pgvector`, and apply migrations in order:
+For Supabase, create a project, enable the required extensions, and apply **all repository migrations in order through the current latest migration**. Production is currently synchronized through `0030_timezone_alias_normalization.sql`.
 
-```text
-supabase/migrations/0001_initial_schema.sql
-supabase/migrations/0002_rls.sql
-supabase/migrations/0003_hardening.sql
-supabase/migrations/0004_brand_intelligence.sql
-supabase/migrations/0005_strategy_engine.sql
+Recommended command when the Supabase project is linked:
+
+```bash
+npx supabase db push
 ```
+
+The migration directory is the source of truth; do not selectively stop at the older 0001–0005 foundation migrations.
 
 ## Brand research & Brand Brain
 
@@ -101,7 +101,7 @@ GEMINI_MODEL=gemini-3.7-flash
 DEFAULT_AI_PROVIDER=groq
 ```
 
-Without any configured key, the pipeline still runs and records an AI task failed with `PROVIDER_UNCONFIGURED`.
+Without any configured key, the pipeline still records an AI task failure with `PROVIDER_UNCONFIGURED`; the rest of the application remains usable.
 
 ## Presentation replay mode
 
@@ -135,6 +135,12 @@ Open the **Aurora Labs** brand and walk: **Brand → Website Research → Brand 
 The seed pre-approves six Brand Brain facts (brand name, what the company does, industry, audience, value proposition, differentiators) so the strategy approval gate is already satisfied and a `SUCCEEDED` strategy v1 is visible immediately. The remaining suggestions are `PENDING` so a presenter reviews them live — approving/rejecting/editing/regenerating uses the normal review API. In replay mode, "Start research", "Generate strategy" and "Regenerate suggestion" complete deterministically and synchronously so the demo never waits on a model call.
 
 Re-running `node scripts/seed-presentation.cjs` resets the brand to the pristine presentable state. To remove the workspace, delete the organization with `slug = aurora-labs-presentation`. Setting `AI_EXECUTION_MODE=live` (or unsetting it) restores full production behavior.
+
+## Production synchronization diagnostics
+
+Owners and Admins can open **Settings → System health** to verify the deployed Browser → Vercel → Supabase boundary. The diagnostics page checks the active deployment identity, effective Supabase project, Auth reachability, tenant membership, and runtime schema contracts for onboarding, campaigns, publishing, preferences, tours, and team invitations.
+
+`/api/health` is a fast public liveness/config probe; external reachability is reported as telemetry rather than turning the app into a 503. `/api/diagnostics` is authenticated and is intentionally the deeper Browser → Vercel → Supabase readiness/contract check.
 
 ## Local verification
 
