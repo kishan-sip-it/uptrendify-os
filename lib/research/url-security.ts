@@ -160,10 +160,14 @@ export function fetchPublicHttp(url: string, init: RequestInit = {}): Promise<Re
 }
 
 export async function assertResolvablePublicHost(hostname: string) {
-  const addresses = await resolvePublicAddresses(hostname);
-  if (!addresses.length) {
-    throw new Error('Research hostname does not resolve to a public address');
+  const addresses = await resolveAllAddresses(hostname);
+  const publicAddresses = addresses.filter((entry) => !isPrivateIp(entry.address));
+  if (publicAddresses.length > 0) return;
+
+  if (addresses.length > 0) {
+    throw new Error(`Research hostname resolves to a non-public address (${addresses[0].address})`);
   }
+  throw new Error('Unable to resolve research hostname');
 }
 
 export function readBoundedBody(response: Response, maxBytes: number): Promise<{ content: string; truncated: boolean }> {
