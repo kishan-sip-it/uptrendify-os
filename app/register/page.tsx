@@ -169,11 +169,13 @@ export default function RegisterPage() {
         setError(signUpError.message);
         return;
       } else if (!signUpData.session) {
-        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-        if (signInError) {
-          setError(signInError.message);
-          return;
-        }
+        // Hosted Supabase can be configured to require email confirmation.
+        // Do not immediately retry password sign-in here: that only produces
+        // the confusing "Email not confirmed" loop after a successful signup.
+        setError(
+          'Your account was created, but Supabase is still requiring email confirmation. Disable Confirm Email in the Supabase Auth settings for this test environment, or configure real SMTP before using confirmation in production.',
+        );
+        return;
       }
 
       const bootstrapHeaders: Record<string, string> = { 'content-type': 'application/json' };
