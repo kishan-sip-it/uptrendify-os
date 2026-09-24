@@ -367,6 +367,7 @@ function RunHistory({ runs }: { runs: RunInfo[] }) {
 
 export function BrandOverview({ brandId, brandName }: { brandId: string; brandName: string }) {
   const [brain, setBrain] = useState<BrainData | null>(null);
+  const [factsExpanded, setFactsExpanded] = useState(false);
   const [runs, setRuns] = useState<RunInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -475,6 +476,7 @@ export function BrandOverview({ brandId, brandName }: { brandId: string; brandNa
   const evidenceClaims = (brain?.insights ?? []).filter((i) => i.category === 'EVIDENCE');
 
   const factCount = brain?.facts.length ?? 0;
+  const visibleFacts = factsExpanded ? (brain?.facts ?? []) : (brain?.facts ?? []).slice(0, 6);
   const insightCount = brain?.insights.length ?? 0;
   const sourceCount = brain?.sources.length ?? 0;
   const pendingCount = brain?.suggestionCounts?.pending ?? 0;
@@ -550,9 +552,21 @@ export function BrandOverview({ brandId, brandName }: { brandId: string; brandNa
           ) : null}
 
           {factCount > 0 ? (
-            <div className="grid grid-3">
-              {brain?.facts.map((fact) => <FactGrid fact={fact} key={fact.id} />)}
-            </div>
+            <section>
+              <div className="grid grid-3">
+                {visibleFacts.map((fact) => <FactGrid fact={fact} key={fact.id} />)}
+              </div>
+              {factCount > 6 ? (
+                <button
+                  type="button"
+                  className="badge"
+                  onClick={() => setFactsExpanded((value) => !value)}
+                  style={{ border: 0, cursor: 'pointer', marginTop: 12 }}
+                >
+                  {factsExpanded ? 'Show less' : `See more · ${factCount - 6} more facts`}
+                </button>
+              ) : null}
+            </section>
           ) : null}
 
           <div className="brain-evidence-grid">
