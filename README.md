@@ -56,15 +56,15 @@ npm run dev
 
 Then open `http://localhost:3000`.
 
-For Supabase, create a project, enable `pgcrypto` and `pgvector`, and apply migrations in order:
+For Supabase, create a project, enable the required extensions, and apply **all repository migrations in order through the current latest migration**. Production is currently synchronized through `0030_timezone_alias_normalization.sql`.
 
-```text
-supabase/migrations/0001_initial_schema.sql
-supabase/migrations/0002_rls.sql
-supabase/migrations/0003_hardening.sql
-supabase/migrations/0004_brand_intelligence.sql
-supabase/migrations/0005_strategy_engine.sql
+Recommended command when the Supabase project is linked:
+
+```bash
+npx supabase db push
 ```
+
+The migration directory is the source of truth; do not selectively stop at the older 0001–0005 foundation migrations.
 
 ## Brand research & Brand Brain
 
@@ -101,7 +101,7 @@ GEMINI_MODEL=gemini-3.7-flash
 DEFAULT_AI_PROVIDER=groq
 ```
 
-Without any configured key, the pipeline still runs and records an AI task failed with `PROVIDER_UNCONFIGURED`.
+Without any configured key, the pipeline still records an AI task failure with `PROVIDER_UNCONFIGURED`; the rest of the application remains usable.
 
 ## Presentation replay mode
 
