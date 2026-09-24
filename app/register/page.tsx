@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Eye, EyeOff, LoaderCircle, MailCheck, RefreshCw, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
+import { getEmailConfirmationRedirectUrl } from '@/lib/auth/email-redirect';
 import { ErrorState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
 
@@ -111,8 +112,10 @@ export default function RegisterPage() {
   }, []);
 
   function confirmationRedirectUrl() {
-    const url = new URL('/auth/confirm', window.location.origin);
-    return url.toString();
+    return getEmailConfirmationRedirectUrl(
+      window.location.origin,
+      process.env.NEXT_PUBLIC_APP_URL,
+    );
   }
 
   async function resendConfirmation() {

@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { CheckCircle2, Eye, EyeOff, LoaderCircle, MailCheck, RefreshCw, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
+import { getEmailConfirmationRedirectUrl } from '@/lib/auth/email-redirect';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
 
