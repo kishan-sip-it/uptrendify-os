@@ -138,6 +138,9 @@ Re-running `node scripts/seed-presentation.cjs` resets the brand to the pristine
 
 ## Email confirmation (production)
 
+> Cross-device note: confirmation emails must not use a private `localhost` origin. The app automatically falls back to `https://uptrendify-os.vercel.app` when signup is initiated from localhost. For a custom deployment domain, set `NEXT_PUBLIC_APP_URL` to that public URL so confirmation and resend links use it consistently.
+
+
 The application uses Supabase Auth with the **PKCE** browser flow and hosted email confirmation. SMTP delivery (for example Pingram) is the transport; the confirmation link itself must use the SSR-safe token-hash flow.
 
 In Supabase Dashboard → **Authentication → Email Templates → Confirm signup**, use the repository template at `supabase/templates/confirmation.html`. The important link is:
