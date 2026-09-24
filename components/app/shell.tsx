@@ -8,6 +8,7 @@ import {
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import HoldButton from '@/components/react-bits/HoldButton';
 import { GuidedTour } from '@/components/tours/GuidedTour';
+import { ThemeController } from '@/components/theme/theme-controller';
 
 export type ShellBrand = { id: string; name: string; website_url: string | null; status: string | null };
 export type ShellOrganization = { id: string; name: string; role: string };
@@ -381,6 +382,12 @@ export function AppShell({
           ) : null}
 
           <a className="badge topbar-add" href="/brands/new"><Plus size={14} /> Add brand</a>
+
+          {pathname === '/dashboard' ? (
+            <div className="topbar-theme" aria-label="Theme">
+              <ThemeController />
+            </div>
+          ) : null}
 
           <div className="user-menu">
             <SwitchMenu
