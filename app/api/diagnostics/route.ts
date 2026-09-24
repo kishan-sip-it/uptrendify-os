@@ -107,14 +107,45 @@ export async function GET() {
           cache: 'no-store',
           signal: AbortSignal.timeout(5000),
         });
-        checks.push(
-          makeCheck(
-            'supabase.auth',
-            'Supabase Auth reachability',
-            response.ok ? 'pass' : 'fail',
-            'Auth settings endpoint returned ' + response.status + '.',
-          ),
-        );
+
+        if (!response.ok) {
+          checks.push(
+            makeCheck(
+              'supabase.auth',
+              'Supabase Auth reachability',
+              'fail',
+              'Auth settings endpoint returned ' + response.status + '.',
+            ),
+          );
+        } else {
+          const settings = await response.json().catch(() => ({})) as {
+            mailer_autoconfirm?: boolean;
+          };
+          const confirmationConfigured = settings.mailer_autoconfirm === true
+            ? 'enabled'
+            : settings.mailer_autoconfirm === false
+              ? 'disabled'
+              : 'unknown';
+
+          checks.push(
+            makeCheck(
+              'supabase.auth',
+              'Supabase Auth reachability',
+              'pass',
+              'Auth settings endpoint returned 200.',
+            ),
+            makeCheck(
+              'supabase.auth.emailConfirmation',
+              'Email confirmation policy',
+              confirmationConfigured === 'disabled' ? 'pass' : confirmationConfigured === 'enabled' ? 'fail' : 'warn',
+              confirmationConfigured === 'disabled'
+                ? 'Confirm Email is disabled; password signup can create an immediate session.'
+                : confirmationConfigured === 'enabled'
+                  ? 'Confirm Email is enabled in hosted Supabase; signup will return without a session until the email is confirmed.'
+                  : 'Supabase did not expose the confirmation policy in the Auth settings response.',
+            ),
+          );
+        }
       } catch (error) {
         checks.push(
           makeCheck(
