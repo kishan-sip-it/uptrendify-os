@@ -35,7 +35,7 @@ export default async function BrandsListPage() {
               <h2 style={{ margin: '5px 0' }}>No brands yet</h2>
             </div>
           </div>
-          <p className="subtitle">Use <strong>Add brand</strong> in the left sidebar to add your first brand and start analyzing its public website.
+          <p className="subtitle">Use <strong>Add brand</strong> in the left sidebar to add your first brand and start analyzing its public website.</p>
         </div>
       ) : (
         <div className="grid">
