@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { Eye, EyeOff, LoaderCircle, Sparkles } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, LoaderCircle, MailCheck, RefreshCw, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
@@ -14,6 +14,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+  const [confirmationNotice, setConfirmationNotice] = useState('');
 
   async function resolveWorkspace(accessToken?: string) {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -63,8 +67,44 @@ export default function LoginPage() {
   }
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const confirmation = params.get('confirmation');
+    if (confirmation === 'confirmed') setConfirmationNotice('Your email is confirmed. You can sign in now.');
+    if (confirmation === 'failed') setError('This confirmation link is invalid or expired. Request a new confirmation email and try again.');
     checkSession().catch(() => setStep('auth'));
   }, []);
+
+  function confirmationRedirectUrl() {
+    return new URL('/auth/confirm', window.location.origin).toString();
+  }
+
+  async function resendConfirmation() {
+    const target = email.trim();
+    if (!target || resending) return;
+    setResending(true);
+    setError('');
+    setConfirmationNotice('');
+    setResent(false);
+    try {
+      const supabase = createSupabaseBrowserClient({ flowType: 'pkce' });
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: target,
+        options: { emailRedirectTo: confirmationRedirectUrl() },
+      });
+
+      if (resendError) {
+        setError(resendError.message || 'We could not resend the confirmation email. Please try again.');
+        return;
+      }
+
+      setResent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'We could not resend the confirmation email.');
+    } finally {
+      setResending(false);
+    }
+  }
 
   async function handleAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -74,6 +114,7 @@ export default function LoginPage() {
     const form = new FormData(event.currentTarget);
     const email = String(form.get('email') ?? '').trim();
     const password = String(form.get('password') ?? '');
+    setEmail(email);
     try {
       const supabase = createSupabaseBrowserClient();
       const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
@@ -82,7 +123,7 @@ export default function LoginPage() {
         if (message.includes('invalid login credentials') || message.includes('invalid credentials')) {
           setError('We could not sign you in with those details. Check your email and password, or create an account.');
         } else if (message.includes('email not confirmed')) {
-          setError('Your email address still needs to be confirmed before you can sign in.');
+          setError('This email has not been confirmed yet. We can send the confirmation email again.');
         } else if (message.includes('too many requests') || message.includes('rate limit')) {
           setError('Too many sign-in attempts. Please wait a moment and try again.');
         } else {
@@ -167,7 +208,27 @@ export default function LoginPage() {
         <button type="submit" disabled={loading} className="badge auth-submit">
           {loading ? <><LoaderCircle size={15} className="spin" /> Working…</> : <>Sign in <Sparkles size={15} /></>}
         </button>
+        {confirmationNotice ? (
+          <div className="field-note" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <CheckCircle2 size={14} /> {confirmationNotice}
+          </div>
+        ) : null}
         {error && <ErrorState message={error} />}
+        {error.toLowerCase().includes('not been confirmed') ? (
+          <button
+            type="button"
+            className="badge"
+            disabled={resending || !email}
+            onClick={() => void resendConfirmation()}
+          >
+            {resending ? <><LoaderCircle size={14} className="spin" /> Sending…</> : <><RefreshCw size={14} /> Resend confirmation email</>}
+          </button>
+        ) : null}
+        {resent ? (
+          <div className="field-note" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <MailCheck size={14} /> A fresh confirmation email was sent.
+          </div>
+        ) : null}
       </form>
     </AuthLayout>
   );
