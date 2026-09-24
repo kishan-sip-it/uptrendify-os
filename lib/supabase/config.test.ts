@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { getSupabaseConfig } from './config';
 
-const originalNodeEnv = process.env.NODE_ENV;
+const originalNodeEnv = (process.env as Record<string, string | undefined>).NODE_ENV;
 const originalVercelEnv = process.env.VERCEL_ENV;
 const originalUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const originalKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const originalAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 afterEach(() => {
-  process.env.NODE_ENV = originalNodeEnv;
+  (process.env as Record<string, string | undefined>).NODE_ENV = originalNodeEnv;
   process.env.VERCEL_ENV = originalVercelEnv;
 
   if (originalUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -23,7 +23,7 @@ afterEach(() => {
 
 describe('getSupabaseConfig', () => {
   it('uses the verified project in production even when deployment env values are stale', () => {
-    process.env.NODE_ENV = 'production';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
     process.env.VERCEL_ENV = 'production';
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://wrong-project.supabase.co';
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'wrong-publishable-key';
@@ -35,7 +35,7 @@ describe('getSupabaseConfig', () => {
   });
 
   it('allows local development to use explicit project environment values', () => {
-    process.env.NODE_ENV = 'development';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://local-project.supabase.co';
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'local-publishable-key';
 
