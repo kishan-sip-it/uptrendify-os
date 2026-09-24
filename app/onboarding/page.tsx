@@ -432,7 +432,6 @@ export default function OnboardingPage() {
           <div className="onboarding-actions" id="onboarding-actions" style={{ marginTop: 18, position: 'relative', zIndex: 3 }}>
             <button type="button" className="badge" onClick={back} disabled={step === 0 || saving || researching} style={{ border: 0, cursor: step === 0 ? 'not-allowed' : 'pointer' }}><ArrowLeft size={15} /> Back</button>
             <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
-              {step < 5 ? <button type="button" className="badge" onClick={() => saveProgress(step, false)} disabled={saving || researching} style={{ border: 0 }}><Save size={14} /> Save</button> : null}
               {step < 5 ? <button type="button" className="badge auth-submit" onClick={next} disabled={saving || researching}>{saving ? <><LoaderCircle size={15} className="spin" /> Saving…</> : <>Save & continue <ArrowRight size={15} /></>}</button> : <button type="button" className="badge auth-submit" onClick={finishAndResearch} disabled={researching}>{researching ? <><LoaderCircle size={15} className="spin" /> Starting research…</> : <>Finish setup & start research <Rocket size={15} /></>}</button>}
             </div>
           </div>
