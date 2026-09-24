@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  ArrowRight, BarChart3, Blocks, Bot, Boxes, CheckCircle2, FileCheck2, Globe2, Layers,
+  ArrowRight, BarChart3, Blocks, Bot, Boxes, CheckCircle2, CircleHelp, FileCheck2, Globe2, Layers,
   LockKeyhole, Menu, Search, ShieldCheck, Sparkles, Target, Users, Workflow, X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -44,6 +44,90 @@ const PIPELINE: { step: string; label: string }[] = WORKFLOW.map((item, index) =
   step: String(index + 1).padStart(2, '0'),
   label: item.label,
 }));
+
+const CONTROL_MODULES: { icon: LucideIcon; title: string; eyebrow: string; description: string }[] = [
+  { icon: Search, eyebrow: '01 · Research', title: 'See what the website actually says', description: 'Crawl public pages, preserve source URLs and separate verified evidence from anything the system could not confirm.' },
+  { icon: ShieldCheck, eyebrow: '02 · Brand Brain', title: 'Decide what becomes trusted context', description: 'AI suggestions stay editable until a person approves the exact facts that strategy is allowed to use.' },
+  { icon: Target, eyebrow: '03 · Strategy', title: 'Turn approved facts into a plan', description: 'Build objectives, audiences, positioning and content direction without starting from a blank prompt every time.' },
+  { icon: FileCheck2, eyebrow: '04 · Execution', title: 'Move work through real gates', description: 'Content, campaigns, approval and publishing stay separate so the workflow never confuses a draft with something ready to ship.' },
+];
+
+const EVIDENCE_PHASES = [
+  { label: 'Discover', title: 'Find the real public footprint', body: 'Start from the brand website, follow useful public pages and keep the source trail attached to what was found.' },
+  { label: 'Extract', title: 'Structure the useful evidence', body: 'Organize identity, offer, audience, positioning, messaging, SEO and competitive signals into reviewable topics.' },
+  { label: 'Review', title: 'Put a human gate in front of AI truth', body: 'Approve, edit or reject suggestions. Approved intelligence becomes the trusted input for the next workflow stage.' },
+  { label: 'Act', title: 'Make work from trusted context', body: 'Generate strategy, content and campaigns from the same approved context instead of re-briefing every screen.' },
+];
+
+const AUDIENCE_CARDS = [
+  { icon: Users, title: 'Agencies', description: 'Keep multiple client brands isolated, switch workspaces safely and give each brand its own voice, rules and approval chain.' },
+  { icon: Globe2, title: 'Growing teams', description: 'Keep research, strategy, content and campaigns connected so handoffs do not erase the context created by the previous team member.' },
+  { icon: Sparkles, title: 'Brand owners', description: 'Start with your own website, teach the system your rules and stay in control of what becomes authoritative.' },
+];
+
+const FAQ = [
+  { question: 'Does AI get to decide what is true?', answer: 'No. Research produces evidence and Brand Brain produces reviewable suggestions. Human approval is the gate before those facts become authoritative.' },
+  { question: 'What happens when a website is difficult to crawl?', answer: 'The research pipeline can try rendered-page extraction for JavaScript-heavy sites and reports the actual limitation when content remains unavailable.' },
+  { question: 'Can an agency manage more than one brand?', answer: 'Yes. Agency workspaces are designed around multiple brands with tenant isolation, roles and separate brand context.' },
+  { question: 'What happens before anything is published?', answer: 'Content has its own lifecycle and approval stage. A connector must exist before an external channel can actually receive the content.' },
+];
+
+function EvidenceExplorer() {
+  const [active, setActive] = useState(0);
+  const phase = EVIDENCE_PHASES[active];
+
+  return (
+    <div
+      className="landing-evidence-explorer"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, .9fr) minmax(0, 1.1fr)',
+        gap: 16,
+        padding: 18,
+        border: '1px solid var(--line)',
+        borderRadius: 20,
+        background: 'var(--panel)',
+        boxShadow: '0 24px 70px rgba(40,35,25,.08)',
+      }}
+    >
+      <div style={{ display: 'grid', gap: 8 }}>
+        {EVIDENCE_PHASES.map((item, index) => (
+          <button
+            key={item.label}
+            type="button"
+            onClick={() => setActive(index)}
+            aria-pressed={active === index}
+            style={{
+              width: '100%',
+              textAlign: 'left',
+              border: '1px solid',
+              borderColor: active === index ? 'color-mix(in srgb, var(--accent) 45%, var(--line))' : 'var(--line)',
+              background: active === index ? 'color-mix(in srgb, var(--accent) 8%, var(--panel))' : 'transparent',
+              color: 'var(--text)',
+              borderRadius: 14,
+              padding: '12px 14px',
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ display: 'block', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em' }}>{String(index + 1).padStart(2, '0')}</span>
+            <strong style={{ display: 'block', marginTop: 4 }}>{item.label}</strong>
+          </button>
+        ))}
+      </div>
+      <div style={{ padding: 12 }}>
+        <div className="landing-eyebrow"><ShieldCheck size={13} /> {phase.label}</div>
+        <h3 style={{ fontSize: 'clamp(22px, 3vw, 34px)', margin: '16px 0 10px' }}>{phase.title}</h3>
+        <p className="subtitle" style={{ maxWidth: 560 }}>{phase.body}</p>
+        <div style={{ marginTop: 22, display: 'grid', gap: 8 }}>
+          <div className="badge"><CheckCircle2 size={13} /> Evidence remains traceable</div>
+          <div className="badge"><CheckCircle2 size={13} /> Human review stays explicit</div>
+          <div className="badge"><CheckCircle2 size={13} /> Next stage uses the approved context</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -433,6 +517,86 @@ export function Landing() {
               </Reveal>
             );
           })}
+        </div>
+      </section>
+
+
+      <section className="landing-section landing-alt" id="control-room">
+        <Reveal>
+          <div className="landing-section-head">
+            <div className="landing-eyebrow"><Layers size={13} /> The control room</div>
+            <h2>One system, four decisions, one continuous context.</h2>
+            <p>UpTrendifyOS is not a single AI prompt. It is a sequence of product stages, each with a clear responsibility and a visible handoff.</p>
+          </div>
+        </Reveal>
+        <div className="landing-features">
+          {CONTROL_MODULES.map((item, i) => {
+            const Icon = item.icon;
+            return (
+              <Reveal delay={i * 70} key={item.title}>
+                <div className="landing-feature-card hover-lift">
+                  <span className="landing-feature-icon"><Icon size={19} /></span>
+                  <div className="eyebrow" style={{ marginBottom: 12 }}>{item.eyebrow}</div>
+                  <h3>{item.title}</h3>
+                  <p>{item.description}</p>
+                </div>
+              </Reveal>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="landing-section" id="evidence-chain">
+        <Reveal>
+          <div className="landing-section-head">
+            <div className="landing-eyebrow"><ShieldCheck size={13} /> Evidence chain</div>
+            <h2>Follow the work from discovery to action.</h2>
+            <p>Click through the stages to see how context is preserved instead of disappearing between tools.</p>
+          </div>
+        </Reveal>
+        <Reveal delay={90}>
+          <EvidenceExplorer />
+        </Reveal>
+      </section>
+
+      <section className="landing-section landing-alt" id="teams">
+        <Reveal>
+          <div className="landing-section-head">
+            <div className="landing-eyebrow"><Users size={13} /> Built for real teams</div>
+            <h2>Different workflows. Same operating system.</h2>
+            <p>Keep the collaboration model flexible without changing the underlying research → review → execution flow.</p>
+          </div>
+        </Reveal>
+        <div className="landing-features">
+          {AUDIENCE_CARDS.map((item, i) => {
+            const Icon = item.icon;
+            return (
+              <Reveal delay={i * 80} key={item.title}>
+                <div className="landing-feature-card hover-lift">
+                  <span className="landing-feature-icon"><Icon size={19} /></span>
+                  <h3>{item.title}</h3>
+                  <p>{item.description}</p>
+                </div>
+              </Reveal>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="landing-section" id="faq">
+        <Reveal>
+          <div className="landing-section-head">
+            <div className="landing-eyebrow"><CircleHelp size={13} /> FAQ</div>
+            <h2>Questions worth answering before you start.</h2>
+          </div>
+        </Reveal>
+        <div style={{ display: 'grid', gap: 10, maxWidth: 860, margin: '0 auto' }}>
+          {FAQ.map((item) => (
+            <details key={item.question} style={{ border: '1px solid var(--line)', borderRadius: 14, padding: '14px 16px', background: 'var(--panel)' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 700 }}>{item.question}</summary>
+              <p className="subtitle" style={{ margin: '10px 0 2px' }}>{item.answer}</p>
+            </details>
+          ))}
         </div>
       </section>
 

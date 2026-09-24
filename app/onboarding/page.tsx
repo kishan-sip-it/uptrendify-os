@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, LoaderCircle, Rocket, Save } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, LoaderCircle, Rocket } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
@@ -73,24 +73,65 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/onboarding', { cache: 'no-store' })
-      .then(async (response) => {
-        const body = await response.json().catch(() => null);
-        if (response.status === 401) { window.location.href = '/login'; return; }
-        if (!response.ok) throw new Error(body?.error || 'Could not load onboarding');
-        const stored = mergeOnboardingDraft(EMPTY_DRAFT, body?.progress?.draft_data);
-        const timezone = normalizeTimezone(body?.organization?.timezone || body?.profile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-        const next = { ...stored, timezone, firstName: stored.firstName || body?.profile?.first_name || '', lastName: stored.lastName || body?.profile?.last_name || '' };
-        if (cancelled) return;
-        setDraft(next);
-        setStep(Math.min(5, Math.max(0, Number(body?.progress?.current_step ?? 0))));
-        setResumable(Boolean(body?.progress));
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (!cancelled) { setError(err instanceof Error ? err.message : 'Could not load onboarding'); setLoading(false); }
-      });
-    return () => { cancelled = true; };
+
+    async function loadOnboarding() {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const response = await fetch('/api/onboarding', { cache: 'no-store' });
+          const body = await response.json().catch(() => null);
+
+          if (response.status === 401) {
+            window.location.href = '/login';
+            return;
+          }
+
+          if (!response.ok) {
+            throw new Error(body?.error || 'Could not load onboarding');
+          }
+
+          const stored = mergeOnboardingDraft(EMPTY_DRAFT, body?.progress?.draft_data);
+          const timezone = normalizeTimezone(
+            body?.organization?.timezone ||
+              body?.profile?.timezone ||
+              Intl.DateTimeFormat().resolvedOptions().timeZone ||
+              'UTC',
+          );
+          const next = {
+            ...stored,
+            timezone,
+            firstName: stored.firstName || body?.profile?.first_name || '',
+            lastName: stored.lastName || body?.profile?.last_name || '',
+          };
+
+          if (cancelled) return;
+          setDraft(next);
+          setStep(Math.min(5, Math.max(0, Number(body?.progress?.current_step ?? 0))));
+          setResumable(Boolean(body?.progress));
+          setLoading(false);
+          setError('');
+          return;
+        } catch (error) {
+          if (attempt === 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, 450));
+            continue;
+          }
+          if (cancelled) return;
+
+          // The onboarding UI remains usable during a transient read failure.
+          // Save & continue will retry the authoritative server write.
+          setDraft({ ...EMPTY_DRAFT });
+          setStep(0);
+          setResumable(false);
+          setLoading(false);
+          setError('');
+        }
+      }
+    }
+
+    void loadOnboarding();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) => {
@@ -141,17 +182,12 @@ export default function OnboardingPage() {
   }, [draft, step, loading]);
 
   async function jumpToStep(nextStep: number) {
-    if (nextStep >= step || nextStep < 0) return;
-    setSaving(true);
+    if (nextStep >= step || nextStep < 0 || saving || researching) return;
     setError('');
-    try {
-      await saveProgress(nextStep, false);
-      setStep(nextStep);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save your progress');
-    } finally {
-      setSaving(false);
-    }
+    setStep(nextStep);
+    void saveProgress(nextStep, false).catch((error) => {
+      setError(error instanceof Error ? error.message : 'Could not save your progress');
+    });
   }
 
   async function saveProgress(nextStep = step, completed = false, complete = false) {
@@ -168,6 +204,10 @@ export default function OnboardingPage() {
       body: JSON.stringify({ step: nextStep, completed, complete, data: draft }),
     });
     const body = await response.json().catch(() => null);
+    if (response.status === 401) {
+      window.location.href = '/login';
+      throw new Error('Your session expired. Sign in again to continue.');
+    }
     if (!response.ok) throw new Error(body?.error || 'We could not save your onboarding progress. Please try again.');
   }
 
@@ -258,18 +298,13 @@ export default function OnboardingPage() {
   }
 
   async function back() {
-    if (step === 0) return;
-    setSaving(true);
+    if (step === 0 || saving || researching) return;
+    const previous = step - 1;
     setError('');
-    try {
-      const previous = step - 1;
-      await saveProgress(previous, false);
-      setStep(previous);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save your progress');
-    } finally {
-      setSaving(false);
-    }
+    setStep(previous);
+    void saveProgress(previous, false).catch((error) => {
+      setError(error instanceof Error ? error.message : 'Could not save your progress');
+    });
   }
 
   async function finishAndResearch() {
@@ -394,10 +429,9 @@ export default function OnboardingPage() {
 
           {error && <div style={{ marginTop: 14 }}><ErrorState message={error} /></div>}
 
-          <div className="onboarding-actions" id="onboarding-actions" style={{ marginTop: 18 }}>
+          <div className="onboarding-actions" id="onboarding-actions" style={{ marginTop: 18, position: 'relative', zIndex: 3 }}>
             <button type="button" className="badge" onClick={back} disabled={step === 0 || saving || researching} style={{ border: 0, cursor: step === 0 ? 'not-allowed' : 'pointer' }}><ArrowLeft size={15} /> Back</button>
             <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
-              {step < 5 ? <button type="button" className="badge" onClick={() => saveProgress(step, false)} disabled={saving || researching} style={{ border: 0 }}><Save size={14} /> Save</button> : null}
               {step < 5 ? <button type="button" className="badge auth-submit" onClick={next} disabled={saving || researching}>{saving ? <><LoaderCircle size={15} className="spin" /> Saving…</> : <>Save & continue <ArrowRight size={15} /></>}</button> : <button type="button" className="badge auth-submit" onClick={finishAndResearch} disabled={researching}>{researching ? <><LoaderCircle size={15} className="spin" /> Starting research…</> : <>Finish setup & start research <Rocket size={15} /></>}</button>}
             </div>
           </div>
