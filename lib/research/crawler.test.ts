@@ -168,6 +168,27 @@ describe('crawlBrand', () => {
     expect(result.pagesProcessed).toBeLessThanOrEqual(2);
   });
 
+  it('records a failed run when URL preflight rejects before crawling', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = mockSupabase() as any;
+    await expect(
+      crawlBrand(client, {
+        organizationId: ORG_ID,
+        brandId: BRAND_ID,
+        websiteUrl: 'ftp://example.com',
+        researchRunId: RUN_ID,
+      }),
+    ).rejects.toThrow();
+
+    expect(client.__updates).toContain('RUNNING');
+    expect(client.__updates).toContain('FAILED');
+    const failedPayload = client.__updatesPayload.find((payload: any) => payload.status === 'FAILED');
+    expect(failedPayload?.error_code).toBe('RESEARCH_FAILED');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('rejects private target before fetching', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
