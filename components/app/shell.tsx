@@ -262,7 +262,7 @@ export function AppShell({
     { target: 'main', title: 'Then queue for publishing', body: 'Approved content can move to Ready to Publish. External publishing remains honest about channel connections.' },
   ] : guideStage === 'settings' ? [
     { target: '.settings-page', title: 'Settings keeps the workspace under control', body: 'Manage workspace identity, timezone, appearance, guides and recovery tools here. These controls change how your workspace behaves, not the research evidence itself.' },
-    { target: '.settings-tools', title: 'Use the operational tools when needed', body: 'Replay GUIDE, open Trash, check System health and manage team access from one place.' },
+    { target: '.settings-tools', title: 'Use the operational tools when needed', body: 'Replay GUIDE, open Trash, create workspaces and manage team access from one place.' },
   ] : [];
   const phaseBriefings: Record<string, { title: string; body: string }> = {
     dashboard: { title: 'Command center', body: 'Follow the single next action. Research and Brand Brain come first; strategy unlocks after human review.' },
