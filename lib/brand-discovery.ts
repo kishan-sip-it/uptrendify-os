@@ -95,17 +95,18 @@ function extractGoogleTarget(href: string): string {
   return match ? decodeURIComponent(match[1]) : href;
 }
 
-function rawCandidatesFromSearch(
-  html: string,
-  selector: string,
-  titleSelector: (element: cheerio.Element) => string,
-  hrefSelector: (element: cheerio.Element) => string | undefined,
-): BrandWebsiteCandidate[] {
+
+async function searchBing(query: string): Promise<BrandWebsiteCandidate[]> {
+  const html = await fetchHtml(
+    'https://www.bing.com/search?count=10&setlang=en-US&q=' + encodeURIComponent(query),
+  );
+  if (!html) return [];
+
   const $ = cheerio.load(html);
   const results: BrandWebsiteCandidate[] = [];
-  $(selector).each((_, element) => {
-    const href = hrefSelector(element);
-    const title = titleSelector(element).replace(/\s+/g, ' ').trim();
+  $('li.b_algo h2 a').each((_, element) => {
+    const href = $(element).attr('href');
+    const title = $(element).text().replace(/\s+/g, ' ').trim();
     const normalized = href ? normalizeCandidate(href) : null;
     if (normalized && title) {
       results.push({
@@ -117,20 +118,6 @@ function rawCandidatesFromSearch(
     }
   });
   return dedupe(results);
-}
-
-async function searchBing(query: string): Promise<BrandWebsiteCandidate[]> {
-  const html = await fetchHtml(
-    'https://www.bing.com/search?count=10&setlang=en-US&q=' + encodeURIComponent(query),
-  );
-  return html
-    ? rawCandidatesFromSearch(
-        html,
-        'li.b_algo h2 a',
-        (element) => cheerio.load(element).text(),
-        (element) => cheerio.load(element).attr('href'),
-      )
-    : [];
 }
 
 async function searchGoogle(query: string): Promise<BrandWebsiteCandidate[]> {
