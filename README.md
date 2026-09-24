@@ -136,6 +136,12 @@ The seed pre-approves six Brand Brain facts (brand name, what the company does, 
 
 Re-running `node scripts/seed-presentation.cjs` resets the brand to the pristine presentable state. To remove the workspace, delete the organization with `slug = aurora-labs-presentation`. Setting `AI_EXECUTION_MODE=live` (or unsetting it) restores full production behavior.
 
+## Production synchronization diagnostics
+
+Owners and Admins can open **Settings → System health** to verify the deployed Browser → Vercel → Supabase boundary. The diagnostics page checks the active deployment identity, effective Supabase project, Auth reachability, tenant membership, and runtime schema contracts for onboarding, campaigns, publishing, preferences, tours, and team invitations.
+
+`/api/health` remains a lightweight public deployment probe; `/api/diagnostics` is authenticated and is intentionally the deeper contract check.
+
 ## Local verification
 
 ```bash
