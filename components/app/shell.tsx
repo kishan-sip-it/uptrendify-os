@@ -211,8 +211,38 @@ export function AppShell({
     }
   }
 
-  const currentLocation = pathname === '/dashboard' ? 'Dashboard' : pathname.startsWith('/brands/') ? 'Brand workspace' : pathname === '/brands' ? 'Brands' : pathname.startsWith('/content') ? 'Content Studio' : pathname.startsWith('/campaigns') ? 'Campaigns' : pathname.startsWith('/approvals') ? 'Content Approval' : pathname.startsWith('/settings') ? 'Settings' : pathname.startsWith('/onboarding') ? 'Setup' : 'Workspace';
-  const guideStage = pathname.startsWith('/brands/') ? 'brand' : pathname.startsWith('/content') ? 'content' : pathname.startsWith('/campaigns') ? 'campaigns' : pathname.startsWith('/approvals') ? 'approvals' : pathname.startsWith('/settings') ? 'settings' : pathname === '/dashboard' ? 'dashboard' : null;
+  const isBrandContent = /\/brands\/[^/]+\/content(?:\/|$)/.test(pathname);
+  const isBrandCampaigns = /\/brands\/[^/]+\/campaigns(?:\/|$)/.test(pathname);
+  const currentLocation = pathname === '/dashboard'
+    ? 'Dashboard'
+    : isBrandContent || pathname.startsWith('/content')
+      ? 'Content Studio'
+      : isBrandCampaigns || pathname.startsWith('/campaigns')
+        ? 'Campaigns'
+        : pathname.startsWith('/approvals')
+          ? 'Content Approval'
+          : pathname.startsWith('/settings')
+            ? 'Settings'
+            : pathname.startsWith('/brands/')
+              ? 'Brand workspace'
+              : pathname === '/brands'
+                ? 'Brands'
+                : pathname.startsWith('/onboarding')
+                  ? 'Setup'
+                  : 'Workspace';
+  const guideStage = isBrandContent || pathname.startsWith('/content')
+    ? 'content'
+    : isBrandCampaigns || pathname.startsWith('/campaigns')
+      ? 'campaigns'
+      : pathname.startsWith('/approvals')
+        ? 'approvals'
+        : pathname.startsWith('/settings')
+          ? 'settings'
+          : pathname.startsWith('/brands/')
+            ? 'brand'
+            : pathname === '/dashboard'
+              ? 'dashboard'
+              : null;
   const guideSteps = guideStage === 'dashboard' ? [
     { target: '#workflow', title: 'This is your command center', body: 'Use the workflow bar to see what is complete, what needs your attention, and the single next action to take.' },
     { target: '#workflow .workflow-next', title: 'Follow the next action', body: 'Open the highlighted action instead of guessing which section comes next. UpTrendifyOS moves from research to strategy to content to approval.' },
@@ -222,7 +252,7 @@ export function AppShell({
     { target: '#intelligence .brain-topic-nav', title: 'Review before strategy', body: 'Open Brand Intelligence suggestions, inspect their evidence, then approve or edit the facts you trust.' },
     { target: '#intelligence', title: 'Strategy comes after the gate', body: 'Once the Brand Brain gate is satisfied, the strategy workspace becomes the next guided step.' },
   ] : guideStage === 'content' ? [
-    { target: 'nav a[href="/content"]', title: 'Content Studio creates assets', body: 'Use approved brand intelligence and strategy context to create content you may actually publish.' },
+    { target: '#content-workspace', title: 'Content Studio creates assets', body: 'Use approved brand intelligence and strategy context to create content you may actually publish.' },
     { target: 'main', title: 'Versions matter', body: 'Edits create new versions when required. Approval always applies to an exact content version.' },
   ] : guideStage === 'campaigns' ? [
     { target: 'nav a[href="/campaigns"]', title: 'Campaigns are initiatives', body: 'A campaign groups content around a marketing objective, audience, dates, channels and budget.' },
