@@ -9,6 +9,7 @@ const PUBLIC_PATHS = new Set([
   '/register',
   '/forgot-password',
   '/reset-password',
+  '/auth/confirm',
 ]);
 
 const AUTH_PATHS = new Set(['/login', '/register', '/forgot-password', '/reset-password']);

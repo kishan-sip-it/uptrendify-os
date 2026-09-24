@@ -1,13 +1,13 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { Eye, EyeOff, LoaderCircle, Sparkles } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, LoaderCircle, MailCheck, RefreshCw, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { ErrorState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
 
-type Step = 'checking' | 'auth';
+type Step = 'checking' | 'auth' | 'confirmation';
 
 function PasswordField({
   name,
@@ -77,6 +77,9 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [confirmationEmail, setConfirmationEmail] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
 
   useEffect(() => {
     async function check() {
@@ -106,6 +109,37 @@ export default function RegisterPage() {
     }
     check().catch(() => setStep('auth'));
   }, []);
+
+  function confirmationRedirectUrl() {
+    const url = new URL('/auth/confirm', window.location.origin);
+    return url.toString();
+  }
+
+  async function resendConfirmation() {
+    if (!confirmationEmail || resending) return;
+    setResending(true);
+    setError('');
+    setResent(false);
+    try {
+      const supabase = createSupabaseBrowserClient({ flowType: 'pkce' });
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: confirmationEmail,
+        options: { emailRedirectTo: confirmationRedirectUrl() },
+      });
+
+      if (resendError) {
+        setError(resendError.message || 'We could not resend the confirmation email. Please try again.');
+        return;
+      }
+
+      setResent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'We could not resend the confirmation email.');
+    } finally {
+      setResending(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -144,6 +178,7 @@ export default function RegisterPage() {
         password,
         options: {
           data: { organizationName },
+          emailRedirectTo: confirmationRedirectUrl(),
         },
       });
 
@@ -169,11 +204,9 @@ export default function RegisterPage() {
         setError(signUpError.message);
         return;
       } else if (!signUpData.session) {
-        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-        if (signInError) {
-          setError(signInError.message);
-          return;
-        }
+        setConfirmationEmail(email);
+        setStep('confirmation');
+        return;
       }
 
       const bootstrapHeaders: Record<string, string> = { 'content-type': 'application/json' };
@@ -212,6 +245,55 @@ export default function RegisterPage() {
         footer={<Link href="/" className="auth-link">← Back to home</Link>}
       >
         <div className="card auth-card-form"><span className="spinner" aria-hidden="true" /></div>
+      </AuthLayout>
+    );
+  }
+
+  if (step === 'confirmation') {
+    return (
+      <AuthLayout
+        eyebrow="Confirm your email"
+        title="Check your inbox."
+        subtitle={`We sent a confirmation link to ${confirmationEmail}. Open it to finish creating your workspace.`}
+        footer={
+          <div className="auth-footer-links">
+            <Link href="/login">Go to sign in</Link>
+            <button
+              type="button"
+              className="auth-link"
+              onClick={() => {
+                setError('');
+                setResent(false);
+                setStep('auth');
+              }}
+            >
+              <ArrowLeft size={14} /> Use a different email
+            </button>
+          </div>
+        }
+      >
+        <div className="card auth-card-form" style={{ display: 'grid', gap: 14 }}>
+          <div className="badge" style={{ justifyContent: 'flex-start' }}>
+            <MailCheck size={15} /> Confirmation email sent
+          </div>
+          <p className="field-note" style={{ margin: 0 }}>
+            Confirming the email signs you in securely and sends you straight to your workspace.
+          </p>
+          <button
+            type="button"
+            className="badge auth-submit"
+            disabled={resending}
+            onClick={() => void resendConfirmation()}
+          >
+            {resending ? <><LoaderCircle size={15} className="spin" /> Sending…</> : <><RefreshCw size={15} /> Resend confirmation</>}
+          </button>
+          {resent ? (
+            <div className="field-note" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <CheckCircle2 size={14} /> A fresh confirmation email was sent.
+            </div>
+          ) : null}
+          {error && <ErrorState message={error} />}
+        </div>
       </AuthLayout>
     );
   }
