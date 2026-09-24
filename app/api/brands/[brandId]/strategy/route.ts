@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_GENERATE_STRATEGY, CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { completeReplayStrategy, isReplayOrganization } from '@/lib/replay';
-import { scheduleStrategyExecution, STRATEGY_ACTIVE_STATUSES } from '@/lib/strategy/pipeline';
+import { scheduleStrategyExecution, STRATEGY_ACTIVE_STATUSES, gateMessage } from '@/lib/strategy/pipeline';
 import { obs } from '@/lib/obs/logger';
+import { checkApprovalGate, loadSuggestionRows, GATE_MIN_APPROVED } from '@/lib/brain/review';
 
 const paramsSchema = z.object({ brandId: z.string().uuid() });
 
@@ -50,6 +51,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     const supabase = await createSupabaseServerClient();
     const brand = await loadBrand(supabase, brandId, auth.context.organizationId);
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+
+    const suggestionRows = await loadSuggestionRows(supabase, {
+      organizationId: auth.context.organizationId,
+      brandId,
+    });
+    const approvalGate = checkApprovalGate(suggestionRows);
+    if (!approvalGate.ok) {
+      const approved = suggestionRows.filter((row) => row.status === 'APPROVED' || row.status === 'EDITED').length;
+      return NextResponse.json(
+        {
+          error: gateMessage(suggestionRows),
+          errorCode: 'INSUFFICIENT_APPROVED_BRAIN',
+          approvalGate: {
+            ok: false,
+            approved,
+            required: GATE_MIN_APPROVED,
+            missing: approvalGate.missing,
+          },
+        },
+        { status: 409 },
+      );
+    }
 
     if (body.idempotencyKey) {
       const existing = await supabase
@@ -257,6 +280,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
         }
       : null;
 
+    const suggestionRows = await loadSuggestionRows(supabase, {
+      organizationId: auth.context.organizationId,
+      brandId,
+    });
+    const approvalGate = checkApprovalGate(suggestionRows);
+    const approved = suggestionRows.filter((row) => row.status === 'APPROVED' || row.status === 'EDITED').length;
+
     const versions = (versionsResult.data ?? []).map((strategy) => ({
       id: strategy.id,
       title: strategy.title,
@@ -278,6 +308,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
         versions,
         canGenerate: CAN_GENERATE_STRATEGY.includes(auth.context.role),
         activeStatuses: [...STRATEGY_ACTIVE_STATUSES],
+        approvalGate: {
+          ok: approvalGate.ok,
+          approved,
+          required: GATE_MIN_APPROVED,
+          missing: approvalGate.missing,
+        },
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );

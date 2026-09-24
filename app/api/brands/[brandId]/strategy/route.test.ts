@@ -32,6 +32,18 @@ function makeClient(overrides: Array<[string, unknown]> = []) {
     queues.set(table, existing);
   }
 
+  if (!queues.has('brand_suggestions')) {
+    queues.set('brand_suggestions', [{
+      data: [
+        { id: 'sg-1', field: 'brand_name', label: 'Brand name', proposed_value: 'Aurora', status: 'APPROVED' },
+        { id: 'sg-2', field: 'industry', label: 'Industry', proposed_value: 'SaaS', status: 'APPROVED' },
+        { id: 'sg-3', field: 'target_audience', label: 'Audience', proposed_value: 'Teams', status: 'APPROVED' },
+        { id: 'sg-4', field: 'value_proposition', label: 'Value proposition', proposed_value: 'Fast growth', status: 'EDITED' },
+      ],
+      error: null,
+    }]);
+  }
+
   const chain = (table: string) => {
     const execute = () => {
       const queue = queues.get(table) ?? [];

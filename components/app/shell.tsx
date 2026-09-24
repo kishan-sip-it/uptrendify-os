@@ -254,7 +254,8 @@ export function AppShell({
           </a>
         );
       })}
-      <a className={'nav-item' + (pathname.startsWith('/settings') ? ' active' : '')} href="/settings" aria-current={pathname.startsWith('/settings') ? 'page' : undefined} onClick={() => setMobileOpen(false)}><Settings size={17}/> <span>Settings</span></a>\n      <a className="nav-item nav-item-accent" href="/brands/new" onClick={() => setMobileOpen(false)}>
+      <a className={'nav-item' + (pathname.startsWith('/settings') ? ' active' : '')} href="/settings" aria-current={pathname.startsWith('/settings') ? 'page' : undefined} onClick={() => setMobileOpen(false)}><Settings size={17}/> <span>Settings</span></a>
+      <a className="nav-item nav-item-accent" href="/brands/new" onClick={() => setMobileOpen(false)}>
         <Plus size={17} /> Add brand
       </a>
     </nav>
@@ -363,9 +364,6 @@ export function AppShell({
                       </a>
                     ))
                   )}
-                  <a className="switch-link" href="/brands/new" onClick={close}>
-                    <Plus size={13} /> Add a brand
-                  </a>
                 </div>
               )}
             </SwitchMenu>
@@ -380,8 +378,6 @@ export function AppShell({
               Presentation Replay
             </span>
           ) : null}
-
-          <a className="badge topbar-add" href="/brands/new"><Plus size={14} /> Add brand</a>
 
           {pathname === '/dashboard' ? (
             <div className="topbar-theme" aria-label="Theme">

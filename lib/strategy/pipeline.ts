@@ -25,10 +25,18 @@ export type StrategyActiveStatus = (typeof STRATEGY_ACTIVE_STATUSES)[number];
 export function gateMessage(rows: SuggestionRow[]): string {
   const { missing } = checkApprovalGate(rows);
   const approved = rows.filter((row) => row.status === 'APPROVED' || row.status === 'EDITED').length;
-  const parts = [
-    `Review and approve the Brand Brain suggestions first. Currently ${approved}/${GATE_MIN_APPROVED} required fields are approved, and ${missing.length} required field${missing.length === 1 ? '' : 's'} (${missing.join(', ')}) need approval.`,
-  ];
-  return parts.join(' ');
+  const approvalProgress = `${approved}/${GATE_MIN_APPROVED} approvals complete`;
+
+  if (missing.length > 0) {
+    const labels = missing.join(', ');
+    return `Review the Brand Brain suggestions first. ${approvalProgress}. Brand field${missing.length === 1 ? '' : 's'} still needing approval: ${labels}.`;
+  }
+
+  if (approved < GATE_MIN_APPROVED) {
+    return `Review the Brand Brain suggestions first. ${approvalProgress} (${approved} approved or edited). Approve or edit ${GATE_MIN_APPROVED - approved} more suggestion${GATE_MIN_APPROVED - approved === 1 ? '' : 's'} before generating strategy.`;
+  }
+
+  return 'Brand Brain approval gate is ready for strategy generation.';
 }
 
 export type StrategyPipelineInput = {

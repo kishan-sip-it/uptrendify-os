@@ -64,6 +64,7 @@ type BrainData = {
 };
 
 const LIVE_STATUSES = new Set(['QUEUED', 'RUNNING']);
+const LIVE_AI_STATUSES = new Set(['QUEUED', 'RUNNING']);
 
 const STATUS_LABELS: Record<string, string> = {
   QUEUED: 'Queued',
@@ -441,7 +442,12 @@ export function BrandOverview({ brandId, brandName }: { brandId: string; brandNa
   }, [runs, load]);
 
   const latest = brain?.latestRun ?? runs[0] ?? null;
-  const active = latest && LIVE_STATUSES.has(latest.status);
+  const active = Boolean(
+    latest && (
+      LIVE_STATUSES.has(latest.status) ||
+      (latest.ai && LIVE_AI_STATUSES.has(latest.ai.status))
+    ),
+  );
 
   const groupedCategories = [
     { category: 'POSITIONING', color: '#6ee7c7' },

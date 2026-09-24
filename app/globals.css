@@ -1277,3 +1277,86 @@ html[data-theme="light"] .landing-how-card {
 .tour-card {
   pointer-events: auto;
 }
+
+
+/* Onboarding fields: match the product UI instead of falling back to browser-default controls. */
+.onboarding-grid input,
+.onboarding-grid select,
+.onboarding-grid textarea,
+.choice-grid input {
+  width: 100%;
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-2);
+  color: var(--text);
+  outline: none;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.onboarding-grid textarea { min-height: 110px; resize: vertical; }
+.onboarding-grid input:hover,
+.onboarding-grid select:hover,
+.onboarding-grid textarea:hover,
+.choice-grid input:hover {
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--line));
+}
+.onboarding-grid input:focus,
+.onboarding-grid select:focus,
+.onboarding-grid textarea:focus,
+.choice-grid input:focus {
+  border-color: var(--accent);
+  background: var(--panel);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.onboarding-grid input::placeholder,
+.onboarding-grid textarea::placeholder,
+.choice-grid input::placeholder {
+  color: color-mix(in srgb, var(--muted) 78%, transparent);
+}
+.onboarding-grid input[type="color"] {
+  min-height: 48px;
+  padding: 5px;
+  cursor: pointer;
+}
+.brand-suggestion-empty {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  color: var(--text);
+  font-size: 12px;
+}
+.brand-suggestion-empty small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+.brand-suggestion-external {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.brand-suggestion-icon img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+html[data-theme="light"] .onboarding-grid input,
+html[data-theme="light"] .onboarding-grid select,
+html[data-theme="light"] .onboarding-grid textarea,
+html[data-theme="light"] .choice-grid input {
+  background: #fffdf8;
+  border-color: #ddd5c7;
+  color: var(--text);
+}
+html[data-theme="light"] .onboarding-grid input:focus,
+html[data-theme="light"] .onboarding-grid select:focus,
+html[data-theme="light"] .onboarding-grid textarea:focus,
+html[data-theme="light"] .choice-grid input:focus {
+  background: #ffffff;
+  border-color: #7fb29a;
+  box-shadow: 0 0 0 4px rgba(79, 139, 114, .10);
+}
