@@ -140,7 +140,7 @@ Re-running `node scripts/seed-presentation.cjs` resets the brand to the pristine
 
 Owners and Admins can open **Settings → System health** to verify the deployed Browser → Vercel → Supabase boundary. The diagnostics page checks the active deployment identity, effective Supabase project, Auth reachability, tenant membership, and runtime schema contracts for onboarding, campaigns, publishing, preferences, tours, and team invitations.
 
-`/api/health` remains a lightweight public deployment probe; `/api/diagnostics` is authenticated and is intentionally the deeper contract check.
+`/api/health` is a fast public liveness/config probe; external reachability is reported as telemetry rather than turning the app into a 503. `/api/diagnostics` is authenticated and is intentionally the deeper Browser → Vercel → Supabase readiness/contract check.
 
 ## Local verification
 
