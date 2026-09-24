@@ -38,6 +38,18 @@ export function GuidedTour({
   }, [open, index, stageKey, steps]);
 
   useEffect(() => {
+    const onGuideRequest = (event: Event) => {
+      const requestedStage = (event as CustomEvent<{ stageKey?: string }>).detail?.stageKey;
+      if (requestedStage && requestedStage !== stageKey) return;
+      setIndex(0);
+      setOpen(true);
+    };
+
+    window.addEventListener('uptrendify:open-guide', onGuideRequest);
+    return () => window.removeEventListener('uptrendify:open-guide', onGuideRequest);
+  }, [stageKey]);
+
+  useEffect(() => {
     let cancelled = false;
 
     fetch('/api/tours?stageKey=' + encodeURIComponent(stageKey), { cache: 'no-store' })
