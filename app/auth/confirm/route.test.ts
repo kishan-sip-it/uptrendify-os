@@ -19,6 +19,7 @@ function makeClient(options: {
   userError?: { message: string } | null;
   membership?: { organization_id: string } | null;
   profile?: { onboarding_completed: boolean } | null;
+  bootstrapError?: { message: string } | null;
 }) {
   return {
     auth: {
@@ -28,6 +29,7 @@ function makeClient(options: {
         error: options.userError ?? null,
       })),
     },
+    rpc: vi.fn(async () => ({ error: options.bootstrapError ?? null })),
     from: (table: string) => {
       const chain: any = {};
       chain.select = () => chain;
@@ -55,9 +57,13 @@ describe('GET /auth/confirm', () => {
     expect(response.headers.get('location')).toContain('/login?confirmation=failed');
   });
 
-  it('verifies the token and routes a new account to onboarding', async () => {
+  it('bootstraps a new account workspace from signup metadata before routing to onboarding', async () => {
     const client = makeClient({
-      user: { id: USER_ID, email: 'user@example.com' },
+      user: {
+        id: USER_ID,
+        email: 'user@example.com',
+        user_metadata: { organizationName: 'Aurora Labs' } as unknown as undefined,
+      } as never,
       membership: null,
     });
     mocks.createSupabaseServerClient.mockResolvedValue(client);
@@ -66,9 +72,8 @@ describe('GET /auth/confirm', () => {
       new NextRequest('https://example.com/auth/confirm?token_hash=abc&type=email'),
     );
 
-    expect(client.auth.verifyOtp).toHaveBeenCalledWith({
-      type: 'email',
-      token_hash: 'abc',
+    expect(client.rpc).toHaveBeenCalledWith('bootstrap_organization', {
+      organization_name: 'Aurora Labs',
     });
     expect(response.headers.get('location')).toContain('/onboarding?confirmed=1');
   });
