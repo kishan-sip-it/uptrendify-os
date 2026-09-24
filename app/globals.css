@@ -1254,3 +1254,26 @@ html[data-theme="light"] .landing-how-card {
     gap: 16px;
   }
 }
+
+/* Guided tour overlays must never block the workflow controls beneath them. */
+.tour-backdrop,
+.tour-highlight,
+.tour-pointer {
+  pointer-events: none;
+}
+.tour-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1999;
+  background: rgba(15, 28, 23, 0.12);
+}
+.tour-highlight {
+  position: fixed;
+  z-index: 2001;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(15, 28, 23, 0.10);
+}
+.tour-card {
+  pointer-events: auto;
+}
