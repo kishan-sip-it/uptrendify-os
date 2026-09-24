@@ -9,6 +9,11 @@ function failureRedirect(request: NextRequest, reason = 'failed') {
   return NextResponse.redirect(url);
 }
 
+function successRedirect(request: NextRequest) {
+  const url = new URL('/auth/confirmed', request.url);
+  return NextResponse.redirect(url);
+}
+
 export async function GET(request: NextRequest) {
   const tokenHash = request.nextUrl.searchParams.get('token_hash');
   const type = request.nextUrl.searchParams.get('type') as EmailOtpType | null;
@@ -41,64 +46,20 @@ export async function GET(request: NextRequest) {
       return failureRedirect(request);
     }
 
-    let { data: membership, error: membershipError } = await supabase
-      .from('organization_members')
-      .select('organization_id')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    // Email confirmation is account-level state, but the authenticated app
+    // session should continue on the device that started signup. The email
+    // device receives only the confirmation acknowledgement. Local scope is
+    // critical: global signOut would terminate sessions on other devices.
+    const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
 
-    if (membershipError) {
-      obs.error('Email confirmation workspace lookup failed', { error: membershipError.message });
-      return failureRedirect(request);
-    }
-
-    if (!membership) {
-      const metadataName = user.user_metadata?.organizationName;
-      const organizationName =
-        typeof metadataName === 'string' ? metadataName.trim() : '';
-
-      if (organizationName) {
-        const { error: bootstrapError } = await supabase.rpc('bootstrap_organization', {
-          organization_name: organizationName,
-        });
-
-        if (bootstrapError) {
-          obs.error('Email confirmation workspace bootstrap failed', {
-            error: bootstrapError.message,
-          });
-        } else {
-          const refreshed = await supabase
-            .from('organization_members')
-            .select('organization_id')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: true })
-            .limit(1)
-            .maybeSingle();
-
-          membership = refreshed.data;
-          membershipError = refreshed.error;
-        }
-      }
-    }
-
-    if (membershipError) {
-      obs.error('Email confirmation workspace lookup failed after bootstrap', {
-        error: membershipError.message,
+    if (signOutError) {
+      obs.error('Email confirmation local session cleanup failed', {
+        error: signOutError.message,
+        userId: user.id,
       });
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('onboarding_completed')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    const destination = profile?.onboarding_completed ? '/dashboard' : '/onboarding';
-    const url = new URL(destination, request.url);
-    url.searchParams.set('confirmed', '1');
-    return NextResponse.redirect(url);
+    return successRedirect(request);
   } catch (error) {
     obs.error('Email confirmation route failed', {
       error: error instanceof Error ? error.message : String(error),
