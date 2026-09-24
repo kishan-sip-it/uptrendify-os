@@ -300,27 +300,29 @@ function SourcesPanel({ sources }: { sources: SourceInfo[] }) {
       {sources.length === 0 ? (
         <EmptyState title="No sources yet" description="Public pages captured during research will be listed here." />
       ) : (
-        <ul className="source-list">
-          {visibleSources.map((source) => (
-            <li className="source-item" key={source.id}>
-              <a href={source.url} target="_blank" rel="noreferrer">
-                <span className="activity-title">{source.title || source.url}</span>
-                <span className="activity-meta" style={{ wordBreak: 'break-all' }}>{source.url}</span>
-              </a>
-              <span className="badge tone-muted">HTTP {source.http_status ?? '—'}</span>
-            </li>
-          ))}
-        </ul>
-        {sources.length > 5 ? (
-          <button
-            type="button"
-            className="badge"
-            onClick={() => setExpanded((value) => !value)}
-            style={{ border: 0, cursor: 'pointer', alignSelf: 'flex-start', marginTop: 10 }}
-          >
-            {expanded ? 'Show less' : `See more · ${sources.length - 5} more`}
-          </button>
-        ) : null}
+        <>
+          <ul className="source-list">
+            {visibleSources.map((source) => (
+              <li className="source-item" key={source.id}>
+                <a href={source.url} target="_blank" rel="noreferrer">
+                  <span className="activity-title">{source.title || source.url}</span>
+                  <span className="activity-meta" style={{ wordBreak: 'break-all' }}>{source.url}</span>
+                </a>
+                <span className="badge tone-muted">HTTP {source.http_status ?? '—'}</span>
+              </li>
+            ))}
+          </ul>
+          {sources.length > 5 ? (
+            <button
+              type="button"
+              className="badge"
+              onClick={() => setExpanded((value) => !value)}
+              style={{ border: 0, cursor: 'pointer', alignSelf: 'flex-start', marginTop: 10 }}
+            >
+              {expanded ? 'Show less' : `See more · ${sources.length - 5} more`}
+            </button>
+          ) : null}
+        </>
       )}
     </div>
   );
