@@ -3,9 +3,9 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_GENERATE_STRATEGY, CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { completeReplayStrategy, isReplayOrganization } from '@/lib/replay';
-import { scheduleStrategyExecution, STRATEGY_ACTIVE_STATUSES } from '@/lib/strategy/pipeline';
+import { scheduleStrategyExecution, STRATEGY_ACTIVE_STATUSES, gateMessage } from '@/lib/strategy/pipeline';
 import { obs } from '@/lib/obs/logger';
-import { checkApprovalGate, gateMessage, loadSuggestionRows, GATE_MIN_APPROVED } from '@/lib/brain/review';
+import { checkApprovalGate, loadSuggestionRows, GATE_MIN_APPROVED } from '@/lib/brain/review';
 
 const paramsSchema = z.object({ brandId: z.string().uuid() });
 
