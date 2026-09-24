@@ -81,7 +81,7 @@ describe('GET /auth/confirm', () => {
     expect(response.headers.get('location')).toContain('/auth/confirmed');
   });
 
-  it('routes an existing confirmed account to dashboard when onboarding is complete', async () => {
+  it('keeps the confirmation device out of the application session', async () => {
     const client = makeClient({
       user: { id: USER_ID, email: 'user@example.com' },
       membership: { organization_id: ORG_ID },
@@ -93,7 +93,8 @@ describe('GET /auth/confirm', () => {
       new NextRequest('https://example.com/auth/confirm?token_hash=abc&type=email'),
     );
 
-    expect(response.headers.get('location')).toContain('/dashboard?confirmed=1');
+    expect(client.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(response.headers.get('location')).toContain('/auth/confirmed');
   });
 
   it('still shows the handoff acknowledgement even if local session cleanup fails', async () => {
