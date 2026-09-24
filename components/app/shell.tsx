@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import {
-  ArrowUpRight, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Settings, Sparkles, Target, Trash2, Users, X,
+  ArrowUpRight, BookOpen, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Settings, Sparkles, Target, Trash2, Users, X,
 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import HoldButton from '@/components/react-bits/HoldButton';
@@ -85,6 +85,8 @@ export function AppShell({
   const [workspaceRequired, setWorkspaceRequired] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceConfirmation, setWorkspaceConfirmation] = useState('');
+  const [guideIdle, setGuideIdle] = useState(false);
+  const [phaseBriefingVisible, setPhaseBriefingVisible] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -194,7 +196,7 @@ export function AppShell({
   }
 
   const currentLocation = pathname === '/dashboard' ? 'Dashboard' : pathname.startsWith('/brands/') ? 'Brand workspace' : pathname === '/brands' ? 'Brands' : pathname.startsWith('/content') ? 'Content Studio' : pathname.startsWith('/campaigns') ? 'Campaigns' : pathname.startsWith('/approvals') ? 'Content Approval' : pathname.startsWith('/settings') ? 'Settings' : pathname.startsWith('/onboarding') ? 'Setup' : 'Workspace';
-  const guideStage = pathname.startsWith('/brands/') ? 'brand' : pathname.startsWith('/content') ? 'content' : pathname.startsWith('/campaigns') ? 'campaigns' : pathname.startsWith('/approvals') ? 'approvals' : pathname === '/dashboard' ? 'dashboard' : null;
+  const guideStage = pathname.startsWith('/brands/') ? 'brand' : pathname.startsWith('/content') ? 'content' : pathname.startsWith('/campaigns') ? 'campaigns' : pathname.startsWith('/approvals') ? 'approvals' : pathname.startsWith('/settings') ? 'settings' : pathname === '/dashboard' ? 'dashboard' : null;
   const guideSteps = guideStage === 'dashboard' ? [
     { target: '#workflow', title: 'This is your command center', body: 'Use the workflow bar to see what is complete, what needs your attention, and the single next action to take.' },
     { target: '#workflow .workflow-next', title: 'Follow the next action', body: 'Open the highlighted action instead of guessing which section comes next. UpTrendifyOS moves from research to strategy to content to approval.' },
@@ -212,11 +214,67 @@ export function AppShell({
   ] : guideStage === 'approvals' ? [
     { target: 'nav a[href="/approvals"]', title: 'Approval protects the exact version', body: 'Review the content that is actually awaiting a decision. A later edited version does not inherit an older approval.' },
     { target: 'main', title: 'Then queue for publishing', body: 'Approved content can move to Ready to Publish. External publishing remains honest about channel connections.' },
+  ] : guideStage === 'settings' ? [
+    { target: '.settings-page', title: 'Settings keeps the workspace under control', body: 'Manage workspace identity, timezone, appearance, guides and recovery tools here. These controls change how your workspace behaves, not the research evidence itself.' },
+    { target: '.settings-tools', title: 'Use the operational tools when needed', body: 'Replay GUIDE, open Trash, check System health and manage team access from one place.' },
   ] : [];
+  const phaseBriefings: Record<string, { title: string; body: string }> = {
+    dashboard: { title: 'Command center', body: 'Follow the single next action. Research and Brand Brain come first; strategy unlocks after human review.' },
+    brand: { title: 'Brand workspace', body: 'Start with evidence, review AI suggestions, approve the facts you trust, then move into strategy.' },
+    content: { title: 'Content Studio', body: 'Create a brief from approved context, then generate and review exact content versions before publishing.' },
+    campaigns: { title: 'Campaigns', body: 'Group related content around one objective, audience, channel mix and timing. Keep the campaign context separate from individual approvals.' },
+    approvals: { title: 'Approvals', body: 'Approve the exact content version you reviewed. A later edit creates a new version that needs its own decision.' },
+    settings: { title: 'Settings', body: 'Keep workspace identity, appearance, guides, team access and recovery tools organized here.' },
+  };
   const displayName = userFirstName || userEmail || 'Account';
   const initials = userFirstName
     ? userFirstName.slice(0, 2).toUpperCase()
     : (userEmail || 'U').slice(0, 1).toUpperCase();
+
+  useEffect(() => {
+    if (!guideStage || !phaseBriefings[guideStage]) {
+      setPhaseBriefingVisible(false);
+      return;
+    }
+    const key = 'uptrendify-phase-intro:' + guideStage;
+    const now = Date.now();
+    try {
+      const raw = window.localStorage.getItem(key);
+      const seenAt = raw ? Number(raw) : 0;
+      if (!seenAt || now - seenAt > 10 * 60 * 1000) {
+        window.localStorage.setItem(key, String(now));
+        setPhaseBriefingVisible(true);
+      } else {
+        setPhaseBriefingVisible(false);
+      }
+    } catch {
+      setPhaseBriefingVisible(true);
+    }
+    const timeout = window.setTimeout(() => setPhaseBriefingVisible(false), 10 * 60 * 1000);
+    return () => window.clearTimeout(timeout);
+  }, [guideStage]);
+
+  useEffect(() => {
+    let idleTimer: number | undefined;
+    const reset = () => {
+      setGuideIdle(false);
+      if (idleTimer) window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => setGuideIdle(true), 45_000);
+    };
+    reset();
+    const events = ['mousemove', 'keydown', 'touchstart', 'scroll'];
+    events.forEach((event) => window.addEventListener(event, reset, { passive: true }));
+    return () => {
+      if (idleTimer) window.clearTimeout(idleTimer);
+      events.forEach((event) => window.removeEventListener(event, reset));
+    };
+  }, []);
+
+  function openGuide() {
+    if (!guideStage || !guideSteps.length) return;
+    window.dispatchEvent(new CustomEvent('uptrendify:open-guide', { detail: { stageKey: guideStage } }));
+    setGuideIdle(false);
+  }
 
   const nav = (
     <nav className="nav" aria-label="Workspace">
@@ -310,7 +368,7 @@ export function AppShell({
                 ) : orgError ? (
                   <div className="switch-hint switch-error">{orgError}</div>
                 ) : null}
-                <a className="switch-link" href="/register" onClick={close}>
+                <a className="switch-link" href="/settings/workspace/new" onClick={close}>
                   <Plus size={13} /> Create workspace
                 </a>
               </div>
@@ -379,11 +437,23 @@ export function AppShell({
             </span>
           ) : null}
 
-          {pathname === '/dashboard' ? (
-            <div className="topbar-theme" aria-label="Theme">
-              <ThemeController />
-            </div>
-          ) : null}
+          <div className="topbar-actions">
+            {guideStage && guideSteps.length ? (
+              <button
+                type="button"
+                className={'guide-button' + (guideIdle ? ' guide-idle' : '')}
+                onClick={openGuide}
+                title="Open GUIDE for this phase"
+              >
+                <BookOpen size={14} /> GUIDE
+              </button>
+            ) : null}
+            {pathname === '/dashboard' ? (
+              <div className="topbar-theme" aria-label="Theme">
+                <ThemeController />
+              </div>
+            ) : null}
+          </div>
 
           <div className="user-menu">
             <SwitchMenu
@@ -432,6 +502,19 @@ export function AppShell({
         </div>
 
         <div className="current-location" aria-live="polite">Current: {currentLocation}</div>
+        {phaseBriefingVisible && guideStage && phaseBriefings[guideStage] ? (
+          <section className="phase-briefing" aria-label="Phase introduction">
+            <div className="phase-briefing-copy">
+              <div className="eyebrow">NEW PHASE · {currentLocation}</div>
+              <strong>{phaseBriefings[guideStage].title}</strong>
+              <span>{phaseBriefings[guideStage].body}</span>
+            </div>
+            {guideSteps.length ? (
+              <button type="button" className="badge" onClick={openGuide}><BookOpen size={13} /> Open GUIDE</button>
+            ) : null}
+            <button type="button" className="phase-briefing-close" onClick={() => setPhaseBriefingVisible(false)} aria-label="Dismiss phase introduction"><X size={14} /></button>
+          </section>
+        ) : null}
         {children}
         {guideStage && guideSteps.length ? <GuidedTour stageKey={guideStage} steps={guideSteps} /> : null}
       </section>
