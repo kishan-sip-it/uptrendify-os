@@ -88,6 +88,7 @@ function EvidenceExplorer() {
         borderRadius: 20,
         background: 'var(--panel)',
         boxShadow: '0 24px 70px rgba(40,35,25,.08)',
+        minHeight: 360,
       }}
     >
       <div style={{ display: 'grid', gap: 8 }}>
@@ -114,7 +115,7 @@ function EvidenceExplorer() {
           </button>
         ))}
       </div>
-      <div style={{ padding: 12 }}>
+      <div style={{ padding: 12, minHeight: 318, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div className="landing-eyebrow"><ShieldCheck size={13} /> {phase.label}</div>
         <h3 style={{ fontSize: 'clamp(22px, 3vw, 34px)', margin: '16px 0 10px' }}>{phase.title}</h3>
         <p className="subtitle" style={{ maxWidth: 560 }}>{phase.body}</p>
