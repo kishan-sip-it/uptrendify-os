@@ -143,7 +143,7 @@ The application uses Supabase Auth with the **PKCE** browser flow and hosted ema
 In Supabase Dashboard → **Authentication → Email Templates → Confirm signup**, use the repository template at `supabase/templates/confirmation.html`. The important link is:
 
 ```text
-{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email
+{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email
 ```
 
 Also add the deployed application URL as an allowed redirect/site URL in Supabase Auth URL configuration. The app dynamically uses the current origin for signup/resend links, so local and hosted environments keep their own URLs.
