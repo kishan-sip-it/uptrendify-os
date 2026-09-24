@@ -200,7 +200,7 @@ function FactGrid({ fact }: { fact: FactInfo }) {
   const label = FACT_LABELS[fact.key] ?? SECTION_LABELS[fact.key] ?? fact.key;
   const rendered = present(fact.value);
   return (
-    <div className="card brain-fact hover-lift">
+    <div className="card brain-fact hover-lift" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div className="section-title" style={{ marginBottom: 8 }}>
         <div>
           <div className="eyebrow">FACT · {fact.approved ? 'approved' : 'draft'}</div>
@@ -285,8 +285,11 @@ function InsightPanel({ grouped }: { grouped: Array<{ category: string; color: s
 }
 
 function SourcesPanel({ sources }: { sources: SourceInfo[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleSources = expanded ? sources : sources.slice(0, 5);
+
   return (
-    <div className="card">
+    <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div className="section-title">
         <div>
           <div className="eyebrow">Evidence</div>
@@ -298,7 +301,7 @@ function SourcesPanel({ sources }: { sources: SourceInfo[] }) {
         <EmptyState title="No sources yet" description="Public pages captured during research will be listed here." />
       ) : (
         <ul className="source-list">
-          {sources.map((source) => (
+          {visibleSources.map((source) => (
             <li className="source-item" key={source.id}>
               <a href={source.url} target="_blank" rel="noreferrer">
                 <span className="activity-title">{source.title || source.url}</span>
@@ -308,6 +311,16 @@ function SourcesPanel({ sources }: { sources: SourceInfo[] }) {
             </li>
           ))}
         </ul>
+        {sources.length > 5 ? (
+          <button
+            type="button"
+            className="badge"
+            onClick={() => setExpanded((value) => !value)}
+            style={{ border: 0, cursor: 'pointer', alignSelf: 'flex-start', marginTop: 10 }}
+          >
+            {expanded ? 'Show less' : `See more · ${sources.length - 5} more`}
+          </button>
+        ) : null}
       )}
     </div>
   );
@@ -542,13 +555,13 @@ export function BrandOverview({ brandId, brandName }: { brandId: string; brandNa
             </div>
           ) : null}
 
-          <div className="grid grid-3">
+          <div className="brain-evidence-grid">
             {signals.length > 0 ? <InsightPanel grouped={signals} /> : null}
             <EvidenceClaimsPanel claims={evidenceClaims} />
+            <SourcesPanel sources={brain?.sources ?? []} />
           </div>
 
-          <div className="grid grid-3">
-            <SourcesPanel sources={brain?.sources ?? []} />
+          <div className="brain-run-history">
             <RunHistory runs={runs} />
           </div>
         </>
