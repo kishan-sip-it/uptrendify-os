@@ -59,7 +59,7 @@ function toneFor(status: string): string {
     case 'PUBLISHED':
     case 'SCHEDULED':
       return 'tone-good';
-    case 'REJECTED': // fallthrough
+    case 'REJECTED':
     case 'IN_REVIEW':
     case 'CLIENT_REVIEW':
     case 'CHANGES_REQUESTED':
@@ -102,32 +102,46 @@ const EMPTY_INTENT: DraftIntent = {
   campaignId: '',
 };
 
-function CreateForm({ brandId, onCreated }: { brandId: string; onCreated: () => void }) {
-  const [open, setOpen] = useState(false);
+export function CreateContentForm({
+  brandId,
+  onCreated,
+}: {
+  brandId: string;
+  onCreated?: () => void;
+}) {
   const [intent, setIntent] = useState<DraftIntent>(EMPTY_INTENT);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [campaignOptions, setCampaignOptions] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
-    if (!open) return;
     let cancelled = false;
     fetch(`/api/brands/${brandId}/campaigns?limit=100`, { cache: 'no-store' })
       .then((response) => (response.ok ? response.json() : null))
       .then((body) => {
-        if (!cancelled) setCampaignOptions((body?.campaigns ?? []).map((campaign: { id: string; name: string }) => ({ id: campaign.id, name: campaign.name })));
+        if (!cancelled) {
+          setCampaignOptions(
+            (body?.campaigns ?? []).map((campaign: { id: string; name: string }) => ({
+              id: campaign.id,
+              name: campaign.name,
+            })),
+          );
+        }
       })
       .catch(() => undefined);
+
     return () => {
       cancelled = true;
     };
-  }, [open, brandId]);
+  }, [brandId]);
 
-  const set = <K extends keyof DraftIntent>(key: K, value: DraftIntent[K]) => setIntent((prev) => ({ ...prev, [key]: value }));
+  const set = <K extends keyof DraftIntent>(key: K, value: DraftIntent[K]) =>
+    setIntent((prev) => ({ ...prev, [key]: value }));
 
   async function submit() {
     setBusy(true);
     setError(null);
+
     try {
       const optionalKeys = ['objective', 'audience', 'context', 'tone', 'cta', 'instructions', 'clientId'] as const;
       const payload: Record<string, string> = {
@@ -135,25 +149,29 @@ function CreateForm({ brandId, onCreated }: { brandId: string; onCreated: () => 
         channel: intent.channel,
         title: intent.title.trim(),
       };
+
       for (const key of optionalKeys) {
         const value = intent[key];
         if (typeof value === 'string' && value.trim()) payload[key] = value.trim();
       }
       if (intent.campaignId) payload.campaignId = intent.campaignId;
+
       const response = await fetch(`/api/brands/${brandId}/content`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       });
+
       if (response.status === 401) {
         window.location.href = '/login';
         return;
       }
+
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || 'Could not create content item');
-      setOpen(false);
+
       setIntent(EMPTY_INTENT);
-      onCreated();
+      onCreated?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create content item');
     } finally {
@@ -162,62 +180,76 @@ function CreateForm({ brandId, onCreated }: { brandId: string; onCreated: () => 
   }
 
   return (
-    <div>
-      {open ? (
-        <div className="card content-form">
-          <div className="eyebrow" style={{ color: 'var(--accent-2)' }}>New content</div>
-          <div className="content-form-row">
-            <label>Type
-              <select value={intent.type} onChange={(event) => set('type', event.target.value)}>
-                {CONTENT_TYPES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
-              </select>
-            </label>
-            <label>Channel
-              <select value={intent.channel} onChange={(event) => set('channel', event.target.value)}>
-                {CONTENT_CHANNELS.map((channel) => <option key={channel} value={channel}>{channelLabel(channel)}</option>)}
-              </select>
-            </label>
-          </div>
-          <label>Title / topic
-            <input value={intent.title} onChange={(event) => set('title', event.target.value)} placeholder="e.g. Win back ICP accounts with a faster brand POV" />
-          </label>
-          <label>Objective (optional)
-            <input value={intent.objective ?? ''} onChange={(event) => set('objective', event.target.value)} placeholder="What should this content achieve?" />
-          </label>
-          <label>Audience (optional)
-            <input value={intent.audience ?? ''} onChange={(event) => set('audience', event.target.value)} placeholder="Who is this for?" />
-          </label>
-          <label>Campaign / context (optional)
-            <textarea value={intent.context ?? ''} onChange={(event) => set('context', event.target.value)} placeholder="Launch, campaign, season, context the model should know" />
-          </label>
-          <label>Link to a campaign (optional)
-            <select value={intent.campaignId ?? ''} onChange={(event) => set('campaignId', event.target.value || undefined)}>
-              <option value="">No campaign</option>
-              {campaignOptions.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
-            </select>
-          </label>
-          <label>Tone / style (optional)
-            <input value={intent.tone ?? ''} onChange={(event) => set('tone', event.target.value)} placeholder="e.g. confident, evidence-first" />
-          </label>
-          <label>CTA direction (optional)
-            <input value={intent.cta ?? ''} onChange={(event) => set('cta', event.target.value)} placeholder="e.g. book a demo" />
-          </label>
-          <label>Additional instructions (optional)
-            <textarea value={intent.instructions ?? ''} onChange={(event) => set('instructions', event.target.value)} placeholder="Anything the model must respect" />
-          </label>
-          {error ? <ErrorState message={error} /> : null}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" className="badge" onClick={submit} disabled={busy || !intent.title.trim()} style={{ border: 0, cursor: busy ? 'not-allowed' : 'pointer', padding: '9px 14px', opacity: busy || !intent.title.trim() ? 0.6 : 1 }}>
-              {busy ? <><LoaderCircle size={14} className="spin" /> Creating…</> : <><Plus size={14} /> Create content brief</>}
-            </button>
-            <button type="button" className="badge tone-muted" onClick={() => setOpen(false)} style={{ border: 0, cursor: 'pointer', padding: '9px 14px' }}>Cancel</button>
-          </div>
-        </div>
-      ) : (
-        <button type="button" className="badge" onClick={() => setOpen(true)} style={{ border: 0, cursor: 'pointer', padding: '8px 12px' }}>
-          <Plus size={14} /> New content
+    <div className="card content-form">
+      <div>
+        <div className="eyebrow">New content</div>
+        <h2 style={{ margin: '5px 0' }}>Create a focused content brief</h2>
+        <p className="subtitle" style={{ margin: 0 }}>
+          Keep creation on a dedicated page so the Content Studio list stays stable and scannable.
+        </p>
+      </div>
+
+      <div className="content-form-row">
+        <label>Type
+          <select value={intent.type} onChange={(event) => set('type', event.target.value)}>
+            {CONTENT_TYPES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+          </select>
+        </label>
+        <label>Channel
+          <select value={intent.channel} onChange={(event) => set('channel', event.target.value)}>
+            {CONTENT_CHANNELS.map((channel) => <option key={channel} value={channel}>{channelLabel(channel)}</option>)}
+          </select>
+        </label>
+      </div>
+
+      <label>Title / topic
+        <input value={intent.title} onChange={(event) => set('title', event.target.value)} placeholder="e.g. Win back ICP accounts with a faster brand POV" />
+      </label>
+
+      <label>Objective (optional)
+        <input value={intent.objective ?? ''} onChange={(event) => set('objective', event.target.value)} placeholder="What should this content achieve?" />
+      </label>
+
+      <label>Audience (optional)
+        <input value={intent.audience ?? ''} onChange={(event) => set('audience', event.target.value)} placeholder="Who is this for?" />
+      </label>
+
+      <label>Campaign / context (optional)
+        <textarea value={intent.context ?? ''} onChange={(event) => set('context', event.target.value)} placeholder="Launch, campaign, season, context the model should know" />
+      </label>
+
+      <label>Link to a campaign (optional)
+        <select value={intent.campaignId ?? ''} onChange={(event) => set('campaignId', event.target.value || undefined)}>
+          <option value="">No campaign</option>
+          {campaignOptions.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+        </select>
+      </label>
+
+      <label>Tone / style (optional)
+        <input value={intent.tone ?? ''} onChange={(event) => set('tone', event.target.value)} placeholder="e.g. confident, evidence-first" />
+      </label>
+
+      <label>CTA direction (optional)
+        <input value={intent.cta ?? ''} onChange={(event) => set('cta', event.target.value)} placeholder="e.g. book a demo" />
+      </label>
+
+      <label>Additional instructions (optional)
+        <textarea value={intent.instructions ?? ''} onChange={(event) => set('instructions', event.target.value)} placeholder="Anything the model must respect" />
+      </label>
+
+      {error ? <ErrorState message={error} /> : null}
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          className="badge auth-submit"
+          onClick={submit}
+          disabled={busy || !intent.title.trim()}
+          style={{ border: 0, cursor: busy || !intent.title.trim() ? 'not-allowed' : 'pointer', padding: '9px 14px', opacity: busy || !intent.title.trim() ? 0.6 : 1 }}
+        >
+          {busy ? <><LoaderCircle size={14} className="spin" /> Creating…</> : <><Plus size={14} /> Create content brief</>}
         </button>
-      )}
+      </div>
     </div>
   );
 }
@@ -230,6 +262,7 @@ export function ContentStudio({ brandId, brandName }: { brandId: string; brandNa
   const [channelFilter, setChannelFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [query, setQuery] = useState('');
+  const [showAll, setShowAll] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -239,12 +272,14 @@ export function ContentStudio({ brandId, brandName }: { brandId: string; brandNa
       if (channelFilter) params.set('channel', channelFilter);
       if (statusFilter) params.set('status', statusFilter);
       if (query) params.set('q', query);
+
       const encoded = params.toString();
       const response = await fetch(`/api/brands/${brandId}/content${encoded ? `?${encoded}` : ''}`, { cache: 'no-store' });
       if (response.status === 401) {
         window.location.href = '/login';
         return;
       }
+
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || 'Could not load content');
       setData(body);
@@ -259,24 +294,31 @@ export function ContentStudio({ brandId, brandName }: { brandId: string; brandNa
     load();
   }, [load]);
 
+  useEffect(() => {
+    setShowAll(false);
+  }, [brandId, typeFilter, channelFilter, statusFilter, query]);
+
   const gate = data?.gate;
   const gateBlocked = gate && !gate.ok;
+  const visibleItems = data ? (showAll ? data.items : data.items.slice(0, 6)) : [];
 
   return (
-    <div className="grid" style={{ gap: 16 }}>
-      <div className="card">
+    <div className="grid" style={{ gap: 16 }} id="content-workspace">
+      <div className="card content-studio-header">
         <div className="section-title" style={{ flexWrap: 'wrap', gap: 10 }}>
           <div>
             <div className="eyebrow">Content Studio</div>
             <h2 style={{ margin: '5px 0' }}>{brandName} content workspace</h2>
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <CreateForm brandId={brandId} onCreated={load} />
-          </div>
+          <a className="badge" href={`/brands/${brandId}/content/new`}>
+            <Plus size={14} /> New content
+          </a>
         </div>
+
         <p className="subtitle" style={{ marginTop: 0 }}>
           Draft and generate on-brand marketing content, grounded in the approved Brand Brain and approved marketing strategy.
         </p>
+
         <div className="content-filters" style={{ marginTop: 14 }}>
           <input className="content-filter-input" placeholder="Search by title…" value={query} onChange={(event) => setQuery(event.target.value)} style={{ minWidth: 180 }} />
           <select className="content-filter-select" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
@@ -319,11 +361,11 @@ export function ContentStudio({ brandId, brandName }: { brandId: string; brandNa
         <EmptyState
           title="No content yet"
           description="Create a content brief — channel, audience, tone and intent — then generate on-brand copy grounded in your approved strategy and brand brain."
-          action={data?.canGenerate ? <CreateForm brandId={brandId} onCreated={load} /> : undefined}
+          action={data?.canGenerate ? <a className="badge" href={`/brands/${brandId}/content/new`}><Plus size={13} /> New content</a> : undefined}
         />
       ) : (
         <div className="grid" style={{ gap: 12 }}>
-          {data.items.map((item) => (
+          {visibleItems.map((item) => (
             <a className="card hover-lift content-item" href={`/brands/${brandId}/content/${item.id}`} key={item.id}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ minWidth: 0 }}>
@@ -353,8 +395,16 @@ export function ContentStudio({ brandId, brandName }: { brandId: string; brandNa
               </div>
             </a>
           ))}
-          {data.total > data.items.length ? (
-            <p className="activity-meta" style={{ textAlign: 'center', margin: 0, padding: 8 }}>Showing {data.items.length} of {data.total}. Refine filters to narrow results.</p>
+
+          {data.items.length > 6 ? (
+            <button
+              type="button"
+              className="badge"
+              onClick={() => setShowAll((value) => !value)}
+              style={{ border: 0, cursor: 'pointer', justifySelf: 'center' }}
+            >
+              {showAll ? 'Show less' : `See more · ${data.items.length - 6} more content items`}
+            </button>
           ) : null}
         </div>
       )}
