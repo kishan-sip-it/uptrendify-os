@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       return failureRedirect(request);
     }
 
-    const { data: membership, error: membershipError } = await supabase
+    let { data: membership, error: membershipError } = await supabase
       .from('organization_members')
       .select('organization_id')
       .eq('user_id', user.id)
@@ -55,9 +55,38 @@ export async function GET(request: NextRequest) {
     }
 
     if (!membership) {
-      const url = new URL('/onboarding', request.url);
-      url.searchParams.set('confirmed', '1');
-      return NextResponse.redirect(url);
+      const metadataName = user.user_metadata?.organizationName;
+      const organizationName =
+        typeof metadataName === 'string' ? metadataName.trim() : '';
+
+      if (organizationName) {
+        const { error: bootstrapError } = await supabase.rpc('bootstrap_organization', {
+          organization_name: organizationName,
+        });
+
+        if (bootstrapError) {
+          obs.error('Email confirmation workspace bootstrap failed', {
+            error: bootstrapError.message,
+          });
+        } else {
+          const refreshed = await supabase
+            .from('organization_members')
+            .select('organization_id')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          membership = refreshed.data;
+          membershipError = refreshed.error;
+        }
+      }
+    }
+
+    if (membershipError) {
+      obs.error('Email confirmation workspace lookup failed after bootstrap', {
+        error: membershipError.message,
+      });
     }
 
     const { data: profile } = await supabase
