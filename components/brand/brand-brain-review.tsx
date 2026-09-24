@@ -359,6 +359,7 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
   const [sectionIndex, setSectionIndex] = useState(0);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [role, setRole] = useState<ReviewRole>('view');
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
@@ -598,8 +599,29 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
                     {canManage && tab === 'review' ? <button type="button" className="badge text-button" onClick={() => batch('dismiss_all', items.map((item) => item.field))} disabled={busyKey !== null} style={{ border: 0, background: 'transparent', color: 'var(--muted)', cursor: 'pointer', padding: '4px 8px', fontSize: 12 }}><X size={12}/> Dismiss pending</button> : null}
                   </div>
                   <div className="grid" style={{ gap: 12 }}>
-                    {items.map((suggestion) => <SuggestionCard key={suggestion.id} suggestion={suggestion} canManage={canManage} busyKey={busyKey} onApprove={(id) => applyAction(id, 'approve')} onReject={(id) => applyAction(id, 'reject')} onRegenerate={(id) => applyAction(id, 'regenerate')} onEdit={(id, value) => applyAction(id, 'edit', value)} />)}
+                    {(expandedSections[sectionLabel] ? items : items.slice(0, 5)).map((suggestion) => (
+                      <SuggestionCard
+                        key={suggestion.id}
+                        suggestion={suggestion}
+                        canManage={canManage}
+                        busyKey={busyKey}
+                        onApprove={(id) => applyAction(id, 'approve')}
+                        onReject={(id) => applyAction(id, 'reject')}
+                        onRegenerate={(id) => applyAction(id, 'regenerate')}
+                        onEdit={(id, value) => applyAction(id, 'edit', value)}
+                      />
+                    ))}
                   </div>
+                  {items.length > 5 ? (
+                    <button
+                      type="button"
+                      className="badge"
+                      onClick={() => setExpandedSections((current) => ({ ...current, [sectionLabel]: !current[sectionLabel] }))}
+                      style={{ border: 0, cursor: 'pointer', marginTop: 12 }}
+                    >
+                      {expandedSections[sectionLabel] ? 'Show less' : `See more · ${items.length - 5} more in this topic`}
+                    </button>
+                  ) : null}
                   <div className="brain-topic-actions">
                     <button type="button" className="badge" disabled={sectionIndex === 0} onClick={() => setSectionIndex((v) => Math.max(0, v - 1))}>← Previous topic</button>
                     <button type="button" className="badge auth-submit" disabled={sectionIndex >= grouped.size - 1} onClick={() => setSectionIndex((v) => Math.min(grouped.size - 1, v + 1))}>Next topic →</button>
