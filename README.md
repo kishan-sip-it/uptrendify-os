@@ -138,6 +138,10 @@ Re-running `node scripts/seed-presentation.cjs` resets the brand to the pristine
 
 ## Email confirmation (production)
 
+> Cross-device behavior: confirmation can be opened on a phone or another device. The confirming device receives a confirmation-only screen and is not left signed into the app. The device where signup started keeps the signup flow active and automatically signs in/continues to onboarding after confirmation. If that original device is closed, the user can simply sign in normally after confirmation.
+
+
+
 > Cross-device note: confirmation emails must not use a private `localhost` origin. The app automatically falls back to `https://uptrendify-os.vercel.app` when signup is initiated from localhost. For a custom deployment domain, set `NEXT_PUBLIC_APP_URL` to that public URL so confirmation and resend links use it consistently.
 
 
