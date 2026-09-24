@@ -20,6 +20,7 @@ function makeClient(options: {
   membership?: { organization_id: string } | null;
   profile?: { onboarding_completed: boolean } | null;
   bootstrapError?: { message: string } | null;
+  signOutError?: { message: string } | null;
 }) {
   return {
     auth: {
@@ -28,6 +29,7 @@ function makeClient(options: {
         data: { user: options.user ?? null },
         error: options.userError ?? null,
       })),
+      signOut: vi.fn(async () => ({ error: options.signOutError ?? null })),
     },
     rpc: vi.fn(async () => ({ error: options.bootstrapError ?? null })),
     from: (table: string) => {
@@ -57,14 +59,13 @@ describe('GET /auth/confirm', () => {
     expect(response.headers.get('location')).toContain('/login?confirmation=failed');
   });
 
-  it('bootstraps a new account workspace from signup metadata before routing to onboarding', async () => {
+  it('verifies the email, signs out only the confirmation device, and shows the handoff screen', async () => {
     const client = makeClient({
       user: {
         id: USER_ID,
         email: 'user@example.com',
         user_metadata: { organizationName: 'Aurora Labs' },
       },
-      membership: null,
     });
     mocks.createSupabaseServerClient.mockResolvedValue(client);
 
@@ -72,10 +73,12 @@ describe('GET /auth/confirm', () => {
       new NextRequest('https://example.com/auth/confirm?token_hash=abc&type=email'),
     );
 
-    expect(client.rpc).toHaveBeenCalledWith('bootstrap_organization', {
-      organization_name: 'Aurora Labs',
+    expect(client.auth.verifyOtp).toHaveBeenCalledWith({
+      type: 'email',
+      token_hash: 'abc',
     });
-    expect(response.headers.get('location')).toContain('/onboarding?confirmed=1');
+    expect(client.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(response.headers.get('location')).toContain('/auth/confirmed');
   });
 
   it('routes an existing confirmed account to dashboard when onboarding is complete', async () => {
@@ -91,6 +94,20 @@ describe('GET /auth/confirm', () => {
     );
 
     expect(response.headers.get('location')).toContain('/dashboard?confirmed=1');
+  });
+
+  it('still shows the handoff acknowledgement even if local session cleanup fails', async () => {
+    const client = makeClient({
+      user: { id: USER_ID, email: 'user@example.com' },
+      signOutError: { message: 'session already cleared' },
+    });
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const response = await GET(
+      new NextRequest('https://example.com/auth/confirm?token_hash=abc&type=email'),
+    );
+
+    expect(response.headers.get('location')).toContain('/auth/confirmed');
   });
 
   it('rejects expired or invalid tokens', async () => {
