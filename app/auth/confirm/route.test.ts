@@ -15,7 +15,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 function makeClient(options: {
   verifyError?: { message: string } | null;
-  user?: { id: string; email?: string } | null;
+  user?: { id: string; email?: string; user_metadata?: Record<string, unknown> } | null;
   userError?: { message: string } | null;
   membership?: { organization_id: string } | null;
   profile?: { onboarding_completed: boolean } | null;
@@ -62,8 +62,8 @@ describe('GET /auth/confirm', () => {
       user: {
         id: USER_ID,
         email: 'user@example.com',
-        user_metadata: { organizationName: 'Aurora Labs' } as unknown as undefined,
-      } as never,
+        user_metadata: { organizationName: 'Aurora Labs' },
+      },
       membership: null,
     });
     mocks.createSupabaseServerClient.mockResolvedValue(client);
