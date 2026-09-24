@@ -161,7 +161,23 @@ export function AppShell({
       }
 
       setWorkspaceRequired(false);
-      setDeleteError(body?.message || 'Workspace deleted. You can now delete your account.');
+      const workspacesResponse = await fetch('/api/auth/organizations', { cache: 'no-store' });
+      const workspacesBody = await workspacesResponse.json().catch(() => null);
+      const remaining = Array.isArray(workspacesBody?.organizations) ? workspacesBody.organizations : [];
+      if (remaining.length > 0) {
+        const next = remaining[0];
+        const switchResponse = await fetch('/api/auth/organizations', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ organizationId: next.id }),
+        });
+        if (switchResponse.ok) {
+          window.location.href = '/dashboard';
+          return;
+        }
+      }
+      setDeleteError('Workspace deleted. Your account is still active. Create a new workspace to continue.');
+      setTimeout(() => { window.location.href = '/settings/workspace/new'; }, 700);
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'Could not delete the workspace.');
     } finally {
@@ -546,7 +562,7 @@ export function AppShell({
             <div className="eyebrow" style={{ color: '#f87171' }}>Danger zone</div>
             <h2 id="delete-account-title" style={{ margin: '6px 0 8px' }}>Delete your account?</h2>
             <p className="subtitle">
-              This removes your sign-in, workspace memberships and profile. Existing organization data and audit history are preserved where possible. If you are the only owner of a workspace, ownership must be transferred first.
+              This removes your sign-in, workspace memberships and profile. Deleting the workspace first permanently removes its workspace-scoped research, Brand Brain, content, campaigns and related records; your account stays active until you delete it separately.
             </p>
 
             {workspaceRequired ? (
