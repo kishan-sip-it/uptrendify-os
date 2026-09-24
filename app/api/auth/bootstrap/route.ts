@@ -59,11 +59,33 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const authorization = request.headers.get('authorization');
+    const accessToken = authorization?.match(/^Bearer\\s+(.+)$/i)?.[1]?.trim() || null;
+
+    const { data: { user }, error: userError } = accessToken
+      ? await supabase.auth.getUser(accessToken)
+      : await supabase.auth.getUser();
+
     if (userError) {
-      obs.error('Organization bootstrap auth lookup failed', { error: userError.message });
+      const errorName = String(userError.name || '').toLowerCase();
+      const errorMessage = String(userError.message || '').toLowerCase();
+      const isUnauthenticated =
+        errorName.includes('authsessionmissing') ||
+        errorMessage.includes('auth session missing') ||
+        Number((userError as { status?: number }).status) === 401;
+
+      if (isUnauthenticated) {
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+      }
+
+      obs.error('Organization bootstrap auth lookup failed', {
+        error: userError.message,
+        name: userError.name,
+        status: (userError as { status?: number }).status ?? null,
+      });
       return NextResponse.json({ error: 'Authentication service unavailable' }, { status: 503 });
     }
+
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 
     const parsedBody = bootstrapSchema.parse(await request.json().catch(() => ({})));
