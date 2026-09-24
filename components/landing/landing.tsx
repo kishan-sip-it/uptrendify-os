@@ -129,7 +129,6 @@ function EvidenceExplorer() {
 }
 
 
-
 function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(false);
@@ -603,3 +602,33 @@ export function Landing() {
 
       <section className="landing-section" id="workflow">
         <Reveal>
+          <div className="landing-section-head">
+            <div className="landing-eyebrow"><Globe2 size={13} /> Try it live</div>
+            <h2>Give it a URL. Watch it work.</h2>
+            <p>Understand your brand first. Then move forward with evidence, strategy and clear next actions.</p>
+          </div>
+        </Reveal>
+        <Reveal delay={120}>
+          <div className="landing-cta-wrap">
+            <button type="button" className="landing-cta" onClick={handleStart} disabled={loading} style={{ fontSize: 15, padding: '15px 26px', cursor: 'pointer' }}>
+              {loading ? 'Working…' : <>Create your workspace <ArrowRight size={15} /></>}
+            </button>
+            <a className="landing-ghost" href="/login">I already have an account</a>
+          </div>
+        </Reveal>
+      </section>
+
+      <footer className="landing-footer">
+        <div className="landing-logo">
+          <span className="logo" style={{ width: 18, height: 18 }} /> UpTrendifyOS
+        </div>
+        <div className="landing-footer-links">
+          <a href="#platform">Platform</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="/login">Sign in</a>
+        </div>
+        <div className="landing-footer-note">© {new Date().getFullYear()} UpTrendifyOS · Research → Review → Strategy</div>
+      </footer>
+    </div>
+  );
+}
