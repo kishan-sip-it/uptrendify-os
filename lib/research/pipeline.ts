@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { crawlBrand, type ProcessedPage } from './crawler';
 import { chunkTextBounded } from './chunk';
 import { analyzeResearchEvidence } from './brain';
+import { translateResearchError } from './errors';
 import { obs } from '@/lib/obs/logger';
 
 export const MAX_CHUNKS_PER_SOURCE = 25;
@@ -103,8 +104,13 @@ export async function runResearchPipeline(input: ResearchPipelineInput): Promise
 export function scheduleResearchExecution(input: ResearchPipelineInput): void {
   after(() => {
     return runResearchPipeline(input).catch(async (error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      obs.error('Research pipeline failed', { researchRunId: input.researchRunId, brandId: input.brandId, error: message });
+      const info = translateResearchError(error);
+      obs.error('Research pipeline failed', {
+        researchRunId: input.researchRunId,
+        brandId: input.brandId,
+        error: info.message,
+        errorCode: info.code,
+      });
       try {
         const current = await input.supabase
           .from('research_runs')
@@ -121,8 +127,8 @@ export function scheduleResearchExecution(input: ResearchPipelineInput): void {
           .update({
             status: targetStatus,
             finished_at: new Date().toISOString(),
-            error_code: 'PIPELINE_FAILED',
-            error_message: 'Research pipeline failed',
+            error_code: targetStatus === 'PARTIAL' ? 'PARTIAL_PIPELINE_FAILURE' : info.code,
+            error_message: info.message.slice(0, 600),
           })
           .eq('id', input.researchRunId)
           .eq('organization_id', input.organizationId);
