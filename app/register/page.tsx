@@ -81,6 +81,10 @@ export default function RegisterPage() {
   const [confirmationEmail, setConfirmationEmail] = useState('');
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
+  const [checkingConfirmation, setCheckingConfirmation] = useState(false);
+  const [confirmationCheckingMessage, setConfirmationCheckingMessage] = useState(
+    'Waiting for email confirmation on the device where you started signup…',
+  );
 
   useEffect(() => {
     async function check() {
@@ -117,6 +121,95 @@ export default function RegisterPage() {
       process.env.NEXT_PUBLIC_APP_URL,
     );
   }
+
+  async function continueFromConfirmedEmail() {
+    if (!confirmationEmail || !password || checkingConfirmation) return false;
+
+    setCheckingConfirmation(true);
+    setConfirmationCheckingMessage('Checking your email confirmation…');
+
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: confirmationEmail,
+        password,
+      });
+
+      if (signInError) {
+        const message = signInError.message.toLowerCase();
+
+        if (message.includes('email not confirmed')) {
+          setConfirmationCheckingMessage(
+            'Your email is not confirmed yet. The moment it is confirmed, this device will continue automatically.',
+          );
+          return false;
+        }
+
+        if (message.includes('too many requests') || message.includes('rate limit')) {
+          setConfirmationCheckingMessage(
+            'Supabase is rate-limiting confirmation checks. We will retry automatically shortly.',
+          );
+          return false;
+        }
+
+        setConfirmationCheckingMessage(
+          'Your email is confirmed, but this device could not complete sign-in yet. Please use Check now again.',
+        );
+        return false;
+      }
+
+      const accessToken = data.session?.access_token;
+      const bootstrap = await fetch('/api/auth/bootstrap', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(accessToken ? { authorization: 'Bearer ' + accessToken } : {}),
+        },
+        body: JSON.stringify({ organizationName: '' }),
+        cache: 'no-store',
+      });
+      const payload = await bootstrap.json().catch(() => null);
+
+      if (!bootstrap.ok) {
+        setConfirmationCheckingMessage(
+          payload?.error || 'Email confirmed, but workspace setup is still finishing. We will keep trying.',
+        );
+        return false;
+      }
+
+      window.location.href = payload?.organization?.onboardingCompleted ? '/dashboard' : '/onboarding';
+      return true;
+    } catch {
+      setConfirmationCheckingMessage(
+        'We could not check the confirmation yet. This device will retry automatically.',
+      );
+      return false;
+    } finally {
+      setCheckingConfirmation(false);
+    }
+  }
+
+  useEffect(() => {
+    if (step !== 'confirmation' || !confirmationEmail || !password) return;
+
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const poll = async () => {
+      if (cancelled) return;
+      const moved = await continueFromConfirmedEmail();
+      if (!cancelled && !moved) {
+        timer = window.setTimeout(poll, 15000);
+      }
+    };
+
+    timer = window.setTimeout(poll, 5000);
+
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [step, confirmationEmail, password]);
 
   async function resendConfirmation() {
     if (!confirmationEmail || resending) return;
@@ -208,6 +301,9 @@ export default function RegisterPage() {
         return;
       } else if (!signUpData.session) {
         setConfirmationEmail(email);
+        setConfirmationCheckingMessage(
+          'Waiting for email confirmation on the device where you started signup…',
+        );
         setStep('confirmation');
         return;
       }
@@ -280,8 +376,19 @@ export default function RegisterPage() {
             <MailCheck size={15} /> Confirmation email sent
           </div>
           <p className="field-note" style={{ margin: 0 }}>
-            Confirming the email signs you in securely and sends you straight to your workspace.
+            Open the confirmation email on any device. This device stays connected to the signup flow and will continue automatically after the email is confirmed.
           </p>
+          <div className="field-note" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <LoaderCircle size={14} className="spin" /> {confirmationCheckingMessage}
+          </div>
+          <button
+            type="button"
+            className="badge"
+            disabled={checkingConfirmation}
+            onClick={() => void continueFromConfirmedEmail()}
+          >
+            {checkingConfirmation ? <><LoaderCircle size={14} className="spin" /> Checking…</> : <>Check now</>}
+          </button>
           <button
             type="button"
             className="badge auth-submit"
