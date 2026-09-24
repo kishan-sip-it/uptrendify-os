@@ -101,9 +101,37 @@ export async function runResearchPipeline(input: ResearchPipelineInput): Promise
   };
 }
 
+const TRANSIENT_RESEARCH_ERROR_CODES = new Set([
+  'DNS_TEMPORARY_FAILURE',
+  'REQUEST_TIMEOUT',
+  'CONNECTION_TIMEOUT',
+  'CONNECTION_RESET',
+  'CONNECTION_FAILED',
+  'NETWORK_UNREACHABLE',
+]);
+
+async function executeResearchWithTransientRetry(input: ResearchPipelineInput): Promise<PipelineOutcome> {
+  try {
+    return await runResearchPipeline(input);
+  } catch (error) {
+    const info = translateResearchError(error);
+    if (!TRANSIENT_RESEARCH_ERROR_CODES.has(info.code)) throw error;
+
+    obs.warn('Retrying research pipeline after transient startup/network failure', {
+      researchRunId: input.researchRunId,
+      brandId: input.brandId,
+      errorCode: info.code,
+      error: info.message,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    return runResearchPipeline(input);
+  }
+}
+
 export function scheduleResearchExecution(input: ResearchPipelineInput): void {
   after(() => {
-    return runResearchPipeline(input).catch(async (error) => {
+    return executeResearchWithTransientRetry(input).catch(async (error) => {
       const info = translateResearchError(error);
       obs.error('Research pipeline failed', {
         researchRunId: input.researchRunId,
