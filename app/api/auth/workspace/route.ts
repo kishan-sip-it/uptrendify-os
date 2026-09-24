@@ -24,6 +24,12 @@ export async function DELETE(request: Request) {
       if (/WORKSPACE_NOT_FOUND_OR_FORBIDDEN/i.test(error.message)) {
         return NextResponse.json({ error: 'Workspace not found or access denied.' }, { status: 404 });
       }
+      if (/LAST_OWNER_PROTECTED/i.test(error.message)) {
+        return NextResponse.json({ error: 'This workspace still requires an owner transfer. The workspace was not deleted.' }, { status: 409 });
+      }
+      if (/AUTHENTICATION_REQUIRED/i.test(error.message)) {
+        return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+      }
       throw error;
     }
 
