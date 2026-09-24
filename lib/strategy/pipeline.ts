@@ -33,7 +33,7 @@ export function gateMessage(rows: SuggestionRow[]): string {
   }
 
   if (approved < GATE_MIN_APPROVED) {
-    return `Review the Brand Brain suggestions first. ${approvalProgress}. Approve or edit ${GATE_MIN_APPROVED - approved} more suggestion${GATE_MIN_APPROVED - approved === 1 ? '' : 's'} before generating strategy.`;
+    return `Review the Brand Brain suggestions first. ${approvalProgress} (${approved} approved or edited). Approve or edit ${GATE_MIN_APPROVED - approved} more suggestion${GATE_MIN_APPROVED - approved === 1 ? '' : 's'} before generating strategy.`;
   }
 
   return 'Brand Brain approval gate is ready for strategy generation.';
