@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { ArrowRight, Globe2, Plus } from 'lucide-react';
+import { ArrowRight, Globe2 } from 'lucide-react';
 import { CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -25,7 +25,6 @@ export default async function BrandsListPage() {
           <h1>Brands</h1>
           <p className="subtitle">Every client brand with its own research run history and Brand Brain.</p>
         </div>
-        <a className="badge" href="/brands/new"><Plus size={14} /> Add brand</a>
       </div>
 
       {(brands ?? []).length === 0 ? (
@@ -36,8 +35,7 @@ export default async function BrandsListPage() {
               <h2 style={{ margin: '5px 0' }}>No brands yet</h2>
             </div>
           </div>
-          <p className="subtitle">Add your first brand to start analyzing its public website and building strategies.</p>
-          <a className="badge" href="/brands/new" style={{ marginTop: 14 }}><Plus size={13} /> Add your first brand</a>
+          <p className="subtitle">Use <strong>Add brand</strong> in the left sidebar to add your first brand and start analyzing its public website.
         </div>
       ) : (
         <div className="grid">
