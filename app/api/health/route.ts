@@ -12,9 +12,9 @@ async function probe(url: string, key: string, path: string) {
       cache: 'no-store',
       signal: AbortSignal.timeout(3000),
     });
-    return response.ok;
+    return { reachable: response.status < 500, status: response.status };
   } catch {
-    return false;
+    return { reachable: false, status: null };
   }
 }
 
@@ -25,12 +25,20 @@ export async function GET() {
 
   let authReachable = false;
   let dbReachable = false;
+  let authStatus: number | null = null;
+  let dbStatus: number | null = null;
 
   if (url && key) {
-    [authReachable, dbReachable] = await Promise.all([
+    const [authProbe, dbProbe] = await Promise.all([
       probe(url, key, '/auth/v1/settings'),
-      probe(url, key, '/rest/v1/organizations?select=id&limit=1'),
+      // This is a connectivity probe, not an RLS authorization check.
+      // A 401/403 proves Supabase is reachable; it should not mark the service down.
+      probe(url, key, '/rest/v1/'),
     ]);
+    authReachable = authProbe.reachable;
+    dbReachable = dbProbe.reachable;
+    authStatus = authProbe.status;
+    dbStatus = dbProbe.status;
   }
 
   const adminConfigured = Boolean(
@@ -57,13 +65,16 @@ export async function GET() {
       integrations: {
         supabase: Boolean(url && key),
         supabaseAuthReachable: authReachable,
+        supabaseAuthStatus: authStatus,
         supabaseDbReachable: dbReachable,
+        supabaseDbStatus: dbStatus,
         supabaseProjectRef: projectRef,
         supabaseAdminConfigured: adminConfigured,
         aiProvider: process.env.DEFAULT_AI_PROVIDER ?? 'groq',
       },
       config: {
         valid: envKeys.length === 0,
+        safe: Boolean(url && key),
         invalidKeys: envKeys,
       },
     },
