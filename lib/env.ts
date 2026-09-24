@@ -22,6 +22,21 @@ function stringWithDefault(field: string, fallback: string) {
   );
 }
 
+function numericWithDefault(field: string, fallback: number, max: number) {
+  return z.preprocess(
+    (value) => {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return undefined;
+        return trimmed.replace(/,/g, '');
+      }
+      return value;
+    },
+    z.coerce.number().int().positive().max(max).default(fallback).describe(field),
+  );
+}
+
+
 export const envSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
   NEXT_PUBLIC_SUPABASE_URL: optionalUrl('NEXT_PUBLIC_SUPABASE_URL'),
@@ -48,11 +63,14 @@ export const envSchema = z.object({
   GHL_LOCATION_ID: optionalString('GHL_LOCATION_ID'),
   JINA_API_KEY: optionalString('JINA_API_KEY'),
   RESEARCH_USER_AGENT: stringWithDefault('RESEARCH_USER_AGENT', 'UpTrendifyOSBot/1.0'),
-  MAX_RESEARCH_PAGES: z.coerce.number().int().positive().max(100).default(15),
-  MAX_RESEARCH_BYTES: z.coerce.number().int().positive().max(20_000_000).default(5_000_000),
-  MAX_RESEARCH_REDIRECTS: z.coerce.number().int().min(0).max(20).default(5),
-  RESEARCH_TIMEOUT_MS: z.coerce.number().int().positive().max(60_000).default(12_000),
-  RESEARCH_TOTAL_BUDGET_MS: z.coerce.number().int().positive().max(120_000).default(45_000),
+  MAX_RESEARCH_PAGES: numericWithDefault('MAX_RESEARCH_PAGES', 15, 100),
+  MAX_RESEARCH_BYTES: numericWithDefault('MAX_RESEARCH_BYTES', 5_000_000, 20_000_000),
+  MAX_RESEARCH_REDIRECTS: z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim().replace(/,/g, '') || undefined : value),
+    z.coerce.number().int().min(0).max(20).default(5).describe('MAX_RESEARCH_REDIRECTS'),
+  ),
+  RESEARCH_TIMEOUT_MS: numericWithDefault('RESEARCH_TIMEOUT_MS', 12_000, 60_000),
+  RESEARCH_TOTAL_BUDGET_MS: numericWithDefault('RESEARCH_TOTAL_BUDGET_MS', 45_000, 120_000),
   AI_EXECUTION_MODE: z.preprocess(
     (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
     z.enum(['live', 'replay']).default('live').describe('AI_EXECUTION_MODE'),
