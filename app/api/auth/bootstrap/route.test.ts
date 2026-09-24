@@ -18,10 +18,11 @@ function makeClient(options: {
   membership?: { organization_id: string; role: string } | null;
   rpcResult?: unknown;
   rpcError?: { message: string } | null;
+  authError?: { name?: string; message: string; status?: number } | null;
 }) {
   const client: any = {
     auth: {
-      getUser: async () => ({ data: { user: options.user ?? null }, error: null }),
+      getUser: async () => ({ data: { user: options.user ?? null }, error: options.authError ?? null }),
     },
     from: (table: string) => {
       const chain: any = {};
@@ -136,6 +137,43 @@ describe('POST /api/auth/bootstrap', () => {
     );
 
     expect(response.status).toBe(401);
+  });
+
+
+  it('returns 401 for a missing auth session instead of reporting the auth service as unavailable', async () => {
+    const client = makeClient({
+      user: null,
+      authError: { name: 'AuthSessionMissingError', message: 'Auth session missing!', status: 401 },
+    });
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/auth/bootstrap', {
+        method: 'POST',
+        body: JSON.stringify({ organizationName: 'Aurora Labs' }),
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: 'Authentication required' });
+  });
+
+  it('returns 503 only for unexpected Supabase Auth service failures', async () => {
+    const client = makeClient({
+      user: null,
+      authError: { name: 'AuthApiError', message: 'Auth service unavailable', status: 503 },
+    });
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/auth/bootstrap', {
+        method: 'POST',
+        body: JSON.stringify({ organizationName: 'Aurora Labs' }),
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'Authentication service unavailable' });
   });
 
   it('maps RPC failures to a safe response', async () => {

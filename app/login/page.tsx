@@ -15,17 +15,41 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  async function resolveWorkspace() {
-    const response = await fetch('/api/auth/bootstrap', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: '{}',
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(payload?.error || 'We could not load your workspace. Please try again.');
+  async function resolveWorkspace(accessToken?: string) {
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (accessToken) headers.authorization = 'Bearer ' + accessToken;
+
+    let lastPayload: { error?: string } | null = null;
+    let lastStatus = 0;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await fetch('/api/auth/bootstrap', {
+        method: 'POST',
+        headers,
+        body: '{}',
+        cache: 'no-store',
+      });
+      const payload = await response.json().catch(() => null);
+      lastPayload = payload;
+      lastStatus = response.status;
+
+      if (response.ok) {
+        window.location.href = payload?.organization?.onboardingCompleted ? '/dashboard' : '/onboarding';
+        return;
+      }
+
+      if (attempt === 0 && (response.status === 401 || response.status === 503)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 350));
+        continue;
+      }
+
+      break;
     }
-    window.location.href = payload?.organization?.onboardingCompleted ? '/dashboard' : '/onboarding';
+
+    if (lastStatus === 401) {
+      throw new Error('Your session could not be established. Please sign in again.');
+    }
+    throw new Error(lastPayload?.error || 'We could not load your workspace. Please try again.');
   }
 
   async function checkSession() {
@@ -50,10 +74,9 @@ export default function LoginPage() {
     const form = new FormData(event.currentTarget);
     const email = String(form.get('email') ?? '').trim();
     const password = String(form.get('password') ?? '');
-    const supabase = createSupabaseBrowserClient();
-
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      const supabase = createSupabaseBrowserClient();
+      const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) {
         const message = authError.message.toLowerCase();
         if (message.includes('invalid login credentials') || message.includes('invalid credentials')) {
@@ -67,7 +90,7 @@ export default function LoginPage() {
         }
         return;
       }
-      await resolveWorkspace();
+      await resolveWorkspace(signInData.session?.access_token);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     } finally {

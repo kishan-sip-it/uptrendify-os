@@ -137,9 +137,8 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
-    const supabase = createSupabaseBrowserClient();
-
     try {
+      const supabase = createSupabaseBrowserClient();
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -177,10 +176,15 @@ export default function RegisterPage() {
         }
       }
 
+      const bootstrapHeaders: Record<string, string> = { 'content-type': 'application/json' };
+      const accessToken = signUpData.session?.access_token;
+      if (accessToken) bootstrapHeaders.authorization = 'Bearer ' + accessToken;
+
       const bootstrap = await fetch('/api/auth/bootstrap', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: bootstrapHeaders,
         body: JSON.stringify({ organizationName }),
+        cache: 'no-store',
       });
       const bootstrapBody = await bootstrap.json().catch(() => null);
       if (!bootstrap.ok) {
