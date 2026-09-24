@@ -105,6 +105,7 @@ export async function GET() {
         const response = await fetch(url.replace(/\/$/, '') + '/auth/v1/settings', {
           headers: { apikey: key },
           cache: 'no-store',
+          signal: AbortSignal.timeout(5000),
         });
         checks.push(
           makeCheck(
