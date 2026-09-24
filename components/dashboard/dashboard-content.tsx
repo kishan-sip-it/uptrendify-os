@@ -152,13 +152,12 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
           <div className="eyebrow">Portfolio</div>
           <h2 style={{ margin: '5px 0' }}>Recent brands</h2>
         </div>
-        <a className="badge" href="/brands/new"><Plus size={13} /> Add brand</a>
       </div>
       {brands.length === 0 ? (
         <EmptyState
           title="No brands yet"
           description="Add your first brand to start analyzing its public website and building strategies."
-          action={<a className="badge" href="/brands/new"><Plus size={13} /> Add your first brand</a>}
+          action={<span className="field-note">Use <strong>Add brand</strong> in the left sidebar to create your first brand.</span>}
         />
       ) : (
         <div className="grid" id="brands">
@@ -197,7 +196,7 @@ function ResearchActivityPanel({ activity }: { activity: ResearchActivity[] }) {
         <EmptyState
           title="No research yet"
           description="Research runs will appear here once a brand's public website has been analyzed."
-          action={<a className="badge" href="/brands/new"><Plus size={13} /> Add a brand</a>}
+          action={<span className="field-note">Use <strong>Add brand</strong> in the left sidebar to start a research run.</span>}
         />
       ) : (
         <div className="activity-list">
