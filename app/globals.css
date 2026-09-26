@@ -1795,3 +1795,145 @@ html[data-theme="light"] .landing-account-pill {
     flex-direction: column;
   }
 }
+
+
+/* Onboarding role context + website-first research preview */
+.onboarding-role-context {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-bottom: 14px;
+  padding: 12px 13px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+}
+.onboarding-role-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+  color: var(--accent);
+}
+.onboarding-role-context > div:last-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.onboarding-role-context strong {
+  font-size: 13px;
+  line-height: 1.45;
+}
+.onboarding-role-context span:last-child {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.onboarding-brand-snapshot {
+  display: grid;
+  gap: 10px;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-2) 72%, var(--panel));
+}
+.onboarding-brand-snapshot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.onboarding-brand-snapshot-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--text);
+}
+.onboarding-brand-snapshot-head a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.onboarding-brand-snapshot-body {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.onboarding-brand-favicon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  overflow: hidden;
+}
+.onboarding-brand-favicon img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+.onboarding-brand-snapshot-body > div:nth-child(2) {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.onboarding-brand-snapshot-body strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.onboarding-brand-snapshot-body span {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.onboarding-brand-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.onboarding-brand-snapshot-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  padding-top: 2px;
+  border-top: 1px solid var(--line);
+}
+.onboarding-role-review {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 8px;
+}
+.onboarding-role-review svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--accent);
+}
+@media (max-width: 700px) {
+  .onboarding-brand-snapshot-body {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .onboarding-brand-ready {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
