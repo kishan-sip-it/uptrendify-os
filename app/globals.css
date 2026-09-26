@@ -126,7 +126,7 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .fact-label { color: var(--muted); font-size: 12px; }
 .fact-value { font-size: 13px; line-height: 1.45; word-break: break-word; }
 .evidence-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 10px; }
-.evidence-item { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: rgba(237,244,255,.88); }
+.evidence-item { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: var(--text); }
 .insight-groups { display: grid; gap: 16px; }
 .insight-group-label { text-transform: uppercase; letter-spacing: .12em; font-size: 11px; font-weight: 700; color: var(--accent-2); margin-bottom: 8px; }
 .source-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 10px; }
@@ -238,8 +238,8 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 /* Next actions */
 .next-actions { margin-bottom: 4px; }
 .next-actions-grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
-.next-action-card { display:flex; align-items:flex-start; gap:12px; padding:14px; border:1px solid var(--line); border-radius:14px; background:linear-gradient(180deg, rgba(17,26,41,.85), rgba(13,19,31,.9)); transition: transform .25s cubic-bezier(.22,.61,.36,1), border-color .25s, box-shadow .25s; }
-.next-action-card:hover { transform: translateY(-2px); border-color: rgba(183,148,246,.25); box-shadow: 0 18px 50px rgba(0,0,0,.28); }
+.next-action-card { display:flex; align-items:flex-start; gap:12px; padding:14px; border:1px solid var(--line); border-radius:14px; background:linear-gradient(180deg, var(--surface-card), var(--surface-card-2)); transition: transform .25s cubic-bezier(.22,.61,.36,1), border-color .25s, box-shadow .25s; }
+.next-action-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 28%, var(--line)); box-shadow: 0 18px 50px color-mix(in srgb, var(--text) 18%, transparent); }
 .next-action-icon { width:34px; height:34px; flex-shrink:0; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; color:var(--accent); background:color-mix(in srgb, var(--accent) 9%, var(--surface-muted)); border:1px solid rgba(183,148,246,.18); }
 .next-action-body { min-width:0; flex:1; }
 .next-action-title { font-weight:700; font-size:14px; }
@@ -599,7 +599,7 @@ html[data-theme="dark"] .current-location { color: var(--muted); }
 .tour-link, .tour-primary, .tour-close { border:0; cursor:pointer; background:transparent; }
 .tour-link { color:var(--muted); display:inline-flex; align-items:center; gap:5px; padding:7px; }
 .tour-link.skip { margin-right:auto; }
-.tour-primary { display:inline-flex; align-items:center; gap:6px; padding:9px 12px; border-radius:10px; background:var(--accent); color:#fff; font-weight:700; }
+.tour-primary { display:inline-flex; align-items:center; gap:6px; padding:9px 12px; border-radius:10px; background:var(--accent); color:var(--text-inverse); font-weight:700; }
 .tour-close { color:var(--muted); padding:3px; }
 
 .settings-grid { display:grid; grid-template-columns:1.35fr 1fr; gap:16px; }
@@ -828,7 +828,7 @@ html[data-theme="light"] .auth-card-form select,
 html[data-theme="light"] input,
 html[data-theme="light"] textarea,
 html[data-theme="light"] select {
-  background: #fffdf8;
+  background:var(--surface-card);
   color: var(--text);
   border-color: #ddd5c7;
 }
@@ -846,7 +846,7 @@ html[data-theme="light"] select:focus {
 }
 
 html[data-theme="light"] .badge {
-  background: #edf5ef;
+  background:color-mix(in srgb, var(--accent) 8%, var(--surface-muted));
   border-color: #cfe0d4;
   color: #447d66;
 }
@@ -861,7 +861,7 @@ html[data-theme="light"] .landing-metric {
 
 html[data-theme="light"] .landing-feature-icon,
 html[data-theme="light"] .landing-how-icon {
-  background: #edf5ef;
+  background:color-mix(in srgb, var(--accent) 8%, var(--surface-muted));
   border-color: #d3e3d8;
 }
 
@@ -915,7 +915,7 @@ html[data-theme="light"] .auth-shell {
   padding: 7px 10px;
   border-radius: 999px;
   background: #ecf5ef;
-  color: #4f8b72;
+  color:var(--accent);
   border: 1px solid #d3e5d8;
   font-size: 11px;
   font-weight: 700;
@@ -958,8 +958,8 @@ html[data-theme="light"] .auth-shell {
   border-radius: 11px;
   display: grid;
   place-items: center;
-  color: #4f8b72;
-  background: #edf5ef;
+  color:var(--accent);
+  background:color-mix(in srgb, var(--accent) 8%, var(--surface-muted));
 }
 
 .auth-flow-copy {
@@ -979,7 +979,7 @@ html[data-theme="light"] .auth-shell {
 .auth-benefit {
   padding: 12px;
   border-radius: 14px;
-  background: rgba(255, 253, 248, 0.72);
+  background:color-mix(in srgb, var(--surface-card) 78%, transparent);
   border: 1px solid rgba(115, 111, 99, 0.16);
 }
 
@@ -999,13 +999,13 @@ html[data-theme="light"] .auth-shell {
 .brand-input-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
 .brand-input-span { grid-column: 1 / -1; }
 .brand-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
-.brand-field small { color: #91897d; line-height: 1.45; }
+.brand-field small { color:var(--muted); line-height: 1.45; }
 .brand-input,
 .brand-select,
 .brand-textarea {
   width: 100%;
   border-radius: 13px !important;
-  border: 1px solid #ddd5c7 !important;
+  border: 1px solid var(--line) !important;
   background: #fffdf8 !important;
   color: var(--text) !important;
   padding: 12px 14px !important;
@@ -1023,9 +1023,9 @@ html[data-theme="light"] .auth-shell {
   display: grid;
   gap: 4px;
   padding: 6px;
-  border: 1px solid #ddd5c7;
+  border:1px solid var(--line);
   border-radius: 14px;
-  background: rgba(255, 253, 248, 0.98);
+  background:var(--surface-overlay);
   box-shadow: 0 22px 58px rgba(66, 60, 50, 0.16);
 }
 .brand-suggestion {
@@ -1043,7 +1043,7 @@ html[data-theme="light"] .auth-shell {
 }
 .brand-suggestion:hover,
 .brand-suggestion:focus-visible {
-  background: #f1ece2;
+  background:var(--surface-hover);
   outline: none;
 }
 .brand-suggestion-icon {
@@ -1052,8 +1052,8 @@ html[data-theme="light"] .auth-shell {
   display: grid;
   place-items: center;
   border-radius: 10px;
-  background: #edf5ef;
-  color: #4f8b72;
+  background:color-mix(in srgb, var(--accent) 8%, var(--surface-muted));
+  color:var(--accent);
 }
 .brand-suggestion-copy { min-width: 0; display: grid; gap: 2px; }
 .brand-suggestion-copy strong { font-size: 12px; }
@@ -1065,15 +1065,15 @@ html[data-theme="light"] .auth-shell {
   white-space: nowrap;
 }
 .brand-suggestion-loading { padding: 10px 12px; font-size: 12px; color: var(--muted); }
-.brand-suggestion-note { padding: 6px 10px 8px; font-size: 10px; color: #928a7d; }
+.brand-suggestion-note { padding: 6px 10px 8px; font-size: 10px; color:var(--muted); }
 
 .brand-form-submit {
   min-height: 48px;
   width: 100%;
-  border: 1px solid #4f8b72;
+  border:1px solid var(--accent);
   border-radius: 13px;
-  background: #4f8b72;
-  color: #fffdf8;
+  background:var(--accent);
+  color:var(--text-inverse);
   font-weight: 700;
   cursor: pointer;
   transition: transform .18s ease, box-shadow .18s ease;
@@ -1084,7 +1084,7 @@ html[data-theme="light"] .auth-shell {
 .tour-progress-track {
   height: 4px;
   border-radius: 999px;
-  background: #ece4d8;
+  background:var(--surface-progress);
   overflow: hidden;
   margin: -2px -2px 14px;
 }
@@ -1099,9 +1099,9 @@ html[data-theme="light"] .auth-shell {
   z-index: 2003;
   width: 14px;
   height: 14px;
-  background: #fffdf8;
-  border-left: 1px solid #ddd5c7;
-  border-top: 1px solid #ddd5c7;
+  background:var(--surface-card);
+  border-left:1px solid var(--line);
+  border-top:1px solid var(--line);
   transform: translateX(-50%) rotate(45deg);
 }
 .tour-pointer.below { transform: translate(-50%, -50%) rotate(45deg); }
@@ -1179,7 +1179,7 @@ html[data-theme="light"] .strategy-acc,
 html[data-theme="light"] .obj-card,
 html[data-theme="light"] .campaign-card,
 html[data-theme="light"] .suggestion-card {
-  background: #fffdf8;
+  background:var(--surface-card);
   border-color: var(--line);
 }
 
@@ -1200,7 +1200,7 @@ html[data-theme="light"] .content-form input,
 html[data-theme="light"] .content-form select,
 html[data-theme="light"] .content-form textarea,
 html[data-theme="light"] .suggestion-edit-input {
-  background: #fffdf8;
+  background:var(--surface-card);
   border-color: #ddd5c7;
   color: var(--text);
 }
@@ -1212,7 +1212,7 @@ html[data-theme="light"] .brand-switcher-trigger {
 }
 
 html[data-theme="light"] .landing-pipeline-glow .landing-pipeline-step {
-  background: #f1ece2;
+  background:var(--surface-hover);
   border-color: #e0d8ca;
 }
 
@@ -1421,7 +1421,7 @@ html[data-theme="light"] .onboarding-grid input,
 html[data-theme="light"] .onboarding-grid select,
 html[data-theme="light"] .onboarding-grid textarea,
 html[data-theme="light"] .choice-grid input {
-  background: #fffdf8;
+  background:var(--surface-card);
   border-color: #ddd5c7;
   color: var(--text);
 }
