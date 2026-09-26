@@ -120,7 +120,9 @@ function rankAndDedupe(candidates: RankedCandidate[]): BrandWebsiteCandidate[] {
     // search-engine agreement. Consensus is a relevance signal, not a claim
     // that the domain is necessarily the brand's official site.
     const sources = existing.sources + candidate.sources;
-    const score = Math.max(existing.score, candidate.score) + Math.min(24, sources * 4);
+    // Search-engine agreement matters, but it must not overpower a strong
+    // exact-domain candidate guessed from the user's brand name.
+    const score = Math.max(existing.score, candidate.score) + Math.min(12, sources * 2);
     byHost.set(key, {
       ...(candidate.score >= existing.score ? candidate : existing),
       score,
