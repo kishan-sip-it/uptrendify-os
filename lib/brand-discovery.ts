@@ -22,14 +22,17 @@ const BLOCKED_HOSTS = new Set([
 ]);
 
 const TLD_PRIORITY: Record<string, number> = {
-  com: 42,
-  org: 24,
-  net: 20,
-  co: 18,
+  // TLD is only a tie-breaker, but an exact brand-domain match on a
+  // conventional public web domain should beat an otherwise equivalent
+  // alternative extension such as .io.
+  com: 72,
+  org: 28,
+  net: 24,
+  co: 20,
   app: 14,
-  io: 12,
-  ai: 11,
-  dev: 9,
+  io: 8,
+  ai: 8,
+  dev: 6,
 };
 
 function normalizeCandidate(raw: string): string | null {
@@ -389,7 +392,7 @@ export async function discoverBrandWebsites(query: string): Promise<BrandWebsite
   for (const candidate of likely) {
     ranked.push({
       ...candidate,
-      score: scoreCandidate(candidate, cleaned, 0) + 42,
+      score: scoreCandidate(candidate, cleaned, 0) + 55,
       providers: new Set(),
     });
   }
