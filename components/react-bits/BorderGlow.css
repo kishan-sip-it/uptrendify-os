@@ -11,7 +11,7 @@
   isolation: isolate;
   display: grid;
   border: 1px solid rgb(255 255 255 / 15%);
-  background: var(--card-bg, #120F17);
+  background: var(--card-bg, var(--surface-card, #120F17));
   overflow: visible;
   box-shadow:
     rgba(0, 0, 0, 0.1) 0px 1px 2px,
@@ -43,7 +43,7 @@
 .border-glow-card::before {
   border: 1px solid transparent;
   background:
-    linear-gradient(var(--card-bg, #120F17) 0 100%) padding-box,
+    linear-gradient(var(--card-bg, var(--surface-card, #120F17)) 0 100%) padding-box,
     linear-gradient(rgb(255 255 255 / 0%) 0% 100%) border-box,
     var(--gradient-one) border-box,
     var(--gradient-two) border-box,
