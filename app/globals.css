@@ -2173,3 +2173,57 @@ html[data-theme="system"]:not(.theme-dark) {
     justify-content: center;
   }
 }
+
+
+/* Dashboard brand cards: keep decorative glow behind all readable content. */
+.brand-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--panel);
+  color: var(--text);
+}
+.brand-card::after {
+  z-index: 0;
+  pointer-events: none;
+}
+.brand-card > * {
+  position: relative;
+  z-index: 1;
+}
+.brand-card .badge.tone-good {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: color-mix(in srgb, var(--accent) 13%, var(--panel));
+  color: var(--accent);
+  text-shadow: none;
+}
+
+/* Authenticated landing continuation must remain above the animated hero canvas. */
+.landing-account-context-slot {
+  position: relative;
+  z-index: 10;
+  pointer-events: auto;
+}
+.landing-account-context {
+  position: relative;
+  z-index: 11;
+}
+.landing-account-continue {
+  position: relative;
+  z-index: 12;
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Keep the theme switch compact and bounded to Settings. */
+.settings-page .theme-control {
+  width: fit-content;
+  max-width: 100%;
+  gap: 2px;
+  padding: 2px;
+}
+.settings-page .theme-option {
+  min-height: 28px;
+  padding: 5px 7px;
+  font-size: 10px;
+}
