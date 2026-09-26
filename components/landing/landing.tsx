@@ -442,17 +442,21 @@ export function Landing() {
             <a className="landing-ghost" href="#how-it-works">See the workflow</a>
           </div>
         </Reveal>
-        {account ? (
-          <Reveal delay={300}>
-            <div className="landing-account-context" aria-label="Current workspace context">
-              <div>
-                <div className="landing-eyebrow"><Users size={13} /> {ROLE_DESTINATIONS[account.role].title}</div>
-                <strong>{ROLE_DESTINATIONS[account.role].body}</strong>
+        {/* Layout contract: this slot is always present so auth resolution can never push
+            the hero pipeline/terminal and metrics downward after first paint. */}
+        <div className="landing-account-context-slot" aria-live="polite">
+          {account ? (
+            <Reveal delay={300}>
+              <div className="landing-account-context" aria-label="Current workspace context">
+                <div>
+                  <div className="landing-eyebrow"><Users size={13} /> {ROLE_DESTINATIONS[account.role].title}</div>
+                  <strong>{ROLE_DESTINATIONS[account.role].body}</strong>
+                </div>
+                <a className="landing-ghost" href={ROLE_DESTINATIONS[account.role].href}>Continue <ArrowRight size={13} /></a>
               </div>
-              <a className="landing-ghost" href={ROLE_DESTINATIONS[account.role].href}>Continue <ArrowRight size={13} /></a>
-            </div>
-          </Reveal>
-        ) : null}
+            </Reveal>
+          ) : null}
+        </div>
         <Reveal delay={320}>
           <div className="landing-pipeline" aria-hidden="true">
             {PIPELINE.map((item) => (
