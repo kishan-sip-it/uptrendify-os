@@ -114,7 +114,7 @@ export function BrandWebsiteSuggestions({
       <div className="brand-suggestions-head">
         <div>
           <strong><Search size={13} /> Website matches</strong>
-          <span>Pick a public website to fill the URL automatically.</span>
+          <span>Optional suggestions. Select one to fill the URL, or close this list and enter/search manually.</span>
         </div>
         <button type="button" className="brand-suggestions-close" aria-label="Close website suggestions" onClick={dismiss}>
           <X size={15} />
@@ -176,7 +176,7 @@ export function BrandWebsiteSuggestions({
             ))}
           </div>
           <div className="brand-suggestions-footer">
-            <span>{results.length} ranked public match{results.length === 1 ? '' : 'es'}</span>
+            <span>{results.length} ranked public match{results.length === 1 ? '' : 'es'} · scroll for all results</span>
             <button type="button" onClick={dismiss}>Enter website manually</button>
           </div>
         </>
