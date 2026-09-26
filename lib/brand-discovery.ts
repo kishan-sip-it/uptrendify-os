@@ -337,8 +337,8 @@ function likelyDomainCandidates(query: string): string[] {
 async function discoverLikelyDomains(query: string): Promise<BrandWebsiteCandidate[]> {
   const urls = likelyDomainCandidates(query).slice(0, 16);
 
-  const results = await Promise.all(
-    urls.map(async (candidateUrl) => {
+  const results: Array<BrandWebsiteCandidate | null> = await Promise.all(
+    urls.map(async (candidateUrl): Promise<BrandWebsiteCandidate | null> => {
       const host = new URL(candidateUrl).hostname;
       const html = await fetchHtml(candidateUrl, 2400);
       const reachable = Boolean(html) || await probeUrl(candidateUrl, 2400);
