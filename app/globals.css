@@ -1706,3 +1706,92 @@ html[data-reduced-motion="true"] *::after {
 }
 
 /* Deployment smoke trigger: no runtime/style behavior change. */
+
+
+/* Authenticated landing account context */
+.landing-account-loading {
+  width: 112px;
+  height: 34px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 82%, var(--line));
+  border: 1px solid var(--line);
+  animation: landing-account-pulse 1.6s ease-in-out infinite;
+}
+@keyframes landing-account-pulse {
+  0%, 100% { opacity: .55; }
+  50% { opacity: 1; }
+}
+.landing-account-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 10px 4px 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+}
+.landing-account-avatar {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel-2));
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+}
+.landing-account-copy {
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  line-height: 1.1;
+}
+.landing-account-copy strong {
+  color: var(--text);
+  font-size: 11px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.landing-account-copy small {
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.landing-account-context {
+  width: min(860px, 100%);
+  margin: 24px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+  text-align: left;
+}
+.landing-account-context > div {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.landing-account-context strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+html[data-theme="light"] .landing-account-pill {
+  background: rgba(255, 253, 248, .92);
+}
+@media (max-width: 720px) {
+  .landing-account-pill { display: none; }
+  .landing-account-context {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
