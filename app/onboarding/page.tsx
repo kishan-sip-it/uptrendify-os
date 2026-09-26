@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, LoaderCircle, Rocket } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ExternalLink, Globe2, LoaderCircle, Rocket, ShieldCheck, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
@@ -55,6 +55,15 @@ const STEPS = [
 
 const TIMEZONES = ['UTC', 'Asia/Kolkata', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Asia/Singapore', 'Asia/Tokyo'];
 
+const ROLE_CONTEXT: Record<string, { title: string; body: string; action: string }> = {
+  OWNER: { title: 'You are the workspace owner', body: 'You will control workspace settings, brands, team access and the final human gates.', action: 'You can invite teammates and delegate work later.' },
+  ADMIN: { title: 'You are a workspace admin', body: 'You will help manage brands, team operations and the workflow without taking ownership away from the owner.', action: 'Your permissions stay server-enforced.' },
+  STRATEGIST: { title: 'Your focus is strategy', body: 'Your setup will feed the research → Brand Brain → Strategy path so you can turn approved evidence into a plan.', action: 'You can review Brand Brain and generate strategy where permitted.' },
+  EDITOR: { title: 'Your focus is execution', body: 'Your workspace will surface approved context for Content Studio and campaign execution.', action: 'You will work from the same approved Brand Brain and strategy.' },
+  APPROVER: { title: 'Your focus is approval', body: 'You will see the workflow context and the exact content versions waiting for a decision.', action: 'Approval remains a distinct human gate.' },
+  CLIENT: { title: 'You are joining as a client', body: 'Your workspace view is focused on seeing prepared work and the decisions that need your attention.', action: 'Editing and generation permissions stay restricted by role.' },
+};
+
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -65,6 +74,7 @@ export default function OnboardingPage() {
   const [researching, setResearching] = useState(false);
   const [error, setError] = useState('');
   const [resumable, setResumable] = useState(false);
+  const [workspaceRole, setWorkspaceRole] = useState<string>('OWNER');
   const autosaveTimerRef = useRef<number | null>(null);
   const autosaveControllerRef = useRef<AbortController | null>(null);
 
@@ -105,6 +115,7 @@ export default function OnboardingPage() {
 
           if (cancelled) return;
           setDraft(next);
+          setWorkspaceRole(String(body?.role || 'OWNER'));
           setStep(Math.min(5, Math.max(0, Number(body?.progress?.current_step ?? 0))));
           setResumable(Boolean(body?.progress));
           setLoading(false);
@@ -370,12 +381,22 @@ export default function OnboardingPage() {
           )}
 
           {step === 1 && (
+            <>
+            <div className="onboarding-role-context">
+              <div className="onboarding-role-icon"><Users size={16} /></div>
+              <div>
+                <div className="eyebrow">{ROLE_CONTEXT[workspaceRole]?.title ?? 'Workspace role'}</div>
+                <strong>{ROLE_CONTEXT[workspaceRole]?.body ?? 'Your permissions and next actions are tailored to your workspace role.'}</strong>
+                <span>{ROLE_CONTEXT[workspaceRole]?.action ?? 'Permissions remain server-enforced.'}</span>
+              </div>
+            </div>
             <div className="onboarding-grid">
               <label>First name<input value={draft.firstName} onChange={(e) => update('firstName', e.target.value)} autoFocus /></label>
               <label>Last name<input value={draft.lastName} onChange={(e) => update('lastName', e.target.value)} /></label>
               <label>Team size<input value={draft.teamSize} onChange={(e) => update('teamSize', e.target.value)} placeholder="e.g. 5" /></label>
               <label>Timezone<select value={draft.timezone} onChange={(e) => update('timezone', e.target.value)}>{TIMEZONES.map((zone) => <option key={zone}>{zone}</option>)}</select><small className="field-help">Used for campaign dates, publishing schedules and reporting day boundaries.</small></label>
             </div>
+            </>
           )}
 
           {step === 2 && (
@@ -392,6 +413,34 @@ export default function OnboardingPage() {
               <label>Industry<input value={draft.industry} onChange={(e) => update('industry', e.target.value)} placeholder="e.g. SaaS" /></label>
               <label>Primary audience<textarea value={draft.primaryAudience} onChange={(e) => update('primaryAudience', e.target.value)} rows={4} placeholder="Who should this brand reach?" /></label>
               <label className="span-2">What does the brand do?<textarea value={draft.description} onChange={(e) => update('description', e.target.value)} rows={4} placeholder="Describe the business in your own words." /></label>
+              <div className="onboarding-brand-snapshot span-2" aria-live="polite">
+                <div className="onboarding-brand-snapshot-head">
+                  <div className="onboarding-brand-snapshot-title"><Globe2 size={15} /> Brand snapshot</div>
+                  {draft.websiteUrl ? <a href={draft.websiteUrl} target="_blank" rel="noreferrer" className="field-note"><ExternalLink size={12} /> Preview site</a> : null}
+                </div>
+                {draft.websiteUrl ? (
+                  <div className="onboarding-brand-snapshot-body">
+                    <div className="onboarding-brand-favicon">
+                      <img
+                        src={`https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(draft.websiteUrl.replace(/^https?:\/\//i, '').split('/')[0])}`}
+                        alt=""
+                        width={32}
+                        height={32}
+                      />
+                    </div>
+                    <div>
+                      <strong>{draft.brandName || 'Your brand'}</strong>
+                      <span>{draft.websiteUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '')}</span>
+                    </div>
+                    <div className="onboarding-brand-ready"><Check size={13} /> Ready for research</div>
+                  </div>
+                ) : (
+                  <div className="field-note">Add the public website to see the research starting point.</div>
+                )}
+                <div className="onboarding-brand-snapshot-note">
+                  Research will read the public footprint, keep source URLs, and turn what it can verify into Brand Brain suggestions. Nothing becomes authoritative until a human reviews it.
+                </div>
+              </div>
               <p className="field-note">Brand name, website and rules stay editable later from the brand workspace.</p>
             </div>
           )}
@@ -416,6 +465,7 @@ export default function OnboardingPage() {
             <div className="review-grid">
               {reviewItems.map(([label, value]) => <div className="review-item" key={label}><span>{label}</span><strong>{value}</strong></div>)}
               <div className="review-note"><strong>These rules are human-authored.</strong><span>Research adds evidence separately. Brand Brain suggestions still require human approval before strategy can use them as authoritative facts.</span></div>
+              <div className="review-note onboarding-role-review"><ShieldCheck size={15} /><span><strong>{ROLE_CONTEXT[workspaceRole]?.title ?? 'Your workspace role'}</strong> — {ROLE_CONTEXT[workspaceRole]?.body ?? 'Your available actions follow your server-side workspace permissions.'}</span></div>
             </div>
           )}
 

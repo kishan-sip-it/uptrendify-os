@@ -32,6 +32,7 @@ export async function GET() {
       progress: progress.data,
       organization: organization.data,
       profile: profile.data,
+      role: auth.context.role,
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     obs.error('Onboarding state load failed', { error: error instanceof Error ? error.message : String(error) });

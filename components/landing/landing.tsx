@@ -14,6 +14,30 @@ import WarpText from '@/components/react-bits/WarpText';
 
 type StepState = 'pending' | 'running' | 'done';
 
+type OrgRole = 'OWNER' | 'ADMIN' | 'STRATEGIST' | 'EDITOR' | 'APPROVER' | 'CLIENT';
+
+type LandingAccount = {
+  email: string;
+  firstName: string;
+  organizationName: string;
+  role: OrgRole;
+};
+
+const ROLE_DESTINATIONS: Record<OrgRole, { label: string; href: string; title: string; body: string }> = {
+  OWNER: { label: 'Open workspace', href: '/dashboard', title: 'Workspace owner', body: 'Manage the workspace, brands, team access and the next workflow action.' },
+  ADMIN: { label: 'Open workspace', href: '/dashboard', title: 'Workspace admin', body: 'Keep brands, members and operational work moving from the command center.' },
+  STRATEGIST: { label: 'Open Strategy', href: '/dashboard', title: 'Strategy focus', body: 'Move from approved Brand Brain into strategy and the next marketing decision.' },
+  EDITOR: { label: 'Open Content Studio', href: '/brands', title: 'Execution focus', body: 'Turn approved strategy into content and keep the execution queue moving.' },
+  APPROVER: { label: 'Open Approvals', href: '/approvals', title: 'Approval focus', body: 'Review the exact content version that is waiting for your decision.' },
+  CLIENT: { label: 'Open workspace', href: '/dashboard', title: 'Client view', body: 'See the work your workspace has prepared and the items that need your attention.' },
+};
+
+function initialsForAccount(account: LandingAccount): string {
+  const fromName = account.firstName.trim();
+  if (fromName) return fromName.slice(0, 2).toUpperCase();
+  return (account.email || 'U').slice(0, 1).toUpperCase();
+}
+
 const WORKFLOW: { icon: LucideIcon; label: string; note: string; tone: string }[] = [
   { icon: Search, label: 'Research', note: 'Understand the business from its website', tone: '#278b69' },
   { icon: Bot, label: 'Brand Intelligence', note: 'Turn evidence into structured suggestions', tone: '#3b8f7a' },
@@ -232,7 +256,47 @@ function WorkflowDemo() {
 export function Landing() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [accountLoading, setAccountLoading] = useState(true);
+  const [account, setAccount] = useState<LandingAccount | null>(null);
   const heroRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAccount() {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          if (!cancelled) setAccount(null);
+          return;
+        }
+
+        const response = await fetch('/api/auth/organizations', { cache: 'no-store' });
+        const body = await response.json().catch(() => null);
+        const organizations = Array.isArray(body?.organizations) ? body.organizations : [];
+        const current = organizations.find((item: { id?: string }) => item.id === body?.currentOrganizationId) ?? organizations[0] ?? null;
+
+        if (!cancelled && current) {
+          setAccount({
+            email: user.email ?? '',
+            firstName: typeof user.user_metadata?.first_name === 'string' ? user.user_metadata.first_name : '',
+            organizationName: current.name || 'Workspace',
+            role: current.role as OrgRole,
+          });
+        }
+      } catch {
+        if (!cancelled) setAccount(null);
+      } finally {
+        if (!cancelled) setAccountLoading(false);
+      }
+    }
+
+    void loadAccount();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleStart() {
     setLoading(true);
@@ -277,8 +341,27 @@ export function Landing() {
           <a href="#workflow" onClick={() => setMobileOpen(false)}>Workflow</a>
         </nav>
         <div className="landing-actions">
-          <a className="landing-ghost" href="/login">Sign in</a>
-          <a className="landing-cta" href="/register">Get started <ArrowRight size={14} /></a>
+          {accountLoading ? (
+            <span className="landing-account-loading" aria-hidden="true" />
+          ) : account ? (
+            <>
+              <span className="landing-account-pill" title={account.email}>
+                <span className="landing-account-avatar">{initialsForAccount(account)}</span>
+                <span className="landing-account-copy">
+                  <strong>{account.organizationName}</strong>
+                  <small>{account.role.toLowerCase()}</small>
+                </span>
+              </span>
+              <a className="landing-cta" href={ROLE_DESTINATIONS[account.role].href}>
+                {ROLE_DESTINATIONS[account.role].label} <ArrowRight size={14} />
+              </a>
+            </>
+          ) : (
+            <>
+              <a className="landing-ghost" href="/login">Sign in</a>
+              <a className="landing-cta" href="/register">Get started <ArrowRight size={14} /></a>
+            </>
+          )}
         </div>
         <button
           type="button"
@@ -359,6 +442,17 @@ export function Landing() {
             <a className="landing-ghost" href="#how-it-works">See the workflow</a>
           </div>
         </Reveal>
+        {account ? (
+          <Reveal delay={300}>
+            <div className="landing-account-context" aria-label="Current workspace context">
+              <div>
+                <div className="landing-eyebrow"><Users size={13} /> {ROLE_DESTINATIONS[account.role].title}</div>
+                <strong>{ROLE_DESTINATIONS[account.role].body}</strong>
+              </div>
+              <a className="landing-ghost" href={ROLE_DESTINATIONS[account.role].href}>Continue <ArrowRight size={13} /></a>
+            </div>
+          </Reveal>
+        ) : null}
         <Reveal delay={320}>
           <div className="landing-pipeline" aria-hidden="true">
             {PIPELINE.map((item) => (
