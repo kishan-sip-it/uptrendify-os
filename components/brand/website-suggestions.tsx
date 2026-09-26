@@ -60,7 +60,7 @@ export function BrandWebsiteSuggestions({
         setMessage(
           candidates.length > 0
             ? 'Results are ranked toward the most relevant official-looking matches. Nothing is required to be selected.'
-            : 'No confident match yet. You can search again, dismiss this list, or enter the public website manually.',
+            : 'No confident official match found. You can search again, dismiss this list, or enter the public website manually.',
         );
       } catch (error) {
         if (controller.signal.aborted) return;
