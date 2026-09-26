@@ -2044,3 +2044,132 @@ html[data-theme="system"]:not(.theme-dark) {
 .activity-error {
   color: var(--text-danger);
 }
+
+
+/* Theme preference stays intentionally compact and lives only in Settings. */
+.settings-page .theme-control {
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+}
+.settings-page .theme-option {
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1;
+}
+.settings-page .theme-option svg {
+  width: 13px;
+  height: 13px;
+}
+
+
+/* Website discovery dropdown: full ranked result set, explicit manual escape hatch. */
+.brand-suggestions {
+  display: grid;
+  gap: 8px;
+  max-height: min(440px, 62vh);
+  overflow: hidden;
+}
+.brand-suggestions-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px 4px;
+}
+.brand-suggestions-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.brand-suggestions-head strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+.brand-suggestions-head span {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.brand-suggestions-close {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  cursor: pointer;
+}
+.brand-suggestions-close:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+}
+.brand-suggestion-list {
+  display: grid;
+  gap: 4px;
+  max-height: 318px;
+  overflow: auto;
+  padding: 0 4px 0 0;
+}
+.brand-suggestion-empty {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 12px;
+}
+.brand-suggestion-empty small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+.brand-suggestions-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px 9px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+}
+.brand-suggestions-footer button {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.brand-suggestions-footer button:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+
+/* Authenticated landing Continue action is always visible in its reserved slot. */
+.landing-account-context-slot {
+  position: relative;
+  z-index: 3;
+}
+.landing-account-context {
+  min-height: 74px;
+}
+.landing-account-continue {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .landing-account-continue {
+    width: 100%;
+    justify-content: center;
+  }
+}

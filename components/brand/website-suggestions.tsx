@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ExternalLink, Globe2, LoaderCircle } from 'lucide-react';
+import { ExternalLink, Globe2, LoaderCircle, Search, X } from 'lucide-react';
 
 type Candidate = {
   title: string;
@@ -13,14 +13,17 @@ type Candidate = {
 export function BrandWebsiteSuggestions({
   query,
   onSelect,
+  onDismiss,
 }: {
   query: string;
   onSelect: (brandName: string, url: string) => void;
+  onDismiss?: () => void;
 }) {
   const [results, setResults] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(false);
   const [visible, setVisible] = useState(false);
   const [message, setMessage] = useState('');
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const requestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -56,8 +59,8 @@ export function BrandWebsiteSuggestions({
         setVisible(true);
         setMessage(
           candidates.length > 0
-            ? 'Select the official site. The URL will be filled automatically.'
-            : 'No confident match yet. Keep typing the brand name or enter the public website manually.',
+            ? 'Results are ranked toward the most relevant official-looking matches. Nothing is required to be selected.'
+            : 'No confident match yet. You can search again, dismiss this list, or enter the public website manually.',
         );
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -76,13 +79,51 @@ export function BrandWebsiteSuggestions({
     return () => window.clearTimeout(timer);
   }, [query]);
 
+  useEffect(() => {
+    if (!visible) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node | null;
+      if (target && rootRef.current && !rootRef.current.contains(target)) {
+        setVisible(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setVisible(false);
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [visible]);
+
+  function dismiss() {
+    requestRef.current?.abort();
+    setVisible(false);
+    onDismiss?.();
+  }
+
   if (!visible) return null;
 
   return (
-    <div className="brand-suggestions" role="listbox" aria-label="Website suggestions">
+    <div className="brand-suggestions" ref={rootRef} role="listbox" aria-label="Website suggestions">
+      <div className="brand-suggestions-head">
+        <div>
+          <strong><Search size={13} /> Website matches</strong>
+          <span>Pick a public website to fill the URL automatically.</span>
+        </div>
+        <button type="button" className="brand-suggestions-close" aria-label="Close website suggestions" onClick={dismiss}>
+          <X size={15} />
+        </button>
+      </div>
+
       {loading ? (
         <div className="brand-suggestion-loading">
-          <LoaderCircle size={14} className="spin" /> Finding official websites…
+          <LoaderCircle size={14} className="spin" /> Checking search results and likely official domains…
         </div>
       ) : null}
 
@@ -95,49 +136,55 @@ export function BrandWebsiteSuggestions({
 
       {!loading && results.length > 0 ? (
         <>
-          {results.map((candidate) => (
-            <button
-              type="button"
-              className="brand-suggestion"
-              key={candidate.url}
-              role="option"
-              onClick={() => {
-                onSelect(query.trim(), candidate.url);
-                setVisible(false);
-              }}
-            >
-              <span className="brand-suggestion-icon" aria-hidden="true">
-                {candidate.iconUrl ? (
-                  <img
-                    src={candidate.iconUrl}
-                    alt=""
-                    width={24}
-                    height={24}
-                    loading="lazy"
-                    decoding="async"
-                    referrerPolicy="no-referrer"
-                    onError={(event) => {
-                      event.currentTarget.style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <Globe2 size={16} />
-                )}
-              </span>
-              <span className="brand-suggestion-copy">
-                <strong>{candidate.title || candidate.host}</strong>
-                <span>{candidate.host}</span>
-                <span>{candidate.url}</span>
-              </span>
-              <ExternalLink size={14} className="brand-suggestion-external" aria-hidden="true" />
-            </button>
-          ))}
-          <div className="brand-suggestion-note">
-            Live public discovery · selecting a result fills the website field automatically.
+          <div className="brand-suggestion-list">
+            {results.map((candidate) => (
+              <button
+                type="button"
+                className="brand-suggestion"
+                key={candidate.url}
+                role="option"
+                onClick={() => {
+                  onSelect(query.trim(), candidate.url);
+                  setVisible(false);
+                }}
+              >
+                <span className="brand-suggestion-icon" aria-hidden="true">
+                  {candidate.iconUrl ? (
+                    <img
+                      src={candidate.iconUrl}
+                      alt=""
+                      width={24}
+                      height={24}
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      onError={(event) => {
+                        event.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <Globe2 size={16} />
+                  )}
+                </span>
+                <span className="brand-suggestion-copy">
+                  <strong>{candidate.title || candidate.host}</strong>
+                  <span>{candidate.host}</span>
+                  <span>{candidate.url}</span>
+                </span>
+                <ExternalLink size={14} className="brand-suggestion-external" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+          <div className="brand-suggestions-footer">
+            <span>{results.length} ranked public match{results.length === 1 ? '' : 'es'}</span>
+            <button type="button" onClick={dismiss}>Enter website manually</button>
           </div>
         </>
       ) : (
-        <div className="brand-suggestion-note">{message}</div>
+        <div className="brand-suggestions-footer">
+          <span>{message}</span>
+          <button type="button" onClick={dismiss}>Enter website manually</button>
+        </div>
       )}
     </div>
   );

@@ -73,13 +73,13 @@ function dotColor(status: string): string {
     case 'good':
       return 'var(--accent)';
     case 'warn':
-      return '#fbbf24';
+      return 'var(--text-warning)';
     case 'danger':
-      return '#f87171';
+      return 'var(--text-danger)';
     case 'info':
       return 'var(--accent-2)';
     default:
-      return '#5b6b84';
+      return 'var(--muted)';
   }
 }
 
@@ -162,7 +162,7 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
       ) : (
         <div className="grid" id="brands">
           {brands.map((brand, i) => (
-            <a className="card brand-card hover-lift animate-fade-up" href={`/brands/${brand.id}`} key={brand.id} style={{ background: '#0b111c', animationDelay: `${i * 60}ms`, display: 'block' }}>
+            <a className="card brand-card hover-lift animate-fade-up" href={`/brands/${brand.id}`} key={brand.id} style={{ animationDelay: `${i * 60}ms`, display: 'block' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
                 <div>
                   <h3 style={{ margin: 0 }}>{brand.name}</h3>
@@ -301,7 +301,7 @@ function DashboardSkeleton() {
           <Skeleton width={150} height={18} radius={8} />
           <div className="grid" style={{ marginTop: 16 }}>
             {[0, 1, 2, 3].map((i) => (
-              <div className="card" key={i} style={{ background: '#0b111c', display: 'grid', gap: 10 }}>
+              <div className="card" key={i} style={{ display: 'grid', gap: 10 }}>
                 <Skeleton width="45%" height={16} radius={8} />
                 <Skeleton width="70%" height={11} />
                 <Skeleton width="35%" height={10} />
