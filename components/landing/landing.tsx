@@ -274,7 +274,8 @@ export function Landing() {
 
         const response = await fetch('/api/auth/organizations', { cache: 'no-store' });
         const body = await response.json().catch(() => null);
-        const current = Array.isArray(body?.organizations) ? body.organizations[0] : null;
+        const organizations = Array.isArray(body?.organizations) ? body.organizations : [];
+        const current = organizations.find((item: { id?: string }) => item.id === body?.currentOrganizationId) ?? organizations[0] ?? null;
 
         if (!cancelled && current) {
           setAccount({
