@@ -3,7 +3,7 @@ import { discoverBrandWebsites } from './brand-discovery';
 
 function htmlResponse(body: string, status = 200): Response {
   return new Response(body, { status, headers: { 'content-type': 'text/html' } });
-}
+});
 
 describe('discoverBrandWebsites', () => {
   afterEach(() => {
