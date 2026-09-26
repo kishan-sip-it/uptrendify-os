@@ -2044,3 +2044,22 @@ html[data-theme="system"]:not(.theme-dark) {
 .activity-error {
   color: var(--text-danger);
 }
+
+
+/* Theme preference stays intentionally compact and lives only in Settings. */
+.settings-page .theme-control {
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+}
+.settings-page .theme-option {
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1;
+}
+.settings-page .theme-option svg {
+  width: 13px;
+  height: 13px;
+}
