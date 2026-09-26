@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 import { ORG_SWITCH_COOKIE } from '@/lib/auth/roles';
 import { obs } from '@/lib/obs/logger';
 
@@ -20,6 +21,9 @@ export async function GET() {
 
     if (error) throw error;
 
+    const cookieStore = await cookies();
+    const preferredOrgId = cookieStore.get(ORG_SWITCH_COOKIE)?.value ?? null;
+
     const organizations = (memberships ?? []).map((membership) => ({
       id: membership.organization_id,
       role: membership.role,
@@ -27,7 +31,12 @@ export async function GET() {
       slug: (membership.organization as { slug?: string | null } | null)?.slug ?? null,
     }));
 
-    return NextResponse.json({ ok: true, organizations });
+    const currentOrganizationId =
+      preferredOrgId && organizations.some((organization) => organization.id === preferredOrgId)
+        ? preferredOrgId
+        : organizations[0]?.id ?? null;
+
+    return NextResponse.json({ ok: true, organizations, currentOrganizationId });
   } catch (error) {
     obs.error('Organization list failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Could not load your workspaces' }, { status: 500 });
