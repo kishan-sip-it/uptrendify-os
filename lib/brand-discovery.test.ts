@@ -1,9 +1,9 @@
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { discoverBrandWebsites } from './brand-discovery';
 
 function htmlResponse(body: string, status = 200): Response {
   return new Response(body, { status, headers: { 'content-type': 'text/html' } });
-});
+}
 
 describe('discoverBrandWebsites', () => {
   afterEach(() => {
@@ -40,4 +40,4 @@ describe('discoverBrandWebsites', () => {
     const candidates = await discoverBrandWebsites('Aurora Labs');
     expect(candidates.some((candidate) => candidate.url === 'https://auroralabs.com')).toBe(true);
   });
-}
+});
