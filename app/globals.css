@@ -326,7 +326,19 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .landing-mobile { display:none; position:absolute; top:100%; left:0; right:0; background:rgba(7,11,18,.98); border-bottom:1px solid var(--line); padding:10px 20px 18px; flex-direction:column; gap:4px; }
 .landing-mobile a { padding:11px 12px; border-radius:10px; color:var(--muted); }
 .landing-mobile a:hover { color:var(--text); background:var(--panel-2); }
-.landing-hero { position:relative; isolation:isolate; overflow:hidden; padding:84px 28px 40px; max-width:none; margin:0; text-align:center; min-height:760px; background:radial-gradient(circle at 50% 42%, rgba(139,124,255,.08), transparent 42%), #120F17; }
+/* Landing first-paint layout contract: keep async auth resolution from reflowing the hero. */
+.landing-hero {
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+  overflow-anchor:none;
+  padding:84px 28px 40px;
+  max-width:none;
+  margin:0;
+  text-align:center;
+  min-height:760px;
+  background:radial-gradient(circle at 50% 42%, rgba(139,124,255,.08), transparent 42%), #120F17;
+}
 .landing-hero > .gridscan { position:absolute; inset:0; z-index:0; width:100%; height:100%; pointer-events:none; }
 .landing-hero > .gridscan canvas { display:block; width:100%; height:100%; pointer-events:none; opacity:.98; }
 .landing-hero > .landing-reveal {
@@ -1762,8 +1774,16 @@ html[data-reduced-motion="true"] *::after {
   text-transform: uppercase;
   letter-spacing: .08em;
 }
-.landing-account-context {
+.landing-account-context-slot {
   width: min(860px, 100%);
+  min-height: 86px;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+.landing-account-context {
+  width: 100%;
   margin: 24px auto 0;
   display: flex;
   align-items: center;
@@ -1790,6 +1810,9 @@ html[data-theme="light"] .landing-account-pill {
 }
 @media (max-width: 720px) {
   .landing-account-pill { display: none; }
+  .landing-account-context-slot {
+    min-height: 118px;
+  }
   .landing-account-context {
     align-items: flex-start;
     flex-direction: column;
