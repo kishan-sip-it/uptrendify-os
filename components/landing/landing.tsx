@@ -23,6 +23,11 @@ type LandingAccount = {
   role: OrgRole;
 };
 
+function isOrgRole(value: unknown): value is OrgRole {
+  return value === 'OWNER' || value === 'ADMIN' || value === 'STRATEGIST' ||
+    value === 'EDITOR' || value === 'APPROVER' || value === 'CLIENT';
+}
+
 const ROLE_DESTINATIONS: Record<OrgRole, { label: string; href: string; title: string; body: string }> = {
   OWNER: { label: 'Open workspace', href: '/dashboard', title: 'Workspace owner', body: 'Manage the workspace, brands, team access and the next workflow action.' },
   ADMIN: { label: 'Open workspace', href: '/dashboard', title: 'Workspace admin', body: 'Keep brands, members and operational work moving from the command center.' },
@@ -257,6 +262,7 @@ export function Landing() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [accountLoading, setAccountLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
   const [account, setAccount] = useState<LandingAccount | null>(null);
   const heroRef = useRef<HTMLElement | null>(null);
 
@@ -268,22 +274,31 @@ export function Landing() {
         const supabase = createSupabaseBrowserClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
-          if (!cancelled) setAccount(null);
+          if (!cancelled) {
+            setAuthenticated(false);
+            setAccount(null);
+          }
           return;
         }
+
+        if (!cancelled) setAuthenticated(true);
 
         const response = await fetch('/api/auth/organizations', { cache: 'no-store' });
         const body = await response.json().catch(() => null);
         const organizations = Array.isArray(body?.organizations) ? body.organizations : [];
         const current = organizations.find((item: { id?: string }) => item.id === body?.currentOrganizationId) ?? organizations[0] ?? null;
 
-        if (!cancelled && current) {
+        if (!cancelled && current && isOrgRole(current.role)) {
           setAccount({
             email: user.email ?? '',
             firstName: typeof user.user_metadata?.first_name === 'string' ? user.user_metadata.first_name : '',
             organizationName: current.name || 'Workspace',
-            role: current.role as OrgRole,
+            role: current.role,
           });
+        } else if (!cancelled) {
+          // A signed-in user must never fall back to public CTAs just because
+          // workspace discovery is temporarily unavailable.
+          setAccount(null);
         }
       } catch {
         if (!cancelled) setAccount(null);
@@ -303,7 +318,7 @@ export function Landing() {
     try {
       const supabase = createSupabaseBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
-      window.location.href = user ? '/' : '/register';
+      window.location.href = user ? '/dashboard' : '/register';
     } catch {
       // Auth/network failure must not break the public landing CTA.
       window.location.href = '/register';
@@ -356,6 +371,8 @@ export function Landing() {
                 {ROLE_DESTINATIONS[account.role].label} <ArrowRight size={14} />
               </a>
             </>
+          ) : authenticated ? (
+            <a className="landing-cta" href="/dashboard">Open workspace <ArrowRight size={14} /></a>
           ) : (
             <>
               <a className="landing-ghost" href="/login">Sign in</a>
@@ -381,6 +398,10 @@ export function Landing() {
             {account ? (
               <a href={ROLE_DESTINATIONS[account.role].href} className="landing-cta" style={{ justifyContent: 'center' }} onClick={() => setMobileOpen(false)}>
                 {ROLE_DESTINATIONS[account.role].label}
+              </a>
+            ) : authenticated ? (
+              <a href="/dashboard" className="landing-cta" style={{ justifyContent: 'center' }} onClick={() => setMobileOpen(false)}>
+                Open workspace
               </a>
             ) : (
               <>

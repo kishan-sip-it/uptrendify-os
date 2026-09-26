@@ -30,6 +30,21 @@ describe('discoverBrandWebsites', () => {
     expect(candidates.find((candidate) => candidate.url === 'https://auroralabs.io')).toBeDefined();
   });
 
+  it('prefers the closest brand-domain variant on .com over a plural lookalike .io result', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('google.com/search')) return htmlResponse('<a href="/url?q=https://auroralabs.io"><h3>Aurora Labs</h3></a>');
+      if (url.includes('bing.com/search')) return htmlResponse('<li class="b_algo"><h2><a href="https://auroralabs.io">Aurora Labs</a></h2></li>');
+      if (url.includes('duckduckgo.com/html')) return htmlResponse('<a class="result__a" href="https://auroralabs.io">Aurora Labs</a>');
+      if (url === 'https://auroralab.com') return htmlResponse('<html><head><title>Aurora Labs</title></head><body>official</body></html>');
+      if (url === 'https://auroralabs.io') return htmlResponse('<html><head><title>Aurora Labs</title></head><body>other</body></html>');
+      return htmlResponse('', 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const candidates = await discoverBrandWebsites('Aurora Labs');
+    expect(candidates[0]?.url).toBe('https://auroralab.com');
+  });
+
   it('keeps a reachable exact-domain candidate when HTML access is blocked', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

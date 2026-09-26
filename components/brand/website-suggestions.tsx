@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ExternalLink, Globe2, LoaderCircle, Search, X } from 'lucide-react';
 
 type Candidate = {
@@ -60,7 +60,7 @@ export function BrandWebsiteSuggestions({
         setMessage(
           candidates.length > 0
             ? 'Results are ranked toward the most relevant official-looking matches. Nothing is required to be selected.'
-            : 'No confident match yet. You can search again, dismiss this list, or enter the public website manually.',
+            : 'No confident official match found. You can search again, dismiss this list, or enter the public website manually.',
         );
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -79,18 +79,26 @@ export function BrandWebsiteSuggestions({
     return () => window.clearTimeout(timer);
   }, [query]);
 
+  const dismiss = useCallback(() => {
+    requestRef.current?.abort();
+    requestRef.current = null;
+    setLoading(false);
+    setVisible(false);
+    onDismiss?.();
+  }, [onDismiss]);
+
   useEffect(() => {
     if (!visible) return;
 
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as Node | null;
       if (target && rootRef.current && !rootRef.current.contains(target)) {
-        setVisible(false);
+        dismiss();
       }
     }
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setVisible(false);
+      if (event.key === 'Escape') dismiss();
     }
 
     document.addEventListener('pointerdown', handlePointerDown);
@@ -99,13 +107,7 @@ export function BrandWebsiteSuggestions({
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [visible]);
-
-  function dismiss() {
-    requestRef.current?.abort();
-    setVisible(false);
-    onDismiss?.();
-  }
+  }, [dismiss, visible]);
 
   if (!visible) return null;
 
@@ -129,7 +131,7 @@ export function BrandWebsiteSuggestions({
 
       {!loading && results.length === 0 ? (
         <div className="brand-suggestion-empty">
-          <span>We couldn't find a confident public match yet.</span>
+          <span>No confident official match found.</span>
           <small>{message}</small>
         </div>
       ) : null}

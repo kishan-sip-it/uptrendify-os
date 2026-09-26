@@ -407,7 +407,7 @@ export default function OnboardingPage() {
                 <input className="brand-input" value={draft.brandName} onChange={(e) => update('brandName', e.target.value)} placeholder="e.g. AURORA Labs" autoFocus autoComplete="organization" />
                 <BrandWebsiteSuggestions query={draft.brandName} onSelect={(name, url) => { update('brandName', name); update('websiteUrl', url); }} />
               </div>
-              <small>Start typing the company name and choose the public website when it appears.</small>
+              <small>Suggestions are optional. You can enter the website manually below.</small>
             </label>
               <label>Website<input value={draft.websiteUrl} onChange={(e) => update('websiteUrl', e.target.value)} placeholder="https://example.com" /></label>
               <label>Industry<input value={draft.industry} onChange={(e) => update('industry', e.target.value)} placeholder="e.g. SaaS" /></label>

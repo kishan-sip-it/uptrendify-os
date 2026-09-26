@@ -7,9 +7,11 @@ export type BrandWebsiteCandidate = {
   iconUrl: string | null;
 };
 
+type SearchProvider = 'google' | 'bing' | 'duckduckgo';
+
 type RankedCandidate = BrandWebsiteCandidate & {
   score: number;
-  sources: number;
+  providers: Set<SearchProvider>;
 };
 
 const BLOCKED_HOSTS = new Set([
@@ -20,14 +22,17 @@ const BLOCKED_HOSTS = new Set([
 ]);
 
 const TLD_PRIORITY: Record<string, number> = {
-  com: 42,
-  org: 24,
-  net: 20,
-  co: 18,
+  // TLD is only a tie-breaker, but an exact brand-domain match on a
+  // conventional public web domain should beat an otherwise equivalent
+  // alternative extension such as .io.
+  com: 72,
+  org: 28,
+  net: 24,
+  co: 20,
   app: 14,
-  io: 12,
-  ai: 11,
-  dev: 9,
+  io: 8,
+  ai: 8,
+  dev: 6,
 };
 
 function normalizeCandidate(raw: string): string | null {
@@ -65,19 +70,28 @@ function domainTld(host: string): string {
   return parts[parts.length - 1] ?? '';
 }
 
+function domainVariants(queryCompact: string): string[] {
+  const variants = new Set<string>([queryCompact]);
+  if (queryCompact.endsWith('s') && queryCompact.length > 3) variants.add(queryCompact.slice(0, -1));
+  else if (queryCompact.length > 3) variants.add(queryCompact + 's');
+  return Array.from(variants);
+}
+
 function scoreCandidate(
   candidate: BrandWebsiteCandidate,
   query: string,
   engineScore = 0,
 ): number {
   const queryCompact = compact(query);
+  const queryDomains = domainVariants(queryCompact);
   const queryWords = words(query);
   const host = hostKey(candidate.host);
   const domain = compact(rootDomain(host));
   const title = compact(candidate.title);
   let score = engineScore;
 
-  if (domain === queryCompact) score += 70;
+  if (domain === queryCompact) score += 78;
+  else if (queryDomains.includes(domain)) score += 68;
   else if (domain.startsWith(queryCompact) || queryCompact.startsWith(domain)) score += 38;
   else if (domain.includes(queryCompact) || queryCompact.includes(domain)) score += 25;
 
@@ -93,6 +107,7 @@ function scoreCandidate(
 
   const tld = domainTld(host);
   score += TLD_PRIORITY[tld] ?? 0;
+  if (candidate.url.startsWith('https://')) score += 4;
 
   try {
     const path = new URL(candidate.url).pathname;
@@ -116,24 +131,26 @@ function rankAndDedupe(candidates: RankedCandidate[]): BrandWebsiteCandidate[] {
       continue;
     }
 
-    // Preserve the strongest title/URL evidence while accumulating independent
-    // search-engine agreement. Consensus is a relevance signal, not a claim
-    // that the domain is necessarily the brand's official site.
-    const sources = existing.sources + candidate.sources;
-    // Search-engine agreement matters, but it must not overpower a strong
-    // exact-domain candidate guessed from the user's brand name.
-    const score = Math.max(existing.score, candidate.score) + Math.min(12, sources * 2);
+    // Only independent search providers count as consensus. Repeated results
+    // from one provider must not manufacture a false "agreement" signal.
+    const providers = new Set<SearchProvider>([
+      ...existing.providers,
+      ...candidate.providers,
+    ]);
+    const consensusBonus = Math.min(18, Math.max(0, providers.size - 1) * 9);
+    const score = Math.max(existing.score, candidate.score) + consensusBonus;
+
     byHost.set(key, {
       ...(candidate.score >= existing.score ? candidate : existing),
       score,
-      sources,
+      providers,
     });
   }
 
   return Array.from(byHost.values())
     .sort((a, b) => b.score - a.score)
     .slice(0, 15)
-    .map(({ score: _score, sources: _sources, ...candidate }) => candidate);
+    .map(({ score: _score, providers: _providers, ...candidate }) => candidate);
 }
 
 async function fetchHtml(url: string, timeoutMs = 4000): Promise<string> {
@@ -300,21 +317,28 @@ function likelyDomainCandidates(query: string): string[] {
   const slug = query.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   if (!compactQuery && !slug) return [];
 
+  const bases = [
+    ...domainVariants(compactQuery),
+    ...domainVariants(slug),
+  ].filter(Boolean);
+
   const variants = new Set<string>();
-  for (const base of [compactQuery, slug]) {
-    if (!base) continue;
+  for (const base of bases) {
     for (const tld of ['com', 'org', 'net', 'co', 'app', 'io', 'ai', 'dev']) {
       variants.add('https://' + base + '.' + tld);
     }
   }
-  return Array.from(variants);
+
+  // Keep deterministic probing bounded while covering the compact, singular/
+  // plural, and hyphenated forms before lower-priority extension variants.
+  return Array.from(variants).slice(0, 24);
 }
 
 async function discoverLikelyDomains(query: string): Promise<BrandWebsiteCandidate[]> {
   const urls = likelyDomainCandidates(query).slice(0, 16);
 
-  const results = await Promise.all(
-    urls.map(async (candidateUrl) => {
+  const results: Array<BrandWebsiteCandidate | null> = await Promise.all(
+    urls.map(async (candidateUrl): Promise<BrandWebsiteCandidate | null> => {
       const host = new URL(candidateUrl).hostname;
       const html = await fetchHtml(candidateUrl, 2400);
       const reachable = Boolean(html) || await probeUrl(candidateUrl, 2400);
@@ -327,11 +351,12 @@ async function discoverLikelyDomains(query: string): Promise<BrandWebsiteCandida
       const $ = html ? cheerio.load(html) : null;
       const title = $?.('title').first().text().replace(/\s+/g, ' ').trim() || host;
 
-      return enrichCandidate({
+      return {
         title,
         url: candidateUrl,
         host,
-      });
+        iconUrl: null,
+      };
     }),
   );
 
@@ -355,26 +380,27 @@ export async function discoverBrandWebsites(query: string): Promise<BrandWebsite
 
   const addSearchResults = (
     results: BrandWebsiteCandidate[],
+    provider: SearchProvider,
     engineWeight: number,
   ) => {
     results.forEach((candidate, index) => {
       ranked.push({
         ...candidate,
         score: scoreCandidate(candidate, cleaned, engineWeight * Math.max(0, 14 - index)),
-        sources: 1,
+        providers: new Set([provider]),
       });
     });
   };
 
-  addSearchResults(google, 3.2);
-  addSearchResults(bing, 2.8);
-  addSearchResults(duckduckgo, 2.4);
+  addSearchResults(google, 'google', 3.2);
+  addSearchResults(bing, 'bing', 2.8);
+  addSearchResults(duckduckgo, 'duckduckgo', 2.4);
 
   for (const candidate of likely) {
     ranked.push({
       ...candidate,
-      score: scoreCandidate(candidate, cleaned, 0) + 42,
-      sources: 1,
+      score: scoreCandidate(candidate, cleaned, 0) + 55,
+      providers: new Set(),
     });
   }
 
