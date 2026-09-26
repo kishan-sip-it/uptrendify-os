@@ -378,8 +378,16 @@ export function Landing() {
             <a href="#why" onClick={() => setMobileOpen(false)}>Why it exists</a>
             <a href="#how-it-works" onClick={() => setMobileOpen(false)}>How it works</a>
             <a href="#workflow" onClick={() => setMobileOpen(false)}>Workflow</a>
-            <a href="/login" onClick={() => setMobileOpen(false)}>Sign in</a>
-            <a href="/register" className="landing-cta" style={{ justifyContent: 'center' }} onClick={() => setMobileOpen(false)}>Get started</a>
+            {account ? (
+              <a href={ROLE_DESTINATIONS[account.role].href} className="landing-cta" style={{ justifyContent: 'center' }} onClick={() => setMobileOpen(false)}>
+                {ROLE_DESTINATIONS[account.role].label}
+              </a>
+            ) : (
+              <>
+                <a href="/login" onClick={() => setMobileOpen(false)}>Sign in</a>
+                <a href="/register" className="landing-cta" style={{ justifyContent: 'center' }} onClick={() => setMobileOpen(false)}>Get started</a>
+              </>
+            )}
           </div>
         ) : null}
       </header>
@@ -421,7 +429,7 @@ export function Landing() {
         <Reveal delay={80}>
           <WarpText
             text="From a brand website to a complete marketing workflow."
-            color="#173126"
+            color="var(--text)"
             fontSize="clamp(2.5rem, 6vw, 5rem)"
             fontWeight={800}
             warpStrength={0.05}
@@ -446,15 +454,15 @@ export function Landing() {
             the hero pipeline/terminal and metrics downward after first paint. */}
         <div className="landing-account-context-slot" aria-live="polite">
           {account ? (
-            <Reveal delay={300}>
-              <div className="landing-account-context" aria-label="Current workspace context">
-                <div>
-                  <div className="landing-eyebrow"><Users size={13} /> {ROLE_DESTINATIONS[account.role].title}</div>
-                  <strong>{ROLE_DESTINATIONS[account.role].body}</strong>
-                </div>
-                <a className="landing-ghost" href={ROLE_DESTINATIONS[account.role].href}>Continue <ArrowRight size={13} /></a>
+            <div className="landing-account-context" aria-label="Current workspace context">
+              <div>
+                <div className="landing-eyebrow"><Users size={13} /> {ROLE_DESTINATIONS[account.role].title}</div>
+                <strong>{ROLE_DESTINATIONS[account.role].body}</strong>
               </div>
-            </Reveal>
+              <a className="landing-cta landing-account-continue" href={ROLE_DESTINATIONS[account.role].href}>
+                Continue <ArrowRight size={13} />
+              </a>
+            </div>
           ) : null}
         </div>
         <Reveal delay={320}>
