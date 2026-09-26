@@ -25,6 +25,7 @@
   --text-danger: #b42318;
   --text-warning: #9a6700;
   --text-info: #5146b5;
+  --text-success: #276749;
   --text-neutral: #667085;
 }
 html[data-theme="dark"] {
@@ -51,6 +52,7 @@ html[data-theme="dark"] {
   --text-danger: #f87171;
   --text-warning: #fbbf24;
   --text-info: #b9adff;
+  --text-success: #86d7b1;
   --text-neutral: #8ca0bc;
 }
 html[data-theme="system"] {
@@ -67,6 +69,7 @@ html[data-theme="system"] {
     --muted: #8ca0bc;
     --accent: #B794F6;
     --accent-2: #F472B6;
+    --text-success: #86d7b1;
   }
 }
 * { box-sizing: border-box; }
@@ -98,7 +101,7 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .metric-value { font-size: 32px; font-family: 'Space Grotesk', sans-serif; font-weight:700; margin-top: 10px; }
 .metric-hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
 .badge { display:inline-flex; align-items:center; gap:6px; border:1px solid rgba(183,148,246,.18); background:color-mix(in srgb, var(--accent) 8%, var(--surface-muted)); color:var(--accent); border-radius:999px; padding:5px 9px; font-size:12px; }
-.badge.tone-good { border-color: rgba(183,148,246,.18); background:color-mix(in srgb, var(--accent) 8%, var(--surface-muted)); color:var(--accent); }
+.badge.tone-good { border-color: color-mix(in srgb, var(--text-success) 34%, var(--line)); background:color-mix(in srgb, var(--text-success) 9%, var(--surface-muted)); color:var(--text-success); }
 .badge.tone-warn { border-color: rgba(251,191,36,.24); background:rgba(251,191,36,.08); color:var(--text-warning); }
 .badge.tone-danger { border-color: color-mix(in srgb, var(--text-danger) 32%, var(--line)); background: color-mix(in srgb, var(--text-danger) 9%, var(--surface-muted)); color: var(--text-danger); }
 .badge.tone-info { border-color: color-mix(in srgb, var(--text-info) 28%, var(--line)); background: color-mix(in srgb, var(--text-info) 9%, var(--surface-muted)); color: var(--text-info); }
@@ -642,9 +645,9 @@ body {
   color: var(--accent);
 }
 .badge.tone-good {
-  border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
-  background: color-mix(in srgb, var(--accent) 9%, var(--panel));
-  color: var(--accent);
+  border-color: color-mix(in srgb, var(--text-success) 34%, var(--line));
+  background: color-mix(in srgb, var(--text-success) 9%, var(--panel));
+  color: var(--text-success);
 }
 .badge.tone-info {
   border-color: color-mix(in srgb, var(--text-info) 28%, var(--line));
@@ -2192,9 +2195,9 @@ html[data-theme="system"]:not(.theme-dark) {
   z-index: 1;
 }
 .brand-card .badge.tone-good {
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
-  background: color-mix(in srgb, var(--accent) 13%, var(--panel));
-  color: var(--accent);
+  border-color: color-mix(in srgb, var(--text-success) 38%, var(--line));
+  background: color-mix(in srgb, var(--text-success) 11%, var(--panel));
+  color: var(--text-success);
   text-shadow: none;
 }
 
