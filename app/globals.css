@@ -2153,3 +2153,23 @@ html[data-theme="system"]:not(.theme-dark) {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+
+/* Authenticated landing Continue action is always visible in its reserved slot. */
+.landing-account-context-slot {
+  position: relative;
+  z-index: 3;
+}
+.landing-account-context {
+  min-height: 74px;
+}
+.landing-account-continue {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .landing-account-continue {
+    width: 100%;
+    justify-content: center;
+  }
+}
