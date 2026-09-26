@@ -317,14 +317,21 @@ function likelyDomainCandidates(query: string): string[] {
   const slug = query.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   if (!compactQuery && !slug) return [];
 
+  const bases = [
+    ...domainVariants(compactQuery),
+    ...domainVariants(slug),
+  ].filter(Boolean);
+
   const variants = new Set<string>();
-  for (const base of [compactQuery, slug]) {
-    if (!base) continue;
+  for (const base of bases) {
     for (const tld of ['com', 'org', 'net', 'co', 'app', 'io', 'ai', 'dev']) {
       variants.add('https://' + base + '.' + tld);
     }
   }
-  return Array.from(variants);
+
+  // Keep deterministic probing bounded while covering the compact, singular/
+  // plural, and hyphenated forms before lower-priority extension variants.
+  return Array.from(variants).slice(0, 24);
 }
 
 async function discoverLikelyDomains(query: string): Promise<BrandWebsiteCandidate[]> {
