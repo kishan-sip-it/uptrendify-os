@@ -1688,3 +1688,5 @@ html[data-reduced-motion="true"] *::after {
     margin-left: 0;
   }
 }
+
+/* Deployment smoke trigger: no runtime/style behavior change. */
