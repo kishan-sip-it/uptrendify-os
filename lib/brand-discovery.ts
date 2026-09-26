@@ -9,6 +9,7 @@ export type BrandWebsiteCandidate = {
 
 type RankedCandidate = BrandWebsiteCandidate & {
   score: number;
+  sources: number;
 };
 
 const BLOCKED_HOSTS = new Set([
@@ -19,14 +20,14 @@ const BLOCKED_HOSTS = new Set([
 ]);
 
 const TLD_PRIORITY: Record<string, number> = {
-  com: 34,
+  com: 42,
   org: 24,
   net: 20,
-  co: 16,
-  app: 15,
-  io: 14,
-  ai: 13,
-  dev: 10,
+  co: 18,
+  app: 14,
+  io: 12,
+  ai: 11,
+  dev: 9,
 };
 
 function normalizeCandidate(raw: string): string | null {
@@ -105,16 +106,34 @@ function scoreCandidate(
 
 function rankAndDedupe(candidates: RankedCandidate[]): BrandWebsiteCandidate[] {
   const byHost = new Map<string, RankedCandidate>();
+
   for (const candidate of candidates) {
     const key = hostKey(candidate.host);
     const existing = byHost.get(key);
-    if (!existing || candidate.score > existing.score) byHost.set(key, candidate);
+
+    if (!existing) {
+      byHost.set(key, candidate);
+      continue;
+    }
+
+    // Preserve the strongest title/URL evidence while accumulating independent
+    // search-engine agreement. Consensus is a relevance signal, not a claim
+    // that the domain is necessarily the brand's official site.
+    const sources = existing.sources + candidate.sources;
+    // Search-engine agreement matters, but it must not overpower a strong
+    // exact-domain candidate guessed from the user's brand name.
+    const score = Math.max(existing.score, candidate.score) + Math.min(12, sources * 2);
+    byHost.set(key, {
+      ...(candidate.score >= existing.score ? candidate : existing),
+      score,
+      sources,
+    });
   }
 
   return Array.from(byHost.values())
     .sort((a, b) => b.score - a.score)
-    .slice(0, 10)
-    .map(({ score: _score, ...candidate }) => candidate);
+    .slice(0, 15)
+    .map(({ score: _score, sources: _sources, ...candidate }) => candidate);
 }
 
 async function fetchHtml(url: string, timeoutMs = 4000): Promise<string> {
@@ -134,6 +153,28 @@ async function fetchHtml(url: string, timeoutMs = 4000): Promise<string> {
     return await response.text();
   } catch {
     return '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function probeUrl(url: string, timeoutMs = 3000): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const headers = {
+      'user-agent': 'Mozilla/5.0 (UpTrendifyOS brand discovery)',
+      accept: 'text/html,application/xhtml+xml',
+    };
+    const head = await fetch(url, { method: 'HEAD', signal: controller.signal, headers, cache: 'no-store', redirect: 'follow' });
+    if (head.ok || head.status === 401 || head.status === 403 || head.status === 429) return true;
+    if ([405, 501].includes(head.status)) {
+      const get = await fetch(url, { method: 'GET', signal: controller.signal, headers, cache: 'no-store', redirect: 'follow' });
+      return get.ok || [401, 403, 429].includes(get.status);
+    }
+    return false;
+  } catch {
+    return false;
   } finally {
     clearTimeout(timer);
   }
@@ -271,16 +312,25 @@ function likelyDomainCandidates(query: string): string[] {
 
 async function discoverLikelyDomains(query: string): Promise<BrandWebsiteCandidate[]> {
   const urls = likelyDomainCandidates(query).slice(0, 16);
+
   const results = await Promise.all(
     urls.map(async (candidateUrl) => {
-      const html = await fetchHtml(candidateUrl, 2200);
-      if (!html) return null;
-      const $ = cheerio.load(html);
-      const title = $('title').first().text().replace(/\s+/g, ' ').trim() || new URL(candidateUrl).hostname;
+      const host = new URL(candidateUrl).hostname;
+      const html = await fetchHtml(candidateUrl, 2400);
+      const reachable = Boolean(html) || await probeUrl(candidateUrl, 2400);
+
+      // Do not discard a strong exact-domain candidate just because the site
+      // blocks HTML scraping. A reachable 403/429/etc. is still a valid
+      // website candidate for the user to inspect/select.
+      if (!reachable) return null;
+
+      const $ = html ? cheerio.load(html) : null;
+      const title = $?.('title').first().text().replace(/\s+/g, ' ').trim() || host;
+
       return enrichCandidate({
         title,
         url: candidateUrl,
-        host: new URL(candidateUrl).hostname,
+        host,
       });
     }),
   );
@@ -311,6 +361,7 @@ export async function discoverBrandWebsites(query: string): Promise<BrandWebsite
       ranked.push({
         ...candidate,
         score: scoreCandidate(candidate, cleaned, engineWeight * Math.max(0, 14 - index)),
+        sources: 1,
       });
     });
   };
@@ -322,7 +373,8 @@ export async function discoverBrandWebsites(query: string): Promise<BrandWebsite
   for (const candidate of likely) {
     ranked.push({
       ...candidate,
-      score: scoreCandidate(candidate, cleaned, 0) + 24,
+      score: scoreCandidate(candidate, cleaned, 0) + 42,
+      sources: 1,
     });
   }
 
