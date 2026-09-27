@@ -130,7 +130,7 @@ export function CreateContentForm({
             name: campaign.name,
           }));
           setCampaignOptions(options);
-          if (initialCampaignId && options.some((campaign) => campaign.id === initialCampaignId)) {
+          if (initialCampaignId && options.some((campaign: { id: string; name: string }) => campaign.id === initialCampaignId)) {
             setIntent((previous) => ({ ...previous, campaignId: previous.campaignId || initialCampaignId }));
           }
         }
