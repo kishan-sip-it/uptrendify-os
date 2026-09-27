@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { getSupabaseConfig } from '@/lib/supabase/config';
+import {
+  applyRateLimitHeaders,
+  consumeRateLimit,
+  rateLimitResponse,
+} from '@/lib/security/rate-limit';
 
 const PUBLIC_PATHS = new Set([
   '/',
@@ -17,6 +22,25 @@ const AUTH_PATHS = new Set(['/login', '/register', '/forgot-password', '/reset-p
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isApiRequest = pathname.startsWith('/api/');
+
+  if (isApiRequest) {
+    try {
+      const decision = await consumeRateLimit(request, pathname);
+      if (!decision.allowed) return rateLimitResponse(decision);
+
+      const response = NextResponse.next({ request });
+      return applyRateLimitHeaders(response, decision);
+    } catch (error) {
+      console.error('[rate-limit] failed to enforce API rate limit', error);
+      if (pathname !== '/api/health') {
+        return NextResponse.json(
+          { error: 'Request protection is temporarily unavailable. Please try again shortly.' },
+          { status: 503, headers: { 'Cache-Control': 'no-store' } },
+        );
+      }
+    }
+  }
 
   const isPublicPage =
     PUBLIC_PATHS.has(pathname) ||
@@ -80,7 +104,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 };
