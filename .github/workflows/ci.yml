@@ -2,7 +2,7 @@ name: UpTrendifyOS CI
 
 on:
   push:
-    branches: [main, security/rate-limit-hardening]
+    branches: [main]
   pull_request:
 
 jobs:
