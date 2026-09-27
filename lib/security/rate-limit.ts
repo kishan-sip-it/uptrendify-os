@@ -52,8 +52,30 @@ export function getRateLimitPolicy(pathname: string, method: string): RateLimitP
   return DEFAULT_POLICY;
 }
 
+export function getRateLimitBucket(pathname: string, method: string) {
+  const normalizedPath = pathname.toLowerCase();
+  const normalizedMethod = method.toUpperCase();
+
+  if (normalizedPath.startsWith('/api/auth/')) return 'auth';
+
+  if (
+    normalizedPath.includes('/research') ||
+    normalizedPath.includes('/generate') ||
+    normalizedPath.includes('/brand-discovery') ||
+    normalizedPath.includes('/strategy') ||
+    normalizedPath.includes('/brain') ||
+    normalizedPath.includes('/publish')
+  ) {
+    return 'expensive';
+  }
+
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(normalizedMethod)) return 'write';
+
+  return 'read';
+}
+
 export function buildRateLimitKey(request: Request, pathname: string) {
-  return `ip:${getClientIp(request)}:path:${pathname}`;
+  return `ip:${getClientIp(request)}:bucket:${getRateLimitBucket(pathname, request.method)}`;
 }
 
 export async function consumeRateLimit(
@@ -86,7 +108,10 @@ export async function consumeRateLimit(
 export function applyRateLimitHeaders(response: Response, decision: RateLimitDecision) {
   response.headers.set('X-RateLimit-Limit', String(decision.limit));
   response.headers.set('X-RateLimit-Remaining', String(decision.remaining));
-  response.headers.set('X-RateLimit-Reset', String(Math.max(0, Math.ceil((decision.resetAt.getTime() - Date.now()) / 1000))));
+  response.headers.set(
+    'X-RateLimit-Reset',
+    String(Math.max(0, Math.ceil((decision.resetAt.getTime() - Date.now()) / 1000))),
+  );
   return response;
 }
 
