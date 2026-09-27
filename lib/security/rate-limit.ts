@@ -12,10 +12,21 @@ export type RateLimitPolicy = {
   windowSeconds: number;
 };
 
+type FallbackBucket = {
+  windowStartedAt: number;
+  requestCount: number;
+};
+
 const DEFAULT_POLICY: RateLimitPolicy = { limit: 120, windowSeconds: 60 };
 const WRITE_POLICY: RateLimitPolicy = { limit: 40, windowSeconds: 60 };
 const AUTH_POLICY: RateLimitPolicy = { limit: 20, windowSeconds: 60 };
 const EXPENSIVE_POLICY: RateLimitPolicy = { limit: 10, windowSeconds: 60 };
+
+const MAX_FALLBACK_BUCKETS = 2048;
+const FALLBACK_WARNING_INTERVAL_MS = 30_000;
+
+const fallbackBuckets = new Map<string, FallbackBucket>();
+let lastDurableFailureWarningAt = 0;
 
 function normalizeIp(value: string | null) {
   const ip = value?.split(',')[0]?.trim();
@@ -78,31 +89,87 @@ export function buildRateLimitKey(request: Request, pathname: string) {
   return `ip:${getClientIp(request)}:bucket:${getRateLimitBucket(pathname, request.method)}`;
 }
 
+function pruneFallbackBuckets(now: number) {
+  if (fallbackBuckets.size <= MAX_FALLBACK_BUCKETS) return;
+
+  for (const [key, bucket] of fallbackBuckets) {
+    if (now >= bucket.windowStartedAt + 60_000) {
+      fallbackBuckets.delete(key);
+    }
+  }
+
+  while (fallbackBuckets.size > MAX_FALLBACK_BUCKETS) {
+    const oldestKey = fallbackBuckets.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    fallbackBuckets.delete(oldestKey);
+  }
+}
+
+export function consumeFallbackRateLimit(
+  request: Request,
+  pathname: string,
+  policy: RateLimitPolicy = getRateLimitPolicy(pathname, request.method),
+  now = Date.now(),
+): RateLimitDecision {
+  const bucketKey = buildRateLimitKey(request, pathname);
+  const current = fallbackBuckets.get(bucketKey);
+  const windowMs = policy.windowSeconds * 1000;
+
+  const bucket =
+    !current || now >= current.windowStartedAt + windowMs
+      ? { windowStartedAt: now, requestCount: 1 }
+      : { windowStartedAt: current.windowStartedAt, requestCount: current.requestCount + 1 };
+
+  fallbackBuckets.set(bucketKey, bucket);
+  pruneFallbackBuckets(now);
+
+  const resetAt = new Date(bucket.windowStartedAt + windowMs);
+
+  return {
+    allowed: bucket.requestCount <= policy.limit,
+    limit: policy.limit,
+    remaining: Math.max(0, policy.limit - bucket.requestCount),
+    resetAt,
+  };
+}
+
+function warnDurableFailure(error: unknown) {
+  const now = Date.now();
+  if (now - lastDurableFailureWarningAt < FALLBACK_WARNING_INTERVAL_MS) return;
+  lastDurableFailureWarningAt = now;
+  console.error('[rate-limit] durable limiter unavailable; using bounded instance fallback', error);
+}
+
 export async function consumeRateLimit(
   request: Request,
   pathname: string,
   policy: RateLimitPolicy = getRateLimitPolicy(pathname, request.method),
 ): Promise<RateLimitDecision> {
-  const admin = createSupabaseAdminClient();
-  const { data, error } = await admin.rpc('consume_rate_limit', {
-    p_bucket_key: buildRateLimitKey(request, pathname),
-    p_limit: policy.limit,
-    p_window_seconds: policy.windowSeconds,
-  });
+  try {
+    const admin = createSupabaseAdminClient();
+    const { data, error } = await admin.rpc('consume_rate_limit', {
+      p_bucket_key: buildRateLimitKey(request, pathname),
+      p_limit: policy.limit,
+      p_window_seconds: policy.windowSeconds,
+    });
 
-  if (error) throw new Error(`Rate limiter unavailable: ${error.message}`);
+    if (error) throw new Error(`Rate limiter unavailable: ${error.message}`);
 
-  const result = Array.isArray(data) ? data[0] : data;
-  if (!result || typeof result.allowed !== 'boolean' || !result.reset_at) {
-    throw new Error('Rate limiter returned an invalid decision');
+    const result = Array.isArray(data) ? data[0] : data;
+    if (!result || typeof result.allowed !== 'boolean' || !result.reset_at) {
+      throw new Error('Rate limiter returned an invalid decision');
+    }
+
+    return {
+      allowed: result.allowed,
+      limit: policy.limit,
+      remaining: Math.max(0, Number(result.remaining) || 0),
+      resetAt: new Date(result.reset_at),
+    };
+  } catch (error) {
+    warnDurableFailure(error);
+    return consumeFallbackRateLimit(request, pathname, policy);
   }
-
-  return {
-    allowed: result.allowed,
-    limit: policy.limit,
-    remaining: Math.max(0, Number(result.remaining) || 0),
-    resetAt: new Date(result.reset_at),
-  };
 }
 
 export function applyRateLimitHeaders(response: Response, decision: RateLimitDecision) {
