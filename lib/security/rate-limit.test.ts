@@ -52,3 +52,5 @@ describe('rate-limit policy', () => {
     expect(getRateLimitBucket('/api/dashboard', 'GET')).toBe('read');
   });
 });
+
+// CI trigger marker: final security hardening verification.
