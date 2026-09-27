@@ -8,6 +8,7 @@ import {
   getClientIp,
   getRateLimitBucket,
   getRateLimitPolicy,
+  consumeFallbackRateLimit,
 } from './rate-limit';
 
 function request(pathname: string, headers: Record<string, string> = {}, method = 'GET') {
@@ -50,5 +51,38 @@ describe('rate-limit policy', () => {
   it('keeps ordinary reads on the higher read quota', () => {
     expect(getRateLimitPolicy('/api/dashboard', 'GET')).toEqual(DEFAULT_POLICY);
     expect(getRateLimitBucket('/api/dashboard', 'GET')).toBe('read');
+  });
+});
+
+describe('rate-limit fallback', () => {
+  it('keeps reads available with a bounded local bucket when the durable store is unavailable', () => {
+    const req = request('/api/dashboard', { 'x-vercel-forwarded-for': '203.0.113.50' }, 'GET');
+
+    const first = consumeFallbackRateLimit(req, '/api/dashboard', DEFAULT_POLICY, 1_000_000);
+    const second = consumeFallbackRateLimit(req, '/api/dashboard', DEFAULT_POLICY, 1_000_001);
+
+    expect(first.allowed).toBe(true);
+    expect(second.remaining).toBe(DEFAULT_POLICY.limit - 2);
+    expect(second.resetAt.getTime()).toBe(1_000_000 + DEFAULT_POLICY.windowSeconds * 1000);
+  });
+
+  it('blocks a request after the fallback quota is exhausted', () => {
+    const req = request('/api/expensive', { 'x-vercel-forwarded-for': '203.0.113.51' }, 'POST');
+
+    for (let index = 0; index < EXPENSIVE_POLICY.limit; index += 1) {
+      expect(
+        consumeFallbackRateLimit(req, '/api/expensive', EXPENSIVE_POLICY, 2_000_000 + index),
+      ).toMatchObject({ allowed: true });
+    }
+
+    const blocked = consumeFallbackRateLimit(
+      req,
+      '/api/expensive',
+      EXPENSIVE_POLICY,
+      2_000_100,
+    );
+
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.remaining).toBe(0);
   });
 });
