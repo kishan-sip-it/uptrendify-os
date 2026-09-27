@@ -2,7 +2,7 @@ name: UpTrendifyOS CI
 
 on:
   push:
-    branches: [main, feat/phase-11-campaign-management]
+    branches: [main]
   pull_request:
 
 jobs:
