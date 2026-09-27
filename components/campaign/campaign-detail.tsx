@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, FileText, LoaderCircle, Pencil, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, FileText, LoaderCircle, Pencil, X } from 'lucide-react';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/feedback';
 import {
   CAMPAIGN_ACTION_LABELS,
@@ -309,6 +309,35 @@ export function CampaignDetail({
         ) : null}
       </div>
 
+      <div className="card">
+        <div className="eyebrow">Campaign execution flow</div>
+        <h3 style={{ margin: '6px 0 10px' }}>Plan → content → approval → publishing</h3>
+        <div className="content-filters" style={{ gap: 6 }}>
+          {[
+            ['1', 'Plan campaign'],
+            ['2', 'Create content'],
+            ['3', 'Generate version'],
+            ['4', 'Send to approval'],
+            ['5', 'Approve + queue'],
+            ['6', 'Publish'],
+          ].map(([step, label]) => (
+            <span className="chip" key={step} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{step}</span> {label}
+            </span>
+          ))}
+        </div>
+        <p className="activity-meta" style={{ margin: '10px 0 0', lineHeight: 1.5 }}>
+          The campaign tracks the initiative. Each content item has its own version-specific approval and publishing lifecycle.
+        </p>
+        <a
+          className="badge"
+          href={`/brands/${brandId}/content/new?campaignId=${campaignId}`}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', marginTop: 12 }}
+        >
+          Create content for this campaign <ArrowRight size={14} />
+        </a>
+      </div>
+
       {error ? <div className="card" style={{ borderColor: 'rgba(239,68,68,.35)' }}><ErrorState message={error} /></div> : null}
 
       {editing ? (
@@ -395,9 +424,18 @@ export function CampaignDetail({
           </a>
         </div>
         {content.length === 0 ? (
-          <p className="activity-meta" style={{ margin: '12px 0 0' }}>
-            No content items are linked yet. Link content briefs to this campaign when you create them in Content Studio.
-          </p>
+          <div style={{ marginTop: 12 }}>
+            <p className="activity-meta" style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
+              No content is linked yet. Start with a brief created from this campaign so the campaign relationship is preserved automatically.
+            </p>
+            <a
+              className="badge"
+              href={`/brands/${brandId}/content/new?campaignId=${campaignId}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px' }}
+            >
+              Create the first campaign content <ArrowRight size={14} />
+            </a>
+          </div>
         ) : (
           <div className="grid" style={{ gap: 10, marginTop: 12 }}>
             {content.map((item) => (
