@@ -6,6 +6,7 @@ import {
   WRITE_POLICY,
   buildRateLimitKey,
   getClientIp,
+  getRateLimitBucket,
   getRateLimitPolicy,
 } from './rate-limit';
 
@@ -24,25 +25,30 @@ describe('rate-limit policy', () => {
     });
 
     expect(getClientIp(req)).toBe('203.0.113.10');
-    expect(buildRateLimitKey(req, '/api/test')).toBe('ip:203.0.113.10:path:/api/test');
+    expect(buildRateLimitKey(req, '/api/test')).toBe('ip:203.0.113.10:bucket:read');
   });
 
   it('uses the auth policy for auth APIs', () => {
     expect(getRateLimitPolicy('/api/auth/bootstrap', 'POST')).toEqual(AUTH_POLICY);
+    expect(getRateLimitBucket('/api/auth/bootstrap', 'POST')).toBe('auth');
   });
 
-  it('uses a stricter policy for expensive operations', () => {
+  it('uses a stricter shared bucket for expensive operations', () => {
     expect(getRateLimitPolicy('/api/brands/123/research', 'POST')).toEqual(EXPENSIVE_POLICY);
     expect(getRateLimitPolicy('/api/brands/123/content/456/generate', 'POST')).toEqual(EXPENSIVE_POLICY);
     expect(getRateLimitPolicy('/api/brand-discovery', 'POST')).toEqual(EXPENSIVE_POLICY);
+    expect(getRateLimitBucket('/api/brands/123/research', 'POST')).toBe('expensive');
+    expect(getRateLimitBucket('/api/brands/999/research', 'POST')).toBe('expensive');
   });
 
   it('uses the write policy for ordinary mutations', () => {
     expect(getRateLimitPolicy('/api/workspace', 'PATCH')).toEqual(WRITE_POLICY);
     expect(getRateLimitPolicy('/api/team', 'POST')).toEqual(WRITE_POLICY);
+    expect(getRateLimitBucket('/api/workspace', 'PATCH')).toBe('write');
   });
 
   it('keeps ordinary reads on the higher read quota', () => {
     expect(getRateLimitPolicy('/api/dashboard', 'GET')).toEqual(DEFAULT_POLICY);
+    expect(getRateLimitBucket('/api/dashboard', 'GET')).toBe('read');
   });
 });
