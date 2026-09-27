@@ -20,11 +20,21 @@ const PUBLIC_PATHS = new Set([
 
 const AUTH_PATHS = new Set(['/login', '/register', '/forgot-password', '/reset-password']);
 
+function hasRateLimitCredentials() {
+  return Boolean(
+    process.env.SUPABASE_SECRET_KEY?.trim() ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+      process.env.SUPABASE_SERVICE_ROLE?.trim() ||
+      process.env.SUPABASE_SERVICE_KEY?.trim() ||
+      process.env.SUPABASE_SECRET?.trim(),
+  );
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApiRequest = pathname.startsWith('/api/');
 
-  if (isApiRequest) {
+  if (isApiRequest && hasRateLimitCredentials()) {
     try {
       const decision = await consumeRateLimit(request, pathname);
       if (!decision.allowed) return rateLimitResponse(decision);
