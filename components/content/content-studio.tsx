@@ -104,12 +104,17 @@ const EMPTY_INTENT: DraftIntent = {
 
 export function CreateContentForm({
   brandId,
+  initialCampaignId,
   onCreated,
 }: {
   brandId: string;
+  initialCampaignId?: string | null;
   onCreated?: () => void;
 }) {
-  const [intent, setIntent] = useState<DraftIntent>(EMPTY_INTENT);
+  const [intent, setIntent] = useState<DraftIntent>(() => ({
+    ...EMPTY_INTENT,
+    campaignId: initialCampaignId ?? '',
+  }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [campaignOptions, setCampaignOptions] = useState<Array<{ id: string; name: string }>>([]);
@@ -120,12 +125,14 @@ export function CreateContentForm({
       .then((response) => (response.ok ? response.json() : null))
       .then((body) => {
         if (!cancelled) {
-          setCampaignOptions(
-            (body?.campaigns ?? []).map((campaign: { id: string; name: string }) => ({
-              id: campaign.id,
-              name: campaign.name,
-            })),
-          );
+          const options = (body?.campaigns ?? []).map((campaign: { id: string; name: string }) => ({
+            id: campaign.id,
+            name: campaign.name,
+          }));
+          setCampaignOptions(options);
+          if (initialCampaignId && options.some((campaign) => campaign.id === initialCampaignId)) {
+            setIntent((previous) => ({ ...previous, campaignId: previous.campaignId || initialCampaignId }));
+          }
         }
       })
       .catch(() => undefined);
@@ -133,7 +140,7 @@ export function CreateContentForm({
     return () => {
       cancelled = true;
     };
-  }, [brandId]);
+  }, [brandId, initialCampaignId]);
 
   const set = <K extends keyof DraftIntent>(key: K, value: DraftIntent[K]) =>
     setIntent((prev) => ({ ...prev, [key]: value }));
