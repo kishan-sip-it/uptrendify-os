@@ -20,21 +20,11 @@ const PUBLIC_PATHS = new Set([
 
 const AUTH_PATHS = new Set(['/login', '/register', '/forgot-password', '/reset-password']);
 
-function hasRateLimitCredentials() {
-  return Boolean(
-    process.env.SUPABASE_SECRET_KEY?.trim() ||
-      process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-      process.env.SUPABASE_SERVICE_ROLE?.trim() ||
-      process.env.SUPABASE_SERVICE_KEY?.trim() ||
-      process.env.SUPABASE_SECRET?.trim(),
-  );
-}
-
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApiRequest = pathname.startsWith('/api/');
 
-  if (isApiRequest && hasRateLimitCredentials()) {
+  if (isApiRequest) {
     try {
       const decision = await consumeRateLimit(request, pathname);
       if (!decision.allowed) return rateLimitResponse(decision);
@@ -42,13 +32,9 @@ export async function proxy(request: NextRequest) {
       const response = NextResponse.next({ request });
       return applyRateLimitHeaders(response, decision);
     } catch (error) {
-      console.error('[rate-limit] failed to enforce API rate limit', error);
-      if (pathname !== '/api/health') {
-        return NextResponse.json(
-          { error: 'Request protection is temporarily unavailable. Please try again shortly.' },
-          { status: 503, headers: { 'Cache-Control': 'no-store' } },
-        );
-      }
+      // consumeRateLimit itself has a bounded local fallback, so limiter backend
+      // failures must never turn a healthy API request into a 503.
+      console.error('[rate-limit] request limiter error after fallback', error);
     }
   }
 
