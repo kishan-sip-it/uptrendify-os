@@ -177,6 +177,13 @@ export function ApprovalsQueue() {
 
   return (
     <div>
+      <div className="card" style={{ padding: '14px 18px', marginBottom: 14 }}>
+        <div className="eyebrow">How content reaches this queue</div>
+        <p className="activity-meta" style={{ margin: '5px 0 0', lineHeight: 1.5 }}>
+          Generate a version in Content Studio, then choose <strong style={{ color: 'var(--text)' }}>Send to approval queue</strong>.
+          After approval, move it to the publishing queue; a publisher can then attempt delivery to the selected channel.
+        </p>
+      </div>
       <div className="card" style={{ padding: '14px 18px' }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
