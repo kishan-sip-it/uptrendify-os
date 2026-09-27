@@ -135,14 +135,14 @@ function ReviewActions({
   const [comment, setComment] = useState('');
 
   const actions: Array<{ action: string; label: string; tone: string; allowed: boolean }> = [];
-  if (status === 'DRAFT' && versionId) actions.push({ action: 'submit', label: 'Submit for review', tone: 'tone-good', allowed: canGenerate });
+  if (status === 'DRAFT' && versionId) actions.push({ action: 'submit', label: 'Send to approval queue', tone: 'tone-good', allowed: canGenerate });
   if (['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED'].includes(status)) {
     actions.push({ action: 'approve', label: 'Approve', tone: 'tone-good', allowed: canReview });
     actions.push({ action: 'changes_requested', label: 'Request changes', tone: 'tone-info', allowed: canReview });
     actions.push({ action: 'reject', label: 'Reject', tone: 'tone-danger', allowed: canReview });
   }
   if (status === 'APPROVED') {
-    actions.push({ action: 'queue_for_publish', label: 'Queue for publishing', tone: 'tone-good', allowed: canReview });
+    actions.push({ action: 'queue_for_publish', label: 'Move to publishing queue', tone: 'tone-good', allowed: canReview });
   }
   if (status === 'READY_TO_PUBLISH') {
     actions.push({ action: 'back_to_approved', label: 'Back to approved', tone: 'tone-info', allowed: canReview });
@@ -154,14 +154,32 @@ function ReviewActions({
     actions.push({ action: 'archive', label: 'Archive', tone: 'tone-muted', allowed: canGenerate || canReview });
   }
 
-  if (actions.length === 0 && !(status === 'READY_TO_PUBLISH' && canPublish)) return null;
+  const visibleActions = actions.filter((action) => action.allowed);
+  const nextStep =
+    status === 'DRAFT' && versionId
+      ? 'Next: send this exact version to the approval queue.'
+      : status === 'DRAFT'
+        ? 'Next: generate the first version before sending it for approval.'
+        : ['IN_REVIEW', 'CLIENT_REVIEW'].includes(status)
+          ? 'Next: an Approver reviews this exact version.'
+          : status === 'APPROVED'
+            ? 'Next: move the approved version into the publishing queue.'
+            : status === 'READY_TO_PUBLISH'
+              ? 'Next: publish it to the selected channel.'
+              : status === 'PUBLISHED'
+                ? 'This version has been published.'
+                : 'Continue through the content lifecycle below.';
+
+  if (visibleActions.length === 0 && !(status === 'READY_TO_PUBLISH' && canPublish)) return null;
 
   return (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+    <div>
+      <div className="activity-meta" style={{ marginBottom: 10 }}>{nextStep}</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
       {versionId === null && status !== 'DRAFT' ? (
         <span className="chip tone-warn">No generated version to review yet</span>
       ) : null}
-      {actions.map((action) => (
+      {visibleActions.map((action) => (
         <button
           type="button"
           key={action.action}
@@ -191,6 +209,7 @@ function ReviewActions({
         value={comment}
         onChange={(event) => setComment(event.target.value)}
       />
+      </div>
     </div>
   );
 }
@@ -572,6 +591,26 @@ export function ContentDetail({ brandId }: { brandId: string }) {
               </div>
               <FileText size={18} color="var(--muted)" />
             </div>
+             <div className="content-filters" style={{ marginBottom: 12, gap: 6 }}>
+               {[
+                 ['DRAFT', 'Draft'],
+                 ['IN_REVIEW', 'Approval'],
+                 ['APPROVED', 'Approved'],
+                 ['READY_TO_PUBLISH', 'Ready to publish'],
+                 ['PUBLISHED', 'Published'],
+               ].map(([value, label]) => {
+                 const currentStatus = value === item.status;
+                 return (
+                   <span
+                     className="chip"
+                     key={value}
+                     style={{ opacity: currentStatus ? 1 : 0.6, borderColor: currentStatus ? 'var(--accent)' : undefined }}
+                   >
+                     {label}
+                   </span>
+                 );
+               })}
+             </div>
             <ReviewActions
               status={item.status}
               versionId={item.currentVersionId}
