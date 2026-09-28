@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, ExternalLink, Globe2, LoaderCircle, Rocket, ShieldCheck, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ExternalLink, Globe2, LoaderCircle, LogOut, Rocket, ShieldCheck, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
@@ -237,6 +237,15 @@ export default function OnboardingPage() {
     window.addEventListener('pagehide', persistBeforeLeave);
     return () => window.removeEventListener('pagehide', persistBeforeLeave);
   }, [draft, step, loading]);
+
+  async function switchAccount() {
+    try {
+      const supabase = createSupabaseBrowserClient();
+      await supabase.auth.signOut({ scope: 'local' });
+    } finally {
+      window.location.href = '/login';
+    }
+  }
 
   async function jumpToStep(nextStep: number) {
     if (nextStep >= step || nextStep < 0 || saving || researching) return;
@@ -543,7 +552,10 @@ export default function OnboardingPage() {
           {error && <div style={{ marginTop: 14 }}><ErrorState message={error} /></div>}
 
           <div className="onboarding-actions" id="onboarding-actions" style={{ marginTop: 18, position: 'relative', zIndex: 3 }}>
-            <button type="button" className="badge" onClick={back} disabled={step === 0 || saving || researching} style={{ border: 0, cursor: step === 0 ? 'not-allowed' : 'pointer' }}><ArrowLeft size={15} /> Back</button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button type="button" className="badge" onClick={back} disabled={step === 0 || saving || researching} style={{ border: 0, cursor: step === 0 ? 'not-allowed' : 'pointer' }}><ArrowLeft size={15} /> Back</button>
+              <button type="button" className="badge" onClick={() => void switchAccount()} disabled={saving || researching} style={{ border: 0, cursor: saving || researching ? 'not-allowed' : 'pointer' }} aria-label="Sign out and use a different account"><LogOut size={15} /> Use different account</button>
+            </div>
             <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
               {step < 5 ? <button type="button" className="badge auth-submit" onClick={next} disabled={saving || researching}>{saving ? <><LoaderCircle size={15} className="spin" /> Saving…</> : <>Save & continue <ArrowRight size={15} /></>}</button> : <button type="button" className="badge auth-submit" onClick={finishAndResearch} disabled={researching}>{researching ? <><LoaderCircle size={15} className="spin" /> Starting research…</> : <>Finish setup & start research <Rocket size={15} /></>}</button>}
             </div>
