@@ -145,3 +145,22 @@ export function isResearchCandidate(root: string, candidate: string): boolean {
   if (isLowSignalResearchPath(candidate)) return false;
   return true;
 }
+
+const AUTH_GATE_MARKERS = [
+  'log into',
+  'log in',
+  'sign in',
+  'email or phone',
+  'email address',
+  'password',
+  'forgot password',
+  'forgot account',
+  'create new account',
+  'create an account',
+];
+
+export function isLikelyAuthGatedContent(title: string | null | undefined, text: string): boolean {
+  const haystack = (String(title ?? '') + '\n' + text).toLowerCase();
+  const matches = AUTH_GATE_MARKERS.filter((marker) => haystack.includes(marker)).length;
+  return matches >= 3 && text.trim().length < 12_000;
+}
