@@ -8,6 +8,7 @@ import { AuthLayout } from '@/components/auth/auth-layout';
 import { GuidedTour } from '@/components/tours/GuidedTour';
 import { BrandWebsiteSuggestions } from '@/components/brand/website-suggestions';
 import { completedStepsWith, mergeOnboardingDraft } from '@/lib/onboarding/state';
+import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { normalizeTimezone } from '@/lib/timezone';
 
 type Draft = {
