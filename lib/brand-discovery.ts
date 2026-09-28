@@ -313,24 +313,20 @@ function likelyDomainCandidates(query: string): string[] {
 }
 
 async function discoverLikelyDomains(query: string): Promise<BrandWebsiteCandidate[]> {
-  const urls = likelyDomainCandidates(query).slice(0, 16);
+  const urls = likelyDomainCandidates(query).slice(0, 10);
 
   const results: Array<BrandWebsiteCandidate | null> = await Promise.all(
     urls.map(async (candidateUrl): Promise<BrandWebsiteCandidate | null> => {
       const host = new URL(candidateUrl).hostname;
-      const html = await fetchHtml(candidateUrl, 2400);
-      const reachable = Boolean(html) || await probeUrl(candidateUrl, 2400);
+      const reachable = await probeUrl(candidateUrl, 1600);
 
       // Do not discard a strong exact-domain candidate just because the site
       // blocks HTML scraping. A reachable 403/429/etc. is still a valid
       // website candidate for the user to inspect/select.
       if (!reachable) return null;
 
-      const $ = html ? cheerio.load(html) : null;
-      const title = $?.('title').first().text().replace(/\s+/g, ' ').trim() || host;
-
       return {
-        title,
+        title: host,
         url: candidateUrl,
         host,
         iconUrl: 'https://www.google.com/s2/favicons?sz=128&domain=' + encodeURIComponent(host),
