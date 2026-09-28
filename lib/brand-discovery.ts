@@ -211,42 +211,6 @@ async function probeUrl(url: string, timeoutMs = 2200): Promise<boolean> {
   }
 }
 
-function normalizeIcon(raw: string | undefined, baseUrl: string): string | null {
-  if (!raw) return null;
-  try {
-    const url = new URL(raw, baseUrl);
-    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-async function enrichCandidate(candidate: Omit<BrandWebsiteCandidate, 'iconUrl'>): Promise<BrandWebsiteCandidate> {
-  const html = await fetchHtml(candidate.url, 3000);
-  if (!html) {
-    return {
-      ...candidate,
-      iconUrl: 'https://www.google.com/s2/favicons?sz=128&domain=' + encodeURIComponent(candidate.host),
-    };
-  }
-
-  const $ = cheerio.load(html);
-  const pageTitle = $('title').first().text().replace(/\s+/g, ' ').trim();
-  const iconHref =
-    $('link[rel~="icon"][href]').first().attr('href') ||
-    $('link[rel~="shortcut"][rel~="icon"][href]').first().attr('href') ||
-    $('link[rel~="apple-touch-icon"][href]').first().attr('href') ||
-    $('meta[property="og:image"][content]').first().attr('content');
-
-  return {
-    ...candidate,
-    title: pageTitle || candidate.title || candidate.host,
-    iconUrl:
-      normalizeIcon(iconHref, candidate.url) ||
-      'https://www.google.com/s2/favicons?sz=128&domain=' + encodeURIComponent(candidate.host),
-  };
-}
-
 function extractGoogleTarget(href: string): string {
   const match = href.match(/^\/url\?q=([^&]+)/);
   return match ? decodeURIComponent(match[1]) : href;
