@@ -89,8 +89,8 @@ export async function runResearchPipeline(input: ResearchPipelineInput): Promise
       status: 'FAILED',
       pagesProcessed: 0,
       pagesDiscovered: crawl.pagesDiscovered,
-      errorCode: 'NO_PAGES_PROCESSED',
-      errorMessage: 'No pages could be processed during this research run.',
+      errorCode: crawl.errorCode ?? 'NO_PAGES_PROCESSED',
+      errorMessage: crawl.errorMessage ?? 'No pages could be processed during this research run.',
     });
 
     return {
