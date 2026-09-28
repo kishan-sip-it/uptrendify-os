@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { discoverBrandWebsites } from './brand-discovery';
+import { clearBrandDiscoveryCache, discoverBrandWebsites } from './brand-discovery';
 
 function htmlResponse(body: string, status = 200): Response {
   return new Response(body, { status, headers: { 'content-type': 'text/html' } });
@@ -8,6 +8,7 @@ function htmlResponse(body: string, status = 200): Response {
 describe('discoverBrandWebsites', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    clearBrandDiscoveryCache();
   });
 
   it('returns no candidates for an empty query without making a network request', async () => {
