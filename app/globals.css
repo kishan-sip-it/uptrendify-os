@@ -370,7 +370,9 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
   margin:0;
   text-align:center;
   min-height:760px;
-  background:radial-gradient(circle at 50% 42%, rgba(139,124,255,.08), transparent 42%), #120F17;
+  background:
+    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 44%),
+    linear-gradient(180deg, var(--surface-card-2), var(--bg));
 }
 .landing-hero > .gridscan { position:absolute; inset:0; z-index:0; width:100%; height:100%; pointer-events:none; }
 .landing-hero > .gridscan canvas { display:block; width:100%; height:100%; pointer-events:none; opacity:.78; }
@@ -425,7 +427,7 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .landing-metric-value { font-family:'Space Grotesk',sans-serif; font-size:34px; font-weight:700; background:linear-gradient(135deg, var(--accent), var(--accent-2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
 .landing-metric-label { color:var(--muted); font-size:12px; margin-top:6px; }
 .landing-section { padding:72px 28px; max-width:1080px; margin:0 auto; }
-.landing-alt { border-block:1px solid var(--line); background:rgba(11,17,28,.4); max-width:none; }
+.landing-alt { border-block:1px solid var(--line); background:color-mix(in srgb, var(--surface-muted) 72%, transparent); max-width:none; }
 .landing-alt > * { max-width:1080px; margin-inline:auto; }
 .landing-section-head { text-align:center; max-width:640px; margin:0 auto 38px; }
 .landing-section-head h2 { font-size:clamp(28px, 4.5vw, 42px); margin:12px 0 10px; }
