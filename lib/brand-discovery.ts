@@ -303,16 +303,23 @@ function likelyDomainCandidates(query: string): string[] {
     ...domainVariants(compactQuery),
     ...domainVariants(slug),
   ].filter(Boolean);
+  const tlds = ['com', 'org', 'net', 'co', 'app', 'io', 'ai', 'dev'];
 
   const variants = new Set<string>();
+  // Probe exact/closest compact domains on .com first so the bounded probe
+  // cannot spend its entire budget on extension variants before the strongest
+  // official-domain candidates are checked.
+  for (const base of domainVariants(compactQuery)) {
+    variants.add('https://' + base + '.com');
+  }
   for (const base of bases) {
-    for (const tld of ['com', 'org', 'net', 'co', 'app', 'io', 'ai', 'dev']) {
+    for (const tld of tlds) {
       variants.add('https://' + base + '.' + tld);
     }
   }
 
-  // Keep deterministic probing bounded while covering the compact, singular/
-  // plural, and hyphenated forms before lower-priority extension variants.
+  // Keep deterministic probing bounded while prioritizing the compact exact,
+  // singular/plural .com forms before lower-priority extension variants.
   return Array.from(variants).slice(0, 24);
 }
 
