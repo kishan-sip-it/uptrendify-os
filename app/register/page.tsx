@@ -184,7 +184,7 @@ export default function RegisterPage() {
           'content-type': 'application/json',
           authorization: 'Bearer ' + accessToken,
         },
-        body: JSON.stringify({ organizationName: '' }),
+        body: JSON.stringify({}),
         cache: 'no-store',
       });
       const payload = await bootstrap.json().catch(() => null);
