@@ -86,7 +86,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
 
     const displaySources = (sourcesResult.data ?? []).filter((source: any) => {
       try {
-        return isResearchCandidate(brand.website_url, source.canonical_url || source.url);
+        return !brand.website_url || isResearchCandidate(brand.website_url, source.canonical_url || source.url);
       } catch {
         return false;
       }
