@@ -74,7 +74,7 @@ export function BrandWebsiteSuggestions({
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
-    }, 360);
+    }, 250);
 
     return () => window.clearTimeout(timer);
   }, [query]);
@@ -131,8 +131,16 @@ export function BrandWebsiteSuggestions({
 
       {!loading && results.length === 0 ? (
         <div className="brand-suggestion-empty">
-          <span>No confident official match found.</span>
-          <small>{message}</small>
+          <span>{message.startsWith('No confident official match found.')
+            ? 'No confident official match found.'
+            : 'Could not find a confident official website match.'}</span>
+          {message ? (
+            <small>
+              {message.startsWith('No confident official match found.')
+                ? message.slice('No confident official match found.'.length).trim() || 'You can search again, dismiss this list, or enter the public website manually.'
+                : message}
+            </small>
+          ) : null}
         </div>
       ) : null}
 
