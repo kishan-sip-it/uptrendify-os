@@ -50,54 +50,99 @@ export async function persistSourceChunks(
   return stored;
 }
 
+async function finalizeResearchRun(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    researchRunId: string;
+    status: 'COMPLETED' | 'PARTIAL' | 'FAILED';
+    pagesProcessed: number;
+    pagesDiscovered: number;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+  },
+): Promise<void> {
+  const update = await supabase
+    .from('research_runs')
+    .update({
+      status: args.status,
+      pages_processed: args.pagesProcessed,
+      pages_discovered: args.pagesDiscovered,
+      finished_at: new Date().toISOString(),
+      error_code: args.errorCode ?? null,
+      error_message: args.errorMessage ? args.errorMessage.slice(0, 600) : null,
+    })
+    .eq('id', args.researchRunId)
+    .eq('organization_id', args.organizationId);
+
+  if (update.error) throw update.error;
+}
+
 export async function runResearchPipeline(input: ResearchPipelineInput): Promise<PipelineOutcome> {
   const { supabase, organizationId, brandId, websiteUrl, researchRunId } = input;
   const crawl = await crawlBrand(supabase, { organizationId, brandId, websiteUrl, researchRunId });
 
-  if (crawl.pagesProcessed > 0) {
-    await persistSourceChunks(supabase, { organizationId, brandId, researchRunId, pages: crawl.processedPages });
-    const brain = await analyzeResearchEvidence(supabase, { organizationId, brandId, researchRunId });
-
-    // A crawl is not a fully successful research run when Brand Brain analysis
-    // fails or has no usable evidence. Preserve the run as PARTIAL so downstream
-    // gates never mistake an incomplete intelligence pipeline for success.
-    if (brain.status === 'FAILED' || brain.status === 'SKIPPED') {
-      const code = brain.errorCode ?? 'BRAIN_ANALYSIS_INCOMPLETE';
-      const message = brain.errorMessage ?? 'Brand intelligence could not be completed.';
-      const status = crawl.status === 'FAILED' ? 'FAILED' : 'PARTIAL';
-      const update = await supabase
-        .from('research_runs')
-        .update({
-          status,
-          error_code: code,
-          error_message: message.slice(0, 600),
-          finished_at: new Date().toISOString(),
-        })
-        .eq('id', researchRunId)
-        .eq('organization_id', organizationId);
-      if (update.error) throw update.error;
-
-      return {
-        status,
-        pagesProcessed: crawl.pagesProcessed,
-        pagesDiscovered: crawl.pagesDiscovered,
-        brainStatus: brain.status,
-      };
-    }
+  if (crawl.pagesProcessed === 0) {
+    await finalizeResearchRun(supabase, {
+      organizationId,
+      researchRunId,
+      status: 'FAILED',
+      pagesProcessed: 0,
+      pagesDiscovered: crawl.pagesDiscovered,
+      errorCode: 'NO_PAGES_PROCESSED',
+      errorMessage: 'No pages could be processed during this research run.',
+    });
 
     return {
-      status: crawl.status,
+      status: 'FAILED',
+      pagesProcessed: 0,
+      pagesDiscovered: crawl.pagesDiscovered,
+      brainStatus: 'SKIPPED',
+    };
+  }
+
+  await persistSourceChunks(supabase, { organizationId, brandId, researchRunId, pages: crawl.processedPages });
+  const brain = await analyzeResearchEvidence(supabase, { organizationId, brandId, researchRunId });
+
+  if (brain.status === 'FAILED' || brain.status === 'SKIPPED') {
+    const code = brain.errorCode ?? 'BRAIN_ANALYSIS_INCOMPLETE';
+    const message = brain.errorMessage ?? 'Brand intelligence could not be completed.';
+    const status = crawl.status === 'FAILED' ? 'FAILED' : 'PARTIAL';
+
+    await finalizeResearchRun(supabase, {
+      organizationId,
+      researchRunId,
+      status,
+      pagesProcessed: crawl.pagesProcessed,
+      pagesDiscovered: crawl.pagesDiscovered,
+      errorCode: code,
+      errorMessage: message,
+    });
+
+    return {
+      status,
       pagesProcessed: crawl.pagesProcessed,
       pagesDiscovered: crawl.pagesDiscovered,
       brainStatus: brain.status,
     };
   }
 
-  return {
-    status: crawl.status,
-    pagesProcessed: 0,
+  const finalStatus = crawl.status === 'PARTIAL' ? 'PARTIAL' : 'COMPLETED';
+  await finalizeResearchRun(supabase, {
+    organizationId,
+    researchRunId,
+    status: finalStatus,
+    pagesProcessed: crawl.pagesProcessed,
     pagesDiscovered: crawl.pagesDiscovered,
-    brainStatus: 'SKIPPED',
+    errorCode: finalStatus === 'PARTIAL' ? 'PARTIAL_CRAWL' : null,
+    errorMessage: finalStatus === 'PARTIAL' ? 'Some public pages could not be processed; review source status.' : null,
+  });
+
+  return {
+    status: finalStatus,
+    pagesProcessed: crawl.pagesProcessed,
+    pagesDiscovered: crawl.pagesDiscovered,
+    brainStatus: brain.status,
   };
 }
 
