@@ -100,6 +100,8 @@ describe('runResearchPipeline', () => {
     expect(outcome).toEqual({ status: 'COMPLETED', pagesProcessed: 1, pagesDiscovered: 2, brainStatus: 'SUCCEEDED' });
     expect(mocks.crawlBrand).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ organizationId: ORG_ID, brandId: BRAND_ID, researchRunId: RUN_ID }));
     expect(mocks.analyzeResearchEvidence).toHaveBeenCalledTimes(1);
+    const finalUpdate = client.calls.filter((call) => call.table === 'research_runs' && call.method === 'update').at(-1);
+    expect(finalUpdate?.args[0]).toMatchObject({ status: 'COMPLETED', pages_processed: 1, pages_discovered: 2 });
   });
 
   it('downgrades a completed crawl to PARTIAL when Brand Brain analysis fails', async () => {
@@ -138,6 +140,7 @@ describe('runResearchPipeline', () => {
     const values = update!.args[0] as { status: string; error_code: string; error_message: string };
     expect(values.status).toBe('PARTIAL');
     expect(values.error_code).toBe('RATE_LIMITED');
+    expect(values.error_message).toBe('Provider rate limit');
   });
 
   it('skips AI analysis when no pages were processed', async () => {
@@ -146,8 +149,10 @@ describe('runResearchPipeline', () => {
 
     const outcome = await runResearchPipeline({ supabase: client as any, organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'https://example.com/', researchRunId: RUN_ID });
 
-    expect(outcome.brainStatus).toBe('SKIPPED');
+    expect(outcome).toMatchObject({ status: 'FAILED', pagesProcessed: 0, pagesDiscovered: 3, brainStatus: 'SKIPPED' });
     expect(mocks.analyzeResearchEvidence).not.toHaveBeenCalled();
+    const finalUpdate = client.calls.find((call) => call.table === 'research_runs' && call.method === 'update');
+    expect(finalUpdate?.args[0]).toMatchObject({ status: 'FAILED', error_code: 'NO_PAGES_PROCESSED' });
   });
 
   it('propagates crawl failures', async () => {
@@ -174,7 +179,7 @@ describe('scheduleResearchExecution', () => {
     expect(callbackResult).toBeInstanceOf(Promise);
     await callbackResult;
     expect(mocks.crawlBrand).toHaveBeenCalledTimes(1);
-    expect(client.calls.some((call) => call.table === 'research_runs')).toBe(false);
+    expect(client.calls.some((call) => call.table === 'research_runs' && call.method === 'update')).toBe(true);
   });
 
   it('retries transient network failures once and succeeds', async () => {
