@@ -75,8 +75,11 @@ function normalizeUrl(raw: string) {
   return url.toString();
 }
 
-function sameOrigin(a: string, b: string) {
-  return new URL(a).origin === new URL(b).origin;
+export function sameResearchSite(a: string, b: string) {
+  const normalizeHost = (value: string) => new URL(value).hostname.toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
+  const hostA = normalizeHost(a);
+  const hostB = normalizeHost(b);
+  return hostA === hostB || hostA.endsWith('.' + hostB) || hostB.endsWith('.' + hostA);
 }
 
 async function recordPageFailure(
@@ -201,7 +204,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           const redirectCount = Number(response.headers.get('x-redirect-count') || 0) + 1;
           if (location && redirectCount <= e.MAX_RESEARCH_REDIRECTS && seen.size < e.MAX_RESEARCH_PAGES * 3) {
             const redirected = normalizeUrl(new URL(location, target).toString());
-            if (sameOrigin(root, redirected)) {
+            if (sameResearchSite(root, redirected)) {
               await assertResolvablePublicHost(new URL(redirected).hostname);
               queue.unshift(redirected);
             }
@@ -255,7 +258,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         if (extracted.canonicalUrl) {
           try {
             const candidateCanonical = normalizeUrl(new URL(extracted.canonicalUrl, target).toString());
-            if (sameOrigin(root, candidateCanonical)) canonical = candidateCanonical;
+            if (sameResearchSite(root, candidateCanonical)) canonical = candidateCanonical;
           } catch {
             canonical = target;
           }
@@ -287,7 +290,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         for (const next of extracted.links) {
           try {
             const candidate = normalizeUrl(next);
-            if (sameOrigin(root, candidate) && !seen.has(candidate) && queue.length + seen.size < e.MAX_RESEARCH_PAGES * 3) queue.push(candidate);
+            if (sameResearchSite(root, candidate) && !seen.has(candidate) && queue.length + seen.size < e.MAX_RESEARCH_PAGES * 3) queue.push(candidate);
           } catch {
             continue;
           }
