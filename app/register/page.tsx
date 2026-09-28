@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Eye, EyeOff, LoaderCircle, MailCheck, RefreshCw, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
@@ -85,6 +85,8 @@ export default function RegisterPage() {
   const [confirmationCheckingMessage, setConfirmationCheckingMessage] = useState(
     'Waiting for email confirmation on the device where you started signup…',
   );
+  const confirmationSignInStartedRef = useRef(false);
+  const signupIntentRef = useRef<{ userId: string; nonce: string } | null>(null);
 
   useEffect(() => {
     async function check() {
@@ -129,41 +131,58 @@ export default function RegisterPage() {
     setConfirmationCheckingMessage('Checking your email confirmation…');
 
     try {
+      const intent = signupIntentRef.current;
+      if (!intent) {
+        setConfirmationCheckingMessage('This signup session expired. Please start registration again.');
+        return false;
+      }
+
+      const statusResponse = await fetch('/api/auth/confirmation-status', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(intent),
+        cache: 'no-store',
+      });
+      const statusBody = await statusResponse.json().catch(() => null);
+
+      if (!statusResponse.ok) {
+        setConfirmationCheckingMessage(
+          statusBody?.error || 'We could not check confirmation yet. Please try again.',
+        );
+        return false;
+      }
+
+      if (!statusBody?.confirmed) {
+        setConfirmationCheckingMessage(
+          'Your email is not confirmed yet. Once you open the link, this device will continue automatically.',
+        );
+        return false;
+      }
+
+      if (confirmationSignInStartedRef.current) return false;
+      confirmationSignInStartedRef.current = true;
+      setConfirmationCheckingMessage('Email confirmed. Completing sign-in on this device…');
+
       const supabase = createSupabaseBrowserClient();
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: confirmationEmail,
         password,
       });
 
-      if (signInError) {
-        const message = signInError.message.toLowerCase();
-
-        if (message.includes('email not confirmed')) {
-          setConfirmationCheckingMessage(
-            'Your email is not confirmed yet. The moment it is confirmed, this device will continue automatically.',
-          );
-          return false;
-        }
-
-        if (message.includes('too many requests') || message.includes('rate limit')) {
-          setConfirmationCheckingMessage(
-            'Supabase is rate-limiting confirmation checks. We will retry automatically shortly.',
-          );
-          return false;
-        }
-
+      if (signInError || !data.session) {
+        confirmationSignInStartedRef.current = false;
         setConfirmationCheckingMessage(
-          'Your email is confirmed, but this device could not complete sign-in yet. Please use Check now again.',
+          signInError?.message || 'Email confirmed, but the sign-in session could not be created. Use Check now again.',
         );
         return false;
       }
 
-      const accessToken = data.session?.access_token;
+      const accessToken = data.session.access_token;
       const bootstrap = await fetch('/api/auth/bootstrap', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          ...(accessToken ? { authorization: 'Bearer ' + accessToken } : {}),
+          authorization: 'Bearer ' + accessToken,
         },
         body: JSON.stringify({ organizationName: '' }),
         cache: 'no-store',
@@ -171,8 +190,9 @@ export default function RegisterPage() {
       const payload = await bootstrap.json().catch(() => null);
 
       if (!bootstrap.ok) {
+        confirmationSignInStartedRef.current = false;
         setConfirmationCheckingMessage(
-          payload?.error || 'Email confirmed, but workspace setup is still finishing. We will keep trying.',
+          payload?.error || 'Email confirmed, but workspace setup is still finishing. Please use Check now again.',
         );
         return false;
       }
@@ -180,8 +200,9 @@ export default function RegisterPage() {
       window.location.href = payload?.organization?.onboardingCompleted ? '/dashboard' : '/onboarding';
       return true;
     } catch {
+      confirmationSignInStartedRef.current = false;
       setConfirmationCheckingMessage(
-        'We could not check the confirmation yet. This device will retry automatically.',
+        'We could not finish the confirmation handoff yet. Please use Check now again.',
       );
       return false;
     } finally {
@@ -199,11 +220,11 @@ export default function RegisterPage() {
       if (cancelled) return;
       const moved = await continueFromConfirmedEmail();
       if (!cancelled && !moved) {
-        timer = window.setTimeout(poll, 15000);
+        timer = window.setTimeout(poll, 8000);
       }
     };
 
-    timer = window.setTimeout(poll, 5000);
+    timer = window.setTimeout(poll, 4000);
 
     return () => {
       cancelled = true;
@@ -269,11 +290,17 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const supabase = createSupabaseBrowserClient();
+      const signupNonce = crypto.randomUUID() + crypto.randomUUID();
+      const signupIntentCreatedAt = Date.now();
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { organizationName },
+          data: {
+            organizationName,
+            signupNonce,
+            signupIntentCreatedAt,
+          },
           emailRedirectTo: confirmationRedirectUrl(),
         },
       });
@@ -300,6 +327,22 @@ export default function RegisterPage() {
         setError(signUpError.message);
         return;
       } else if (!signUpData.session) {
+        if (!signUpData.user?.id) {
+          setError('We could not create the signup session. Please try again.');
+          return;
+        }
+
+        const identities = signUpData.user.identities ?? [];
+        if (identities.length === 0) {
+          setError('An account may already exist for this email. Try signing in or use Forgot password.');
+          return;
+        }
+
+        signupIntentRef.current = {
+          userId: signUpData.user.id,
+          nonce: signupNonce,
+        };
+        confirmationSignInStartedRef.current = false;
         setConfirmationEmail(email);
         setConfirmationCheckingMessage(
           'Waiting for email confirmation on the device where you started signup…',
@@ -363,6 +406,8 @@ export default function RegisterPage() {
               onClick={() => {
                 setError('');
                 setResent(false);
+                signupIntentRef.current = null;
+                confirmationSignInStartedRef.current = false;
                 setStep('auth');
               }}
             >
