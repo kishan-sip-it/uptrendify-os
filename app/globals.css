@@ -371,11 +371,46 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
   text-align:center;
   min-height:760px;
   background:
-    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 44%),
+    radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 48%),
     linear-gradient(180deg, var(--surface-card-2), var(--bg));
 }
-.landing-hero > .gridscan { position:absolute; inset:0; z-index:0; width:100%; height:100%; pointer-events:none; }
-.landing-hero > .gridscan canvas { display:block; width:100%; height:100%; pointer-events:none; opacity:.78; }
+.landing-hero-ambient {
+  position:absolute;
+  inset:0;
+  z-index:0;
+  pointer-events:none;
+  overflow:hidden;
+  background:
+    radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--accent-2) 7%, transparent), transparent 34%),
+    radial-gradient(circle at 18% 55%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 28%);
+}
+.landing-hero-ambient::before {
+  content:'';
+  position:absolute;
+  width:min(68vw, 920px);
+  height:min(68vw, 920px);
+  left:50%;
+  top:-38%;
+  transform:translateX(-50%);
+  border-radius:50%;
+  background:radial-gradient(circle, color-mix(in srgb, var(--accent) 10%, transparent), transparent 66%);
+  filter:blur(8px);
+  opacity:.72;
+  animation:landing-ambient-drift 14s ease-in-out infinite alternate;
+}
+.landing-hero-ambient::after {
+  content:'';
+  position:absolute;
+  inset:0;
+  background-image:radial-gradient(circle, color-mix(in srgb, var(--accent) 18%, transparent) 1px, transparent 1.2px);
+  background-size:32px 32px;
+  mask-image:linear-gradient(to bottom, transparent 2%, black 18%, black 74%, transparent 100%);
+  opacity:.08;
+}
+@keyframes landing-ambient-drift {
+  from { transform:translateX(-54%) translateY(-1.5%); }
+  to { transform:translateX(-46%) translateY(2.5%); }
+}
 .landing-hero > .landing-reveal {
   position:relative;
   z-index:2;

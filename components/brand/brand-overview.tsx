@@ -62,6 +62,7 @@ type BrainData = {
   sources: SourceInfo[];
   latestRun: RunInfo | null;
   suggestionCounts?: { pending: number; approved: number; edited: number; notFound: number; total: number };
+  suggestionsResearchRunId: string | null;
 };
 
 const LIVE_STATUSES = new Set(['QUEUED', 'RUNNING']);
@@ -459,12 +460,7 @@ export function BrandOverview({ brandId, brandName }: { brandId: string; brandNa
   }, [runs, load]);
 
   const latest = brain?.latestRun ?? runs[0] ?? null;
-  const active = Boolean(
-    latest && (
-      LIVE_STATUSES.has(latest.status) ||
-      (latest.ai && LIVE_AI_STATUSES.has(latest.ai.status))
-    ),
-  );
+  const active = Boolean(latest && LIVE_STATUSES.has(latest.status));
 
   const groupedCategories = [
     { category: 'POSITIONING', color: '#6ee7c7' },
@@ -484,6 +480,13 @@ export function BrandOverview({ brandId, brandName }: { brandId: string; brandNa
   const sourceCount = brain?.sources.length ?? 0;
   const pendingCount = brain?.suggestionCounts?.pending ?? 0;
   const lastFinishedAi = latest?.ai;
+  const latestRunStopped = latest?.status === 'FAILED' || latest?.status === 'PARTIAL';
+  const suggestionsAreFromPriorRun = Boolean(
+    latestRunStopped &&
+    latest?.id &&
+    brain?.suggestionsResearchRunId &&
+    brain.suggestionsResearchRunId !== latest.id,
+  );
 
   return (
     <div className="grid" style={{ gap: 16 }}>
@@ -518,6 +521,38 @@ export function BrandOverview({ brandId, brandName }: { brandId: string; brandNa
         )}
       </div>
 
+      {latestRunStopped ? (
+        <div
+          className="card"
+          role="alert"
+          style={{ borderColor: latest?.status === 'FAILED' ? 'rgba(239,68,68,.42)' : 'rgba(234,179,8,.42)' }}
+        >
+          <div className="section-title" style={{ marginBottom: 8 }}>
+            <div>
+              <div className="eyebrow">{latest?.status === 'FAILED' ? 'Research stopped' : 'Research completed with gaps'}</div>
+              <h3 style={{ margin: '4px 0 0' }}>
+                {latest?.errorMessage || 'The latest research run did not finish cleanly.'}
+              </h3>
+            </div>
+            <button
+              type="button"
+              className="badge"
+              onClick={startResearch}
+              disabled={starting}
+              style={{ border: 0, cursor: starting ? 'not-allowed' : 'pointer', opacity: starting ? 0.6 : 1 }}
+            >
+              {starting ? <><LoaderCircle size={14} className="spin" /> Starting…</> : <><PlayCircle size={14} /> Try again</>}
+            </button>
+          </div>
+          <p className="subtitle" style={{ margin: 0 }}>
+            {suggestionsAreFromPriorRun
+              ? 'The latest run stopped before completing. The existing Brand Brain suggestions below are preserved from the last successful analysis.'
+              : latest?.status === 'PARTIAL'
+                ? 'Some public pages could not be processed. Review the run history below and re-run when you want a clean pass.'
+                : 'No new trustworthy Brand Brain results were added by this run.'}
+          </p>
+        </div>
+      ) : null}
       {actionError ? <div className="card" style={{ borderColor: 'rgba(239,68,68,.35)' }}><ErrorState message={actionError} /></div> : null}
       {error ? <div className="card" style={{ borderColor: 'rgba(239,68,68,.35)' }}><ErrorState message={error} /></div> : null}
 

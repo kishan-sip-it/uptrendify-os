@@ -74,7 +74,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
         .limit(1),
       supabase
         .from('brand_suggestions')
-        .select('id,field,label,kind,proposed_value,status,evidence,evidence_strength,sources_examined,confidence,created_at,updated_at,reviewed_at')
+        .select('id,research_run_id,field,label,kind,proposed_value,status,evidence,evidence_strength,sources_examined,confidence,created_at,updated_at,reviewed_at')
         .eq('brand_id', brandId)
         .eq('organization_id', auth.context.organizationId)
         .order('field', { ascending: true }),
@@ -112,7 +112,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
       return { processed, failed, pagesDiscovered: latestRun.pages_discovered, pagesProcessed: latestRun.pages_processed };
     })();
 
-    const suggestions: BrainSuggestion[] = (suggestionsResult.data ?? []).map((row: any) => {
+    const suggestionRows = suggestionsResult.data ?? [];
+    const suggestionsResearchRunId = [...suggestionRows]
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]?.research_run_id ?? null;
+
+    const suggestions: BrainSuggestion[] = suggestionRows.map((row: any) => {
       const fieldDef = FIELD_BY_KEY.get(row.field);
       return {
         id: row.id,
@@ -159,6 +163,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
           : null,
         suggestions,
         suggestionCounts: computeCounts(suggestions as any),
+        suggestionsResearchRunId,
         importInfo: runSourceCounts,
       },
       { headers: { 'Cache-Control': 'no-store' } },
