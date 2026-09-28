@@ -277,7 +277,7 @@ async function searchDuckDuckGo(query: string, brandQuery: string): Promise<Bran
   $('.result__a').each((_, element) => {
     const href = $(element).attr('href');
     const title = $(element).text().replace(/\s+/g, ' ').trim();
-    const normalized = href ? normalizeCandidate(href) : null;
+    const normalized = href ? normalizeCandidate(href, brandQuery) : null;
     if (normalized && title) {
       results.push({
         title,
