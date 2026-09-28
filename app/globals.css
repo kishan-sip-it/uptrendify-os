@@ -345,7 +345,7 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 
 /* Landing */
 .landing { min-height:100vh; overflow-x:hidden; }
-.landing-nav { position:sticky; top:0; z-index:40; display:flex; align-items:center; gap:28px; padding:16px 28px; background:rgba(7,11,18,.82); backdrop-filter:blur(18px); border-bottom:1px solid transparent; }
+.landing-nav { position:sticky; top:0; z-index:40; display:flex; align-items:center; gap:28px; padding:16px 28px; background:color-mix(in srgb, var(--surface-overlay) 88%, transparent); backdrop-filter:blur(18px); border-bottom:1px solid var(--line); }
 .landing-logo { display:flex; align-items:center; gap:10px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:19px; letter-spacing:-.04em; }
 .landing-links { display:flex; gap:4px; margin-left:auto; }
 .landing-links a { padding:8px 12px; border-radius:9px; color:var(--muted); font-size:14px; }
@@ -373,7 +373,7 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
   background:radial-gradient(circle at 50% 42%, rgba(139,124,255,.08), transparent 42%), #120F17;
 }
 .landing-hero > .gridscan { position:absolute; inset:0; z-index:0; width:100%; height:100%; pointer-events:none; }
-.landing-hero > .gridscan canvas { display:block; width:100%; height:100%; pointer-events:none; opacity:.98; }
+.landing-hero > .gridscan canvas { display:block; width:100%; height:100%; pointer-events:none; opacity:.78; }
 .landing-hero > .landing-reveal {
   position:relative;
   z-index:2;
@@ -398,10 +398,10 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .landing-hero-actions { display:flex; gap:14px; justify-content:center; margin-top:30px; flex-wrap:wrap; }
 .landing-pipeline { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:30px; }
 .landing-pipeline-glow { border-radius:999px; }
-.landing-pipeline-glow .landing-pipeline-step { display:flex; align-items:center; gap:9px; padding:8px 14px; border-radius:999px; border:0; background:rgba(11,17,28,.64); }
+.landing-pipeline-glow .landing-pipeline-step { display:flex; align-items:center; gap:9px; padding:8px 14px; border-radius:999px; border:0; background:color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter:blur(8px); }
 .landing-pipeline-badge { width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-size:11px; font-weight:700; color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, var(--surface-muted)); }
 .landing-pipeline-label { color:var(--text); font-size:13px; font-weight:600; }
-.landing-terminal { max-width:640px; margin:44px auto 0; text-align:left; border:1px solid var(--line); border-radius:16px; background:rgba(11,17,28,.75); overflow:hidden; box-shadow:0 30px 90px rgba(0,0,0,.4); }
+.landing-terminal { max-width:640px; margin:44px auto 0; text-align:left; border:1px solid var(--line); border-radius:16px; background:color-mix(in srgb, var(--panel) 92%, transparent); overflow:hidden; box-shadow:0 30px 90px color-mix(in srgb, var(--bg) 55%, transparent); }
 .landing-terminal-bar { display:flex; align-items:center; gap:6px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--surface-inset); }
 .landing-terminal-bar > span { width:10px; height:10px; border-radius:50%; background:#27354a; }
 .landing-terminal-bar > span:nth-child(1) { background:#f87171; }
@@ -418,7 +418,7 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .landing-step.running { border-color: rgba(139,124,255,.4); }
 .landing-step.running .landing-step-icon { animation:pulse 1.4s ease-in-out infinite; }
 .landing-step.done { border-color: rgba(183,148,246,.3); }
-.landing-log { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; color:var(--muted); padding:10px 12px; border-radius:10px; background:#070b12; border:1px solid var(--line); }
+.landing-log { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; color:var(--muted); padding:10px 12px; border-radius:10px; background:var(--surface-inset); border:1px solid var(--line); }
 .landing-log-live { color:var(--accent); }
 .landing-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; max-width:1080px; margin:0 auto; padding:20px 28px 60px; }
 .landing-metric { text-align:center; padding:22px 12px; border:1px solid var(--line); border-radius:16px; background:var(--surface-muted); }
@@ -2255,4 +2255,33 @@ html[data-theme="system"]:not(.theme-dark) {
 }
 .brand-suggestion-list {
   max-height: min(440px, 60vh);
+}
+
+
+/* Defensive rendering for user-controlled and externally sourced long values. */
+.safe-url {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-item,
+.source-item > a,
+.activity-body,
+.brand-suggestion-copy,
+.team-row > div {
+  min-width: 0;
+  max-width: 100%;
+}
+.source-item > a,
+.activity-title,
+.activity-meta,
+.brand-suggestion-copy > span,
+.team-row strong,
+.field-help,
+.field-note {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
