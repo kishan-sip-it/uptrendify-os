@@ -211,16 +211,7 @@ export default function OnboardingPage() {
     }
 
     autosaveTimerRef.current = window.setTimeout(() => {
-      autosaveControllerRef.current?.abort();
-      const controller = new AbortController();
-      autosaveControllerRef.current = controller;
-
-      void fetch('/api/onboarding', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ step, completed: false, data: draft }),
-        signal: controller.signal,
-      }).catch(() => undefined);
+      void saveProgress(step, false).catch(() => undefined);
     }, 450);
 
     return () => {
