@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ExternalLink, Globe2, LoaderCircle, Search, X } from 'lucide-react';
+import { compactUrl } from '@/lib/ui/safe-url';
 
 type Candidate = {
   title: string;
