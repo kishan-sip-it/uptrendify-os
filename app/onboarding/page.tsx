@@ -119,6 +119,8 @@ export default function OnboardingPage() {
 
           if (cancelled) return;
           setDraft(next);
+          primaryColorSourceRef.current =
+            next.primaryColor && next.primaryColor !== EMPTY_DRAFT.primaryColor ? 'manual' : 'default';
           setWorkspaceRole(String(body?.role || 'OWNER'));
           setStep(Math.min(5, Math.max(0, Number(body?.progress?.current_step ?? 0))));
           setResumable(Boolean(body?.progress));
