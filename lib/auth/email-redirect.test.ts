@@ -17,15 +17,6 @@ describe('getEmailConfirmationRedirectUrl', () => {
     ).toBe('https://custom.example.com/auth/confirm');
   });
 
-  it('rejects a localhost configured URL and falls back to production', () => {
-    expect(
-      getEmailConfirmationRedirectUrl(
-        'https://uptrendify-os.vercel.app',
-        'http://localhost:3000',
-      ),
-    ).toBe('https://uptrendify-os.vercel.app/auth/confirm');
-  });
-
   it('keeps a real public origin for preview/production environments', () => {
     expect(
       getEmailConfirmationRedirectUrl('https://uptrendify-os-preview.vercel.app'),

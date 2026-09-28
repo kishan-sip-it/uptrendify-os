@@ -1,5 +1,5 @@
-const DEFAULT_SUPABASE_URL = 'https://hbwpzuenihaxneqpzkrc.supabase.co';
-const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_nZ3IktMC6ectLH8pWrRhTg_SSJkMhPq';
+const DEFAULT_SUPABASE_URL = 'https://iipfwctyzdcuzlujmvte.supabase.co';
+const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_myqj1yUy7UZ-TfeieHBKrw_I8rl_ZLa';
 
 export function getSupabaseConfig() {
   // NODE_ENV is available in the client bundle. VERCEL_ENV is a server-side

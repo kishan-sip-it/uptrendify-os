@@ -5,21 +5,16 @@
       <p style="margin:0 0 10px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#6d756d;">UpTrendifyOS</p>
       <h1 style="margin:0 0 14px;font-size:28px;line-height:1.15;">Confirm your email</h1>
       <p style="font-size:15px;line-height:1.6;color:#50554f;">
-        Confirm this email address to finish creating your UpTrendifyOS workspace.
+        Confirm this email address to finish creating your workspace. The secure link below signs you into UpTrendifyOS and continues your setup automatically.
       </p>
       <p style="margin:26px 0;">
         <a
-          href="https://uptrendify-os.vercel.app/auth/confirm?token_hash={{ .TokenHash }}&type=email"
+          href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email"
           style="display:inline-block;padding:12px 18px;border-radius:10px;background:#151b17;color:#ffffff;text-decoration:none;font-weight:700;"
         >Confirm email address</a>
       </p>
-      <p style="font-size:13px;line-height:1.6;color:#6d756d;">
-        You can open this link on any device. Confirming the email does not sign
-        this email device into the application; the device where you started
-        signup will continue automatically after confirmation.
-      </p>
       <p style="font-size:12px;line-height:1.6;color:#7a7f79;">
-        If you did not create this account, you can safely ignore this email.
+        If you did not create this account, you can safely ignore this message.
       </p>
     </div>
   </body>

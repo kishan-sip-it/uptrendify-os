@@ -22,15 +22,15 @@ afterEach(() => {
 });
 
 describe('getSupabaseConfig', () => {
-  it('uses the verified project in production even when deployment env values are stale', () => {
+  it('uses the actual UpTrendifyOS Supabase project in production even when deployment env values are stale', () => {
     (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
     process.env.VERCEL_ENV = 'production';
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://wrong-project.supabase.co';
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'wrong-publishable-key';
 
     expect(getSupabaseConfig()).toEqual({
-      url: 'https://hbwpzuenihaxneqpzkrc.supabase.co',
-      key: 'sb_publishable_nZ3IktMC6ectLH8pWrRhTg_SSJkMhPq',
+      url: 'https://iipfwctyzdcuzlujmvte.supabase.co',
+      key: 'sb_publishable_myqj1yUy7UZ-TfeieHBKrw_I8rl_ZLa',
     });
   });
 
