@@ -32,7 +32,7 @@ const TLD_PRIORITY: Record<string, number> = {
   // TLD is only a tie-breaker, but an exact brand-domain match on a
   // conventional public web domain should beat an otherwise equivalent
   // alternative extension such as .io.
-  com: 72,
+  com: 90,
   org: 28,
   net: 24,
   co: 20,
@@ -151,7 +151,7 @@ function rankAndDedupe(candidates: RankedCandidate[]): BrandWebsiteCandidate[] {
       ...existing.providers,
       ...candidate.providers,
     ]);
-    const consensusBonus = Math.min(18, Math.max(0, providers.size - 1) * 9);
+    const consensusBonus = Math.min(8, Math.max(0, providers.size - 1) * 4);
     const score = Math.max(existing.score, candidate.score) + consensusBonus;
 
     byHost.set(key, {
