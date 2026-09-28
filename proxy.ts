@@ -23,13 +23,43 @@ const AUTH_PATHS = new Set(['/login', '/register', '/forgot-password', '/reset-p
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApiRequest = pathname.startsWith('/api/');
+  const isAuthApiRequest = pathname.startsWith('/api/auth/');
+  const { url, key } = getSupabaseConfig();
 
-  if (isApiRequest) {
+  let response = NextResponse.next({ request });
+  let authenticatedApiRequest = false;
+
+  // Authentication and account/workspace actions are intentionally not subject
+  // to the shared IP rate limiter. Public/unauthenticated APIs remain protected.
+  // This prevents one signed-in user from exhausting an IP-wide bucket while
+  // using legitimate high-frequency workflows such as Brand Brain research.
+  if (isApiRequest && !isAuthApiRequest && url && key) {
+    try {
+      const supabase = createServerClient(url, key, {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll(values) {
+            values.forEach(({ name, value }) => request.cookies.set(name, value));
+            response = NextResponse.next({ request });
+            values.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+          },
+        },
+      });
+
+      const { data } = await supabase.auth.getClaims();
+      authenticatedApiRequest = Boolean(data?.claims?.sub);
+    } catch {
+      authenticatedApiRequest = false;
+    }
+  }
+
+  if (isApiRequest && !authenticatedApiRequest) {
     try {
       const decision = await consumeRateLimit(request, pathname);
       if (!decision.allowed) return rateLimitResponse(decision);
 
-      const response = NextResponse.next({ request });
       return applyRateLimitHeaders(response, decision);
     } catch (error) {
       // consumeRateLimit itself has a bounded local fallback, so limiter backend
@@ -37,6 +67,8 @@ export async function proxy(request: NextRequest) {
       console.error('[rate-limit] request limiter error after fallback', error);
     }
   }
+
+  if (isApiRequest) return response;
 
   const isPublicPage =
     PUBLIC_PATHS.has(pathname) ||
@@ -46,18 +78,15 @@ export async function proxy(request: NextRequest) {
     pathname === '/favicon.ico';
 
   if (isPublicPage) {
-    return NextResponse.next();
+    return response;
   }
 
-  const { url, key } = getSupabaseConfig();
   if (!url || !key) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = '/login';
     redirectUrl.search = '';
     return NextResponse.redirect(redirectUrl);
   }
-
-  let response = NextResponse.next({ request });
 
   try {
     const supabase = createServerClient(url, key, {
