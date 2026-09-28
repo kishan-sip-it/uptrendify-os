@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RefreshCw, UserPlus } from 'lucide-react';
+import { ArrowLeft, RefreshCw, UserPlus } from 'lucide-react';
 import { LoadingState } from '@/components/ui/feedback';
 
 type Member = { id: string; user_id: string; role: string; name: string };
@@ -81,6 +81,9 @@ export default function TeamSettingsPage() {
     <div className="settings-page">
       <div className="topbar">
         <div>
+          <a href="/settings" className="metric-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+            <ArrowLeft size={14} /> Back to Settings
+          </a>
           <div className="eyebrow">Settings · Team</div>
           <h1>Team & roles</h1>
           <p className="subtitle">Everyone works inside the same workspace. Roles control what each person can do.</p>
