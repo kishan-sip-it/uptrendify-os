@@ -485,7 +485,6 @@ export function AppShell({
                       close();
                       setDeleteError('');
                       setDeleteConfirmation('');
-                      setWorkspaceConfirmation('');
                       setDeleteOpen(true);
                     }}
                     style={{ color: '#f87171' }}
