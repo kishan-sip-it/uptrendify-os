@@ -564,6 +564,15 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
 
       {loading ? (
         <LoadingState label="Loading brand intelligence…" />
+      ) : live ? (
+        <div className="card" role="status" aria-live="polite">
+          <div className="eyebrow">Live update</div>
+          <h3 style={{ margin: '5px 0 8px' }}>Brand Brain is being updated</h3>
+          <p className="subtitle" style={{ margin: 0 }}>
+            Research is still running. Current suggestions stay hidden until the crawl and Brand Intelligence generation finish, so the counts and results cannot get out of sync.
+          </p>
+          <div className="progress" style={{ marginTop: 14 }}><span style={{ width: '62%' }} /></div>
+        </div>
       ) : (data?.suggestionCounts.total ?? 0) === 0 ? (
         canManage && needsImport ? (
           <EmptyState
