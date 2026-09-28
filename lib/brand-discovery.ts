@@ -28,6 +28,10 @@ const DISCOVERY_CACHE_TTL_MS = 60_000;
 const DISCOVERY_CACHE_MAX_ENTRIES = 100;
 const discoveryCache = new Map<string, { expiresAt: number; candidates: BrandWebsiteCandidate[] }>();
 
+export function clearBrandDiscoveryCache(): void {
+  discoveryCache.clear();
+}
+
 const TLD_PRIORITY: Record<string, number> = {
   // TLD is only a tie-breaker, but an exact brand-domain match on a
   // conventional public web domain should beat an otherwise equivalent
