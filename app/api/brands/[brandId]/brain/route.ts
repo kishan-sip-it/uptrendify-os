@@ -92,6 +92,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
       }
     });
 
+    const displaySourceIds = new Set(displaySources.map((source: any) => source.id));
+
     const latestRun = runsResult.data?.[0] ?? null;
     const ai = latestRun && Array.isArray(latestRun.ai_tasks) && latestRun.ai_tasks.length > 0
       ? [...latestRun.ai_tasks].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
@@ -120,7 +122,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
         kind: row.kind,
         proposed_value: row.proposed_value,
         status: row.status,
-        evidence: row.evidence,
+        evidence: (Array.isArray(row.evidence) ? row.evidence : []).filter((item: any) => {
+          try {
+            return item?.sourceId ? displaySourceIds.has(item.sourceId) : item?.url ? isResearchCandidate(brand.website_url, item.url) : false;
+          } catch {
+            return false;
+          }
+        }),
         evidence_strength: row.evidence_strength,
         sources_examined: row.sources_examined,
         confidence: row.confidence,
