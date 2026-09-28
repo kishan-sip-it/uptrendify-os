@@ -88,7 +88,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(
       { ok: true, primaryColor, source: primaryColor ? 'theme-color' : null, finalUrl },
-      { headers: { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=600' } },
+      { headers: { 'Cache-Control': 'private, max-age=300' } },
     );
   } catch (error) {
     return NextResponse.json(
