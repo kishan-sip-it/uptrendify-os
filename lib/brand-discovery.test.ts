@@ -42,7 +42,7 @@ describe('discoverBrandWebsites', () => {
       return htmlResponse('', 404);
     });
     vi.stubGlobal('fetch', fetchMock);
-    const candidates = await discoverBrandWebsites('Aurora Labs');
+    const candidates = await discoverBrandWebsites('Aurora Lab');
     expect(candidates[0]?.url).toBe('https://auroralab.com');
   });
 
