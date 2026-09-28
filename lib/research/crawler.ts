@@ -4,7 +4,7 @@ import { obs } from '@/lib/obs/logger';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from './url-security';
 import { translateResearchError } from './errors';
 import { extractPage } from './extract';
-import { isResearchCandidate, normalizeResearchUrl, sameResearchSite } from './url-policy';
+import { isLikelyAuthGatedContent, isLowSignalResearchPath, isResearchCandidate, normalizeResearchUrl, sameResearchSite } from './url-policy';
 
 export { sameResearchSite } from './url-policy';
 
@@ -62,6 +62,8 @@ export type CrawlOutcome = {
   pagesProcessed: number;
   pagesDiscovered: number;
   processedPages: ProcessedPage[];
+  errorCode?: string | null;
+  errorMessage?: string | null;
 };
 
 export type CrawlArgs = {
@@ -201,6 +203,9 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
             if (isResearchCandidate(root, redirected)) {
               await assertResolvablePublicHost(new URL(redirected).hostname);
               queue.unshift(redirected);
+            } else if (isLowSignalResearchPath(redirected)) {
+              partial = true;
+              recordRunFailure('AUTH_REQUIRED', 'The public website redirects research to a login or account page.');
             }
           }
           continue;
@@ -236,6 +241,24 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         // Raw HTML is often only an app shell for JS-rendered sites. When the
         // extracted document is too thin, use Jina Reader's free browser-backed
         // renderer as a fallback instead of declaring the website unusable.
+        if (isLikelyAuthGatedContent(extracted.title, extracted.text)) {
+          partial = true;
+          recordRunFailure(
+            'AUTH_REQUIRED',
+            'The public website requires a login or blocks automated public access, so no trustworthy evidence was extracted from this page.',
+          );
+          await recordPageFailure(supabase, {
+            organizationId,
+            brandId,
+            researchRunId,
+            url: target,
+            code: 'AUTH_REQUIRED',
+            message: 'The public website requires a login or blocks automated public access.',
+            httpStatus: response.status,
+          });
+          continue;
+        }
+
         if (shouldUseRenderedFallback(content, extracted.text, extracted.links)) {
           const rendered = await fetchRenderedFallback(target);
           if (rendered && rendered.text.length > extracted.text.length) {
@@ -308,7 +331,14 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
 
     // Pipeline owns terminal research-run finalization so Brand Brain generation
     // cannot finish after the UI already sees a terminal crawl status.
-    return { status: crawlStatus, pagesProcessed, pagesDiscovered: seen.size, processedPages };
+    return {
+      status: crawlStatus,
+      pagesProcessed,
+      pagesDiscovered: seen.size,
+      processedPages,
+      errorCode: runFailureCode,
+      errorMessage: runFailureMessage,
+    };
   } catch (error) {
     const info = translateResearchError(error);
     const failed = await supabase.from('research_runs').update({
