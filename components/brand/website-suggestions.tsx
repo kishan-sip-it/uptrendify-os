@@ -181,7 +181,7 @@ export function BrandWebsiteSuggestions({
                 <span className="brand-suggestion-copy">
                   <strong>{candidate.title || candidate.host}</strong>
                   <span>{candidate.host}</span>
-                  <span>{candidate.url}</span>
+                  <span className="safe-url" title={candidate.url}>{compactUrl(candidate.url)}</span>
                 </span>
                 <ExternalLink size={14} className="brand-suggestion-external" aria-hidden="true" />
               </button>
