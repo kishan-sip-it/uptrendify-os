@@ -278,9 +278,8 @@ describe('crawlBrand', () => {
     const result = await crawlBrand(client, { organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'http://8.8.8.8', researchRunId: RUN_ID });
     expect(result.status).toBe('FAILED');
 
-    const failedUpdate = client.__updatesPayload.find((payload: any) => payload.status === 'FAILED');
-    expect(failedUpdate?.error_code).toBe('CONNECTION_REFUSED');
-    expect(failedUpdate?.error_message).toContain('ECONNREFUSED');
+    expect(result.errorCode).toBe('CONNECTION_REFUSED');
+    expect(result.errorMessage).toContain('ECONNREFUSED');
 
     const source = client.__sourceUpserts[0];
     expect(source?.status).toBe('FAILED');
@@ -305,7 +304,6 @@ describe('crawlBrand', () => {
     expect(source?.http_status).toBe(503);
     expect(source?.metadata).toMatchObject({ error_code: 'HTTP_503' });
 
-    const failedUpdate = client.__updatesPayload.find((payload: any) => payload.status === 'FAILED');
-    expect(failedUpdate?.error_code).toBe('HTTP_503');
+    expect(result.errorCode).toBe('HTTP_503');
   });
 });
