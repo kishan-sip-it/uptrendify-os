@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Brain, FileSearch, Globe2, History, LoaderCircle, PlayCircle, Sparkles } from 'lucide-react';
 import { EmptyState, ErrorState } from '@/components/ui/feedback';
+import { compactUrl, isRawUrlLabel } from '@/lib/ui/safe-url';
 
 type AiTaskInfo = {
   status: string;
@@ -305,8 +306,8 @@ function SourcesPanel({ sources }: { sources: SourceInfo[] }) {
             {visibleSources.map((source) => (
               <li className="source-item" key={source.id}>
                 <a href={source.url} target="_blank" rel="noreferrer">
-                  <span className="activity-title">{source.title || source.url}</span>
-                  <span className="activity-meta" style={{ wordBreak: 'break-all' }}>{source.url}</span>
+                  <span className="activity-title">{source.title && !isRawUrlLabel(source.title) ? source.title : compactUrl(source.url)}</span>
+                  <span className="activity-meta safe-url" title={source.url}>{compactUrl(source.url)}</span>
                 </a>
                 <span className="badge tone-muted">HTTP {source.http_status ?? '—'}</span>
               </li>
