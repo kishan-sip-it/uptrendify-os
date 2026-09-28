@@ -1,8 +1,9 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Globe2, LoaderCircle, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Globe2, LoaderCircle, Rocket, Sparkles, Users } from 'lucide-react';
 import { ErrorState, SuccessState } from '@/components/ui/feedback';
+import { useRouter } from 'next/navigation';
 import { BrandWebsiteSuggestions } from '@/components/brand/website-suggestions';
 
 type Status = { kind: 'success' | 'error' | 'idle'; message: string };
@@ -10,10 +11,56 @@ type Status = { kind: 'success' | 'error' | 'idle'; message: string };
 export default function NewBrandPage() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: 'idle', message: '' });
+  const router = useRouter();
   const [createdBrandId, setCreatedBrandId] = useState('');
   const [brandName, setBrandName] = useState('');
   const [websiteUrl, setWebsiteUrl] = useState('');
+  const [secondaryAudience, setSecondaryAudience] = useState('');
+  const [offer, setOffer] = useState('');
+  const [valueProposition, setValueProposition] = useState('');
+  const [differentiators, setDifferentiators] = useState('');
+  const [coreMessage, setCoreMessage] = useState('');
+  const [messagingPillars, setMessagingPillars] = useState('');
+  const [tone, setTone] = useState('');
+  const [primaryColor, setPrimaryColor] = useState('#6ee7c7');
+  const [wordsToUse, setWordsToUse] = useState('');
+  const [wordsToAvoid, setWordsToAvoid] = useState('');
+  const [restrictions, setRestrictions] = useState('');
+  const [colorSource, setColorSource] = useState<'default' | 'website' | 'manual'>('default');
+  const [colorLoading, setColorLoading] = useState(false);
   const [workspace, setWorkspace] = useState<{ name: string; workspace_type: 'AGENCY' | 'BUSINESS' } | null>(null);
+
+  useEffect(() => {
+    const website = websiteUrl.trim();
+    if (!/^https?:\/\//i.test(website) || colorSource === 'manual') {
+      setColorLoading(false);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      const controller = new AbortController();
+      setColorLoading(true);
+      try {
+        const response = await fetch('/api/website-preview?url=' + encodeURIComponent(website), {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const body = await response.json().catch(() => null);
+        if (!controller.signal.aborted && typeof body?.primaryColor === 'string' && colorSource === 'default') {
+          setPrimaryColor(body.primaryColor);
+          setColorSource('website');
+        }
+      } catch {
+        // Website color detection is optional.
+      } finally {
+        if (!controller.signal.aborted) setColorLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [websiteUrl, colorSource]);
 
   useEffect(() => {
     fetch('/api/workspace', { cache: 'no-store' })
@@ -45,8 +92,50 @@ export default function NewBrandPage() {
         }
         throw new Error(result.error || 'Could not create brand');
       }
-      setCreatedBrandId(String(result.brand.id));
-      setStatus({ kind: 'success', message: 'Brand created. Open the brand workspace to start research and continue the workflow.' });
+      const brandId = String(result.brand.id);
+      setCreatedBrandId(brandId);
+
+      const rulesResponse = await fetch('/api/brands/' + brandId, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          description: payload.description ?? null,
+          industry: payload.industry ?? null,
+          marketCountry: payload.marketCountry ?? null,
+          targetAudience: payload.targetAudience ?? null,
+          audienceDetails: { secondaryAudience: secondaryAudience.trim() || null },
+          offerDetails: { coreOffer: offer.trim() || null },
+          positioning: {
+            valueProposition: valueProposition.trim() || null,
+            differentiators: differentiators.split('\n').map((value) => value.trim()).filter(Boolean),
+          },
+          messaging: {
+            coreMessage: coreMessage.trim() || null,
+            pillars: messagingPillars.split('\n').map((value) => value.trim()).filter(Boolean),
+            tone: tone.trim() || null,
+            wordsToUse: wordsToUse.split('\n').map((value) => value.trim()).filter(Boolean),
+            wordsToAvoid: wordsToAvoid.split('\n').map((value) => value.trim()).filter(Boolean),
+            restrictions: restrictions.trim() || null,
+          },
+          primaryColor,
+          visualIdentity: { primaryColor },
+        }),
+      });
+      const rulesBody = await rulesResponse.json().catch(() => null);
+      if (!rulesResponse.ok) throw new Error(rulesBody?.error || 'Could not save the brand rules');
+
+      const researchResponse = await fetch('/api/brands/' + brandId + '/research', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const researchBody = await researchResponse.json().catch(() => null);
+      if (!researchResponse.ok && researchResponse.status !== 409) {
+        throw new Error(researchBody?.error || 'Brand created, but research could not be started.');
+      }
+
+      setStatus({ kind: 'success', message: 'Brand created and research started. Opening the research workspace…' });
+      window.setTimeout(() => router.replace('/brands/' + brandId), 350);
     } catch (error) {
       setStatus({ kind: 'error', message: error instanceof Error ? error.message : 'Something went wrong' });
     } finally {
@@ -95,13 +184,35 @@ export default function NewBrandPage() {
         </div>
         <div className="brand-form-section">
           <div className="brand-form-section-title">
+            <strong>Brand rules</strong>
+            <span className="badge"><Users size={12} /> Same questions as initial onboarding</span>
+          </div>
+          <div className="onboarding-grid">
+            <label>Secondary audience<textarea rows={3} value={secondaryAudience} onChange={(event) => setSecondaryAudience(event.target.value)} /></label>
+            <label>Core offer<textarea rows={3} value={offer} onChange={(event) => setOffer(event.target.value)} /></label>
+            <label>Value proposition<textarea rows={3} value={valueProposition} onChange={(event) => setValueProposition(event.target.value)} /></label>
+            <label>Differentiators<textarea rows={3} value={differentiators} onChange={(event) => setDifferentiators(event.target.value)} placeholder="One per line" /></label>
+            <label>Core message<textarea rows={3} value={coreMessage} onChange={(event) => setCoreMessage(event.target.value)} /></label>
+            <label>Messaging pillars<textarea rows={3} value={messagingPillars} onChange={(event) => setMessagingPillars(event.target.value)} placeholder="One per line" /></label>
+            <label>Tone / communication style<input value={tone} onChange={(event) => setTone(event.target.value)} placeholder="e.g. direct, optimistic, expert" /></label>
+            <label>Primary brand color<input type="color" value={primaryColor} onChange={(event) => { setPrimaryColor(event.target.value); setColorSource('manual'); }} /></label>
+            <label>Words to use<textarea rows={3} value={wordsToUse} onChange={(event) => setWordsToUse(event.target.value)} placeholder="One per line" /></label>
+            <label>Words to avoid<textarea rows={3} value={wordsToAvoid} onChange={(event) => setWordsToAvoid(event.target.value)} placeholder="One per line" /></label>
+            <label className="span-2">Restrictions / claims to avoid<textarea rows={4} value={restrictions} onChange={(event) => setRestrictions(event.target.value)} /></label>
+          </div>
+          <p className="field-note" style={{ marginTop: 10 }}>
+            {colorLoading ? 'Checking the website for its primary theme color…' : colorSource === 'website' ? 'Primary color detected from the website. You can change it above.' : 'Primary color will be detected from the public website when available.'}
+          </p>
+        </div>
+        <div className="brand-form-section">
+          <div className="brand-form-section-title">
             <strong>What happens next</strong>
             <span className="badge"><Sparkles size={12} /> Research → Brand Intelligence → Strategy</span>
           </div>
-          <p className="subtitle" style={{ margin: 0 }}>Research gathers evidence first. Brand Intelligence organizes what the system found. Human review decides what becomes trusted brand knowledge.</p>
+          <p className="subtitle" style={{ margin: 0 }}>Creating the brand now also starts the research run automatically, so this path behaves like the initial onboarding flow.</p>
         </div>
         <button disabled={loading} className="brand-form-submit">
-          {loading ? <><LoaderCircle size={15} className="spin"/> Creating…</> : <>Create brand and open workspace <Sparkles size={15}/></>}
+          {loading ? <><LoaderCircle size={15} className="spin"/> Creating & starting research…</> : <>Create brand and start research <Rocket size={15}/><ArrowRight size={14}/></>}
         </button>
         {status.kind === 'success' && (
           <div className="card" style={{ background: '#edf5ef', borderColor: '#cfe0d4' }}>
