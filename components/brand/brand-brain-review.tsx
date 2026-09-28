@@ -6,6 +6,7 @@ import {
   Search, Sparkles, ThumbsDown, X, Wrench,
 } from 'lucide-react';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/feedback';
+import { compactUrl, isRawUrlLabel } from '@/lib/ui/safe-url';
 
 type EvidenceItem = {
   sourceId: string | null;
@@ -155,9 +156,15 @@ function EvidenceBlock({ evidence, sourcesExamined }: { evidence: EvidenceItem[]
           <li key={`${item.url}-${index}`} className="suggestion-evidence">
             <span className={`badge ${sl.tone}`} style={{ padding: '2px 6px', fontSize: 11 }}>{sl.label}</span>
             <span className="suggestion-evidence-claim">{item.claim}</span>
-            {item.urlTitle || item.url ? (
-              <a href={item.url} target="_blank" rel="noreferrer" className="suggestion-evidence-source">
-                <ExternalLink size={11} /> {item.urlTitle || item.url}
+            {item.url ? (
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                className="suggestion-evidence-source safe-url"
+                title={item.url}
+              >
+                <ExternalLink size={11} /> {item.urlTitle && !isRawUrlLabel(item.urlTitle) ? item.urlTitle : compactUrl(item.url)}
               </a>
             ) : null}
             {item.excerpt ? <p className="suggestion-evidence-excerpt">“{item.excerpt}”</p> : null}
