@@ -76,7 +76,11 @@ export default function OnboardingPage() {
   const [resumable, setResumable] = useState(false);
   const [workspaceRole, setWorkspaceRole] = useState<string>('OWNER');
   const autosaveTimerRef = useRef<number | null>(null);
-  const autosaveControllerRef = useRef<AbortController | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const websiteColorTimerRef = useRef<number | null>(null);
+  const websiteColorControllerRef = useRef<AbortController | null>(null);
+  const previousWebsiteRef = useRef('');
+  const primaryColorSourceRef = useRef<'default' | 'website' | 'manual'>('default');
 
   const current = STEPS[step];
   const progressPercent = Math.round((step / (STEPS.length - 1)) * 100);
@@ -146,9 +150,58 @@ export default function OnboardingPage() {
   }, []);
 
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) => {
+    if (key === 'primaryColor') primaryColorSourceRef.current = 'manual';
     setDraft((currentDraft) => ({ ...currentDraft, [key]: value }));
     setError('');
   };
+
+  useEffect(() => {
+    if (loading) return;
+
+    const clean = draft.websiteUrl.trim();
+    if (clean === previousWebsiteRef.current) return;
+    previousWebsiteRef.current = clean;
+
+    if (!/^https?:\/\//i.test(clean)) return;
+    if (primaryColorSourceRef.current === 'manual') return;
+
+    primaryColorSourceRef.current = 'default';
+
+    if (websiteColorTimerRef.current) {
+      window.clearTimeout(websiteColorTimerRef.current);
+    }
+    websiteColorControllerRef.current?.abort();
+
+    websiteColorTimerRef.current = window.setTimeout(async () => {
+      const controller = new AbortController();
+      websiteColorControllerRef.current = controller;
+
+      try {
+        const response = await fetch('/api/website-preview?url=' + encodeURIComponent(clean), {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const body = await response.json().catch(() => null);
+        if (controller.signal.aborted) return;
+
+        const detected = typeof body?.primaryColor === 'string' ? body.primaryColor : null;
+        if (detected && primaryColorSourceRef.current === 'default') {
+          primaryColorSourceRef.current = 'website';
+          setDraft((currentDraft) => ({ ...currentDraft, primaryColor: detected }));
+        }
+      } catch {
+        // Website preview is an enhancement; the onboarding color picker remains usable.
+      }
+    }, 350);
+
+    return () => {
+      if (websiteColorTimerRef.current) {
+        window.clearTimeout(websiteColorTimerRef.current);
+        websiteColorTimerRef.current = null;
+      }
+      websiteColorControllerRef.current?.abort();
+    };
+  }, [draft.websiteUrl, loading]);
 
   useEffect(() => {
     if (loading || saving) return;
@@ -201,25 +254,39 @@ export default function OnboardingPage() {
     });
   }
 
-  async function saveProgress(nextStep = step, completed = false, complete = false) {
+  async function saveProgress(
+    nextStep = step,
+    completed = false,
+    complete = false,
+    dataOverride?: Draft,
+  ) {
     if (autosaveTimerRef.current) {
       window.clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;
     }
-    autosaveControllerRef.current?.abort();
-    autosaveControllerRef.current = null;
 
-    const response = await fetch('/api/onboarding', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ step: nextStep, completed, complete, data: draft }),
-    });
-    const body = await response.json().catch(() => null);
-    if (response.status === 401) {
-      window.location.href = '/login';
-      throw new Error('Your session expired. Sign in again to continue.');
-    }
-    if (!response.ok) throw new Error(body?.error || 'We could not save your onboarding progress. Please try again.');
+    const snapshot = dataOverride ?? draft;
+    const previous = saveQueueRef.current;
+    const task = previous
+      .catch(() => undefined)
+      .then(async () => {
+        const response = await fetch('/api/onboarding', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ step: nextStep, completed, complete, data: snapshot }),
+        });
+        const body = await response.json().catch(() => null);
+        if (response.status === 401) {
+          window.location.href = '/login';
+          throw new Error('Your session expired. Sign in again to continue.');
+        }
+        if (!response.ok) {
+          throw new Error(body?.error || 'We could not save your onboarding progress. Please try again.');
+        }
+      });
+
+    saveQueueRef.current = task.catch(() => undefined);
+    return task;
   }
 
   async function saveWorkspaceAndProfile() {
@@ -240,7 +307,7 @@ export default function OnboardingPage() {
     if (!profile.ok) throw new Error(profileBody?.error || 'Could not save your profile');
   }
 
-  async function saveBrand() {
+  async function saveBrand(): Promise<string> {
     const response = await fetch('/api/brands', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -254,7 +321,9 @@ export default function OnboardingPage() {
     });
     const body = await response.json().catch(() => null);
     if (!response.ok) throw new Error(body?.error || 'Could not create your brand');
-    setDraft((currentDraft) => ({ ...currentDraft, brandId: String(body.brand.id) }));
+    const brandId = String(body.brand.id);
+    setDraft((currentDraft) => ({ ...currentDraft, brandId }));
+    return brandId;
   }
 
   async function saveRules() {
@@ -292,8 +361,9 @@ export default function OnboardingPage() {
       } else if (step === 2) {
         if (draft.brandName.trim().length < 2) throw new Error('Enter a brand name.');
         if (!/^https?:\/\//i.test(draft.websiteUrl.trim())) throw new Error('Use a complete website URL starting with https:// or http://.');
-        if (!draft.brandId) await saveBrand();
-        await saveProgress(3, true);
+        let brandId = draft.brandId;
+        if (!brandId) brandId = await saveBrand();
+        await saveProgress(3, true, false, { ...draft, brandId });
       } else if (step === 3) {
         await saveRules();
         await saveProgress(4, true);
