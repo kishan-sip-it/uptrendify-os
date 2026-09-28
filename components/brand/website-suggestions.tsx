@@ -9,6 +9,7 @@ type Candidate = {
   url: string;
   host: string;
   iconUrl: string | null;
+  accessNote?: string | null;
 };
 
 export function BrandWebsiteSuggestions({
