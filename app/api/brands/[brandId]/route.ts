@@ -101,13 +101,26 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     const { brandId } = await params;
     const auth = await requireOrgRole(CAN_CREATE_BRANDS);
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
+
     const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase.from('brands').update({ status: 'ARCHIVED', updated_at: new Date().toISOString() })
-      .eq('id', brandId).eq('organization_id', auth.context.organizationId).select('id,status').single();
+    const { data, error } = await supabase
+      .from('brands')
+      .delete()
+      .eq('id', brandId)
+      .eq('organization_id', auth.context.organizationId)
+      .select('id,name')
+      .maybeSingle();
+
     if (error) throw error;
-    return NextResponse.json({ ok: true, brand: data });
+    if (!data) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+
+    return NextResponse.json({
+      ok: true,
+      deletedBrand: data,
+      message: 'Brand and its related research, content, campaigns and strategy data were deleted.',
+    });
   } catch (error) {
-    obs.error('Brand archive failed', { error: error instanceof Error ? error.message : String(error) });
-    return NextResponse.json({ error: 'Could not archive brand' }, { status: 500 });
+    obs.error('Brand deletion failed', { error: error instanceof Error ? error.message : String(error) });
+    return NextResponse.json({ error: 'Could not delete brand' }, { status: 500 });
   }
 }

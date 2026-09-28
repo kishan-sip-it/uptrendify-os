@@ -60,11 +60,11 @@ type BrainResponse = {
     total: number;
     needsReview: number;
   };
+  suggestionsResearchRunId: string | null;
   importInfo: { processed: number; failed: number; pagesDiscovered: number; pagesProcessed: number };
 };
 
 const LIVE_RUN_STATUSES = new Set(['QUEUED', 'RUNNING']);
-const LIVE_AI_STATUSES = new Set(['QUEUED', 'RUNNING']);
 
 const SECTIONS: Array<{ key: string; label: string }> = [
   { key: 'identity', label: 'Identity' },
@@ -415,7 +415,7 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
   }, [data]);
 
   const run = data?.latestRun ?? null;
-  const live = Boolean(run && (LIVE_RUN_STATUSES.has(run.status) || (run.ai && LIVE_AI_STATUSES.has(run.ai.status))));
+  const live = Boolean(run && LIVE_RUN_STATUSES.has(run.status));
 
   useEffect(() => {
     let cancelled = false;
@@ -561,6 +561,22 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
         {startError ? <div className="card" style={{ borderColor: 'rgba(239,68,68,.35)', marginTop: 12 }}><ErrorState message={startError} /></div> : null}
         {error ? <div className="card" style={{ borderColor: 'rgba(239,68,68,.35)', marginTop: 12 }}><ErrorState message={error} /></div> : null}
       </div>
+
+      {run && (run.status === 'FAILED' || run.status === 'PARTIAL') ? (
+        <div
+          className="card"
+          role="alert"
+          style={{ borderColor: run.status === 'FAILED' ? 'rgba(239,68,68,.42)' : 'rgba(234,179,8,.42)', marginBottom: 16 }}
+        >
+          <div className="eyebrow">{run.status === 'FAILED' ? 'Latest research stopped' : 'Latest research completed with gaps'}</div>
+          <h3 style={{ margin: '5px 0 8px' }}>{run.errorMessage || 'The latest research run did not finish cleanly.'}</h3>
+          <p className="subtitle" style={{ margin: 0 }}>
+            {data?.suggestionsResearchRunId && data.suggestionsResearchRunId !== run.id && (data?.suggestionCounts.total ?? 0) > 0
+              ? 'Existing suggestions are preserved from the last successful research run and are not being presented as results from this failed run.'
+              : 'Re-run research when you want a fresh public-site pass.'}
+          </p>
+        </div>
+      ) : null}
 
       {loading ? (
         <LoadingState label="Loading brand intelligence…" />
