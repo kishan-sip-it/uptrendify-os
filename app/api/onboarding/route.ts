@@ -27,11 +27,18 @@ export async function GET() {
     if (organization.error) throw organization.error;
     if (profile.error) throw profile.error;
 
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError) throw userError;
+
     return NextResponse.json({
       ok: true,
       progress: progress.data,
       organization: organization.data,
       profile: profile.data,
+      user: { email: user?.email ?? null },
       role: auth.context.role,
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {

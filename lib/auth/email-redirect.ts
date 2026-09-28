@@ -11,6 +11,17 @@ function isLocalBrowserOrigin(origin: string) {
 
 export function getEmailConfirmationRedirectUrl(origin: string, configuredUrl?: string) {
   const configured = configuredUrl?.trim();
-  const base = configured || (isLocalBrowserOrigin(origin) ? CANONICAL_PUBLIC_APP_URL : origin);
+
+  // Never allow a localhost value from production configuration to leak into
+  // an email confirmation link. Local development also uses the canonical
+  // production confirmation endpoint so real emails remain cross-device safe.
+  const configuredIsLocal = configured ? isLocalBrowserOrigin(configured) : false;
+  const base =
+    !configuredIsLocal && configured
+      ? configured
+      : isLocalBrowserOrigin(origin)
+        ? CANONICAL_PUBLIC_APP_URL
+        : origin;
+
   return new URL('/auth/confirm', base).toString();
 }

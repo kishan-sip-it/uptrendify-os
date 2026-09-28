@@ -75,6 +75,7 @@ export default function OnboardingPage() {
   const [error, setError] = useState('');
   const [resumable, setResumable] = useState(false);
   const [workspaceRole, setWorkspaceRole] = useState<string>('OWNER');
+  const [registeredEmail, setRegisteredEmail] = useState('');
   const autosaveTimerRef = useRef<number | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const websiteColorTimerRef = useRef<number | null>(null);
@@ -122,6 +123,7 @@ export default function OnboardingPage() {
           primaryColorSourceRef.current =
             next.primaryColor && next.primaryColor !== EMPTY_DRAFT.primaryColor ? 'manual' : 'default';
           setWorkspaceRole(String(body?.role || 'OWNER'));
+          setRegisteredEmail(typeof body?.user?.email === 'string' ? body.user.email : '');
           setStep(Math.min(5, Math.max(0, Number(body?.progress?.current_step ?? 0))));
           setResumable(Boolean(body?.progress));
           setLoading(false);
@@ -439,6 +441,17 @@ export default function OnboardingPage() {
               <button type="button" className={'choice-card ' + (draft.workspaceType === 'BUSINESS' ? 'selected' : '')} onClick={() => update('workspaceType', 'BUSINESS')}>
                 <span className="choice-kicker">Business</span><strong>Grow your own brand</strong><span>Use a workspace primarily for your own company and brand.</span>
               </button>
+              <label className="span-2">
+                Account email
+                <input
+                  value={registeredEmail || 'Loading account email…'}
+                  readOnly
+                  disabled
+                  aria-label="Registered account email"
+                  style={{ cursor: 'default', opacity: 1, color: 'var(--text)', background: 'var(--surface-2)' }}
+                />
+                <small className="field-help">This is the email registered for this account and used for this onboarding. It cannot be edited here.</small>
+              </label>
               <label className="span-2">Workspace name<input value={draft.workspaceName} onChange={(e) => update('workspaceName', e.target.value)} placeholder={draft.workspaceType === 'AGENCY' ? 'e.g. Northstar Marketing' : 'e.g. Aurora Labs'} autoFocus /></label>
             </div>
           )}
