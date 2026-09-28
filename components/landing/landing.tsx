@@ -264,7 +264,32 @@ export function Landing() {
   const [accountLoading, setAccountLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [account, setAccount] = useState<LandingAccount | null>(null);
+  const [isDarkTheme, setIsDarkTheme] = useState(() => {
+    if (typeof document === 'undefined') return false;
+    const theme = document.documentElement.dataset.theme;
+    return theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  });
   const heroRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const syncTheme = () => {
+      const theme = root.dataset.theme;
+      setIsDarkTheme(theme === 'dark' || (theme === 'system' && media.matches));
+    };
+
+    syncTheme();
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    media.addEventListener?.('change', syncTheme);
+
+    return () => {
+      observer.disconnect();
+      media.removeEventListener?.('change', syncTheme);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -418,29 +443,29 @@ export function Landing() {
           enableWebcam={false}
           showPreview={false}
           sensitivity={0.55}
-          lineThickness={1}
-          linesColor="#FFFFFF"
-          gridScale={0.1}
-          scanColor="#A8E6C5"
-          scanOpacity={0.4}
+          lineThickness={0.85}
+          linesColor={isDarkTheme ? '#2D4353' : '#B9CDD4'}
+          gridScale={0.14}
+          scanColor={isDarkTheme ? '#6FAF9A' : '#6E9D92'}
+          scanOpacity={0.22}
           lineStyle="solid"
-          lineJitter={0.1}
+          lineJitter={0.08}
           scanDirection="pingpong"
           enablePost={true}
-          bloomIntensity={0.6}
-          bloomThreshold={0}
-          bloomSmoothing={0}
-          chromaticAberration={0.002}
-          noiseIntensity={0.01}
-          scanGlow={0.5}
-          scanSoftness={2}
+          bloomIntensity={0.14}
+          bloomThreshold={0.15}
+          bloomSmoothing={0.35}
+          chromaticAberration={0.001}
+          noiseIntensity={0.006}
+          scanGlow={0.2}
+          scanSoftness={2.4}
           scanPhaseTaper={0.9}
-          scanDuration={2.0}
-          scanDelay={2.0}
+          scanDuration={2.8}
+          scanDelay={2.5}
           enableGyro={false}
           scanOnClick={false}
           snapBackDelay={250}
-          lightMode={true}
+          lightMode={false}
           className=""
           style={{}}
         />
