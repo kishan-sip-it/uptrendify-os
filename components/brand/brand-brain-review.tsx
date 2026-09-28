@@ -361,6 +361,7 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
   const [role, setRole] = useState<ReviewRole>('view');
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tabTouchedRef = useRef(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -388,6 +389,23 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
       setLoading(false);
     }
   }, [brandId]);
+
+  useEffect(() => {
+    if (!data || tabTouchedRef.current) return;
+
+    const counts = data.suggestionCounts;
+    if (counts.pending > 0) {
+      setTab('review');
+    } else if (counts.approved + counts.edited > 0) {
+      setTab('approved');
+    } else if (counts.notFound > 0) {
+      setTab('notfound');
+    } else if (counts.rejected > 0) {
+      setTab('rejected');
+    } else {
+      setTab('all');
+    }
+  }, [data]);
 
   const run = data?.latestRun ?? null;
   const live = Boolean(run && (LIVE_RUN_STATUSES.has(run.status) || (run.ai && LIVE_AI_STATUSES.has(run.ai.status))));
@@ -559,7 +577,10 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
                   type="button"
                   role="tab"
                   aria-selected={tab === item.key}
-                  onClick={() => setTab(item.key)}
+                  onClick={() => {
+                    tabTouchedRef.current = true;
+                    setTab(item.key);
+                  }}
                   className={`review-tab ${tab === item.key ? 'active' : ''}`}
                 >
                   {item.label} <span className="review-tab-count">{item.count}</span>
@@ -579,6 +600,22 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
               </div>
             </div>
           </div>
+
+          {grouped.size === 0 ? (
+            <EmptyState
+              title={tab === 'review' ? 'Nothing needs review right now' : 'No suggestions in this view'}
+              description={
+                tab === 'review'
+                  ? 'All current suggestions have already been approved, edited, dismissed, or marked as not found. Open Approved or All to see the stored findings.'
+                  : 'Try another suggestion filter to see the findings returned by the research run.'
+              }
+              action={tab === 'review' && counts.approved + counts.edited > 0 ? (
+                <button type="button" className="badge" onClick={() => { tabTouchedRef.current = true; setTab('approved'); }}>
+                  View approved suggestions
+                </button>
+              ) : undefined}
+            />
+          ) : null}
 
           {grouped.size > 0 ? (
             <>

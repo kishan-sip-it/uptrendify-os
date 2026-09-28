@@ -12,10 +12,10 @@ export async function DELETE(request: Request) {
     const { data, error } = await supabase.rpc('delete_current_account');
 
     if (error) {
-      if (/WORKSPACES_MUST_BE_DELETED_FIRST/i.test(error.message)) {
+      if (/WORKSPACE_OWNERSHIP_TRANSFER_REQUIRED/i.test(error.message)) {
         return NextResponse.json({
-          error: 'Delete your workspace first. Your account can be deleted after all workspace memberships are removed.',
-          requiresWorkspaceDeletion: true,
+          error: 'Your account cannot be deleted yet because one of your shared workspaces would be left without another owner. Transfer workspace ownership first, then try again.',
+          code: 'WORKSPACE_OWNERSHIP_TRANSFER_REQUIRED',
         }, { status: 409 });
       }
       if (/AUTHENTICATION_REQUIRED/i.test(error.message)) {

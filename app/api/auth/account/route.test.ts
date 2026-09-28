@@ -26,10 +26,10 @@ describe('DELETE /api/auth/account', () => {
     expect(response.status).toBe(400);
   });
 
-  it('requires all workspaces to be deleted first', async () => {
+  it('blocks deletion only when a shared workspace would lose its last owner', async () => {
     const rpc = vi.fn().mockResolvedValue({
       data: null,
-      error: { message: 'WORKSPACES_MUST_BE_DELETED_FIRST' },
+      error: { message: 'WORKSPACE_OWNERSHIP_TRANSFER_REQUIRED' },
     });
     mocks.createSupabaseServerClient.mockResolvedValue({ rpc });
 
@@ -37,7 +37,7 @@ describe('DELETE /api/auth/account', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({
-      requiresWorkspaceDeletion: true,
+      code: 'WORKSPACE_OWNERSHIP_TRANSFER_REQUIRED',
     });
   });
 

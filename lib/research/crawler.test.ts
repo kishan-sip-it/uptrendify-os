@@ -16,7 +16,7 @@ vi.mock('@/lib/obs/logger', () => ({
   obs: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { crawlBrand } from './crawler';
+import { crawlBrand, sameResearchSite } from './crawler';
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001';
 const BRAND_ID = '00000000-0000-0000-0000-000000000002';
@@ -72,6 +72,14 @@ function mockSupabase() {
   };
   return client;
 }
+
+describe('sameResearchSite', () => {
+  it('treats the www host as the same public site as the apex host', () => {
+    expect(sameResearchSite('https://zoro.com', 'https://www.zoro.com')).toBe(true);
+    expect(sameResearchSite('https://www.zoro.com', 'https://zoro.com/catalog')).toBe(true);
+    expect(sameResearchSite('https://zoro.com', 'https://evil-zoro.com')).toBe(false);
+  });
+});
 
 describe('crawlBrand', () => {
   it('crawls pages and completes with COMPLETED status', async () => {

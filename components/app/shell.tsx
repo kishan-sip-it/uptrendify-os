@@ -81,9 +81,7 @@ export function AppShell({
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
-  const [workspaceRequired, setWorkspaceRequired] = useState(false);
-  const [workspaceLoading, setWorkspaceLoading] = useState(false);
-  const [workspaceConfirmation, setWorkspaceConfirmation] = useState('');
+
   const [guideIdle, setGuideIdle] = useState(false);
   const [phaseBriefingVisible, setPhaseBriefingVisible] = useState(false);
   const pathname = usePathname();
@@ -144,46 +142,6 @@ export function AppShell({
     window.location.href = '/login';
   }
 
-  async function deleteWorkspace() {
-    setWorkspaceLoading(true);
-    setDeleteError('');
-    try {
-      const response = await fetch('/api/auth/workspace', {
-        method: 'DELETE',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ confirmation: 'DELETE WORKSPACE' }),
-      });
-      const body = await response.json().catch(() => null);
-      if (!response.ok) {
-        setDeleteError(body?.error || 'Could not delete the workspace.');
-        return;
-      }
-
-      setWorkspaceRequired(false);
-      const workspacesResponse = await fetch('/api/auth/organizations', { cache: 'no-store' });
-      const workspacesBody = await workspacesResponse.json().catch(() => null);
-      const remaining = Array.isArray(workspacesBody?.organizations) ? workspacesBody.organizations : [];
-      if (remaining.length > 0) {
-        const next = remaining[0];
-        const switchResponse = await fetch('/api/auth/organizations', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ organizationId: next.id }),
-        });
-        if (switchResponse.ok) {
-          window.location.href = '/dashboard';
-          return;
-        }
-      }
-      setDeleteError('Workspace deleted. Your account is still active. Create a new workspace to continue.');
-      setTimeout(() => { window.location.href = '/settings/workspace/new'; }, 700);
-    } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : 'Could not delete the workspace.');
-    } finally {
-      setWorkspaceLoading(false);
-    }
-  }
-
   async function deleteAccount() {
     setDeleteLoading(true);
     setDeleteError('');
@@ -195,7 +153,6 @@ export function AppShell({
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) {
-        setWorkspaceRequired(Boolean(body?.requiresWorkspaceDeletion));
         setDeleteError(body?.error || 'Could not delete your account.');
         return;
       }
@@ -528,7 +485,6 @@ export function AppShell({
                       close();
                       setDeleteError('');
                       setDeleteConfirmation('');
-                      setWorkspaceConfirmation('');
                       setDeleteOpen(true);
                     }}
                     style={{ color: '#f87171' }}
@@ -586,44 +542,8 @@ export function AppShell({
             <div className="eyebrow" style={{ color: '#f87171' }}>Danger zone</div>
             <h2 id="delete-account-title" style={{ margin: '6px 0 8px' }}>Delete your account?</h2>
             <p className="subtitle">
-              This removes your sign-in, workspace memberships and profile. Deleting the workspace first permanently removes its workspace-scoped research, Brand Brain, content, campaigns and related records; your account stays active until you delete it separately.
+              This permanently removes your sign-in and profile. Workspaces owned only by you are deleted with their workspace data; shared workspaces stay intact when another owner can continue managing them. If a workspace would be left without an owner, the account deletion stops before making changes and explains what must be transferred first.
             </p>
-
-            {workspaceRequired ? (
-              <div className="card" style={{ marginTop: 14, borderColor: 'rgba(248,113,113,.35)', background: 'rgba(248,113,113,.07)' }}>
-                <div className="eyebrow" style={{ color: '#f87171' }}>Workspace required</div>
-                <p style={{ margin: '6px 0 10px' }}>
-                  You are the only owner of this workspace. Delete the workspace first; after that you can delete your account.
-                </p>
-                <p className="subtitle" style={{ margin: '6px 0 12px' }}>
-                  Type <strong>DELETE WORKSPACE</strong> and hold the button for 2 seconds to permanently delete this workspace.
-                </p>
-                <input
-                  type="text"
-                  value={workspaceConfirmation}
-                  onChange={(event) => setWorkspaceConfirmation(event.target.value)}
-                  placeholder="Type DELETE WORKSPACE"
-                  autoComplete="off"
-                  autoCapitalize="characters"
-                  spellCheck={false}
-                  style={{ width: '100%', marginBottom: 10 }}
-                />
-                <HoldButton
-                  size="sm"
-                  holdTime={2000}
-                  resetAfter={1400}
-                  backgroundColor="#24121A"
-                  fillColor="#DC2626"
-                  textColor="#fca5a5"
-                  fillTextColor="#ffffff"
-                  className="danger-hold-button"
-                  disabled={workspaceLoading || workspaceConfirmation !== 'DELETE WORKSPACE'}
-                  onHold={deleteWorkspace}
-                >
-                  <Trash2 size={14} /> Hold to delete workspace
-                </HoldButton>
-              </div>
-            ) : null}
 
             {deleteError ? (
               <div role="alert" className="card" style={{ marginTop: 12, borderColor: 'rgba(239,68,68,.35)', background: 'rgba(239,68,68,.08)' }}>

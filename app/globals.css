@@ -901,11 +901,12 @@ html[data-theme="light"] .auth-shell {
 .auth-showcase {
   min-height: 520px;
   padding: 34px;
-  border: 1px solid #e0d8ca;
+  border: 1px solid var(--line);
   border-radius: 28px;
   background:
-    radial-gradient(circle at 18% 16%, rgba(102, 151, 128, 0.16), transparent 34%),
-    linear-gradient(145deg, #f3eee4 0%, #fbf8f2 57%, #f0e8dc 100%);
+    radial-gradient(circle at 18% 16%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 34%),
+    linear-gradient(145deg, var(--surface-card-2) 0%, var(--surface-card) 57%, var(--surface-muted) 100%);
+  color: var(--text);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -917,9 +918,9 @@ html[data-theme="light"] .auth-shell {
   width: fit-content;
   padding: 7px 10px;
   border-radius: 999px;
-  background: #ecf5ef;
-  color:var(--accent);
-  border: 1px solid #d3e5d8;
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-muted));
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .10em;
@@ -950,8 +951,8 @@ html[data-theme="light"] .auth-shell {
   align-items: center;
   gap: 11px;
   padding: 12px 14px;
-  border: 1px solid rgba(115, 111, 99, 0.16);
-  background: rgba(255, 253, 248, 0.70);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-card) 86%, transparent);
   border-radius: 14px;
 }
 
@@ -982,8 +983,8 @@ html[data-theme="light"] .auth-shell {
 .auth-benefit {
   padding: 12px;
   border-radius: 14px;
-  background:color-mix(in srgb, var(--surface-card) 78%, transparent);
-  border: 1px solid rgba(115, 111, 99, 0.16);
+  background: color-mix(in srgb, var(--surface-card) 78%, transparent);
+  border: 1px solid var(--line);
 }
 
 .auth-benefit strong { display: block; font-size: 12px; margin-bottom: 4px; }

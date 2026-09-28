@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { discoverBrandWebsites } from './brand-discovery';
+import { clearBrandDiscoveryCache, discoverBrandWebsites } from './brand-discovery';
 
 function htmlResponse(body: string, status = 200): Response {
   return new Response(body, { status, headers: { 'content-type': 'text/html' } });
@@ -8,6 +8,7 @@ function htmlResponse(body: string, status = 200): Response {
 describe('discoverBrandWebsites', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    clearBrandDiscoveryCache();
   });
 
   it('returns no candidates for an empty query without making a network request', async () => {
@@ -41,8 +42,29 @@ describe('discoverBrandWebsites', () => {
       return htmlResponse('', 404);
     });
     vi.stubGlobal('fetch', fetchMock);
-    const candidates = await discoverBrandWebsites('Aurora Labs');
+    const candidates = await discoverBrandWebsites('Aurora Lab');
     expect(candidates[0]?.url).toBe('https://auroralab.com');
+  });
+
+  it('allows an exact social-domain brand such as Instagram while keeping unrelated social results blocked', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('google.com/search')) {
+        return htmlResponse('<a href="/url?q=https://instagram.com"><h3>Instagram</h3></a>');
+      }
+      if (url.includes('bing.com/search')) {
+        return htmlResponse('<li class="b_algo"><h2><a href="https://instagram.com">Instagram</a></h2></li>');
+      }
+      if (url.includes('duckduckgo.com/html')) {
+        return htmlResponse('<a class="result__a" href="https://instagram.com">Instagram</a>');
+      }
+      if (url === 'https://instagram.com') return new Response('', { status: 403 });
+      return htmlResponse('', 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const candidates = await discoverBrandWebsites('Instagram');
+    expect(candidates.some((candidate) => candidate.url === 'https://instagram.com')).toBe(true);
   });
 
   it('keeps a reachable exact-domain candidate when HTML access is blocked', async () => {

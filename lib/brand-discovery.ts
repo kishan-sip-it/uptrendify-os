@@ -14,18 +14,29 @@ type RankedCandidate = BrandWebsiteCandidate & {
   providers: Set<SearchProvider>;
 };
 
-const BLOCKED_HOSTS = new Set([
+const SEARCH_HOSTS = new Set([
   'google.com','www.google.com','bing.com','www.bing.com','search.brave.com',
+]);
+
+const SOCIAL_HOSTS = new Set([
   'youtube.com','www.youtube.com','facebook.com','www.facebook.com',
   'instagram.com','www.instagram.com','linkedin.com','www.linkedin.com',
   'x.com','www.x.com','tiktok.com','www.tiktok.com',
 ]);
 
+const DISCOVERY_CACHE_TTL_MS = 60_000;
+const DISCOVERY_CACHE_MAX_ENTRIES = 100;
+const discoveryCache = new Map<string, { expiresAt: number; candidates: BrandWebsiteCandidate[] }>();
+
+export function clearBrandDiscoveryCache(): void {
+  discoveryCache.clear();
+}
+
 const TLD_PRIORITY: Record<string, number> = {
   // TLD is only a tie-breaker, but an exact brand-domain match on a
   // conventional public web domain should beat an otherwise equivalent
   // alternative extension such as .io.
-  com: 72,
+  com: 90,
   org: 28,
   net: 24,
   co: 20,
@@ -35,14 +46,21 @@ const TLD_PRIORITY: Record<string, number> = {
   dev: 6,
 };
 
-function normalizeCandidate(raw: string): string | null {
+function normalizeCandidate(raw: string, brandQuery = ''): string | null {
   try {
     const url = new URL(raw);
     if (!['http:', 'https:'].includes(url.protocol)) return null;
     url.hash = '';
     url.search = '';
     url.pathname = url.pathname || '/';
-    if (BLOCKED_HOSTS.has(url.hostname.toLowerCase())) return null;
+    const host = url.hostname.toLowerCase();
+    const normalizedHost = hostKey(host);
+    if (SEARCH_HOSTS.has(host)) return null;
+    if (SOCIAL_HOSTS.has(host)) {
+      const queryKey = compact(brandQuery);
+      const hostKeyName = normalizedHost.split('.')[0] ?? '';
+      if (!queryKey || !domainVariants(queryKey).includes(hostKeyName)) return null;
+    }
     return url.toString().replace(/\/$/, '');
   } catch {
     return null;
@@ -137,7 +155,7 @@ function rankAndDedupe(candidates: RankedCandidate[]): BrandWebsiteCandidate[] {
       ...existing.providers,
       ...candidate.providers,
     ]);
-    const consensusBonus = Math.min(18, Math.max(0, providers.size - 1) * 9);
+    const consensusBonus = Math.min(8, Math.max(0, providers.size - 1) * 4);
     const score = Math.max(existing.score, candidate.score) + consensusBonus;
 
     byHost.set(key, {
@@ -153,7 +171,7 @@ function rankAndDedupe(candidates: RankedCandidate[]): BrandWebsiteCandidate[] {
     .map(({ score: _score, providers: _providers, ...candidate }) => candidate);
 }
 
-async function fetchHtml(url: string, timeoutMs = 4000): Promise<string> {
+async function fetchHtml(url: string, timeoutMs = 2500): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -175,7 +193,7 @@ async function fetchHtml(url: string, timeoutMs = 4000): Promise<string> {
   }
 }
 
-async function probeUrl(url: string, timeoutMs = 3000): Promise<boolean> {
+async function probeUrl(url: string, timeoutMs = 2200): Promise<boolean> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -197,48 +215,12 @@ async function probeUrl(url: string, timeoutMs = 3000): Promise<boolean> {
   }
 }
 
-function normalizeIcon(raw: string | undefined, baseUrl: string): string | null {
-  if (!raw) return null;
-  try {
-    const url = new URL(raw, baseUrl);
-    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-async function enrichCandidate(candidate: Omit<BrandWebsiteCandidate, 'iconUrl'>): Promise<BrandWebsiteCandidate> {
-  const html = await fetchHtml(candidate.url, 3000);
-  if (!html) {
-    return {
-      ...candidate,
-      iconUrl: 'https://www.google.com/s2/favicons?sz=128&domain=' + encodeURIComponent(candidate.host),
-    };
-  }
-
-  const $ = cheerio.load(html);
-  const pageTitle = $('title').first().text().replace(/\s+/g, ' ').trim();
-  const iconHref =
-    $('link[rel~="icon"][href]').first().attr('href') ||
-    $('link[rel~="shortcut"][rel~="icon"][href]').first().attr('href') ||
-    $('link[rel~="apple-touch-icon"][href]').first().attr('href') ||
-    $('meta[property="og:image"][content]').first().attr('content');
-
-  return {
-    ...candidate,
-    title: pageTitle || candidate.title || candidate.host,
-    iconUrl:
-      normalizeIcon(iconHref, candidate.url) ||
-      'https://www.google.com/s2/favicons?sz=128&domain=' + encodeURIComponent(candidate.host),
-  };
-}
-
 function extractGoogleTarget(href: string): string {
   const match = href.match(/^\/url\?q=([^&]+)/);
   return match ? decodeURIComponent(match[1]) : href;
 }
 
-async function searchBing(query: string): Promise<BrandWebsiteCandidate[]> {
+async function searchBing(query: string, brandQuery: string): Promise<BrandWebsiteCandidate[]> {
   const html = await fetchHtml(
     'https://www.bing.com/search?count=10&setlang=en-US&q=' + encodeURIComponent(query),
   );
@@ -249,7 +231,7 @@ async function searchBing(query: string): Promise<BrandWebsiteCandidate[]> {
   $('li.b_algo h2 a').each((_, element) => {
     const href = $(element).attr('href');
     const title = $(element).text().replace(/\s+/g, ' ').trim();
-    const normalized = href ? normalizeCandidate(href) : null;
+    const normalized = href ? normalizeCandidate(href, brandQuery) : null;
     if (normalized && title) {
       results.push({
         title,
@@ -262,7 +244,7 @@ async function searchBing(query: string): Promise<BrandWebsiteCandidate[]> {
   return results;
 }
 
-async function searchGoogle(query: string): Promise<BrandWebsiteCandidate[]> {
+async function searchGoogle(query: string, brandQuery: string): Promise<BrandWebsiteCandidate[]> {
   const html = await fetchHtml(
     'https://www.google.com/search?hl=en&num=10&q=' + encodeURIComponent(query),
   );
@@ -274,7 +256,7 @@ async function searchGoogle(query: string): Promise<BrandWebsiteCandidate[]> {
     const href = $(element).attr('href') || '';
     const title = $(element).find('h3').first().text().trim();
     const target = extractGoogleTarget(href);
-    const normalized = normalizeCandidate(target);
+    const normalized = normalizeCandidate(target, brandQuery);
     if (normalized && title) {
       results.push({
         title,
@@ -288,7 +270,7 @@ async function searchGoogle(query: string): Promise<BrandWebsiteCandidate[]> {
   return results;
 }
 
-async function searchDuckDuckGo(query: string): Promise<BrandWebsiteCandidate[]> {
+async function searchDuckDuckGo(query: string, brandQuery: string): Promise<BrandWebsiteCandidate[]> {
   const html = await fetchHtml(
     'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query),
   );
@@ -299,7 +281,7 @@ async function searchDuckDuckGo(query: string): Promise<BrandWebsiteCandidate[]>
   $('.result__a').each((_, element) => {
     const href = $(element).attr('href');
     const title = $(element).text().replace(/\s+/g, ' ').trim();
-    const normalized = href ? normalizeCandidate(href) : null;
+    const normalized = href ? normalizeCandidate(href, brandQuery) : null;
     if (normalized && title) {
       results.push({
         title,
@@ -321,41 +303,44 @@ function likelyDomainCandidates(query: string): string[] {
     ...domainVariants(compactQuery),
     ...domainVariants(slug),
   ].filter(Boolean);
+  const tlds = ['com', 'org', 'net', 'co', 'app', 'io', 'ai', 'dev'];
 
   const variants = new Set<string>();
+  // Probe exact/closest compact domains on .com first so the bounded probe
+  // cannot spend its entire budget on extension variants before the strongest
+  // official-domain candidates are checked.
+  for (const base of domainVariants(compactQuery)) {
+    variants.add('https://' + base + '.com');
+  }
   for (const base of bases) {
-    for (const tld of ['com', 'org', 'net', 'co', 'app', 'io', 'ai', 'dev']) {
+    for (const tld of tlds) {
       variants.add('https://' + base + '.' + tld);
     }
   }
 
-  // Keep deterministic probing bounded while covering the compact, singular/
-  // plural, and hyphenated forms before lower-priority extension variants.
+  // Keep deterministic probing bounded while prioritizing the compact exact,
+  // singular/plural .com forms before lower-priority extension variants.
   return Array.from(variants).slice(0, 24);
 }
 
 async function discoverLikelyDomains(query: string): Promise<BrandWebsiteCandidate[]> {
-  const urls = likelyDomainCandidates(query).slice(0, 16);
+  const urls = likelyDomainCandidates(query).slice(0, 10);
 
   const results: Array<BrandWebsiteCandidate | null> = await Promise.all(
     urls.map(async (candidateUrl): Promise<BrandWebsiteCandidate | null> => {
       const host = new URL(candidateUrl).hostname;
-      const html = await fetchHtml(candidateUrl, 2400);
-      const reachable = Boolean(html) || await probeUrl(candidateUrl, 2400);
+      const reachable = await probeUrl(candidateUrl, 1600);
 
       // Do not discard a strong exact-domain candidate just because the site
       // blocks HTML scraping. A reachable 403/429/etc. is still a valid
       // website candidate for the user to inspect/select.
       if (!reachable) return null;
 
-      const $ = html ? cheerio.load(html) : null;
-      const title = $?.('title').first().text().replace(/\s+/g, ' ').trim() || host;
-
       return {
-        title,
+        title: host,
         url: candidateUrl,
         host,
-        iconUrl: null,
+        iconUrl: 'https://www.google.com/s2/favicons?sz=128&domain=' + encodeURIComponent(host),
       };
     }),
   );
@@ -367,12 +352,19 @@ export async function discoverBrandWebsites(query: string): Promise<BrandWebsite
   const cleaned = query.trim().replace(/\s+/g, ' ');
   if (cleaned.length < 2) return [];
 
+  const cacheKey = cleaned.toLowerCase();
+  const cached = discoveryCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.candidates.map((candidate) => ({ ...candidate }));
+  }
+  if (cached) discoveryCache.delete(cacheKey);
+
   const searchQuery = cleaned + ' official website';
 
   const [bing, google, duckduckgo, likely] = await Promise.all([
-    searchBing(searchQuery).catch(() => []),
-    searchGoogle(searchQuery).catch(() => []),
-    searchDuckDuckGo(searchQuery).catch(() => []),
+    searchBing(searchQuery, cleaned).catch(() => []),
+    searchGoogle(searchQuery, cleaned).catch(() => []),
+    searchDuckDuckGo(searchQuery, cleaned).catch(() => []),
     discoverLikelyDomains(cleaned).catch(() => []),
   ]);
 
@@ -404,6 +396,13 @@ export async function discoverBrandWebsites(query: string): Promise<BrandWebsite
     });
   }
 
-  const rankedCandidates = rankAndDedupe(ranked);
-  return Promise.all(rankedCandidates.map(enrichCandidate));
+  const candidates = rankAndDedupe(ranked);
+
+  if (discoveryCache.size >= DISCOVERY_CACHE_MAX_ENTRIES) {
+    const oldest = discoveryCache.keys().next().value;
+    if (oldest) discoveryCache.delete(oldest);
+  }
+  discoveryCache.set(cacheKey, { expiresAt: Date.now() + DISCOVERY_CACHE_TTL_MS, candidates });
+
+  return candidates.map((candidate) => ({ ...candidate }));
 }
