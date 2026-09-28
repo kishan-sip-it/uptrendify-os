@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ExternalLink, Globe2, LoaderCircle, Search, X } from 'lucide-react';
+import { compactUrl } from '@/lib/ui/safe-url';
 
 type Candidate = {
   title: string;
   url: string;
   host: string;
   iconUrl: string | null;
+  accessNote?: string | null;
 };
 
 export function BrandWebsiteSuggestions({
@@ -179,7 +181,7 @@ export function BrandWebsiteSuggestions({
                 <span className="brand-suggestion-copy">
                   <strong>{candidate.title || candidate.host}</strong>
                   <span>{candidate.host}</span>
-                  <span>{candidate.url}</span>
+                  <span className="safe-url" title={candidate.url}>{compactUrl(candidate.url)}</span>
                 </span>
                 <ExternalLink size={14} className="brand-suggestion-external" aria-hidden="true" />
               </button>

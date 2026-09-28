@@ -5,6 +5,7 @@ import { CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { obs } from '@/lib/obs/logger';
 import { computeCounts } from '@/lib/brain/review';
 import { FIELD_BY_KEY } from '@/lib/brain/suggestions';
+import { isResearchCandidate } from '@/lib/research/url-policy';
 
 const paramsSchema = z.object({ brandId: z.string().uuid() });
 
@@ -36,7 +37,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
 
     const { data: brand } = await supabase
       .from('brands')
-      .select('id')
+      .select('id,website_url')
       .eq('id', brandId)
       .eq('organization_id', auth.context.organizationId)
       .maybeSingle();
@@ -83,6 +84,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
       if (result.error) throw result.error;
     }
 
+    const displaySources = (sourcesResult.data ?? []).filter((source: any) => {
+      try {
+        return !brand.website_url || isResearchCandidate(brand.website_url, source.canonical_url || source.url);
+      } catch {
+        return false;
+      }
+    });
+
+    const displaySourceIds = new Set(displaySources.map((source: any) => source.id));
+
     const latestRun = runsResult.data?.[0] ?? null;
     const ai = latestRun && Array.isArray(latestRun.ai_tasks) && latestRun.ai_tasks.length > 0
       ? [...latestRun.ai_tasks].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
@@ -111,7 +122,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
         kind: row.kind,
         proposed_value: row.proposed_value,
         status: row.status,
-        evidence: row.evidence,
+        evidence: (Array.isArray(row.evidence) ? row.evidence : []).filter((item: any) => {
+          try {
+            return item?.sourceId ? displaySourceIds.has(item.sourceId) : item?.url ? isResearchCandidate(brand.website_url, item.url) : false;
+          } catch {
+            return false;
+          }
+        }),
         evidence_strength: row.evidence_strength,
         sources_examined: row.sources_examined,
         confidence: row.confidence,
@@ -126,7 +143,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
         ok: true,
         facts: (factsResult.data ?? []).filter((fact: any) => fact.approved),
         insights: insightsResult.data ?? [],
-        sources: sourcesResult.data ?? [],
+        sources: displaySources,
         latestRun: latestRun
           ? {
               id: latestRun.id,

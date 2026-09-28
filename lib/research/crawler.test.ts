@@ -100,9 +100,56 @@ describe('crawlBrand', () => {
     expect(fetchMock).toHaveBeenCalled();
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: 'manual', dispatcher: expect.anything() });
     expect(client.__updates).toContain('RUNNING');
-    expect(client.__updates).toContain('COMPLETED');
+    expect(client.__updates).not.toContain('COMPLETED');
     expect(result.processedPages[0].title).toBe('Landing');
     expect(result.processedPages[0].id).toBe(SOURCE_ID);
+  });
+
+
+  it('does not crawl external destinations hidden behind first-party tracking redirects', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url);
+      if (url === 'http://8.8.8.8/') {
+        return new Response(
+          htmlPage('Landing', '<a href="https://l.facebook.com/l.php?u=https%3A%2F%2Finstagram.com%2F&h=test">Instagram</a>'),
+          { status: 200, headers: { 'content-type': 'text/html' } },
+        );
+      }
+      return new Response(htmlPage('Unexpected'), { status: 200, headers: { 'content-type': 'text/html' } });
+    }));
+
+    const client = mockSupabase() as any;
+    const result = await crawlBrand(client, {
+      organizationId: ORG_ID,
+      brandId: BRAND_ID,
+      websiteUrl: 'http://8.8.8.8',
+      researchRunId: RUN_ID,
+    });
+
+    expect(result.status).toBe('COMPLETED');
+    expect(calls.some((url) => url.includes('instagram.com'))).toBe(false);
+  });
+
+  it('does not enqueue low-signal authentication pages', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url);
+      return new Response(
+        htmlPage('Landing', '<a href="/login/">Login</a><a href="/about">About</a>'),
+        { status: 200, headers: { 'content-type': 'text/html' } },
+      );
+    }));
+
+    const client = mockSupabase() as any;
+    await crawlBrand(client, {
+      organizationId: ORG_ID,
+      brandId: BRAND_ID,
+      websiteUrl: 'http://8.8.8.8',
+      researchRunId: RUN_ID,
+    });
+
+    expect(calls.some((url) => url.endsWith('/login/'))).toBe(false);
   });
 
   it('uses the rendered fallback for a JavaScript app shell with little extractable text', async () => {
@@ -231,9 +278,8 @@ describe('crawlBrand', () => {
     const result = await crawlBrand(client, { organizationId: ORG_ID, brandId: BRAND_ID, websiteUrl: 'http://8.8.8.8', researchRunId: RUN_ID });
     expect(result.status).toBe('FAILED');
 
-    const failedUpdate = client.__updatesPayload.find((payload: any) => payload.status === 'FAILED');
-    expect(failedUpdate?.error_code).toBe('CONNECTION_REFUSED');
-    expect(failedUpdate?.error_message).toContain('ECONNREFUSED');
+    expect(result.errorCode).toBe('CONNECTION_REFUSED');
+    expect(result.errorMessage).toContain('ECONNREFUSED');
 
     const source = client.__sourceUpserts[0];
     expect(source?.status).toBe('FAILED');
@@ -258,7 +304,6 @@ describe('crawlBrand', () => {
     expect(source?.http_status).toBe(503);
     expect(source?.metadata).toMatchObject({ error_code: 'HTTP_503' });
 
-    const failedUpdate = client.__updatesPayload.find((payload: any) => payload.status === 'FAILED');
-    expect(failedUpdate?.error_code).toBe('HTTP_503');
+    expect(result.errorCode).toBe('HTTP_503');
   });
 });

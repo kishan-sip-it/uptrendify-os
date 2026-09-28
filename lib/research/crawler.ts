@@ -4,6 +4,9 @@ import { obs } from '@/lib/obs/logger';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from './url-security';
 import { translateResearchError } from './errors';
 import { extractPage } from './extract';
+import { isLikelyAuthGatedContent, isLowSignalResearchPath, isResearchCandidate, normalizeResearchUrl, sameResearchSite } from './url-policy';
+
+export { sameResearchSite } from './url-policy';
 
 export const RESEARCH_TERMINAL_STATUSES = ['COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'] as const;
 export const RESEARCH_ACTIVE_STATUSES = ['QUEUED', 'RUNNING'] as const;
@@ -59,6 +62,8 @@ export type CrawlOutcome = {
   pagesProcessed: number;
   pagesDiscovered: number;
   processedPages: ProcessedPage[];
+  errorCode?: string | null;
+  errorMessage?: string | null;
 };
 
 export type CrawlArgs = {
@@ -69,17 +74,7 @@ export type CrawlArgs = {
 };
 
 function normalizeUrl(raw: string) {
-  const url = assertPublicHttpUrl(raw);
-  url.hash = '';
-  url.pathname = url.pathname || '/';
-  return url.toString();
-}
-
-export function sameResearchSite(a: string, b: string) {
-  const normalizeHost = (value: string) => new URL(value).hostname.toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
-  const hostA = normalizeHost(a);
-  const hostB = normalizeHost(b);
-  return hostA === hostB || hostA.endsWith('.' + hostB) || hostB.endsWith('.' + hostA);
+  return normalizeResearchUrl(raw);
 }
 
 async function recordPageFailure(
@@ -173,6 +168,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
       if (Date.now() - start > crawlBudget) { partial = true; break; }
 
       const target = normalizeUrl(queue.shift()!);
+      if (!isResearchCandidate(root, target)) continue;
       if (seen.has(target)) continue;
       seen.add(target);
       const recordRunFailure = (code: string, message: string) => {
@@ -204,9 +200,12 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           const redirectCount = Number(response.headers.get('x-redirect-count') || 0) + 1;
           if (location && redirectCount <= e.MAX_RESEARCH_REDIRECTS && seen.size < e.MAX_RESEARCH_PAGES * 3) {
             const redirected = normalizeUrl(new URL(location, target).toString());
-            if (sameResearchSite(root, redirected)) {
+            if (isResearchCandidate(root, redirected)) {
               await assertResolvablePublicHost(new URL(redirected).hostname);
               queue.unshift(redirected);
+            } else if (isLowSignalResearchPath(redirected)) {
+              partial = true;
+              recordRunFailure('AUTH_REQUIRED', 'The public website redirects research to a login or account page.');
             }
           }
           continue;
@@ -242,6 +241,24 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         // Raw HTML is often only an app shell for JS-rendered sites. When the
         // extracted document is too thin, use Jina Reader's free browser-backed
         // renderer as a fallback instead of declaring the website unusable.
+        if (isLikelyAuthGatedContent(extracted.title, extracted.text)) {
+          partial = true;
+          recordRunFailure(
+            'AUTH_REQUIRED',
+            'The public website requires a login or blocks automated public access, so no trustworthy evidence was extracted from this page.',
+          );
+          await recordPageFailure(supabase, {
+            organizationId,
+            brandId,
+            researchRunId,
+            url: target,
+            code: 'AUTH_REQUIRED',
+            message: 'The public website requires a login or blocks automated public access.',
+            httpStatus: response.status,
+          });
+          continue;
+        }
+
         if (shouldUseRenderedFallback(content, extracted.text, extracted.links)) {
           const rendered = await fetchRenderedFallback(target);
           if (rendered && rendered.text.length > extracted.text.length) {
@@ -258,7 +275,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         if (extracted.canonicalUrl) {
           try {
             const candidateCanonical = normalizeUrl(new URL(extracted.canonicalUrl, target).toString());
-            if (sameResearchSite(root, candidateCanonical)) canonical = candidateCanonical;
+            if (isResearchCandidate(root, candidateCanonical)) canonical = candidateCanonical;
           } catch {
             canonical = target;
           }
@@ -290,7 +307,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         for (const next of extracted.links) {
           try {
             const candidate = normalizeUrl(next);
-            if (sameResearchSite(root, candidate) && !seen.has(candidate) && queue.length + seen.size < e.MAX_RESEARCH_PAGES * 3) queue.push(candidate);
+            if (isResearchCandidate(root, candidate) && !seen.has(candidate) && queue.length + seen.size < e.MAX_RESEARCH_PAGES * 3) queue.push(candidate);
           } catch {
             continue;
           }
@@ -308,24 +325,20 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
       if (progress.error) obs.warn('Failed to persist research progress', { researchRunId, error: progress.error.message });
     }
 
-    const finalStatus = pagesProcessed > 0 ? (partial ? 'PARTIAL' : 'COMPLETED') : 'FAILED';
-    const result = await supabase.from('research_runs').update({
-      status: finalStatus,
-      pages_processed: pagesProcessed,
-      pages_discovered: seen.size,
-      finished_at: new Date().toISOString(),
-      error_code: finalStatus === 'FAILED' ? (runFailureCode ?? 'NO_PAGES_PROCESSED') : partial ? 'PARTIAL' : null,
-      error_message: finalStatus === 'FAILED'
-        ? (runFailureMessage ?? 'No pages could be processed during this research run.')
-        : partial
-          ? 'Some pages could not be processed; review source status.'
-          : null,
-    }).eq('id', researchRunId);
-    if (result.error) throw result.error;
+    const crawlStatus = pagesProcessed > 0 ? (partial ? 'PARTIAL' : 'COMPLETED') : 'FAILED';
 
-    obs.info('Research crawl finished', { researchRunId, brandId, status: finalStatus, pagesProcessed, pagesDiscovered: seen.size });
+    obs.info('Research crawl finished', { researchRunId, brandId, status: crawlStatus, pagesProcessed, pagesDiscovered: seen.size });
 
-    return { status: finalStatus, pagesProcessed, pagesDiscovered: seen.size, processedPages };
+    // Pipeline owns terminal research-run finalization so Brand Brain generation
+    // cannot finish after the UI already sees a terminal crawl status.
+    return {
+      status: crawlStatus,
+      pagesProcessed,
+      pagesDiscovered: seen.size,
+      processedPages,
+      errorCode: runFailureCode,
+      errorMessage: runFailureMessage,
+    };
   } catch (error) {
     const info = translateResearchError(error);
     const failed = await supabase.from('research_runs').update({

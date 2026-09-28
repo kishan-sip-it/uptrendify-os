@@ -63,7 +63,7 @@ describe('GET /api/brands/[brandId]/brain', () => {
 
   it('returns approved facts, insights, suggestions, sources and import info', async () => {
     const client = makeClient([
-      ['brands', { data: { id: BRAND_ID }, error: null }],
+      ['brands', { data: { id: BRAND_ID, website_url: 'https://example.com/' }, error: null }],
       ['brand_facts', { data: [{ id: 'f1', key: 'brand_name', value: 'Aurora', source_type: 'USER_CONFIRMED', confidence: 0.95, evidence_source_ids: [SOURCE_ID], approved: true, updated_at: 'x' }], error: null }],
       ['brand_insights', { data: [{ id: 'i1', category: 'EVIDENCE', title: 'Claim', description: 'Aurora is B2B.', priority: 3, evidence_source_ids: [SOURCE_ID], metadata: {}, created_at: 'x' }], error: null }],
       ['brand_sources', { data: [{ id: SOURCE_ID, url: 'https://example.com/', canonical_url: null, title: 'Aurora', http_status: 200, retrieved_at: 'x' }], error: null }],

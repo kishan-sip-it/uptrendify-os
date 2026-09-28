@@ -5,6 +5,7 @@ export type BrandWebsiteCandidate = {
   url: string;
   host: string;
   iconUrl: string | null;
+  accessNote?: string | null;
 };
 
 type SearchProvider = 'google' | 'bing' | 'duckduckgo';
@@ -16,6 +17,7 @@ type RankedCandidate = BrandWebsiteCandidate & {
 
 const SEARCH_HOSTS = new Set([
   'google.com','www.google.com','bing.com','www.bing.com','search.brave.com',
+  'duckduckgo.com','www.duckduckgo.com','html.duckduckgo.com',
 ]);
 
 const SOCIAL_HOSTS = new Set([
@@ -46,9 +48,27 @@ const TLD_PRIORITY: Record<string, number> = {
   dev: 6,
 };
 
+function extractSearchTarget(raw: string): string {
+  try {
+    const url = new URL(raw, 'https://www.google.com');
+    const host = url.hostname.toLowerCase();
+    if (!SEARCH_HOSTS.has(host)) return raw;
+    const target = ['q', 'uddg', 'url', 'u'].map((key) => url.searchParams.get(key)).find(Boolean);
+    if (!target) return raw;
+    return decodeURIComponent(target);
+  } catch {
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }
+}
+
 function normalizeCandidate(raw: string, brandQuery = ''): string | null {
   try {
-    const url = new URL(raw);
+    const unwrapped = extractSearchTarget(raw);
+    const url = new URL(unwrapped);
     if (!['http:', 'https:'].includes(url.protocol)) return null;
     url.hash = '';
     url.search = '';
@@ -171,6 +191,35 @@ function rankAndDedupe(candidates: RankedCandidate[]): BrandWebsiteCandidate[] {
     .map(({ score: _score, providers: _providers, ...candidate }) => candidate);
 }
 
+function isLikelyParkedPage(title: string, html: string): boolean {
+  const haystack = (title + '\n' + html).toLowerCase();
+  const strongMarkers = [
+    'domain for sale',
+    'this domain is for sale',
+    'this domain is parked',
+    'domain is parked',
+    'buy this domain',
+    'available for purchase',
+    'make an offer for this domain',
+    'afternic',
+    'sedo',
+    'hugedomains',
+    'dan.com',
+  ];
+  const genericMarkers = ['coming soon', 'parked free', 'future home of'];
+  if (strongMarkers.some((marker) => haystack.includes(marker))) return true;
+  return genericMarkers.filter((marker) => haystack.includes(marker)).length >= 2;
+}
+
+function candidateTitle(html: string, fallback: string): string {
+  try {
+    const $ = cheerio.load(html);
+    return $('title').first().text().replace(/\s+/g, ' ').trim() || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 async function fetchHtml(url: string, timeoutMs = 2500): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -193,7 +242,7 @@ async function fetchHtml(url: string, timeoutMs = 2500): Promise<string> {
   }
 }
 
-async function probeUrl(url: string, timeoutMs = 2200): Promise<boolean> {
+async function probeUrl(url: string, timeoutMs = 1800): Promise<{ reachable: boolean; blocked: boolean }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -202,14 +251,19 @@ async function probeUrl(url: string, timeoutMs = 2200): Promise<boolean> {
       accept: 'text/html,application/xhtml+xml',
     };
     const head = await fetch(url, { method: 'HEAD', signal: controller.signal, headers, cache: 'no-store', redirect: 'follow' });
-    if (head.ok || head.status === 401 || head.status === 403 || head.status === 429) return true;
+    if ((head.status >= 200 && head.status < 400) || head.status === 401 || head.status === 403 || head.status === 429) {
+      return { reachable: true, blocked: head.status === 401 || head.status === 403 || head.status === 429 };
+    }
     if ([405, 501].includes(head.status)) {
       const get = await fetch(url, { method: 'GET', signal: controller.signal, headers, cache: 'no-store', redirect: 'follow' });
-      return get.ok || [401, 403, 429].includes(get.status);
+      return {
+        reachable: get.ok || [401, 403, 429].includes(get.status),
+        blocked: [401, 403, 429].includes(get.status),
+      };
     }
-    return false;
+    return { reachable: false, blocked: false };
   } catch {
-    return false;
+    return { reachable: false, blocked: false };
   } finally {
     clearTimeout(timer);
   }
@@ -232,7 +286,7 @@ async function searchBing(query: string, brandQuery: string): Promise<BrandWebsi
     const href = $(element).attr('href');
     const title = $(element).text().replace(/\s+/g, ' ').trim();
     const normalized = href ? normalizeCandidate(href, brandQuery) : null;
-    if (normalized && title) {
+    if (normalized && title && !isLikelyParkedPage(title, '')) {
       results.push({
         title,
         url: normalized,
@@ -324,23 +378,26 @@ function likelyDomainCandidates(query: string): string[] {
 }
 
 async function discoverLikelyDomains(query: string): Promise<BrandWebsiteCandidate[]> {
-  const urls = likelyDomainCandidates(query).slice(0, 10);
+  const urls = likelyDomainCandidates(query).slice(0, 12);
 
   const results: Array<BrandWebsiteCandidate | null> = await Promise.all(
     urls.map(async (candidateUrl): Promise<BrandWebsiteCandidate | null> => {
       const host = new URL(candidateUrl).hostname;
-      const reachable = await probeUrl(candidateUrl, 1600);
+      const probe = await probeUrl(candidateUrl);
+      if (!probe.reachable) return null;
 
-      // Do not discard a strong exact-domain candidate just because the site
-      // blocks HTML scraping. A reachable 403/429/etc. is still a valid
-      // website candidate for the user to inspect/select.
-      if (!reachable) return null;
+      const html = probe.blocked ? '' : await fetchHtml(candidateUrl, 1500);
+      const title = html ? candidateTitle(html, host) : host;
+      if (isLikelyParkedPage(title, html)) return null;
 
       return {
-        title: host,
+        title,
         url: candidateUrl,
         host,
         iconUrl: 'https://www.google.com/s2/favicons?sz=128&domain=' + encodeURIComponent(host),
+        accessNote: probe.blocked
+          ? 'This site is reachable but blocks automated inspection. You can still select the public URL.'
+          : null,
       };
     }),
   );

@@ -6,6 +6,7 @@ import {
   Search, Sparkles, ThumbsDown, X, Wrench,
 } from 'lucide-react';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/feedback';
+import { compactUrl, isRawUrlLabel } from '@/lib/ui/safe-url';
 
 type EvidenceItem = {
   sourceId: string | null;
@@ -155,9 +156,15 @@ function EvidenceBlock({ evidence, sourcesExamined }: { evidence: EvidenceItem[]
           <li key={`${item.url}-${index}`} className="suggestion-evidence">
             <span className={`badge ${sl.tone}`} style={{ padding: '2px 6px', fontSize: 11 }}>{sl.label}</span>
             <span className="suggestion-evidence-claim">{item.claim}</span>
-            {item.urlTitle || item.url ? (
-              <a href={item.url} target="_blank" rel="noreferrer" className="suggestion-evidence-source">
-                <ExternalLink size={11} /> {item.urlTitle || item.url}
+            {item.url ? (
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                className="suggestion-evidence-source safe-url"
+                title={item.url}
+              >
+                <ExternalLink size={11} /> {item.urlTitle && !isRawUrlLabel(item.urlTitle) ? item.urlTitle : compactUrl(item.url)}
               </a>
             ) : null}
             {item.excerpt ? <p className="suggestion-evidence-excerpt">“{item.excerpt}”</p> : null}
@@ -557,6 +564,15 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
 
       {loading ? (
         <LoadingState label="Loading brand intelligence…" />
+      ) : live ? (
+        <div className="card" role="status" aria-live="polite">
+          <div className="eyebrow">Live update</div>
+          <h3 style={{ margin: '5px 0 8px' }}>Brand Brain is being updated</h3>
+          <p className="subtitle" style={{ margin: 0 }}>
+            Research is still running. Current suggestions stay hidden until the crawl and Brand Intelligence generation finish, so the counts and results cannot get out of sync.
+          </p>
+          <div className="progress" style={{ marginTop: 14 }}><span style={{ width: '62%' }} /></div>
+        </div>
       ) : (data?.suggestionCounts.total ?? 0) === 0 ? (
         canManage && needsImport ? (
           <EmptyState
