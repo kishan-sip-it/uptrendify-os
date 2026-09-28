@@ -516,6 +516,18 @@ export function BrandStrategy({ brandId, brandName }: { brandId: string; brandNa
     load();
   }, [load]);
 
+  useEffect(() => {
+    const onBrandBrainUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ brandId?: string }>;
+      if (!customEvent.detail?.brandId || customEvent.detail.brandId === brandId) {
+        load();
+      }
+    };
+
+    window.addEventListener('uptrendify:brand-brain-updated', onBrandBrainUpdated);
+    return () => window.removeEventListener('uptrendify:brand-brain-updated', onBrandBrainUpdated);
+  }, [brandId, load]);
+
   const latest = data?.latest ?? null;
   const live = latest && LIVE_STATUSES.has(latest.status);
   const view = resolveStrategyView(latest);
@@ -546,7 +558,7 @@ export function BrandStrategy({ brandId, brandName }: { brandId: string; brandNa
   const busy = generating || Boolean(live);
 
   return (
-    <div className="grid" style={{ gap: 16 }} id={`strategy-${brandName.split(' ')[0] ?? 'v'}`}>
+    <div className="grid" style={{ gap: 16 }} id="strategy">
       <div className="card" style={{ borderColor: live ? 'rgba(139,124,255,.45)' : undefined }}>
         <div className="section-title" style={{ flexWrap: 'wrap', gap: 10 }}>
           <div>

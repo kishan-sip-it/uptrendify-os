@@ -467,7 +467,10 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (body) await load();
+      if (body) {
+        await load();
+        window.dispatchEvent(new CustomEvent('uptrendify:brand-brain-updated', { detail: { brandId } }));
+      }
     } catch (err) {
       setStartError(err instanceof Error ? err.message : 'Could not update the suggestion');
     } finally {
@@ -484,7 +487,10 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action, fields }),
       });
-      if (body) await load();
+      if (body) {
+        await load();
+        window.dispatchEvent(new CustomEvent('uptrendify:brand-brain-updated', { detail: { brandId } }));
+      }
     } catch (err) {
       setStartError(err instanceof Error ? err.message : 'Could not process the batch action');
     } finally {
@@ -494,6 +500,9 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
 
   const suggestions = data?.suggestions ?? [];
   const counts = data?.suggestionCounts ?? { pending: 0, approved: 0, rejected: 0, edited: 0, notFound: 0, total: 0, needsReview: 0 };
+  const hasStrategyGateApproval =
+    counts.approved + counts.edited >= 4 &&
+    suggestions.some((suggestion) => suggestion.field === 'brand_name' && (suggestion.status === 'APPROVED' || suggestion.status === 'EDITED'));
   const pendingRows = suggestions.filter((s) => s.status === 'PENDING');
 
   const filtered = useMemo(() => {
@@ -699,6 +708,23 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
               })()}
             </>
           ) : <EmptyState title="No suggestions in this view" description="Change the review filter to inspect another part of the Brand Brain." />}
+        {hasStrategyGateApproval ? (
+          <div className="card" style={{ marginTop: 16, borderColor: 'color-mix(in srgb, var(--accent) 45%, var(--line))' }}>
+            <div className="section-title" style={{ flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <div className="eyebrow">Brand Brain approved</div>
+                <h3 style={{ margin: '4px 0 6px' }}>Your verified Brand Brain is ready for strategy.</h3>
+                <p className="subtitle" style={{ margin: 0 }}>
+                  {counts.approved + counts.edited} approved or edited findings are ready. Continue directly to the Strategy workspace.
+                </p>
+              </div>
+              <a className="badge auth-submit" href="#strategy" style={{ textDecoration: 'none' }}>
+                Continue to Strategy →
+              </a>
+            </div>
+          </div>
+        ) : null}
+
         </>
       )}
     </div>
