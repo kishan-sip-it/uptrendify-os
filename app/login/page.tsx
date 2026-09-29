@@ -52,6 +52,14 @@ export default function LoginPage() {
     }
 
     if (lastStatus === 401) {
+      // Do not leave an old browser session alive after the server rejects it.
+      // Otherwise a refresh can immediately recover that stale session and
+      // appear to bypass the login/verification boundary.
+      try {
+        await createSupabaseBrowserClient().auth.signOut({ scope: 'local' });
+      } catch {
+        // The server-side guard remains authoritative even if local cleanup fails.
+      }
       throw new Error('Your session could not be established. Please sign in again.');
     }
     throw new Error(lastPayload?.error || 'We could not load your workspace. Please try again.');
@@ -120,6 +128,15 @@ export default function LoginPage() {
       const supabase = createSupabaseBrowserClient();
       const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) {
+        // signInWithPassword does not necessarily replace an already cached
+        // browser session. Clear it so a failed login cannot be followed by a
+        // refresh that silently resumes an older session.
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch {
+          // Error messaging below remains useful even if local cleanup fails.
+        }
+
         const message = authError.message.toLowerCase();
         if (message.includes('invalid login credentials') || message.includes('invalid credentials')) {
           setError('We could not sign you in with those details. Check your email and password, or create an account.');
