@@ -53,15 +53,18 @@ export const CAMPAIGN_DESCRIPTION_MAX = 4000;
 export const CAMPAIGN_BUDGET_MAX = 999_999_999_999.99;
 export const CAMPAIGN_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 export const CAMPAIGN_CURRENCY_PATTERN = /^[A-Z]{3}$/;
+export const CAMPAIGN_STRATEGY_MAX = 20;
 
 const dateString = z.string().regex(CAMPAIGN_DATE_PATTERN, 'Expected a YYYY-MM-DD date');
+const strategyIds = z.array(z.string().uuid()).min(1).max(CAMPAIGN_STRATEGY_MAX);
 
 export const campaignCreateSchema = z
   .object({
     name: z.string().trim().min(1).max(CAMPAIGN_NAME_MAX),
     objective: z.string().trim().max(CAMPAIGN_OBJECTIVE_MAX).nullish(),
     description: z.string().trim().max(CAMPAIGN_DESCRIPTION_MAX).nullish(),
-    strategyId: z.string().uuid(),
+    strategyId: z.string().uuid().optional(),
+    strategyIds: strategyIds.optional(),
     startDate: dateString.nullish(),
     endDate: dateString.nullish(),
     budget: z.number().finite().nonnegative().max(CAMPAIGN_BUDGET_MAX).nullish(),
@@ -74,6 +77,10 @@ export const campaignCreateSchema = z
     channels: z.array(z.enum(CAMPAIGN_CHANNELS)).max(CAMPAIGN_CHANNELS.length).nullish(),
   })
   .strict()
+  .refine((value) => Boolean(value.strategyIds?.length || value.strategyId), {
+    message: 'At least one approved strategy is required',
+    path: ['strategyIds'],
+  })
   .refine(
     (value) =>
       value.startDate === undefined ||
@@ -90,6 +97,7 @@ export const campaignUpdateSchema = z
     objective: z.string().trim().max(CAMPAIGN_OBJECTIVE_MAX).nullish(),
     description: z.string().trim().max(CAMPAIGN_DESCRIPTION_MAX).nullish(),
     strategyId: z.string().uuid().optional(),
+    strategyIds: strategyIds.optional(),
     startDate: dateString.nullish(),
     endDate: dateString.nullish(),
     budget: z.number().finite().nonnegative().max(CAMPAIGN_BUDGET_MAX).nullish(),
@@ -114,6 +122,11 @@ export const campaignUpdateSchema = z
 
 export type CampaignCreateInput = z.infer<typeof campaignCreateSchema>;
 export type CampaignUpdateInput = z.infer<typeof campaignUpdateSchema>;
+
+export function normalizeCampaignStrategyIds(input: { strategyId?: string; strategyIds?: string[] }): string[] {
+  const values = input.strategyIds?.length ? input.strategyIds : input.strategyId ? [input.strategyId] : [];
+  return Array.from(new Set(values));
+}
 
 export function safeValidateCampaignCreate(value: unknown) {
   return campaignCreateSchema.safeParse(value);

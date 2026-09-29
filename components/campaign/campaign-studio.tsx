@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Boxes, ChevronRight, LoaderCircle, Plus } from 'lucide-react';
+import { Boxes, Check, ChevronRight, LoaderCircle, Plus } from 'lucide-react';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/feedback';
 import {
   CAMPAIGN_CHANNELS,
@@ -23,8 +23,10 @@ type CampaignStrategy = {
   title: string;
   version: number;
   status: string;
+  isPrimary: boolean;
+  sortOrder: number;
   outputSummary: StrategySummary;
-} | null;
+};
 
 export type Campaign = {
   id: string;
@@ -39,7 +41,8 @@ export type Campaign = {
   channels: string[];
   clientId: string | null;
   strategyId: string | null;
-  strategy: CampaignStrategy;
+  strategy: CampaignStrategy | null;
+  strategies: CampaignStrategy[];
   createdAt: string;
   updatedAt: string;
   contentCount?: number;
@@ -86,7 +89,7 @@ type CampaignDraft = {
   name: string;
   objective: string;
   description: string;
-  strategyId: string;
+  strategyIds: string[];
   startDate: string;
   endDate: string;
   budget: string;
@@ -98,13 +101,58 @@ const EMPTY_DRAFT: CampaignDraft = {
   name: '',
   objective: '',
   description: '',
-  strategyId: '',
+  strategyIds: [],
   startDate: '',
   endDate: '',
   budget: '',
   currency: 'USD',
   channels: [],
 };
+
+function StrategyPicker({
+  options,
+  value,
+  onChange,
+}: {
+  options: StrategyOption[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  function toggle(id: string) {
+    onChange(value.includes(id) ? value.filter((entry) => entry !== id) : [...value, id]);
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <span>Approved strategies</span>
+        <span className="field-note">Select one or more. The first selected is the primary strategy.</span>
+      </div>
+      <div className="chip-row" style={{ marginTop: 8 }}>
+        {options.map((strategy) => {
+          const selected = value.includes(strategy.id);
+          const primary = value[0] === strategy.id;
+          return (
+            <button
+              type="button"
+              key={strategy.id}
+              className={`chip chip-toggle${selected ? ' chip-toggle-active' : ''}`}
+              onClick={() => toggle(strategy.id)}
+              aria-pressed={selected}
+              title={primary ? 'Primary strategy' : undefined}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              {selected ? <Check size={12} /> : null}
+              {strategy.title} · v{strategy.version}
+              {primary ? <span style={{ fontSize: 10, opacity: 0.8 }}>PRIMARY</span> : null}
+            </button>
+          );
+        })}
+      </div>
+      {value.length === 0 ? <div className="field-help" style={{ marginTop: 6 }}>Choose at least one approved strategy to ground this campaign.</div> : null}
+    </div>
+  );
+}
 
 function CreateForm({
   brandId,
@@ -123,19 +171,14 @@ function CreateForm({
   const set = <K extends keyof CampaignDraft>(key: K, value: CampaignDraft[K]) => setDraft((prev) => ({ ...prev, [key]: value }));
 
   const toggleChannel = (channel: string) => {
-    setDraft((prev) => ({
-      ...prev,
-      channels: prev.channels.includes(channel)
-        ? prev.channels.filter((entry) => entry !== channel)
-        : [...prev.channels, channel],
-    }));
+    setDraft((prev) => ({ ...prev, channels: prev.channels.includes(channel) ? prev.channels.filter((entry) => entry !== channel) : [...prev.channels, channel] }));
   };
 
   async function submit() {
     setBusy(true);
     setError(null);
     try {
-      const payload: Record<string, unknown> = { name: draft.name.trim(), strategyId: draft.strategyId };
+      const payload: Record<string, unknown> = { name: draft.name.trim(), strategyIds: draft.strategyIds };
       if (draft.objective.trim()) payload.objective = draft.objective.trim();
       if (draft.description.trim()) payload.description = draft.description.trim();
       if (draft.startDate) payload.startDate = draft.startDate;
@@ -144,15 +187,8 @@ function CreateForm({
       if (draft.currency.trim()) payload.currency = draft.currency.trim();
       if (draft.channels.length > 0) payload.channels = draft.channels;
 
-      const response = await fetch(`/api/brands/${brandId}/campaigns`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (response.status === 401) {
-        window.location.href = '/login';
-        return;
-      }
+      const response = await fetch(`/api/brands/${brandId}/campaigns`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+      if (response.status === 401) { window.location.href = '/login'; return; }
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || 'Could not create campaign');
       setOpen(false);
@@ -176,67 +212,25 @@ function CreateForm({
   return (
     <div className="card content-form">
       <div className="eyebrow" style={{ color: 'var(--accent-2)' }}>New campaign</div>
-      {strategyOptions.length === 0 ? (
-        <ErrorState message="An approved strategy is required before a campaign can be created." />
-      ) : null}
-      <label>Campaign name
-        <input value={draft.name} onChange={(event) => set('name', event.target.value)} placeholder="e.g. Summer Growth" />
-      </label>
-      <label>Approved strategy
-        <select value={draft.strategyId} onChange={(event) => set('strategyId', event.target.value)}>
-          <option value="">Select a strategy…</option>
-          {strategyOptions.map((strategy) => (
-            <option key={strategy.id} value={strategy.id}>
-              {strategy.title} · v{strategy.version}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>Objective (optional)
-        <input value={draft.objective} onChange={(event) => set('objective', event.target.value)} placeholder="What should this campaign achieve?" />
-      </label>
-      <label>Description (optional)
-        <textarea value={draft.description} onChange={(event) => set('description', event.target.value)} placeholder="Planning notes, hypotheses, scope" />
-      </label>
+      {strategyOptions.length === 0 ? <ErrorState message="An approved strategy is required before a campaign can be created." /> : null}
+      <label>Campaign name<input value={draft.name} onChange={(event) => set('name', event.target.value)} placeholder="e.g. Summer Growth" /></label>
+      <label><StrategyPicker options={strategyOptions} value={draft.strategyIds} onChange={(ids) => set('strategyIds', ids)} /></label>
+      <label>Objective (optional)<input value={draft.objective} onChange={(event) => set('objective', event.target.value)} placeholder="What should this campaign achieve?" /></label>
+      <label>Description (optional)<textarea value={draft.description} onChange={(event) => set('description', event.target.value)} placeholder="Planning notes, hypotheses, scope" /></label>
       <div className="content-form-row">
-        <label>Start date
-          <input type="date" value={draft.startDate} onChange={(event) => set('startDate', event.target.value)} />
-        </label>
-        <label>End date
-          <input type="date" value={draft.endDate} onChange={(event) => set('endDate', event.target.value)} />
-        </label>
+        <label>Start date<input type="date" value={draft.startDate} onChange={(event) => set('startDate', event.target.value)} /></label>
+        <label>End date<input type="date" value={draft.endDate} onChange={(event) => set('endDate', event.target.value)} /></label>
       </div>
       <div className="content-form-row">
-        <label>Budget (optional)
-          <input type="number" inputMode="decimal" step="0.01" min="0" value={draft.budget} onChange={(event) => set('budget', event.target.value)} placeholder="e.g. 25000" />
-        </label>
-        <label>Currency
-          <input value={draft.currency} maxLength={3} onChange={(event) => set('currency', event.target.value.toUpperCase())} placeholder="USD" />
-        </label>
+        <label>Budget (optional)<input type="number" inputMode="decimal" step="0.01" min="0" value={draft.budget} onChange={(event) => set('budget', event.target.value)} placeholder="e.g. 25000" /></label>
+        <label>Currency<input value={draft.currency} maxLength={3} onChange={(event) => set('currency', event.target.value.toUpperCase())} placeholder="USD" /></label>
       </div>
       <label>Channels (optional)
-        <div className="chip-row">
-          {CAMPAIGN_CHANNELS.map((channel) => (
-            <button
-              type="button"
-              key={channel}
-              className={`chip chip-toggle${draft.channels.includes(channel) ? ' chip-toggle-active' : ''}`}
-              onClick={() => toggleChannel(channel)}
-            >
-              {CAMPAIGN_CHANNEL_LABELS[channel]}
-            </button>
-          ))}
-        </div>
+        <div className="chip-row">{CAMPAIGN_CHANNELS.map((channel) => <button type="button" key={channel} className={`chip chip-toggle${draft.channels.includes(channel) ? ' chip-toggle-active' : ''}`} onClick={() => toggleChannel(channel)}>{CAMPAIGN_CHANNEL_LABELS[channel]}</button>)}</div>
       </label>
       {error ? <ErrorState message={error} /> : null}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          className="badge"
-          onClick={submit}
-          disabled={busy || !draft.name.trim() || !draft.strategyId || !strategyOptions.length}
-          style={{ border: 0, cursor: busy ? 'not-allowed' : 'pointer', padding: '9px 14px', opacity: busy || !draft.name.trim() || !draft.strategyId ? 0.6 : 1 }}
-        >
+        <button type="button" className="badge" onClick={submit} disabled={busy || !draft.name.trim() || !draft.strategyIds.length || !strategyOptions.length} style={{ border: 0, cursor: busy ? 'not-allowed' : 'pointer', padding: '9px 14px', opacity: busy || !draft.name.trim() || !draft.strategyIds.length ? 0.6 : 1 }}>
           {busy ? <><LoaderCircle size={14} className="spin" /> Creating…</> : <><Plus size={14} /> Create campaign</>}
         </button>
         <button type="button" className="badge tone-muted" onClick={() => setOpen(false)} style={{ border: 0, cursor: 'pointer', padding: '9px 14px' }}>Cancel</button>
@@ -262,10 +256,7 @@ export function CampaignStudio({ brandId, brandName }: { brandId: string; brandN
       if (query) params.set('q', query);
       const encoded = params.toString();
       const response = await fetch(`/api/brands/${brandId}/campaigns${encoded ? `?${encoded}` : ''}`, { cache: 'no-store' });
-      if (response.status === 401) {
-        window.location.href = '/login';
-        return;
-      }
+      if (response.status === 401) { window.location.href = '/login'; return; }
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || 'Could not load campaigns');
       setData(body);
@@ -276,9 +267,7 @@ export function CampaignStudio({ brandId, brandName }: { brandId: string; brandN
     }
   }, [brandId, statusFilter, channelFilter, query]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const canCreate = Boolean(data?.gate.hasApprovedStrategy);
 
@@ -286,84 +275,45 @@ export function CampaignStudio({ brandId, brandName }: { brandId: string; brandN
     <div className="grid" style={{ gap: 16 }}>
       <div className="card">
         <div className="section-title" style={{ flexWrap: 'wrap', gap: 10 }}>
-          <div>
-            <div className="eyebrow">Campaigns</div>
-            <h2 style={{ margin: '5px 0' }}>{brandName} campaign workspace</h2>
-          </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <CreateForm brandId={brandId} strategyOptions={data?.strategyOptions ?? []} onCreated={load} />
-          </div>
+          <div><div className="eyebrow">Campaigns</div><h2 style={{ margin: '5px 0' }}>{brandName} campaign workspace</h2></div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}><CreateForm brandId={brandId} strategyOptions={data?.strategyOptions ?? []} onCreated={load} /></div>
         </div>
-        <p className="subtitle" style={{ marginTop: 0 }}>
-          Plan and run campaigns grounded in the approved strategy — budget, dates, channels and lifecycle.
-        </p>
+        <p className="subtitle" style={{ marginTop: 0 }}>Plan and run campaigns grounded in one or more approved strategies — budget, dates, channels and lifecycle.</p>
         <div className="content-filters" style={{ marginTop: 14 }}>
           <input className="content-filter-input" placeholder="Search by name…" value={query} onChange={(event) => setQuery(event.target.value)} style={{ minWidth: 180 }} />
-          <select className="content-filter-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="">All statuses</option>
-            {CAMPAIGN_STATUSES.map((status) => <option key={status} value={status}>{CAMPAIGN_STATUS_LABELS[status]}</option>)}
-          </select>
-          <select className="content-filter-select" value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)}>
-            <option value="">All channels</option>
-            {CAMPAIGN_CHANNELS.map((channel) => <option key={channel} value={channel}>{CAMPAIGN_CHANNEL_LABELS[channel]}</option>)}
-          </select>
+          <select className="content-filter-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option>{CAMPAIGN_STATUSES.map((status) => <option key={status} value={status}>{CAMPAIGN_STATUS_LABELS[status]}</option>)}</select>
+          <select className="content-filter-select" value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)}><option value="">All channels</option>{CAMPAIGN_CHANNELS.map((channel) => <option key={channel} value={channel}>{CAMPAIGN_CHANNEL_LABELS[channel]}</option>)}</select>
         </div>
       </div>
 
       {!canCreate && !loading && !error ? (
-        <div className="card" style={{ borderColor: 'rgba(139,124,255,.35)' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            <span className="status-dot" style={{ background: 'var(--accent-2)', marginTop: 5, flexShrink: 0 }} />
-            <div>
-              <div className="activity-title">Campaigns need an approved strategy</div>
-              <p className="activity-meta" style={{ marginTop: 6, lineHeight: 1.5, maxWidth: 720 }}>
-                Campaigns are grounded in the approved strategy for {brandName}. Generate and approve a strategy to unlock campaign planning.
-              </p>
-            </div>
-          </div>
-        </div>
+        <div className="card" style={{ borderColor: 'rgba(139,124,255,.35)' }}><div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}><span className="status-dot" style={{ background: 'var(--accent-2)', marginTop: 5, flexShrink: 0 }} /><div><div className="activity-title">Campaigns need an approved strategy</div><p className="activity-meta" style={{ marginTop: 6, lineHeight: 1.5, maxWidth: 720 }}>Campaigns are grounded in approved strategy versions for {brandName}. Generate and approve a strategy to unlock campaign planning.</p></div></div></div>
       ) : null}
 
       {error ? <div className="card" style={{ borderColor: 'rgba(239,68,68,.35)' }}><ErrorState message={error} /></div> : null}
-
-      {loading ? (
-        <LoadingState label="Loading campaigns…" />
-      ) : error ? null : !data || data.campaigns.length === 0 ? (
-        <EmptyState
-          title="No campaigns yet"
-          description="Create a campaign grounded in the approved strategy — add objectives, budget, dates and channels, then move it into planning."
-          action={canCreate && data?.canManage ? <CreateForm brandId={brandId} strategyOptions={data?.strategyOptions ?? []} onCreated={load} /> : undefined}
-        />
+      {loading ? <LoadingState label="Loading campaigns…" /> : error ? null : !data || data.campaigns.length === 0 ? (
+        <EmptyState title="No campaigns yet" description="Create a campaign grounded in one or more approved strategies — add objectives, budget, dates and channels, then move it into planning." action={canCreate && data?.canManage ? <CreateForm brandId={brandId} strategyOptions={data?.strategyOptions ?? []} onCreated={load} /> : undefined} />
       ) : (
         <div className="grid" style={{ gap: 12 }}>
           {data.campaigns.map((campaign) => (
             <a className="card hover-lift content-item" href={`/brands/${brandId}/campaigns/${campaign.id}`} key={campaign.id}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span className="status-dot" style={{ background: campaign.status === 'ACTIVE' ? 'var(--accent)' : campaign.status === 'COMPLETED' || campaign.status === 'PLANNED' ? 'var(--accent-2)' : 'var(--muted)', marginTop: 1 }} />
-                    <span className="activity-title">{campaign.name}</span>
-                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><span className="status-dot" style={{ background: campaign.status === 'ACTIVE' ? 'var(--accent)' : campaign.status === 'COMPLETED' || campaign.status === 'PLANNED' ? 'var(--accent-2)' : 'var(--muted)', marginTop: 1 }} /><span className="activity-title">{campaign.name}</span></div>
                   <div className="content-filters" style={{ marginTop: 8 }}>
                     <span className={`badge ${statusTone(campaign.status)}`}>{CAMPAIGN_STATUS_LABELS[campaign.status]}</span>
-                    {campaign.strategy ? <span className="chip">Strategy v{campaign.strategy.version}</span> : null}
+                    {campaign.strategies.length > 0 ? <span className="chip">{campaign.strategies.length} strateg{campaign.strategies.length === 1 ? 'y' : 'ies'}</span> : null}
+                    {campaign.strategy ? <span className="chip">Primary v{campaign.strategy.version}</span> : null}
                     {campaign.channels.length > 0 ? <span className="chip">{campaign.channels.length} channel{campaign.channels.length === 1 ? '' : 's'}</span> : null}
                     {campaign.budget !== null ? <span className="chip">{formatBudget(campaign.budget, campaign.currency)}</span> : null}
                   </div>
                 </div>
                 <ChevronRight size={16} color="var(--muted)" style={{ flexShrink: 0 }} />
               </div>
-              <div className="content-item-footer">
-                <span className="activity-meta" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <Boxes size={13} /> {campaign.contentCount ?? 0} content item{campaign.contentCount === 1 ? '' : 's'}
-                </span>
-                <span className="activity-meta">Created {timeAgo(campaign.createdAt)}</span>
-              </div>
+              <div className="content-item-footer"><span className="activity-meta" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Boxes size={13} /> {campaign.contentCount ?? 0} content item{campaign.contentCount === 1 ? '' : 's'}</span><span className="activity-meta">Created {timeAgo(campaign.createdAt)}</span></div>
             </a>
           ))}
-          {data.total > data.campaigns.length ? (
-            <p className="activity-meta" style={{ textAlign: 'center', margin: 0, padding: 8 }}>Showing {data.campaigns.length} of {data.total}. Refine filters to narrow results.</p>
-          ) : null}
+          {data.total > data.campaigns.length ? <p className="activity-meta" style={{ textAlign: 'center', margin: 0, padding: 8 }}>Showing {data.campaigns.length} of {data.total}. Refine filters to narrow results.</p> : null}
         </div>
       )}
     </div>
