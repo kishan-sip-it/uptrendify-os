@@ -15,16 +15,13 @@ async function validateStrategySet(supabase: Awaited<ReturnType<typeof createSup
   const strategies = results.map((result) => result.data).filter(Boolean); if (strategies.length !== uniqueIds.length) throw new Error('One or more selected strategies were not found for this brand'); if (strategies.some((strategy) => strategy!.status !== 'SUCCEEDED')) throw new Error('Only approved strategies can ground a campaign'); return uniqueIds;
 }
 
-export async function GET(request: Request, { params }: { params: Promise<{ brandId: string; campaignId: string }> }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ brandId: string; campaignId: string }> }) {
   try {
     const { brandId, campaignId } = paramsSchema.parse(await params); const auth = await requireOrgRole(CAN_VIEW_CAMPAIGNS); if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status }); const supabase = await createSupabaseServerClient();
     const campaign = await loadCampaign(supabase, { campaignId, brandId, organizationId: auth.context.organizationId }); if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
     const contentResult = await supabase.from('content_items').select('id,type,title,status,channel,created_at,updated_at').eq('campaign_id', campaignId).eq('brand_id', brandId).eq('organization_id', auth.context.organizationId).order('created_at', { ascending: false }).limit(50); if (contentResult.error) throw contentResult.error;
-    const serialized = serializeCampaign(campaign); let strategyOptions = serialized.strategies.map((strategy) => ({ id: strategy.id, title: strategy.title, version: strategy.version, status: strategy.status }));
-    if (new URL(request.url).searchParams.get('includeStrategyOptions') === 'true') {
-      const options = await supabase.from('strategies').select('id,title,version,status').eq('brand_id', brandId).eq('organization_id', auth.context.organizationId).eq('status', 'SUCCEEDED').order('version', { ascending: false }).limit(20); if (options.error) throw options.error; strategyOptions = options.data ?? [];
-    }
-    return NextResponse.json({ ok: true, campaign: serialized, content: (contentResult.data ?? []).map((item) => ({ id: item.id, type: item.type, title: item.title, status: item.status, channel: item.channel ?? null, createdAt: item.created_at, updatedAt: item.updated_at })), strategyOptions, canManage: CAN_MANAGE_CAMPAIGNS.includes(auth.context.role) }, { headers: { 'Cache-Control': 'no-store' } });
+    const strategyOptionsResult = await supabase.from('strategies').select('id,title,version,status').eq('brand_id', brandId).eq('organization_id', auth.context.organizationId).eq('status', 'SUCCEEDED').order('version', { ascending: false }).limit(20); if (strategyOptionsResult.error) throw strategyOptionsResult.error;
+    return NextResponse.json({ ok: true, campaign: serializeCampaign(campaign), content: (contentResult.data ?? []).map((item) => ({ id: item.id, type: item.type, title: item.title, status: item.status, channel: item.channel ?? null, createdAt: item.created_at, updatedAt: item.updated_at })), strategyOptions: strategyOptionsResult.data ?? [], canManage: CAN_MANAGE_CAMPAIGNS.includes(auth.context.role) }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) { if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid campaign id' }, { status: 400 }); obs.error('Campaign detail failed', { error: error instanceof Error ? error.message : String(error) }); return NextResponse.json({ error: 'Could not load campaign' }, { status: 500 }); }
 }
 
