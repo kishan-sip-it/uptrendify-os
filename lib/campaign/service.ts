@@ -8,6 +8,16 @@ export type BrandContext = {
   client_id: string | null;
 };
 
+export type CampaignStrategyRef = {
+  id: string;
+  title: string;
+  version: number;
+  status: string;
+  isPrimary: boolean;
+  sortOrder: number;
+  outputSummary: ReturnType<typeof summarizeStrategyOutput>;
+};
+
 export async function loadBrand(
   supabase: CampaignClient,
   args: { brandId: string; organizationId: string },
@@ -37,6 +47,35 @@ export async function loadStrategy(
   return result.data as { id: string; title: string; version: number; status: string; output: unknown } | null;
 }
 
+export async function loadCampaignStrategies(
+  supabase: CampaignClient,
+  args: { campaignId: string; organizationId: string; brandId: string },
+): Promise<CampaignStrategyRef[]> {
+  const result = await supabase
+    .from('campaign_strategies')
+    .select('strategy_id,is_primary,sort_order,strategy:strategies(id,title,version,status,output)')
+    .eq('campaign_id', args.campaignId)
+    .eq('organization_id', args.organizationId)
+    .order('sort_order', { ascending: true });
+  if (result.error) throw result.error;
+
+  return ((result.data ?? []) as Array<Record<string, unknown>>)
+    .map((row) => {
+      const strategy = row.strategy as Record<string, unknown> | null;
+      if (!strategy) return null;
+      return {
+        id: String(strategy.id),
+        title: String(strategy.title),
+        version: Number(strategy.version),
+        status: String(strategy.status),
+        isPrimary: Boolean(row.is_primary),
+        sortOrder: Number(row.sort_order ?? 0),
+        outputSummary: summarizeStrategyOutput((strategy.output ?? null) as Record<string, unknown> | null),
+      };
+    })
+    .filter((value): value is CampaignStrategyRef => Boolean(value));
+}
+
 export async function loadCampaign(
   supabase: CampaignClient,
   args: { campaignId: string; brandId: string; organizationId: string },
@@ -54,9 +93,23 @@ export async function loadCampaign(
   return result.data as Record<string, unknown> | null;
 }
 
-export function serializeCampaign(campaign: Record<string, unknown>) {
+export function serializeCampaign(campaign: Record<string, unknown>, strategies: CampaignStrategyRef[] = []) {
   const strategy = campaign.strategy as Record<string, unknown> | null | undefined;
   const strategyOutput = (strategy?.output ?? null) as Record<string, unknown> | null;
+  const normalizedStrategies = strategies.length > 0
+    ? strategies
+    : strategy
+      ? [{
+          id: String(strategy.id),
+          title: String(strategy.title),
+          version: Number(strategy.version),
+          status: String(strategy.status),
+          isPrimary: true,
+          sortOrder: 0,
+          outputSummary: summarizeStrategyOutput(strategyOutput),
+        }]
+      : [];
+
   return {
     id: campaign.id,
     name: campaign.name,
@@ -79,6 +132,7 @@ export function serializeCampaign(campaign: Record<string, unknown>) {
           outputSummary: summarizeStrategyOutput(strategyOutput),
         }
       : null,
+    strategies: normalizedStrategies,
     createdAt: campaign.created_at,
     updatedAt: campaign.updated_at,
   };
