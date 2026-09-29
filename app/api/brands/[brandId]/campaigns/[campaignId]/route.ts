@@ -2,11 +2,30 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_MANAGE_CAMPAIGNS, CAN_VIEW_CAMPAIGNS, requireOrgRole } from '@/lib/auth/roles';
-import { campaignUpdateSchema } from '@/lib/campaign/schema';
-import { loadBrand, loadCampaign, loadStrategy, serializeCampaign } from '@/lib/campaign/service';
+import { campaignUpdateSchema, normalizeCampaignStrategyIds } from '@/lib/campaign/schema';
+import { loadBrand, loadCampaign, loadCampaignStrategies, serializeCampaign } from '@/lib/campaign/service';
 import { obs } from '@/lib/obs/logger';
 
 const paramsSchema = z.object({ brandId: z.string().uuid(), campaignId: z.string().uuid() });
+
+async function validateStrategySet(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  args: { strategyIds: string[]; organizationId: string; brandId: string },
+) {
+  const uniqueIds = Array.from(new Set(args.strategyIds));
+  if (uniqueIds.length === 0) throw new Error('At least one approved strategy is required');
+
+  const result = await supabase
+    .from('strategies')
+    .select('id,status')
+    .in('id', uniqueIds)
+    .eq('organization_id', args.organizationId)
+    .eq('brand_id', args.brandId);
+  if (result.error) throw result.error;
+  if ((result.data ?? []).length !== uniqueIds.length) throw new Error('One or more selected strategies were not found for this brand');
+  if ((result.data ?? []).some((strategy) => strategy.status !== 'SUCCEEDED')) throw new Error('Only approved strategies can ground a campaign');
+  return uniqueIds;
+}
 
 export async function GET(_request: Request, { params }: { params: Promise<{ brandId: string; campaignId: string }> }) {
   try {
@@ -29,10 +48,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
       .limit(50);
     if (contentResult.error) throw contentResult.error;
 
+    const strategies = await loadCampaignStrategies(supabase, {
+      campaignId,
+      brandId,
+      organizationId: auth.context.organizationId,
+    });
+
     return NextResponse.json(
       {
         ok: true,
-        campaign: serializeCampaign(campaign),
+        campaign: serializeCampaign(campaign, strategies),
         content: (contentResult.data ?? []).map((item) => ({
           id: item.id,
           type: item.type,
@@ -77,28 +102,36 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
       }
     }
 
-    if (body.strategyId !== undefined) {
-      const strategy = await loadStrategy(supabase, {
-        strategyId: body.strategyId,
+    const hasStrategySetUpdate = body.strategyIds !== undefined || body.strategyId !== undefined;
+    let strategyIds: string[] | null = null;
+    if (hasStrategySetUpdate) {
+      const currentStrategies = await loadCampaignStrategies(supabase, {
+        campaignId,
+        brandId,
+        organizationId: auth.context.organizationId,
+      });
+      strategyIds = normalizeCampaignStrategyIds(body);
+      if (body.strategyIds === undefined && body.strategyId !== undefined) {
+        const existingSecondary = currentStrategies
+          .filter((strategy) => strategy.id !== currentStrategies.find((entry) => entry.isPrimary)?.id)
+          .map((strategy) => strategy.id);
+        strategyIds = normalizeCampaignStrategyIds({ strategyId: body.strategyId, strategyIds: [body.strategyId, ...existingSecondary] });
+      }
+      strategyIds = await validateStrategySet(supabase, {
+        strategyIds,
         organizationId: auth.context.organizationId,
         brandId,
       });
-      if (!strategy) return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
-      if (strategy.status !== 'SUCCEEDED') {
-        return NextResponse.json({ error: 'Only approved strategies can ground a campaign' }, { status: 409 });
-      }
     }
 
     const campaignRow: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body.name !== undefined) campaignRow.name = body.name;
     if (body.objective !== undefined) campaignRow.objective = body.objective;
     if (body.description !== undefined) campaignRow.description = body.description;
-    if (body.strategyId !== undefined) campaignRow.strategy_id = body.strategyId;
+    if (hasStrategySetUpdate && strategyIds) campaignRow.strategy_id = strategyIds[0];
     if (body.startDate !== undefined) campaignRow.start_date = body.startDate;
     if (body.endDate !== undefined) campaignRow.end_date = body.endDate;
-    if (body.budget !== undefined) {
-      campaignRow.budget = body.budget == null ? null : Number(Math.round(body.budget * 100) / 100);
-    }
+    if (body.budget !== undefined) campaignRow.budget = body.budget == null ? null : Number(Math.round(body.budget * 100) / 100);
     if (body.currency !== undefined) campaignRow.currency = body.currency;
     if (body.channels !== undefined) campaignRow.channels = body.channels;
 
@@ -109,6 +142,29 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
       .eq('organization_id', auth.context.organizationId);
     if (update.error) throw update.error;
 
+    if (strategyIds) {
+      const links = strategyIds.map((strategyId, index) => ({
+        organization_id: auth.context.organizationId,
+        campaign_id: campaignId,
+        strategy_id: strategyId,
+        is_primary: index === 0,
+        sort_order: index,
+        created_by: auth.context.userId,
+      }));
+      const upsert = await supabase
+        .from('campaign_strategies')
+        .upsert(links, { onConflict: 'campaign_id,strategy_id' });
+      if (upsert.error) throw upsert.error;
+
+      const remove = await supabase
+        .from('campaign_strategies')
+        .delete()
+        .eq('campaign_id', campaignId)
+        .eq('organization_id', auth.context.organizationId)
+        .not('strategy_id', 'in', `(${strategyIds.join(',')})`);
+      if (remove.error) throw remove.error;
+    }
+
     await supabase.from('audit_logs').insert({
       organization_id: auth.context.organizationId,
       actor_user_id: auth.context.userId,
@@ -118,14 +174,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
       metadata: {
         brandId,
         updatedFields: Object.keys(body),
+        ...(strategyIds ? { strategyIds } : {}),
       },
     });
 
     const refreshed = await loadCampaign(supabase, { campaignId, brandId, organizationId: auth.context.organizationId });
-    return NextResponse.json({ ok: true, campaign: refreshed ? serializeCampaign(refreshed) : null });
+    const refreshedStrategies = await loadCampaignStrategies(supabase, { campaignId, brandId, organizationId: auth.context.organizationId });
+    return NextResponse.json({ ok: true, campaign: refreshed ? serializeCampaign(refreshed, refreshedStrategies) : null });
   } catch (error) {
-    if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid campaign update' }, { status: 400 });
-    obs.error('Campaign update failed', { error: error instanceof Error ? error.message : String(error) });
+    if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid campaign update', details: error.flatten() }, { status: 400 });
+    const message = error instanceof Error ? error.message : String(error);
+    obs.error('Campaign update failed', { error: message });
+    if (message.includes('Only approved strategies') || message.includes('selected strategies') || message.includes('At least one approved strategy')) {
+      return NextResponse.json({ error: message }, { status: 409 });
+    }
     return NextResponse.json({ error: 'Could not update campaign' }, { status: 500 });
   }
 }
