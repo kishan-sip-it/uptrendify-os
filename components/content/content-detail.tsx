@@ -1,358 +1,50 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronRight, FileText, LoaderCircle, PlayCircle, RefreshCw } from 'lucide-react';
+import { Check, FileText, LoaderCircle, PlayCircle, RefreshCw } from 'lucide-react';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/feedback';
 import { channelLabel, contentTypeLabel } from '@/lib/content/schema';
 import { BrandWorkspaceNav } from '@/components/brand/brand-workspace-nav';
 
-type Version = {
-  id: string;
-  version: number;
-  headline: string | null;
-  body: string;
-  cta: string | null;
-  rationale: string | null;
-  provider: string | null;
-  model: string | null;
-  authorUserId: string | null;
-  strategyId: string | null;
-  brandFactReferences: string[];
-  strategyReferences: string[];
-  metadata: Record<string, unknown>;
-  createdAt: string;
-};
-
-type Review = {
-  id: string;
-  decision: string;
-  comment: string | null;
-  reviewerId: string | null;
-  contentVersionId: string | null;
-  createdAt: string;
-};
-
-type ItemDetail = {
-  id: string;
-  type: string;
-  title: string;
-  status: string;
-  channel: string | null;
-  topic: string | null;
-  objective: string | null;
-  audience: string | null;
-  tone: string | null;
-  cta: string | null;
-  instructions: string | null;
-  campaignContext: string | null;
-  clientId: string | null;
-  strategyId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  currentVersionId: string | null;
-};
-
-type GenerationState = {
-  id: string;
-  status: string;
-  errorCode: string | null;
-  errorMessage: string | null;
-  provider: string | null;
-  model: string | null;
-  startedAt: string | null;
-  finishedAt: string | null;
-  outputMetadata: Record<string, unknown>;
-} | null;
-
-type DetailData = {
-  item: ItemDetail;
-  versions: Version[];
-  reviews: Review[];
-  generation: GenerationState;
-  canGenerate: boolean;
-  canReview: boolean;
-  canPublish: boolean;
-};
-
-type PublishAttempt = {
-  id: string;
-  contentVersionId: string | null;
-  channel: string;
-  status: string;
-  errorCode: string | null;
-  errorMessage: string | null;
-  externalReference: string | null;
-  publishedAt: string | null;
-  initiatedBy: string | null;
-  createdAt: string;
-};
-
-type PublishData = {
-  channels: Array<{ channel: string; connectionStatus: string; lastTestedAt: string | null }>;
-  attempts: PublishAttempt[];
-};
-
+type Version = { id: string; version: number; headline: string | null; body: string; cta: string | null; rationale: string | null; provider: string | null; model: string | null; authorUserId: string | null; strategyId: string | null; brandFactReferences: string[]; strategyReferences: string[]; metadata: Record<string, unknown>; createdAt: string };
+type Review = { id: string; decision: string; comment: string | null; reviewerId: string | null; contentVersionId: string | null; createdAt: string };
+type ItemDetail = { id: string; type: string; title: string; status: string; channel: string | null; topic: string | null; objective: string | null; audience: string | null; tone: string | null; cta: string | null; instructions: string | null; campaignContext: string | null; clientId: string | null; strategyId: string | null; createdAt: string; updatedAt: string; currentVersionId: string | null };
+type GenerationState = { id: string; status: string; errorCode: string | null; errorMessage: string | null; provider: string | null; model: string | null; startedAt: string | null; finishedAt: string | null; outputMetadata: Record<string, unknown> } | null;
+type DetailData = { item: ItemDetail; versions: Version[]; reviews: Review[]; generation: GenerationState; canGenerate: boolean; canReview: boolean; canPublish: boolean };
+type PublishAttempt = { id: string; contentVersionId: string | null; channel: string; status: string; errorCode: string | null; errorMessage: string | null; externalReference: string | null; publishedAt: string | null; initiatedBy: string | null; createdAt: string };
+type PublishData = { channels: Array<{ channel: string; connectionStatus: string; lastTestedAt: string | null }>; attempts: PublishAttempt[] };
 type DetailTab = 'overview' | 'brief' | 'versions' | 'reviews' | 'publishing';
-
-function toneFor(status: string): string {
-  if (['APPROVED', 'READY_TO_PUBLISH', 'PUBLISHED', 'SCHEDULED'].includes(status)) return 'tone-good';
-  if (['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED'].includes(status)) return 'tone-info';
-  if (status === 'REJECTED') return 'tone-danger';
-  return 'tone-muted';
-}
-
-function labelFor(status: string): string { return status.toLowerCase().replaceAll('_', ' '); }
-
-function timeAgo(iso: string): string {
-  const seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
-  if (seconds < 60) return 'just now';
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+function toneFor(status: string): string { if (['APPROVED','READY_TO_PUBLISH','PUBLISHED','SCHEDULED'].includes(status)) return 'tone-good'; if (['IN_REVIEW','CLIENT_REVIEW','CHANGES_REQUESTED'].includes(status)) return 'tone-info'; if (status === 'REJECTED') return 'tone-danger'; return 'tone-muted'; }
+function labelFor(status: string): string { return status.toLowerCase().replaceAll('_',' '); }
+function timeAgo(iso: string): string { const seconds=Math.max(0,Math.round((Date.now()-new Date(iso).getTime())/1000)); if(seconds<60)return'just now'; const minutes=Math.round(seconds/60); if(minutes<60)return`${minutes}m ago`; const hours=Math.round(minutes/60); if(hours<24)return`${hours}h ago`; return new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 
 function Editor({ brandId, item, onSaved }: { brandId: string; item: ItemDetail; onSaved: () => void }) {
-  const [form, setForm] = useState({ title: item.title, objective: item.objective ?? '', audience: item.audience ?? '', campaignContext: item.campaignContext ?? '', tone: item.tone ?? '', cta: item.cta ?? '', instructions: item.instructions ?? '' });
-  const [body, setBody] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-
-  function set(key: keyof typeof form, value: string) { setForm((previous) => ({ ...previous, [key]: value })); }
-
-  async function save() {
-    setBusy(true); setError(null); setSaved(false);
-    try {
-      const payload: Record<string, unknown> = {};
-      if (form.title !== item.title) payload.title = form.title;
-      if (form.objective !== (item.objective ?? '')) payload.objective = form.objective || null;
-      if (form.audience !== (item.audience ?? '')) payload.audience = form.audience || null;
-      if (form.campaignContext !== (item.campaignContext ?? '')) payload.context = form.campaignContext || null;
-      if (form.tone !== (item.tone ?? '')) payload.tone = form.tone || null;
-      if (form.cta !== (item.cta ?? '')) payload.cta = form.cta || null;
-      if (form.instructions !== (item.instructions ?? '')) payload.instructions = form.instructions || null;
-      if (body.trim()) payload.body = body;
-      if (Object.keys(payload).length === 0) throw new Error('Nothing changed to save.');
-      const response = await fetch(`/api/brands/${brandId}/content/${item.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
-      const result = await response.json().catch(() => null);
-      if (response.status === 401) { window.location.href = '/login'; return; }
-      if (!response.ok) throw new Error(result?.error || 'Could not save content');
-      setSaved(true); setBody(''); onSaved();
-    } catch (err) { setError(err instanceof Error ? err.message : 'Could not save content'); }
-    finally { setBusy(false); }
-  }
-
-  return (
-    <div className="card content-editor">
-      <div className="section-title" style={{ flexWrap: 'wrap', gap: 10 }}>
-        <div><div className="eyebrow">Brief & editor</div><h2 style={{ margin: '5px 0' }}>Content brief</h2></div>
-        <button type="button" className={`badge ${saved ? 'tone-good' : ''}`} onClick={save} disabled={busy} style={{ border: 0, padding: '8px 12px', cursor: busy ? 'not-allowed' : 'pointer' }}>
-          {busy ? <><LoaderCircle size={14} className="spin" /> Saving…</> : saved ? <><Check size={14} /> Saved</> : 'Save changes'}
-        </button>
-      </div>
-      <p className="subtitle" style={{ marginTop: 0 }}>Editing the body creates a new version so review history remains intact.</p>
-      <div className="content-form">
-        <label>Title / topic<input value={form.title} onChange={(event) => set('title', event.target.value)} /></label>
-        <div className="content-form-row"><label>Objective<input value={form.objective} onChange={(event) => set('objective', event.target.value)} /></label><label>Audience<input value={form.audience} onChange={(event) => set('audience', event.target.value)} /></label></div>
-        <label>Campaign / context<textarea value={form.campaignContext} onChange={(event) => set('campaignContext', event.target.value)} /></label>
-        <div className="content-form-row"><label>Tone / style<input value={form.tone} onChange={(event) => set('tone', event.target.value)} /></label><label>CTA direction<input value={form.cta} onChange={(event) => set('cta', event.target.value)} /></label></div>
-        <label>Additional instructions<textarea value={form.instructions} onChange={(event) => set('instructions', event.target.value)} /></label>
-        <label>Draft body override<textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Edit the copy directly. Saving creates a new version marked as a manual edit." /></label>
-        {error ? <ErrorState message={error} /> : null}
-      </div>
-    </div>
-  );
+  const [form,setForm]=useState({title:item.title,objective:item.objective??'',audience:item.audience??'',campaignContext:item.campaignContext??'',tone:item.tone??'',cta:item.cta??'',instructions:item.instructions??''}); const [body,setBody]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState<string|null>(null); const [saved,setSaved]=useState(false);
+  function set(key:keyof typeof form,value:string){setForm((previous)=>({...previous,[key]:value}));}
+  async function save(){setBusy(true);setError(null);setSaved(false);try{const payload:Record<string,unknown>={};if(form.title!==item.title)payload.title=form.title;if(form.objective!==(item.objective??''))payload.objective=form.objective||null;if(form.audience!==(item.audience??''))payload.audience=form.audience||null;if(form.campaignContext!==(item.campaignContext??''))payload.context=form.campaignContext||null;if(form.tone!==(item.tone??''))payload.tone=form.tone||null;if(form.cta!==(item.cta??''))payload.cta=form.cta||null;if(form.instructions!==(item.instructions??''))payload.instructions=form.instructions||null;if(body.trim())payload.body=body;if(Object.keys(payload).length===0)throw new Error('Nothing changed to save.');const response=await fetch(`/api/brands/${brandId}/content/${item.id}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});const result=await response.json().catch(()=>null);if(response.status===401){window.location.href='/login';return;}if(!response.ok)throw new Error(result?.error||'Could not save content');setSaved(true);setBody('');onSaved();}catch(err){setError(err instanceof Error?err.message:'Could not save content');}finally{setBusy(false);}}
+  return <div className="card content-editor"><div className="section-title" style={{flexWrap:'wrap',gap:10}}><div><div className="eyebrow">Brief & editor</div><h2 style={{margin:'5px 0'}}>Content brief</h2></div><button type="button" className={`badge ${saved?'tone-good':''}`} onClick={save} disabled={busy} style={{border:0,padding:'8px 12px',cursor:busy?'not-allowed':'pointer'}}>{busy?<><LoaderCircle size={14} className="spin"/> Saving…</>:saved?<><Check size={14}/> Saved</>:'Save changes'}</button></div><p className="subtitle" style={{marginTop:0}}>Editing the body creates a new version so review history remains intact.</p><div className="content-form"><label>Title / topic<input value={form.title} onChange={(event)=>set('title',event.target.value)}/></label><div className="content-form-row"><label>Objective<input value={form.objective} onChange={(event)=>set('objective',event.target.value)}/></label><label>Audience<input value={form.audience} onChange={(event)=>set('audience',event.target.value)}/></label></div><label>Campaign / context<textarea value={form.campaignContext} onChange={(event)=>set('campaignContext',event.target.value)}/></label><div className="content-form-row"><label>Tone / style<input value={form.tone} onChange={(event)=>set('tone',event.target.value)}/></label><label>CTA direction<input value={form.cta} onChange={(event)=>set('cta',event.target.value)}/></label></div><label>Additional instructions<textarea value={form.instructions} onChange={(event)=>set('instructions',event.target.value)}/></label><label>Draft body override<textarea value={body} onChange={(event)=>setBody(event.target.value)} placeholder="Edit the copy directly. Saving creates a new version marked as a manual edit."/></label>{error?<ErrorState message={error}/>:null}</div></div>;
 }
 
-function VersionCard({ version, current }: { version: Version; current: boolean }) {
-  return (
-    <div className="card" style={{ borderColor: current ? 'color-mix(in srgb, var(--accent) 35%, var(--border))' : undefined }}>
-      <div className="section-title" style={{ flexWrap: 'wrap', gap: 8 }}><div><div className="eyebrow">{current ? 'Current version' : 'Version'} · v{version.version}</div><h3 style={{ margin: '4px 0 0' }}>{version.headline || 'Untitled'}</h3></div><span className="badge tone-muted">{timeAgo(version.createdAt)}{version.model ? ` · ${version.model}` : ''}</span></div>
-      <div className="content-body" style={{ marginTop: 12 }}>{version.body}</div>
-      {version.cta ? <div className="activity-meta" style={{ marginTop: 12 }}>CTA: {version.cta}</div> : null}
-      {version.rationale ? <div className="review-note" style={{ marginTop: 12 }}><div className="strategy-block-label">RATIONALE</div><p className="activity-meta" style={{ margin: 0, lineHeight: 1.5 }}>{version.rationale}</p></div> : null}
-    </div>
-  );
-}
+function VersionCard({version,current}:{version:Version;current:boolean}){return <div className="card" style={{borderColor:current?'color-mix(in srgb,var(--accent) 35%,var(--border))':undefined}}><div className="section-title" style={{flexWrap:'wrap',gap:8}}><div><div className="eyebrow">{current?'Current version':'Version'} · v{version.version}</div><h3 style={{margin:'4px 0 0'}}>{version.headline||'Untitled'}</h3></div><span className="badge tone-muted">{timeAgo(version.createdAt)}{version.model?` · ${version.model}`:''}</span></div><div className="content-body" style={{marginTop:12}}>{version.body}</div>{version.cta?<div className="activity-meta" style={{marginTop:12}}>CTA: {version.cta}</div>:null}{version.rationale?<div className="review-note" style={{marginTop:12}}><div className="strategy-block-label">RATIONALE</div><p className="activity-meta" style={{margin:0,lineHeight:1.5}}>{version.rationale}</p></div>:null}</div>}
+function ReviewHistory({reviews}:{reviews:Review[]}){if(reviews.length===0)return <EmptyState title="No review activity yet" description="Once this content is submitted, approval decisions and comments will appear here."/>;return <div className="activity-list">{reviews.map((review)=><div className="activity-item" key={review.id}><span className="status-dot" style={{background:['approve','publish','schedule'].includes(review.decision)?'var(--accent)':review.decision==='reject'?'var(--danger)':'var(--accent-2)',marginTop:5,flexShrink:0}}/><div className="activity-body"><div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><span className="activity-title">{review.decision.replaceAll('_',' ')}</span><span className="activity-meta">{timeAgo(review.createdAt)}</span></div>{review.contentVersionId?<div className="activity-meta" style={{marginTop:4}}>Decision recorded against the reviewed version.</div>:null}{review.comment?<div className="activity-meta" style={{marginTop:6,color:'var(--text)'}}>“{review.comment}”</div>:null}</div></div>)}</div>}
+function PublishingPanel({brandId,contentId,channel}:{brandId:string;contentId:string;channel:string|null}){const[data,setData]=useState<PublishData|null>(null);const[loading,setLoading]=useState(true);const[error,setError]=useState<string|null>(null);const load=useCallback(async()=>{setLoading(true);setError(null);try{const response=await fetch(`/api/brands/${brandId}/content/${contentId}/publish`,{cache:'no-store'});const body=await response.json().catch(()=>null);if(response.status===401){window.location.href='/login';return;}if(!response.ok)throw new Error(body?.error||'Could not load publishing status');setData({channels:body.channels??[],attempts:body.attempts??[]});}catch(err){setError(err instanceof Error?err.message:'Could not load publishing status');}finally{setLoading(false);}},[brandId,contentId]);useEffect(()=>{load();},[load]);const selected=data?.channels.find((entry)=>entry.channel===channel)??null;if(loading)return <LoadingState label="Loading publishing status…"/>;if(error)return <ErrorState message={error}/>;return <div className="grid" style={{gap:14}}><div className="card"><div className="eyebrow">Publishing status</div><h3 style={{margin:'5px 0 8px'}}>{channel?channelLabel(channel):'No channel selected'}</h3><p className="subtitle" style={{margin:0}}>Publishing is executed from the Approval Queue after content reaches <strong>READY_TO_PUBLISH</strong>.</p>{channel?<div style={{marginTop:12}}>{selected?.connectionStatus==='CONNECTED'?<span className="badge tone-good">Channel connected</span>:<span className="badge tone-warn">{channelLabel(channel)} is not connected</span>}</div>:null}</div><div className="card"><div className="section-title"><div><div className="eyebrow">Delivery history</div><h3 style={{margin:'4px 0 0'}}>Publication attempts</h3></div><FileText size={17}/></div>{data?.attempts.length?<div className="activity-list">{data.attempts.map((attempt)=><div className="activity-item" key={attempt.id}><span className={`badge ${attempt.status==='SUCCEEDED'?'tone-good':attempt.status==='NOT_CONNECTED'?'tone-warn':'tone-danger'}`}>{attempt.status}</span><div className="activity-body"><div className="activity-title">{channelLabel(attempt.channel)}</div><div className="activity-meta">{timeAgo(attempt.createdAt)}{attempt.errorCode?` · ${attempt.errorCode}`:''}</div>{attempt.errorMessage?<div className="activity-error" style={{marginTop:4}}>{attempt.errorMessage}</div>:null}{attempt.externalReference?<div className="activity-meta" style={{marginTop:4}}>External reference: {attempt.externalReference}</div>:null}</div></div>)}</div>:<p className="activity-meta" style={{margin:0}}>No publication attempts recorded yet.</p>}</div></div>}
 
-function ReviewHistory({ reviews }: { reviews: Review[] }) {
-  if (reviews.length === 0) return <EmptyState title="No review activity yet" description="Once this content is submitted, approval decisions and comments will appear here." />;
-  return <div className="activity-list">{reviews.map((review) => <div className="activity-item" key={review.id}><span className="status-dot" style={{ background: ['approve', 'publish', 'schedule'].includes(review.decision) ? 'var(--accent)' : review.decision === 'reject' ? 'var(--danger)' : 'var(--accent-2)', marginTop: 5, flexShrink: 0 }} /><div className="activity-body"><div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}><span className="activity-title">{review.decision.replaceAll('_', ' ')}</span><span className="activity-meta">{timeAgo(review.createdAt)}</span></div>{review.contentVersionId ? <div className="activity-meta" style={{ marginTop: 4 }}>Decision recorded against the reviewed version.</div> : null}{review.comment ? <div className="activity-meta" style={{ marginTop: 6, color: 'var(--text)' }}>“{review.comment}”</div> : null}</div></div>)}</div>;
-}
-
-function PublishingPanel({ brandId, contentId, channel }: { brandId: string; contentId: string; channel: string | null }) {
-  const [data, setData] = useState<PublishData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/publish`, { cache: 'no-store' });
-      const body = await response.json().catch(() => null);
-      if (response.status === 401) { window.location.href = '/login'; return; }
-      if (!response.ok) throw new Error(body?.error || 'Could not load publishing status');
-      setData({ channels: body.channels ?? [], attempts: body.attempts ?? [] });
-    } catch (err) { setError(err instanceof Error ? err.message : 'Could not load publishing status'); }
-    finally { setLoading(false); }
-  }, [brandId, contentId]);
-  useEffect(() => { load(); }, [load]);
-  const selected = data?.channels.find((entry) => entry.channel === channel) ?? null;
-  if (loading) return <LoadingState label="Loading publishing status…" />;
-  if (error) return <ErrorState message={error} />;
-  return (
-    <div className="grid" style={{ gap: 14 }}>
-      <div className="card"><div className="eyebrow">Publishing status</div><h3 style={{ margin: '5px 0 8px' }}>{channel ? channelLabel(channel) : 'No channel selected'}</h3><p className="subtitle" style={{ margin: 0 }}>Publishing is executed from the Approval Queue after content reaches <strong>READY_TO_PUBLISH</strong>.</p>{channel ? <div style={{ marginTop: 12 }}>{selected?.connectionStatus === 'CONNECTED' ? <span className="badge tone-good">Channel connected</span> : <span className="badge tone-warn">{channelLabel(channel)} is not connected</span>}</div> : null}</div>
-      <div className="card"><div className="section-title"><div><div className="eyebrow">Delivery history</div><h3 style={{ margin: '4px 0 0' }}>Publication attempts</h3></div><FileText size={17} /></div>{data?.attempts.length ? <div className="activity-list">{data.attempts.map((attempt) => <div className="activity-item" key={attempt.id}><span className={`badge ${attempt.status === 'SUCCEEDED' ? 'tone-good' : attempt.status === 'NOT_CONNECTED' ? 'tone-warn' : 'tone-danger'}`}>{attempt.status}</span><div className="activity-body"><div className="activity-title">{channelLabel(attempt.channel)}</div><div className="activity-meta">{timeAgo(attempt.createdAt)}{attempt.errorCode ? ` · ${attempt.errorCode}` : ''}</div>{attempt.errorMessage ? <div className="activity-error" style={{ marginTop: 4 }}>{attempt.errorMessage}</div> : null}{attempt.externalReference ? <div className="activity-meta" style={{ marginTop: 4 }}>External reference: {attempt.externalReference}</div> : null}</div></div>)}</div> : <p className="activity-meta" style={{ margin: 0 }}>No publication attempts recorded yet.</p>}</div>
-    </div>
-  );
-}
-
-export function ContentDetail({ brandId }: { brandId: string }) {
-  const [contentId, setContentId] = useState<string | null>(null);
-  const [data, setData] = useState<DetailData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [tab, setTab] = useState<DetailTab>('overview');
-  const previousGenerationStatus = useRef<string | null>(null);
-
-  useEffect(() => {
-    const segments = window.location.pathname.split('/').filter(Boolean);
-    setContentId(segments.at(-1) ?? null);
-  }, []);
-
-  const load = useCallback(async () => {
-    if (!contentId) return;
-    setError(null);
-    try {
-      const response = await fetch(`/api/brands/${brandId}/content/${contentId}`, { cache: 'no-store' });
-      const body = await response.json().catch(() => null);
-      if (response.status === 401) { window.location.href = '/login'; return; }
-      if (!response.ok) throw new Error(body?.error || 'Could not load content');
-      setData(body);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Could not load content'); }
-    finally { setLoading(false); }
-  }, [brandId, contentId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    if (!contentId || data?.generation?.status !== 'RUNNING') return;
-    const timer = window.setInterval(() => { void load(); }, 1400);
-    return () => window.clearInterval(timer);
-  }, [contentId, data?.generation?.status, load]);
-
-  useEffect(() => {
-    const status = data?.generation?.status ?? null;
-    if (!status) return;
-    const previous = previousGenerationStatus.current;
-    if (status === 'RUNNING') {
-      previousGenerationStatus.current = status;
-      return;
-    }
-    if (previous === 'RUNNING' && status === 'SUCCEEDED') {
-      const version = data?.generation?.outputMetadata?.version;
-      setNotice(`Created ${contentTypeLabel(data.item.type)} for ${channelLabel(data.item.channel ?? 'the selected channel')}${version ? ` · version ${version}` : ''}. The new version is now visible on this page.`);
-    } else if (previous === 'RUNNING' && status === 'FAILED') {
-      setActionError(data.generation?.errorMessage || 'The content generation job failed. No new version was created.');
-    }
-    previousGenerationStatus.current = status;
-  }, [data?.generation?.status, data?.generation?.outputMetadata, data?.generation?.errorMessage, data?.item.type, data?.item.channel]);
-
-  const generate = useCallback(async () => {
-    if (!contentId) return;
-    setGenerating(true); setActionError(null); setNotice(null);
-    previousGenerationStatus.current = null;
-    try {
-      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/generate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-      const body = await response.json().catch(() => null);
-      if (response.status === 401) { window.location.href = '/login'; return; }
-      if (!response.ok && response.status !== 409) throw new Error(body?.error || 'Could not start generation');
-      if (body?.status === 'SUCCEEDED') {
-        setNotice(`Created ${contentTypeLabel(data?.item.type ?? 'content')} for ${channelLabel(data?.item.channel ?? 'the selected channel')}.`);
-      } else {
-        setNotice(`Creating ${contentTypeLabel(data?.item.type ?? 'content')} for ${channelLabel(data?.item.channel ?? 'the selected channel')} from approved brand and strategy context. This page will update automatically when the version is ready.`);
-      }
-      await load();
-    } catch (err) { setActionError(err instanceof Error ? err.message : 'Could not start generation'); }
-    finally { setGenerating(false); }
-  }, [brandId, contentId, data?.item.type, data?.item.channel, load]);
-
-  const submitForApproval = useCallback(async () => {
-    if (!contentId) return;
-    setSubmitting(true); setActionError(null); setNotice(null);
-    try {
-      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/review`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'submit' }) });
-      const body = await response.json().catch(() => null);
-      if (response.status === 401) { window.location.href = '/login'; return; }
-      if (!response.ok) throw new Error(body?.error || 'Could not send content to approval queue');
-      setNotice('Sent this exact content version to the Approval Queue. Final approval decisions happen there.');
-      await load();
-    } catch (err) { setActionError(err instanceof Error ? err.message : 'Could not send content to approval queue'); }
-    finally { setSubmitting(false); }
-  }, [brandId, contentId, load]);
-
-  const item = data?.item ?? null;
-  const current = useMemo(() => item ? data?.versions.find((version) => version.id === item.currentVersionId) ?? null : null, [data?.versions, item]);
-  const workflowSteps = [['DRAFT', 'Draft'], ['IN_REVIEW', 'Approval'], ['APPROVED', 'Approved'], ['READY_TO_PUBLISH', 'Publishing'], ['PUBLISHED', 'Published']];
-
-  if (loading) return <div className="grid" style={{ gap: 16 }}><LoadingState label="Loading content…" /></div>;
-  if (error) return <div className="grid" style={{ gap: 16 }}><ErrorState message={error} /></div>;
-  if (!item) return <EmptyState title="Content not found" description="This content item could not be loaded." />;
-
-  const reviewState = ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED'].includes(item.status);
-  const generationRunning = data?.generation?.status === 'RUNNING';
-  const canSubmit = data?.canGenerate && item.status === 'DRAFT' && Boolean(item.currentVersionId) && !generationRunning;
-  const tabs: Array<[DetailTab, string]> = [['overview', 'Overview'], ['brief', 'Brief'], ['versions', 'Versions'], ['reviews', 'Review history'], ['publishing', 'Publishing']];
-
-  return (
-    <div className="grid" style={{ gap: 16 }}>
-      <BrandWorkspaceNav brandId={brandId} current="content" />
-
-      <div className="card">
-        <div className="section-title" style={{ flexWrap: 'wrap', gap: 10 }}>
-          <div>
-            <div className="eyebrow">{contentTypeLabel(item.type)}{item.channel ? ` · ${channelLabel(item.channel)}` : ''}</div>
-            <h2 style={{ margin: '5px 0' }}>{item.title}</h2>
-            <p className="subtitle" style={{ margin: 0 }}>{item.strategyId ? 'Grounded in approved Brand Brain and strategy context.' : 'Content brief awaiting strategy context.'}</p>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span className={`badge ${toneFor(item.status)}`}>{labelFor(item.status)}</span>
-            {data?.canGenerate ? <button type="button" className="badge" onClick={generate} disabled={generating || generationRunning || item.status === 'ARCHIVED'} style={{ border: 0, padding: '8px 12px', cursor: generating || generationRunning ? 'not-allowed' : 'pointer' }}>{generating || generationRunning ? <><LoaderCircle size={14} className="spin" /> Creating…</> : current ? <><RefreshCw size={14} /> Regenerate</> : <><PlayCircle size={14} /> Generate</>}</button> : null}
-          </div>
-        </div>
-        <div className="content-filters" style={{ marginTop: 14, gap: 6 }}>
-          {workflowSteps.map(([value, label]) => <span key={value} className={`chip ${value === item.status || (value === 'IN_REVIEW' && reviewState) ? 'active' : ''}`}>{label}</span>)}
-        </div>
-      </div>
-
-      {generationRunning ? <div className="creation-state" role="status" aria-live="polite"><LoaderCircle size={16} className="spin" style={{ flexShrink: 0, marginTop: 2, color: 'var(--accent)' }} /><div className="creation-state-copy"><span className="creation-state-title">Creating {contentTypeLabel(item.type)} for {channelLabel(item.channel ?? 'the selected channel')}</span><span className="creation-state-detail">Using approved Brand Brain, strategy and the brief you provided. Stay on this page; the new version will appear automatically when generation finishes.</span></div></div> : null}
-      {actionError ? <div className="creation-state creation-state-error"><div className="creation-state-copy"><span className="creation-state-title">Generation needs attention</span><span className="creation-state-detail">{actionError}</span></div></div> : null}
-      {notice && !generationRunning ? <div className="creation-state creation-state-success" role="status" aria-live="polite"><Check size={16} style={{ flexShrink: 0, marginTop: 2, color: 'var(--success)' }} /><div className="creation-state-copy"><span className="creation-state-title">{notice}</span><span className="creation-state-detail">The result is shown in the current version below. No second page or manual refresh is required.</span></div></div> : null}
-
-      <div className="card" style={{ padding: 6 }}><div className="content-detail-tabs" role="tablist" aria-label="Content detail sections">{tabs.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} className={`review-tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>{label}</button>)}</div></div>
-
-      {tab === 'overview' ? (
-        <div className="grid grid-2" style={{ gap: 14 }}>
-          <div className="card">
-            <div className="eyebrow">Next step</div>
-            <h3 style={{ margin: '5px 0 8px' }}>{generationRunning ? `Creating ${contentTypeLabel(item.type)}…` : canSubmit ? 'Send this version to the approval queue.' : reviewState ? 'Awaiting an approver.' : item.status === 'APPROVED' ? 'Approved. The approval queue controls publishing readiness.' : item.status === 'READY_TO_PUBLISH' ? 'Ready to publish from the Approval Queue.' : item.status === 'PUBLISHED' ? 'Published successfully.' : 'Continue building this content.'}</h3>
-            <p className="subtitle" style={{ margin: 0 }}>{generationRunning ? 'The page will update automatically when the generated version is persisted.' : canSubmit ? 'Final approval actions are intentionally not available on the content detail page.' : reviewState ? 'Approve, request changes, or reject this version from the authorized Approval Queue only.' : item.status === 'READY_TO_PUBLISH' ? 'Publishing attempts, connection state, and delivery results remain auditable.' : 'Use the tabs above to inspect the brief, versions, review history, and publishing state.'}</p>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>{canSubmit ? <button type="button" className="badge tone-good" onClick={submitForApproval} disabled={submitting} style={{ border: 0, padding: '8px 12px' }}>{submitting ? <><LoaderCircle size={14} className="spin" /> Sending…</> : 'Send to approval queue'}</button> : null}{(reviewState || item.status === 'APPROVED' || item.status === 'READY_TO_PUBLISH') ? <a className="badge" href="/approvals" style={{ textDecoration: 'none', padding: '8px 12px' }}>Open Approval Queue</a> : null}</div>
-          </div>
-          {current ? <VersionCard version={current} current /> : <EmptyState title={generationRunning ? 'Version is being created' : 'No generated version'} description={generationRunning ? 'Stay here. The page will show the new version automatically when the generation job finishes.' : 'Generate content to create the first version.'} />}
-        </div>
-      ) : null}
-
-      {tab === 'brief' ? <Editor brandId={brandId} item={item} onSaved={() => void load()} /> : null}
-      {tab === 'versions' ? <div className="grid" style={{ gap: 14 }}>{(data?.versions ?? []).map((version) => <VersionCard key={version.id} version={version} current={version.id === item.currentVersionId} />)}{(data?.versions.length ?? 0) === 0 ? <EmptyState title="No versions yet" description="Generate the first version from the approved strategy." /> : null}</div> : null}
-      {tab === 'reviews' ? <div className="card"><div className="section-title"><div><div className="eyebrow">Audit trail</div><h3 style={{ margin: '4px 0 0' }}>Review history</h3></div><Check size={17} /></div><ReviewHistory reviews={data?.reviews ?? []} /></div> : null}
-      {tab === 'publishing' && contentId ? <PublishingPanel brandId={brandId} contentId={contentId} channel={item.channel} /> : null}
-    </div>
-  );
+export function ContentDetail({brandId}:{brandId:string}){
+  const[contentId,setContentId]=useState<string|null>(null);const[data,setData]=useState<DetailData|null>(null);const[loading,setLoading]=useState(true);const[error,setError]=useState<string|null>(null);const[actionError,setActionError]=useState<string|null>(null);const[notice,setNotice]=useState<string|null>(null);const[generating,setGenerating]=useState(false);const[submitting,setSubmitting]=useState(false);const[tab,setTab]=useState<DetailTab>('overview');const previousGenerationStatus=useRef<string|null>(null);
+  useEffect(()=>{const segments=window.location.pathname.split('/').filter(Boolean);setContentId(segments.at(-1)??null);},[]);
+  const load=useCallback(async()=>{if(!contentId)return;setError(null);try{const response=await fetch(`/api/brands/${brandId}/content/${contentId}`,{cache:'no-store'});const body=await response.json().catch(()=>null);if(response.status===401){window.location.href='/login';return;}if(!response.ok)throw new Error(body?.error||'Could not load content');setData(body);}catch(err){setError(err instanceof Error?err.message:'Could not load content');}finally{setLoading(false);}},[brandId,contentId]);
+  useEffect(()=>{load();},[load]);
+  useEffect(()=>{if(!contentId||data?.generation?.status!=='RUNNING')return;const timer=window.setInterval(()=>{void load();},1400);return()=>window.clearInterval(timer);},[contentId,data?.generation?.status,load]);
+  useEffect(()=>{if(!data)return;const status=data.generation?.status??null;if(!status)return;const previous=previousGenerationStatus.current;if(status==='RUNNING'){previousGenerationStatus.current=status;return;}if(previous==='RUNNING'&&status==='SUCCEEDED'){const version=data.generation?.outputMetadata?.version;setNotice(`Created ${contentTypeLabel(data.item.type)} for ${channelLabel(data.item.channel??'the selected channel')}${version?` · version ${version}`:''}. The new version is now visible on this page.`);}else if(previous==='RUNNING'&&status==='FAILED'){setActionError(data.generation?.errorMessage||'The content generation job failed. No new version was created.');}previousGenerationStatus.current=status;},[data?.generation?.status,data?.generation?.outputMetadata,data?.generation?.errorMessage,data?.item.type,data?.item.channel]);
+  const generate=useCallback(async()=>{if(!contentId)return;setGenerating(true);setActionError(null);setNotice(null);previousGenerationStatus.current=null;try{const response=await fetch(`/api/brands/${brandId}/content/${contentId}/generate`,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});const body=await response.json().catch(()=>null);if(response.status===401){window.location.href='/login';return;}if(!response.ok&&response.status!==409)throw new Error(body?.error||'Could not start generation');if(body?.status==='SUCCEEDED'){setNotice(`Created ${contentTypeLabel(data?.item.type??'content')} for ${channelLabel(data?.item.channel??'the selected channel')}.`);}else{setNotice(`Creating ${contentTypeLabel(data?.item.type??'content')} for ${channelLabel(data?.item.channel??'the selected channel')} from approved brand and strategy context. This page will update automatically when the version is ready.`);}await load();}catch(err){setActionError(err instanceof Error?err.message:'Could not start generation');}finally{setGenerating(false);}},[brandId,contentId,data?.item.type,data?.item.channel,load]);
+  const submitForApproval=useCallback(async()=>{if(!contentId)return;setSubmitting(true);setActionError(null);setNotice(null);try{const response=await fetch(`/api/brands/${brandId}/content/${contentId}/review`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'submit'})});const body=await response.json().catch(()=>null);if(response.status===401){window.location.href='/login';return;}if(!response.ok)throw new Error(body?.error||'Could not send content to approval queue');setNotice('Sent this exact content version to the Approval Queue. Final approval decisions happen there.');await load();}catch(err){setActionError(err instanceof Error?err.message:'Could not send content to approval queue');}finally{setSubmitting(false);}},[brandId,contentId,load]);
+  const item=data?.item??null;const current=useMemo(()=>item?data?.versions.find((version)=>version.id===item.currentVersionId)??null:null,[data?.versions,item]);const workflowSteps=[['DRAFT','Draft'],['IN_REVIEW','Approval'],['APPROVED','Approved'],['READY_TO_PUBLISH','Publishing'],['PUBLISHED','Published']];
+  if(loading)return <div className="grid" style={{gap:16}}><LoadingState label="Loading content…"/></div>;if(error)return <div className="grid" style={{gap:16}}><ErrorState message={error}/></div>;if(!item)return <EmptyState title="Content not found" description="This content item could not be loaded."/>;
+  const reviewState=['IN_REVIEW','CLIENT_REVIEW','CHANGES_REQUESTED'].includes(item.status);const generationRunning=data?.generation?.status==='RUNNING';const canSubmit=data?.canGenerate&&item.status==='DRAFT'&&Boolean(item.currentVersionId)&&!generationRunning;const tabs:Array<[DetailTab,string]>=[['overview','Overview'],['brief','Brief'],['versions','Versions'],['reviews','Review history'],['publishing','Publishing']];
+  return <div className="grid" style={{gap:16}}><BrandWorkspaceNav brandId={brandId} current="content"/><div className="card"><div className="section-title" style={{flexWrap:'wrap',gap:10}}><div><div className="eyebrow">{contentTypeLabel(item.type)}{item.channel?` · ${channelLabel(item.channel)}`:''}</div><h2 style={{margin:'5px 0'}}>{item.title}</h2><p className="subtitle" style={{margin:0}}>{item.strategyId?'Grounded in approved Brand Brain and strategy context.':'Content brief awaiting strategy context.'}</p></div><div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><span className={`badge ${toneFor(item.status)}`}>{labelFor(item.status)}</span>{data?.canGenerate?<button type="button" className="badge" onClick={generate} disabled={generating||generationRunning||item.status==='ARCHIVED'} style={{border:0,padding:'8px 12px',cursor:generating||generationRunning?'not-allowed':'pointer'}}>{generating||generationRunning?<><LoaderCircle size={14} className="spin"/> Creating…</>:current?<><RefreshCw size={14}/> Regenerate</>:<><PlayCircle size={14}/> Generate</>}</button>:null}</div></div><div className="content-filters" style={{marginTop:14,gap:6}}>{workflowSteps.map(([value,label])=><span key={value} className={`chip ${value===item.status||(value==='IN_REVIEW'&&reviewState)?'active':''}`}>{label}</span>)}</div></div>
+  {generationRunning?<div className="creation-state" role="status" aria-live="polite"><LoaderCircle size={16} className="spin" style={{flexShrink:0,marginTop:2,color:'var(--accent)'}}/><div className="creation-state-copy"><span className="creation-state-title">Creating {contentTypeLabel(item.type)} for {channelLabel(item.channel??'the selected channel')}</span><span className="creation-state-detail">Using approved Brand Brain, strategy and the brief you provided. Stay on this page; the new version will appear automatically when generation finishes.</span></div></div>:null}{actionError?<div className="creation-state creation-state-error"><div className="creation-state-copy"><span className="creation-state-title">Generation needs attention</span><span className="creation-state-detail">{actionError}</span></div></div>:null}{notice&&!generationRunning?<div className="creation-state creation-state-success" role="status" aria-live="polite"><Check size={16} style={{flexShrink:0,marginTop:2,color:'var(--success)'}}/><div className="creation-state-copy"><span className="creation-state-title">{notice}</span><span className="creation-state-detail">The result is shown in the current version below. No second page or manual refresh is required.</span></div></div>:null}
+  <div className="card" style={{padding:6}}><div className="content-detail-tabs" role="tablist" aria-label="Content detail sections">{tabs.map(([key,label])=><button key={key} type="button" role="tab" aria-selected={tab===key} className={`review-tab ${tab===key?'active':''}`} onClick={()=>setTab(key)}>{label}</button>)}</div></div>
+  {tab==='overview'?<div className="grid grid-2" style={{gap:14}}><div className="card"><div className="eyebrow">Next step</div><h3 style={{margin:'5px 0 8px'}}>{generationRunning?`Creating ${contentTypeLabel(item.type)}…`:canSubmit?'Send this version to the approval queue.':reviewState?'Awaiting an approver.':item.status==='APPROVED'?'Approved. The approval queue controls publishing readiness.':item.status==='READY_TO_PUBLISH'?'Ready to publish from the Approval Queue.':item.status==='PUBLISHED'?'Published successfully.':'Continue building this content.'}</h3><p className="subtitle" style={{margin:0}}>{generationRunning?'The page will update automatically when the generated version is persisted.':canSubmit?'Final approval actions are intentionally not available on the content detail page.':reviewState?'Approve, request changes, or reject this version from the authorized Approval Queue only.':item.status==='READY_TO_PUBLISH'?'Publishing attempts, connection state, and delivery results remain auditable.':'Use the tabs above to inspect the brief, versions, review history, and publishing state.'}</p><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:14}}>{canSubmit?<button type="button" className="badge tone-good" onClick={submitForApproval} disabled={submitting} style={{border:0,padding:'8px 12px'}}>{submitting?<><LoaderCircle size={14} className="spin"/> Sending…</>:'Send to approval queue'}</button>:null}{(reviewState||item.status==='APPROVED'||item.status==='READY_TO_PUBLISH')?<a className="badge" href="/approvals" style={{textDecoration:'none',padding:'8px 12px'}}>Open Approval Queue</a>:null}</div></div>{current?<VersionCard version={current} current/>:<EmptyState title={generationRunning?'Version is being created':'No generated version'} description={generationRunning?'Stay here. The page will show the new version automatically when the generation job finishes.':'Generate content to create the first version.'}/>}</div>:null}
+  {tab==='brief'?<Editor brandId={brandId} item={item} onSaved={()=>void load()}/>:null}{tab==='versions'?<div className="grid" style={{gap:14}}>{(data?.versions??[]).map((version)=><VersionCard key={version.id} version={version} current={version.id===item.currentVersionId}/>)}{(data?.versions.length??0)===0?<EmptyState title="No versions yet" description="Generate the first version from the approved strategy."/>:null}</div>:null}{tab==='reviews'?<div className="card"><div className="section-title"><div><div className="eyebrow">Audit trail</div><h3 style={{margin:'4px 0 0'}}>Review history</h3></div><Check size={17}/></div><ReviewHistory reviews={data?.reviews??[]}/></div>:null}{tab==='publishing'&&contentId?<PublishingPanel brandId={brandId} contentId={contentId} channel={item.channel}/>:null}
+  </div>;
 }
