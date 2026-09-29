@@ -52,6 +52,13 @@ export async function requireOrgRole(allowed: OrgRole[]): Promise<AuthResult> {
       return { error: { status: 401, body: { error: 'Authentication required' } }, context: null };
     }
 
+    // A Supabase session is not sufficient for application access while email
+    // confirmation is required. Keep this check server-side so refreshes,
+    // direct URLs and API calls cannot bypass the verification boundary.
+    if (!user.email_confirmed_at) {
+      return { error: { status: 401, body: { error: 'Email confirmation required' } }, context: null };
+    }
+
     const cookieStore = await cookies();
     const preferredOrgId = cookieStore.get(ORG_SWITCH_COOKIE)?.value ?? null;
 
