@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   ArrowUpRight, BookOpen, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Settings, Sparkles, Target, Trash2, Users, X,
 } from 'lucide-react';
@@ -85,6 +85,7 @@ export function AppShell({
   const [guideIdle, setGuideIdle] = useState(false);
   const [phaseBriefingVisible, setPhaseBriefingVisible] = useState(false);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -168,51 +169,95 @@ export function AppShell({
   }
 
   const isBrandContent = /\/brands\/[^/]+\/content(?:\/|$)/.test(pathname);
+  const isContentDetail = /\/brands\/[^/]+\/content\/[^/]+$/.test(pathname);
   const isBrandCampaigns = /\/brands\/[^/]+\/campaigns(?:\/|$)/.test(pathname);
+  const isCampaignDetail = /\/brands\/[^/]+\/campaigns\/[^/]+$/.test(pathname);
+  const isBrandBrain = pathname.startsWith('/brands/') && searchParams.get('view') === 'brain';
+  const isBrandStrategy = pathname.startsWith('/brands/') && searchParams.get('view') === 'strategy';
+  const isBrandOverview = pathname.startsWith('/brands/') && !isBrandContent && !isBrandCampaigns && !isBrandBrain && !isBrandStrategy;
   const currentLocation = pathname === '/dashboard'
     ? 'Dashboard'
+    : isContentDetail
+      ? 'Content detail'
+      : isBrandContent || pathname.startsWith('/content')
+        ? 'Content Studio'
+        : isCampaignDetail
+          ? 'Campaign detail'
+          : isBrandCampaigns
+            ? 'Brand campaigns'
+            : pathname === '/campaigns'
+              ? 'All campaigns'
+              : pathname.startsWith('/approvals')
+                ? 'Content Approval'
+                : pathname.startsWith('/settings')
+                  ? 'Settings'
+                  : isBrandBrain
+                    ? 'Brand Brain'
+                    : isBrandStrategy
+                      ? 'Strategy'
+                      : isBrandOverview
+                        ? 'Brand overview'
+                        : pathname.startsWith('/brands/')
+                          ? 'Brand workspace'
+                          : pathname === '/brands'
+                            ? 'Brands'
+                            : pathname.startsWith('/onboarding')
+                              ? 'Setup'
+                              : 'Workspace';
+
+  const guideStage = isContentDetail
+    ? 'content-detail'
     : isBrandContent || pathname.startsWith('/content')
-      ? 'Content Studio'
-      : isBrandCampaigns || pathname.startsWith('/campaigns')
-        ? 'Campaigns'
-        : pathname.startsWith('/approvals')
-          ? 'Content Approval'
-          : pathname.startsWith('/settings')
-            ? 'Settings'
-            : pathname.startsWith('/brands/')
-              ? 'Brand workspace'
-              : pathname === '/brands'
-                ? 'Brands'
-                : pathname.startsWith('/onboarding')
-                  ? 'Setup'
-                  : 'Workspace';
-  const guideStage = isBrandContent || pathname.startsWith('/content')
-    ? 'content'
-    : isBrandCampaigns || pathname.startsWith('/campaigns')
-      ? 'campaigns'
-      : pathname.startsWith('/approvals')
-        ? 'approvals'
-        : pathname.startsWith('/settings')
-          ? 'settings'
-          : pathname.startsWith('/brands/')
-            ? 'brand'
-            : pathname === '/dashboard'
-              ? 'dashboard'
-              : null;
+      ? 'content'
+      : isCampaignDetail
+        ? 'campaign-detail'
+        : isBrandCampaigns
+          ? 'campaigns-brand'
+          : pathname === '/campaigns'
+            ? 'campaigns'
+            : pathname.startsWith('/approvals')
+              ? 'approvals'
+              : pathname.startsWith('/settings')
+                ? 'settings'
+                : isBrandBrain
+                  ? 'brand-brain'
+                  : isBrandStrategy
+                    ? 'strategy'
+                    : isBrandOverview
+                      ? 'brand'
+                      : pathname === '/dashboard'
+                        ? 'dashboard'
+                        : null;
+
   const guideSteps = guideStage === 'dashboard' ? [
     { target: '#workflow', title: 'This is your command center', body: 'Use the workflow bar to see what is complete, what needs your attention, and the single next action to take.' },
     { target: '#workflow .workflow-next', title: 'Follow the next action', body: 'Open the highlighted action instead of guessing which section comes next. UpTrendifyOS moves from research to strategy to content to approval.' },
     { target: 'nav.nav', title: 'You can always see where you are', body: 'The sidebar and current-stage indicator stay visible so you never need to inspect the URL.' },
   ] : guideStage === 'brand' ? [
-    { target: '#intelligence', title: 'Start with evidence', body: 'Research reads the public website, then Brand Brain turns the evidence into suggestions for human review.' },
-    { target: '#intelligence .brain-topic-nav', title: 'Review before strategy', body: 'Open Brand Intelligence suggestions, inspect their evidence, then approve or edit the facts you trust.' },
-    { target: '#intelligence', title: 'Strategy comes after the gate', body: 'Once the Brand Brain gate is satisfied, the strategy workspace becomes the next guided step.' },
+    { target: 'main', title: 'Brand workspace', body: 'This is the home for one brand. Use the contextual tabs to move between overview, Brand Brain, strategy, campaigns and content without returning to the dashboard.' },
+    { target: '.brand-workspace-nav', title: 'Use the brand tabs for brand-scoped work', body: 'These tabs stay inside this brand. Global navigation remains available in the sidebar for organization-wide views.' },
+  ] : guideStage === 'brand-brain' ? [
+    { target: '#intelligence', title: 'Brand Brain turns research into reviewable intelligence', body: 'Research findings stay as suggestions until a human approves or edits them. Evidence remains attached so you can verify the reasoning.' },
+    { target: '#intelligence .brain-topic-nav', title: 'Review one topic at a time', body: 'Use the topic navigation for Identity, Audience, Positioning, Offer, Messaging, SEO and Competition instead of scrolling through one long evidence wall.' },
+    { target: '#intelligence .review-tabs', title: 'Filter by decision state', body: 'Needs review, Approved, Not found, Dismissed and All keep the review surface focused without removing any underlying evidence.' },
+  ] : guideStage === 'strategy' ? [
+    { target: 'main', title: 'Strategy is the planning layer', body: 'The strategy workspace turns approved Brand Brain information into objectives, positioning, channels, content direction and execution planning.' },
+    { target: '.brand-workspace-nav', title: 'Stay in the brand context', body: 'Use the brand tabs to move between approved intelligence and strategy. The strategy gate remains authoritative before campaign planning.' },
   ] : guideStage === 'content' ? [
     { target: '#content-workspace', title: 'Content Studio creates assets', body: 'Use approved brand intelligence and strategy context to create content you may actually publish.' },
     { target: 'main', title: 'Versions matter', body: 'Edits create new versions when required. Approval always applies to an exact content version.' },
+  ] : guideStage === 'content-detail' ? [
+    { target: 'main', title: 'This is one content item', body: 'Review its status, brief, generated version, history and publishing state here. Final approval decisions belong in the Approval Queue.' },
+    { target: '.brand-workspace-nav', title: 'Keep the workflow boundary clear', body: 'Use the Approval Queue for Approve, Request changes and Reject. Content detail is the context and evidence surface, not a second approval surface.' },
   ] : guideStage === 'campaigns' ? [
-    { target: 'nav a[href="/campaigns"]', title: 'Campaigns are initiatives', body: 'A campaign groups content around a marketing objective, audience, dates, channels and budget.' },
-    { target: 'main', title: 'Content and campaigns are different', body: 'A campaign can contain many content items. Each content item keeps its own approval lifecycle.' },
+    { target: 'main', title: 'All campaigns', body: 'This is the organization-wide campaign index. Campaigns are grouped by client and brand so you can find the initiative before entering its brand-scoped workspace.' },
+    { target: 'main', title: 'Open a specific campaign', body: 'Select a campaign to enter that campaign. From there, its linked content and execution context stay attached to the brand and campaign.' },
+  ] : guideStage === 'campaigns-brand' ? [
+    { target: '.brand-workspace-nav', title: 'Brand-scoped campaigns', body: 'This Campaigns tab shows campaigns for the current brand. The sidebar Campaigns entry is the organization-wide index, so the two surfaces have different scopes.' },
+    { target: 'main', title: 'Create from approved strategy', body: 'Campaign creation remains grounded in the brand strategy gate. Once inside a campaign, its content stays connected to the campaign context.' },
+  ] : guideStage === 'campaign-detail' ? [
+    { target: 'main', title: 'Campaign execution', body: 'This is the detail surface for one campaign. Plan the initiative, inspect linked content and follow the content → approval → publishing lifecycle.' },
+    { target: '.brand-workspace-nav', title: 'Campaign context stays inside the brand', body: 'The selected Campaigns tab is contextual. Use the global Campaigns entry when you need the organization-wide index again.' },
   ] : guideStage === 'approvals' ? [
     { target: 'nav a[href="/approvals"]', title: 'Approval protects the exact version', body: 'Review the content that is actually awaiting a decision. A later edited version does not inherit an older approval.' },
     { target: 'main', title: 'Then queue for publishing', body: 'Approved content can move to Ready to Publish. External publishing remains honest about channel connections.' },
@@ -220,11 +265,17 @@ export function AppShell({
     { target: '.settings-page', title: 'Settings keeps the workspace under control', body: 'Manage workspace identity, timezone, appearance, guides and recovery tools here. These controls change how your workspace behaves, not the research evidence itself.' },
     { target: '.settings-tools', title: 'Use the operational tools when needed', body: 'Replay GUIDE, open Trash, create workspaces and manage team access from one place.' },
   ] : [];
+
   const phaseBriefings: Record<string, { title: string; body: string }> = {
     dashboard: { title: 'Command center', body: 'Follow the single next action. Research and Brand Brain come first; strategy unlocks after human review.' },
-    brand: { title: 'Brand workspace', body: 'Start with evidence, review AI suggestions, approve the facts you trust, then move into strategy.' },
+    brand: { title: 'Brand overview', body: 'This is the home for one brand. Check research status, verified intelligence and the next action before moving into the contextual tabs.' },
+    'brand-brain': { title: 'Brand Brain', body: 'Review evidence-backed suggestions by topic. Approve or edit what you trust before it can become authoritative brand information.' },
+    strategy: { title: 'Strategy', body: 'Turn approved Brand Brain information into an actionable marketing plan. Campaign planning remains gated by strategy success.' },
     content: { title: 'Content Studio', body: 'Create a brief from approved context, then generate and review exact content versions before publishing.' },
-    campaigns: { title: 'Campaigns', body: 'Group related content around one objective, audience, channel mix and timing. Keep the campaign context separate from individual approvals.' },
+    'content-detail': { title: 'Content detail', body: 'Inspect one content item, its version history and lifecycle here. Final approval decisions happen in the Approval Queue.' },
+    campaigns: { title: 'All campaigns', body: 'Find campaigns across the organization, grouped by client and brand. Select a campaign to enter its execution context.' },
+    'campaigns-brand': { title: 'Brand campaigns', body: 'This is the campaign workspace for the current brand. Create and manage initiatives here without losing the brand context.' },
+    'campaign-detail': { title: 'Campaign detail', body: 'This campaign is the execution container for its linked content. Follow the campaign → content → approval → publishing flow.' },
     approvals: { title: 'Approvals', body: 'Approve the exact content version you reviewed. A later edit creates a new version that needs its own decision.' },
     settings: { title: 'Settings', body: 'Keep workspace identity, appearance, guides, team access and recovery tools organized here.' },
   };
@@ -297,7 +348,7 @@ export function AppShell({
               : item.label === 'Content Studio'
                 ? pathname.startsWith('/content')
                 : item.label === 'Campaigns'
-                  ? pathname.startsWith('/campaigns')
+                  ? pathname === '/campaigns'
                   : item.label === 'Approvals'
                     ? pathname.startsWith('/approvals')
                     : false;
