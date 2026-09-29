@@ -25,7 +25,13 @@ function makeClient(options: {
       getUser: async () => ({
         data: {
           user: options.user
-            ? { ...options.user, email_confirmed_at: options.user.email_confirmed_at ?? '2026-09-29T00:00:00.000Z' }
+            ? {
+                ...options.user,
+                email_confirmed_at:
+                  options.user.email_confirmed_at === undefined
+                    ? '2026-09-29T00:00:00.000Z'
+                    : options.user.email_confirmed_at,
+              }
             : null,
         },
         error: options.authError ?? null,
