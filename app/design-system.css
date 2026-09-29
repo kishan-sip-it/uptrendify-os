@@ -67,7 +67,20 @@ html[data-theme="dark"] { --accent-contrast:#10151f; }
 .creation-state { display:flex; align-items:flex-start; gap:10px; padding:13px 15px; border:1px solid color-mix(in srgb,var(--accent) 32%,var(--border)); border-left:3px solid var(--accent); border-radius:12px; background:color-mix(in srgb,var(--accent) 7%,var(--surface-raised)); }
 .creation-state-copy { display:grid; gap:3px; min-width:0; } .creation-state-title { color:var(--text-strong); font-weight:700; font-size:13px; } .creation-state-detail { color:var(--text-muted); font-size:12px; line-height:1.5; } .creation-state-success { border-color:color-mix(in srgb,var(--success) 35%,var(--border)); border-left-color:var(--success); background:color-mix(in srgb,var(--success) 7%,var(--surface-raised)); } .creation-state-error { border-color:color-mix(in srgb,var(--danger) 38%,var(--border)); border-left-color:var(--danger); background:color-mix(in srgb,var(--danger) 6%,var(--surface-raised)); }
 
-/* The landing pipeline previously hard-coded a light mint fill while inheriting theme text. Override the inline custom property so System/Dark cannot produce white-on-white labels. */
+/* Landing workflow: keep every stage legible against the actual theme surface. */
+.landing-steps { color: var(--text) !important; }
+.landing-step { color: var(--text) !important; background: var(--surface-raised) !important; border-color: var(--border) !important; }
+.landing-step.step-running { color: var(--text-strong) !important; background: color-mix(in srgb, var(--accent) 9%, var(--surface-raised)) !important; border-color: color-mix(in srgb, var(--accent) 42%, var(--border)) !important; }
+.landing-step.step-done { color: var(--text-strong) !important; background: color-mix(in srgb, var(--success) 8%, var(--surface-raised)) !important; border-color: color-mix(in srgb, var(--success) 32%, var(--border)) !important; }
+.landing-step-label { color: var(--text-strong) !important; }
+.landing-step-note { color: var(--text-muted) !important; }
+.landing-step-icon { color: var(--step-tone, var(--accent)) !important; background: color-mix(in srgb, var(--step-tone, var(--accent)) 12%, var(--surface)) !important; border-color: color-mix(in srgb, var(--step-tone, var(--accent)) 28%, var(--border)) !important; }
+.landing-terminal { color: var(--text) !important; background: var(--surface-raised) !important; border-color: var(--border) !important; }
+.landing-terminal-title { color: var(--text-muted) !important; }
+.landing-log { color: var(--text-muted) !important; background: var(--surface) !important; border-color: var(--border) !important; }
+.landing-log-live { color: var(--text) !important; }
+
+/* Landing pipeline cards can carry an inline light background; force the semantic surface instead. */
 .landing-pipeline-glow { --card-bg: var(--surface-raised) !important; }
 .landing-metric-glow { --card-bg: var(--surface-raised) !important; }
 .landing-pipeline-glow .landing-pipeline-step { color: var(--text-strong) !important; }
