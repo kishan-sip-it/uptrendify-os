@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import './design-system.css';
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import { NetworkStatus } from '@/components/ui/NetworkStatus';
 
 export const metadata: Metadata = {
   title: 'UpTrendifyOS — AI Marketing Agency OS',
@@ -13,7 +14,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBoot }} /></head>
-      <body>{children}<SpeedInsights /></body>
+      <body><NetworkStatus />{children}<SpeedInsights /></body>
     </html>
   );
 }
