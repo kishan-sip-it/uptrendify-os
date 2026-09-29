@@ -1,8 +1,4 @@
 -- 0038: Campaign strategy sets.
--- A campaign keeps its existing strategy_id as the primary strategy for backward
--- compatibility, while this relation allows a campaign to be grounded in
--- multiple approved strategy versions.
-
 create table if not exists public.campaign_strategies (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -33,17 +29,9 @@ drop policy if exists campaign_strategies_delete_operator on public.campaign_str
 create policy campaign_strategies_delete_operator on public.campaign_strategies for delete to authenticated using (private.has_org_role(organization_id, ARRAY['OWNER','ADMIN','STRATEGIST','EDITOR']::public.org_role[]));
 
 create or replace function private.assert_campaign_strategy_link()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
+returns trigger language plpgsql security definer set search_path = ''
 as $$
-declare
-  campaign_org uuid;
-  campaign_brand uuid;
-  strategy_org uuid;
-  strategy_brand uuid;
-  strategy_status text;
+declare campaign_org uuid; campaign_brand uuid; strategy_org uuid; strategy_brand uuid; strategy_status text;
 begin
   select c.organization_id, c.brand_id into campaign_org, campaign_brand from public.campaigns c where c.id = new.campaign_id;
   if campaign_org is null then raise exception 'CAMPAIGN_NOT_FOUND'; end if;
@@ -64,20 +52,17 @@ select c.organization_id, c.id, c.strategy_id, true, 0, c.created_by from public
 where c.strategy_id is not null and not exists (select 1 from public.campaign_strategies cs where cs.campaign_id = c.id and cs.strategy_id = c.strategy_id);
 
 create or replace function private.sync_primary_campaign_strategy()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
+returns trigger language plpgsql security definer set search_path = ''
 as $$
 begin
   if new.strategy_id is null then
     delete from public.campaign_strategies where campaign_id = new.id and is_primary;
     return new;
   end if;
+  update public.campaign_strategies set is_primary = false where campaign_id = new.id and strategy_id <> new.strategy_id and is_primary;
   insert into public.campaign_strategies (organization_id, campaign_id, strategy_id, is_primary, sort_order, created_by)
   values (new.organization_id, new.id, new.strategy_id, true, 0, new.created_by)
   on conflict (campaign_id, strategy_id) do update set is_primary = true, sort_order = 0;
-  update public.campaign_strategies set is_primary = false where campaign_id = new.id and strategy_id <> new.strategy_id and is_primary;
   return new;
 end;
 $$;
@@ -86,13 +71,9 @@ drop trigger if exists campaigns_primary_strategy_sync on public.campaigns;
 create trigger campaigns_primary_strategy_sync after insert or update of strategy_id on public.campaigns for each row execute function private.sync_primary_campaign_strategy();
 
 create or replace function private.guard_campaign_strategy_primary()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
+returns trigger language plpgsql security definer set search_path = ''
 as $$
-declare
-  campaign_primary uuid;
+declare campaign_primary uuid;
 begin
   select c.strategy_id into campaign_primary from public.campaigns c where c.id = coalesce(new.campaign_id, old.campaign_id);
   if tg_op = 'DELETE' then
