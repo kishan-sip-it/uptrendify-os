@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, ChevronRight, FileText, LoaderCircle, PlayCircle, RefreshCw, Save } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Check, ChevronRight, FileText, LoaderCircle, PlayCircle, RefreshCw } from 'lucide-react';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/feedback';
-import { contentTypeLabel, channelLabel } from '@/lib/content/schema';
+import { channelLabel, contentTypeLabel } from '@/lib/content/schema';
+import { BrandWorkspaceNav } from '@/components/brand/brand-workspace-nav';
 
 type Version = {
   id: string;
@@ -60,43 +61,35 @@ type DetailData = {
   canPublish: boolean;
 };
 
+type PublishAttempt = {
+  id: string;
+  contentVersionId: string | null;
+  channel: string;
+  status: string;
+  errorCode: string | null;
+  errorMessage: string | null;
+  externalReference: string | null;
+  publishedAt: string | null;
+  initiatedBy: string | null;
+  createdAt: string;
+};
+
+type PublishData = {
+  channels: Array<{ channel: string; connectionStatus: string; lastTestedAt: string | null }>;
+  attempts: PublishAttempt[];
+};
+
+type DetailTab = 'overview' | 'brief' | 'versions' | 'reviews' | 'publishing';
+
 function toneFor(status: string): string {
-  switch (status) {
-    case 'APPROVED':
-    case 'READY_TO_PUBLISH':
-    case 'SCHEDULED':
-    case 'PUBLISHED':
-      return 'tone-good';
-    case 'REJECTED':
-      return 'tone-danger';
-    case 'IN_REVIEW':
-    case 'CLIENT_REVIEW':
-    case 'CHANGES_REQUESTED':
-      return 'tone-info';
-    case 'ARCHIVED':
-      return 'tone-muted';
-    default:
-      return 'tone-muted';
-  }
+  if (['APPROVED', 'READY_TO_PUBLISH', 'PUBLISHED', 'SCHEDULED'].includes(status)) return 'tone-good';
+  if (['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED'].includes(status)) return 'tone-info';
+  if (status === 'REJECTED') return 'tone-danger';
+  return 'tone-muted';
 }
 
 function labelFor(status: string): string {
   return status.toLowerCase().replaceAll('_', ' ');
-}
-
-function decisionLabel(decision: string): string {
-  return {
-    submit: 'Submitted for review',
-    approve: 'Approved',
-    reject: 'Rejected',
-    changes_requested: 'Changes requested',
-    return_to_draft: 'Returned to draft',
-    archive: 'Archived',
-    schedule: 'Scheduled',
-    publish: 'Published',
-    queue_for_publish: 'Queued for publishing',
-    back_to_approved: 'Returned to approved',
-  }[decision] ?? decision.replaceAll('_', ' ');
 }
 
 function timeAgo(iso: string): string {
@@ -106,123 +99,10 @@ function timeAgo(iso: string): string {
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function ReviewActions({
-  status,
-  versionId,
-  canGenerate,
-  canReview,
-  canPublish,
-  channel,
-  onAction,
-  onPublish,
-  busy,
-}: {
-  status: string;
-  versionId: string | null;
-  canGenerate: boolean;
-  canReview: boolean;
-  canPublish: boolean;
-  channel: string | null;
-  onAction: (action: string, comment?: string) => Promise<void>;
-  onPublish: () => Promise<void>;
-  busy: boolean;
-}) {
-  const [comment, setComment] = useState('');
-
-  const actions: Array<{ action: string; label: string; tone: string; allowed: boolean }> = [];
-  if (status === 'DRAFT' && versionId) actions.push({ action: 'submit', label: 'Send to approval queue', tone: 'tone-good', allowed: canGenerate });
-  if (['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED'].includes(status)) {
-    actions.push({ action: 'approve', label: 'Approve', tone: 'tone-good', allowed: canReview });
-    actions.push({ action: 'changes_requested', label: 'Request changes', tone: 'tone-info', allowed: canReview });
-    actions.push({ action: 'reject', label: 'Reject', tone: 'tone-danger', allowed: canReview });
-  }
-  if (status === 'APPROVED') {
-    actions.push({ action: 'queue_for_publish', label: 'Move to publishing queue', tone: 'tone-good', allowed: canReview });
-  }
-  if (status === 'READY_TO_PUBLISH') {
-    actions.push({ action: 'back_to_approved', label: 'Back to approved', tone: 'tone-info', allowed: canReview });
-  }
-  if (['DRAFT', 'IN_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'APPROVED', 'READY_TO_PUBLISH'].includes(status) && canGenerate) {
-    actions.push({ action: 'return_to_draft', label: 'Return to draft', tone: 'tone-muted', allowed: true });
-  }
-  if (['DRAFT', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'READY_TO_PUBLISH', 'SCHEDULED', 'PUBLISHED', 'CHANGES_REQUESTED'].includes(status)) {
-    actions.push({ action: 'archive', label: 'Archive', tone: 'tone-muted', allowed: canGenerate || canReview });
-  }
-
-  const visibleActions = actions.filter((action) => action.allowed);
-  const nextStep =
-    status === 'DRAFT' && versionId
-      ? 'Next: send this exact version to the approval queue.'
-      : status === 'DRAFT'
-        ? 'Next: generate the first version before sending it for approval.'
-        : ['IN_REVIEW', 'CLIENT_REVIEW'].includes(status)
-          ? 'Next: an Approver reviews this exact version.'
-          : status === 'APPROVED'
-            ? 'Next: move the approved version into the publishing queue.'
-            : status === 'READY_TO_PUBLISH'
-              ? 'Next: publish it to the selected channel.'
-              : status === 'PUBLISHED'
-                ? 'This version has been published.'
-                : 'Continue through the content lifecycle below.';
-
-  if (visibleActions.length === 0 && !(status === 'READY_TO_PUBLISH' && canPublish)) return null;
-
-  return (
-    <div>
-      <div className="activity-meta" style={{ marginBottom: 10 }}>{nextStep}</div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-      {versionId === null && status !== 'DRAFT' ? (
-        <span className="chip tone-warn">No generated version to review yet</span>
-      ) : null}
-      {visibleActions.map((action) => (
-        <button
-          type="button"
-          key={action.action}
-          className={`badge ${action.tone}`}
-          disabled={busy}
-          onClick={() => onAction(action.action, comment.trim() || undefined)}
-          style={{ border: 0, cursor: busy ? 'not-allowed' : 'pointer', padding: '8px 12px', opacity: busy ? 0.6 : 1 }}
-        >
-          {action.label}
-        </button>
-      ))}
-      {status === 'READY_TO_PUBLISH' && canPublish ? (
-        <button
-          type="button"
-          className="badge tone-good"
-          disabled={busy}
-          onClick={() => onPublish()}
-          style={{ border: 0, cursor: busy ? 'not-allowed' : 'pointer', padding: '8px 12px', opacity: busy ? 0.6 : 1 }}
-        >
-          {channel ? `Publish to ${channelLabel(channel)}` : 'Publish now'}
-        </button>
-      ) : null}
-      <input
-        className="content-filter-input"
-        style={{ flex: 1, minWidth: 200 }}
-        placeholder="Review comment (optional)"
-        value={comment}
-        onChange={(event) => setComment(event.target.value)}
-      />
-      </div>
-    </div>
-  );
-}
-
-function EditorPage({
-  brandId,
-  item,
-  onSaved,
-}: {
-  brandId: string;
-  item: ItemDetail;
-  onSaved: () => void;
-}) {
+function Editor({ brandId, item, onSaved }: { brandId: string; item: ItemDetail; onSaved: () => void }) {
   const [form, setForm] = useState({
     title: item.title,
     objective: item.objective ?? '',
@@ -237,12 +117,9 @@ function EditorPage({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const set = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
-
-  useEffect(() => {
-    setError(null);
-    setBody('');
-  }, [item.currentVersionId]);
+  function set(key: keyof typeof form, value: string) {
+    setForm((previous) => ({ ...previous, [key]: value }));
+  }
 
   async function save() {
     setBusy(true);
@@ -258,24 +135,21 @@ function EditorPage({
       if (form.cta !== (item.cta ?? '')) payload.cta = form.cta || null;
       if (form.instructions !== (item.instructions ?? '')) payload.instructions = form.instructions || null;
       if (body.trim()) payload.body = body;
-
-      if (Object.keys(payload).length === 0) {
-        setError('Nothing changed to save.');
-        return;
-      }
+      if (Object.keys(payload).length === 0) throw new Error('Nothing changed to save.');
 
       const response = await fetch(`/api/brands/${brandId}/content/${item.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      const result = await response.json().catch(() => null);
       if (response.status === 401) {
         window.location.href = '/login';
         return;
       }
-      const result = await response.json().catch(() => null);
       if (!response.ok) throw new Error(result?.error || 'Could not save content');
       setSaved(true);
+      setBody('');
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save content');
@@ -287,107 +161,130 @@ function EditorPage({
   return (
     <div className="card content-editor">
       <div className="section-title" style={{ flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <div className="eyebrow">Studio — edit draft</div>
-          <h2 style={{ margin: '5px 0' }}>Brief & instrument</h2>
-        </div>
-        <button type="button" className={`badge ${saved ? 'tone-good' : ''}`} onClick={save} disabled={busy} style={{ border: 0, cursor: busy ? 'not-allowed' : 'pointer', padding: '8px 12px', opacity: busy ? 0.6 : 1 }}>
-          {busy ? <><LoaderCircle size={14} className="spin" /> Saving…</> : saved ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save changes</>}
+        <div><div className="eyebrow">Brief & editor</div><h2 style={{ margin: '5px 0' }}>Content brief</h2></div>
+        <button type="button" className={`badge ${saved ? 'tone-good' : ''}`} onClick={save} disabled={busy} style={{ border: 0, padding: '8px 12px', cursor: busy ? 'not-allowed' : 'pointer' }}>
+          {busy ? <><LoaderCircle size={14} className="spin" /> Saving…</> : saved ? <><Check size={14} /> Saved</> : 'Save changes'}
         </button>
       </div>
-      <p className="subtitle" style={{ marginTop: 0 }}>Editing the body creates a new version so the review history stays intact.</p>
+      <p className="subtitle" style={{ marginTop: 0 }}>Editing the body creates a new version so review history remains intact.</p>
       <div className="content-form">
-        <label>Title / topic
-          <input value={form.title} onChange={(event) => set('title', event.target.value)} />
-        </label>
+        <label>Title / topic<input value={form.title} onChange={(event) => set('title', event.target.value)} /></label>
         <div className="content-form-row">
-          <label>Objective
-            <input value={form.objective} onChange={(event) => set('objective', event.target.value)} />
-          </label>
-          <label>Audience
-            <input value={form.audience} onChange={(event) => set('audience', event.target.value)} />
-          </label>
+          <label>Objective<input value={form.objective} onChange={(event) => set('objective', event.target.value)} /></label>
+          <label>Audience<input value={form.audience} onChange={(event) => set('audience', event.target.value)} /></label>
         </div>
-        <label>Campaign / context
-          <textarea value={form.campaignContext} onChange={(event) => set('campaignContext', event.target.value)} />
-        </label>
+        <label>Campaign / context<textarea value={form.campaignContext} onChange={(event) => set('campaignContext', event.target.value)} /></label>
         <div className="content-form-row">
-          <label>Tone / style
-            <input value={form.tone} onChange={(event) => set('tone', event.target.value)} />
-          </label>
-          <label>CTA direction
-            <input value={form.cta} onChange={(event) => set('cta', event.target.value)} />
-          </label>
+          <label>Tone / style<input value={form.tone} onChange={(event) => set('tone', event.target.value)} /></label>
+          <label>CTA direction<input value={form.cta} onChange={(event) => set('cta', event.target.value)} /></label>
         </div>
-        <label>Additional instructions
-          <textarea value={form.instructions} onChange={(event) => set('instructions', event.target.value)} />
-        </label>
-        <label>Draft body (optional override)
-          <textarea
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-            placeholder="Edit the copy directly. Saving creates a new version marked as a manual edit."
-          />
-        </label>
+        <label>Additional instructions<textarea value={form.instructions} onChange={(event) => set('instructions', event.target.value)} /></label>
+        <label>Draft body override<textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Edit the copy directly. Saving creates a new version marked as a manual edit." /></label>
         {error ? <ErrorState message={error} /> : null}
       </div>
     </div>
   );
 }
 
-function VersionView({ version, current }: { version: Version; current: boolean }) {
+function VersionCard({ version, current }: { version: Version; current: boolean }) {
   return (
-    <div className="card" style={{ borderColor: current ? 'rgba(110,231,199,.3)' : undefined }}>
-      <div className="section-title" style={{ flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
-        <div>
-          <div className="eyebrow">{current ? 'Current version' : 'Version history'} · v{version.version}</div>
-          <h2 style={{ margin: '5px 0 0', fontSize: 18 }}>{version.headline || 'Untitled'}</h2>
-        </div>
-        <span className="badge tone-muted">Generated {timeAgo(version.createdAt)}{version.model ? ` · ${version.model}` : ''}{version.provider ? ` (${version.provider})` : ''}</span>
+    <div className="card" style={{ borderColor: current ? 'color-mix(in srgb, var(--accent) 35%, var(--border))' : undefined }}>
+      <div className="section-title" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <div><div className="eyebrow">{current ? 'Current version' : 'Version'} · v{version.version}</div><h3 style={{ margin: '4px 0 0' }}>{version.headline || 'Untitled'}</h3></div>
+        <span className="badge tone-muted">{timeAgo(version.createdAt)}{version.model ? ` · ${version.model}` : ''}</span>
       </div>
-      <div className="content-body">{version.body}</div>
-      <div className="content-item-footer" style={{ marginTop: 14 }}>
-        <span className="activity-meta">{version.cta ? `CTA: ${version.cta}` : 'No CTA set'}</span>
-      </div>
-      {version.rationale ? (
-        <div className="review-note" style={{ marginTop: 12 }}>
-          <div className="strategy-block-label">RATIONALE</div>
-          <p className="activity-meta" style={{ margin: 0, lineHeight: 1.5 }}>{version.rationale}</p>
-        </div>
-      ) : null}
-      {version.brandFactReferences.length > 0 || version.strategyReferences.length > 0 ? (
-        <div className="content-filters" style={{ marginTop: 12 }}>
-          {version.brandFactReferences.map((ref, index) => (
-            <span className="chip" key={`fact-${index}`} style={{ borderColor: 'rgba(110,231,199,.25)', color: 'var(--accent)' }}>{ref}</span>
-          ))}
-          {version.strategyReferences.map((ref, index) => (
-            <span className="chip" key={`strategy-${index}`} style={{ borderColor: 'rgba(139,124,255,.25)', color: '#b9adff' }}>{ref}</span>
-          ))}
-        </div>
-      ) : null}
+      <div className="content-body" style={{ marginTop: 12 }}>{version.body}</div>
+      {version.cta ? <div className="activity-meta" style={{ marginTop: 12 }}>CTA: {version.cta}</div> : null}
+      {version.rationale ? <div className="review-note" style={{ marginTop: 12 }}><div className="strategy-block-label">RATIONALE</div><p className="activity-meta" style={{ margin: 0, lineHeight: 1.5 }}>{version.rationale}</p></div> : null}
     </div>
   );
 }
 
-function ReviewsList({ reviews }: { reviews: Review[] }) {
-  if (reviews.length === 0) {
-    return <p className="activity-meta" style={{ margin: 0 }}>No review activity yet.</p>;
-  }
+function ReviewHistory({ reviews }: { reviews: Review[] }) {
+  if (reviews.length === 0) return <EmptyState title="No review activity yet" description="Once this content is submitted, approval decisions and comments will appear here." />;
   return (
     <div className="activity-list">
       {reviews.map((review) => (
         <div className="activity-item" key={review.id}>
-          <span className={`status-dot`} style={{ background: review.decision === 'approve' || review.decision === 'publish' || review.decision === 'schedule' ? 'var(--accent)' : review.decision === 'reject' ? '#f87171' : 'var(--accent-2)', marginTop: 5, flexShrink: 0 }} />
+          <span className="status-dot" style={{ background: ['approve', 'publish', 'schedule'].includes(review.decision) ? 'var(--accent)' : review.decision === 'reject' ? 'var(--danger)' : 'var(--accent-2)', marginTop: 5, flexShrink: 0 }} />
           <div className="activity-body">
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-              <span className="activity-title">{decisionLabel(review.decision)}</span>
+              <span className="activity-title">{review.decision.replaceAll('_', ' ')}</span>
               <span className="activity-meta">{timeAgo(review.createdAt)}</span>
             </div>
-            {review.contentVersionId ? <div className="activity-meta" style={{ marginTop: 4 }}>Voted on the version in review at the time.</div> : null}
-            {review.comment ? <div className="activity-meta" style={{ marginTop: 6, color: 'var(--text)', lineHeight: 1.5 }}>“{review.comment}”</div> : null}
+            {review.contentVersionId ? <div className="activity-meta" style={{ marginTop: 4 }}>Decision recorded against the reviewed version.</div> : null}
+            {review.comment ? <div className="activity-meta" style={{ marginTop: 6, color: 'var(--text)' }}>“{review.comment}”</div> : null}
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function PublishingPanel({ brandId, contentId, channel }: { brandId: string; contentId: string; channel: string | null }) {
+  const [data, setData] = useState<PublishData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/publish`, { cache: 'no-store' });
+      const body = await response.json().catch(() => null);
+      if (response.status === 401) { window.location.href = '/login'; return; }
+      if (!response.ok) throw new Error(body?.error || 'Could not load publishing status');
+      setData({ channels: body.channels ?? [], attempts: body.attempts ?? [] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load publishing status');
+    } finally {
+      setLoading(false);
+    }
+  }, [brandId, contentId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const selected = data?.channels.find((entry) => entry.channel === channel) ?? null;
+
+  if (loading) return <LoadingState label="Loading publishing status…" />;
+  if (error) return <ErrorState message={error} />;
+
+  return (
+    <div className="grid" style={{ gap: 14 }}>
+      <div className="card">
+        <div className="eyebrow">Publishing status</div>
+        <h3 style={{ margin: '5px 0 8px' }}>{channel ? channelLabel(channel) : 'No channel selected'}</h3>
+        <p className="subtitle" style={{ margin: 0 }}>
+          Publishing is executed from the Approval Queue after content reaches <strong>READY_TO_PUBLISH</strong>.
+        </p>
+        {channel ? (
+          <div style={{ marginTop: 12 }}>
+            {selected?.connectionStatus === 'CONNECTED' ? (
+              <span className="badge tone-good">Channel connected</span>
+            ) : (
+              <span className="badge tone-warn">{channelLabel(channel)} is not connected</span>
+            )}
+          </div>
+        ) : null}
+      </div>
+      <div className="card">
+        <div className="section-title"><div><div className="eyebrow">Delivery history</div><h3 style={{ margin: '4px 0 0' }}>Publication attempts</h3></div><FileText size={17} /></div>
+        {data?.attempts.length ? (
+          <div className="activity-list">
+            {data.attempts.map((attempt) => (
+              <div className="activity-item" key={attempt.id}>
+                <span className={`badge ${attempt.status === 'SUCCEEDED' ? 'tone-good' : attempt.status === 'NOT_CONNECTED' ? 'tone-warn' : 'tone-danger'}`}>{attempt.status}</span>
+                <div className="activity-body">
+                  <div className="activity-title">{channelLabel(attempt.channel)}</div>
+                  <div className="activity-meta">{timeAgo(attempt.createdAt)}{attempt.errorCode ? ` · ${attempt.errorCode}` : ''}</div>
+                  {attempt.errorMessage ? <div className="activity-error" style={{ marginTop: 4 }}>{attempt.errorMessage}</div> : null}
+                  {attempt.externalReference ? <div className="activity-meta" style={{ marginTop: 4 }}>External reference: {attempt.externalReference}</div> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : <p className="activity-meta" style={{ margin: 0 }}>No publication attempts recorded yet.</p>}
+      </div>
     </div>
   );
 }
@@ -397,17 +294,15 @@ export function ContentDetail({ brandId }: { brandId: string }) {
   const [data, setData] = useState<DetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [publishNote, setPublishNote] = useState<string | null>(null);
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const generatingRef = useRef(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [tab, setTab] = useState<DetailTab>('overview');
 
   useEffect(() => {
     const segments = window.location.pathname.split('/').filter(Boolean);
-    setContentId(segments[segments.length - 1] ?? null);
+    setContentId(segments.at(-1) ?? null);
   }, []);
 
   const load = useCallback(async () => {
@@ -415,18 +310,10 @@ export function ContentDetail({ brandId }: { brandId: string }) {
     setError(null);
     try {
       const response = await fetch(`/api/brands/${brandId}/content/${contentId}`, { cache: 'no-store' });
-      if (response.status === 401) {
-        window.location.href = '/login';
-        return;
-      }
       const body = await response.json().catch(() => null);
+      if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(body?.error || 'Could not load content');
       setData(body);
-      setSelectedVersionId(body.item?.currentVersionId ?? null);
-      if (body.item?.currentVersionId && generatingRef.current) {
-        generatingRef.current = false;
-        setGenerating(false);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load content');
     } finally {
@@ -434,271 +321,139 @@ export function ContentDetail({ brandId }: { brandId: string }) {
     }
   }, [brandId, contentId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (!generating) {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-      return;
-    }
-    if (!pollRef.current) {
-      pollRef.current = setInterval(() => {
-        load();
-      }, 2500);
-    }
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [generating, load]);
+  useEffect(() => { load(); }, [load]);
 
   const generate = useCallback(async () => {
     if (!contentId) return;
-    generatingRef.current = true;
     setGenerating(true);
     setActionError(null);
     try {
-      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/generate`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: '{}',
-      });
-      if (response.status === 401) {
-        window.location.href = '/login';
-        return;
-      }
+      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/generate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
       const body = await response.json().catch(() => null);
+      if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok && response.status !== 409) throw new Error(body?.error || 'Could not start generation');
+      setNotice('Generation started. The current version will update when the job completes.');
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Could not start generation');
-      generatingRef.current = false;
+    } finally {
       setGenerating(false);
     }
   }, [brandId, contentId, load]);
 
-  const review = useCallback(async (action: string, comment?: string) => {
+  const submitForApproval = useCallback(async () => {
     if (!contentId) return;
-    setActionBusy(true);
+    setSubmitting(true);
     setActionError(null);
+    setNotice(null);
     try {
       const response = await fetch(`/api/brands/${brandId}/content/${contentId}/review`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action, comment: comment ?? null }),
+        body: JSON.stringify({ action: 'submit' }),
       });
-      if (response.status === 401) {
-        window.location.href = '/login';
-        return;
-      }
       const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error || 'Could not update content status');
+      if (response.status === 401) { window.location.href = '/login'; return; }
+      if (!response.ok) throw new Error(body?.error || 'Could not send content to approval queue');
+      setNotice('Content is now in the Approval Queue. Final approval decisions happen there.');
       await load();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not update content status');
+      setActionError(err instanceof Error ? err.message : 'Could not send content to approval queue');
     } finally {
-      setActionBusy(false);
+      setSubmitting(false);
     }
   }, [brandId, contentId, load]);
 
-  const publish = useCallback(async () => {
-    if (!contentId) return;
-    const channel = data?.item?.channel ?? null;
-    if (!channel) {
-      setActionError('Set a channel for this content item before publishing.');
-      return;
-    }
-    setActionBusy(true);
-    setActionError(null);
-    setPublishNote(null);
-    try {
-      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/publish`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ channel }),
-      });
-      if (response.status === 401) {
-        window.location.href = '/login';
-        return;
-      }
-      const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error || 'Could not publish content');
-      if (body?.status === 'NOT_CONNECTED') {
-        setPublishNote(
-          `No ${channelLabel(channel)} channel is connected yet, so this publish was recorded but not delivered. Connect the channel and publish again.`,
-        );
-      } else if (body?.status === 'SUCCEEDED') {
-        setPublishNote(`Published to ${channelLabel(channel)}.`);
-      }
-      await load();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not publish content');
-    } finally {
-      setActionBusy(false);
-    }
-  }, [brandId, contentId, load, data]);
-
   const item = data?.item ?? null;
-  const current = item ? (data?.versions.find((version) => version.id === item.currentVersionId) ?? null) : null;
-  const selected = data?.versions.find((version) => version.id === selectedVersionId) ?? current ?? data?.versions[0] ?? null;
-  const generatingLive = generating;
-  const canGenerate = data?.canGenerate ?? false;
+  const current = useMemo(() => item ? data?.versions.find((version) => version.id === item.currentVersionId) ?? null : null, [data?.versions, item]);
+  const workflowSteps = [
+    ['DRAFT', 'Draft'],
+    ['IN_REVIEW', 'Approval'],
+    ['APPROVED', 'Approved'],
+    ['READY_TO_PUBLISH', 'Publishing'],
+    ['PUBLISHED', 'Published'],
+  ];
+
+  if (loading) return <div className="grid" style={{ gap: 16 }}><LoadingState label="Loading content…" /></div>;
+  if (error) return <div className="grid" style={{ gap: 16 }}><ErrorState message={error} /></div>;
+  if (!item) return <EmptyState title="Content not found" description="This content item could not be loaded." />;
+
+  const reviewState = ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_REQUESTED'].includes(item.status);
+  const canSubmit = data?.canGenerate && item.status === 'DRAFT' && Boolean(item.currentVersionId);
+  const tabs: Array<[DetailTab, string]> = [
+    ['overview', 'Overview'],
+    ['brief', 'Brief'],
+    ['versions', 'Versions'],
+    ['reviews', 'Review history'],
+    ['publishing', 'Publishing'],
+  ];
 
   return (
     <div className="grid" style={{ gap: 16 }}>
-      {loading ? (
-        <LoadingState label="Loading content…" />
-      ) : error ? (
-        <ErrorState message={error} />
-      ) : !item ? (
-        <EmptyState title="Content not found" description="This content item could not be loaded." />
-      ) : (
-        <>
+      <BrandWorkspaceNav brandId={brandId} current="content" />
+
+      <div className="card">
+        <div className="section-title" style={{ flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <div className="eyebrow">{contentTypeLabel(item.type)}{item.channel ? ` · ${channelLabel(item.channel)}` : ''}</div>
+            <h2 style={{ margin: '5px 0' }}>{item.title}</h2>
+            <p className="subtitle" style={{ margin: 0 }}>{item.strategyId ? 'Grounded in the approved strategy and Brand Brain.' : 'Content brief awaiting strategy context.'}</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className={`badge ${toneFor(item.status)}`}>{labelFor(item.status)}</span>
+            {data?.canGenerate ? <button type="button" className="badge" onClick={generate} disabled={generating || item.status === 'ARCHIVED'} style={{ border: 0, padding: '8px 12px', cursor: generating ? 'not-allowed' : 'pointer' }}>{generating ? <><LoaderCircle size={14} className="spin" /> Generating…</> : current ? <><RefreshCw size={14} /> Regenerate</> : <><PlayCircle size={14} /> Generate</>}</button> : null}
+          </div>
+        </div>
+        <div className="content-filters" style={{ marginTop: 14, gap: 6 }}>
+          {workflowSteps.map(([value, label]) => <span key={value} className={`chip ${value === item.status || (value === 'IN_REVIEW' && reviewState) ? 'active' : ''}`}>{label}</span>)}
+        </div>
+      </div>
+
+      {actionError ? <div className="card" style={{ borderColor: 'color-mix(in srgb, var(--danger) 45%, var(--border))' }}><ErrorState message={actionError} /></div> : null}
+      {notice ? <div className="card" style={{ borderColor: 'color-mix(in srgb, var(--accent) 40%, var(--border))' }}><p style={{ margin: 0, color: 'var(--text)' }}>{notice}</p></div> : null}
+
+      <div className="card" style={{ padding: 6 }}>
+        <div className="content-detail-tabs" role="tablist" aria-label="Content detail sections">
+          {tabs.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} className={`review-tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>{label}</button>)}
+        </div>
+      </div>
+
+      {tab === 'overview' ? (
+        <div className="grid grid-2" style={{ gap: 14 }}>
           <div className="card">
-            <div className="section-title" style={{ flexWrap: 'wrap', gap: 10 }}>
-              <div>
-                <div className="eyebrow">{contentTypeLabel(item.type)}{item.channel ? ` · ${channelLabel(item.channel)}` : ''}</div>
-                <h2 style={{ margin: '5px 0' }}>{item.title}</h2>
-              </div>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span className={`badge ${toneFor(item.status)}`}>{labelFor(item.status)}</span>
-                {canGenerate ? (
-                  <button type="button" className="badge" onClick={generate} disabled={generatingLive || item.status === 'ARCHIVED'} style={{ border: 0, cursor: generatingLive || item.status === 'ARCHIVED' ? 'not-allowed' : 'pointer', padding: '8px 12px', opacity: generatingLive || item.status === 'ARCHIVED' ? 0.6 : 1 }}>
-                    {generating ? <><LoaderCircle size={14} className="spin" /> Generating…</> : current === null ? <><PlayCircle size={14} /> Generate content</> : <><RefreshCw size={14} /> Regenerate version</>}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            <p className="subtitle" style={{ marginTop: 0 }}>
-              Content is generated from the approved {item.strategyId ? 'strategy' : 'strategy and brand brain'} — every claim is traceable to approved brand intelligence. {generatingLive ? 'A new version will appear here when ready.' : ''}
+            <div className="eyebrow">Next step</div>
+            <h3 style={{ margin: '5px 0 8px' }}>
+              {canSubmit ? 'Send this version to the approval queue.' : reviewState ? 'Awaiting an approver.' : item.status === 'APPROVED' ? 'Approved. The approval queue controls publishing readiness.' : item.status === 'READY_TO_PUBLISH' ? 'Ready to publish from the Approval Queue.' : item.status === 'PUBLISHED' ? 'Published successfully.' : 'Continue building this content.'}
+            </h3>
+            <p className="subtitle" style={{ margin: 0 }}>
+              {canSubmit ? 'Final approval actions are intentionally not available on the content detail page.' : reviewState ? 'Approve, request changes, or reject this version from the authorized Approval Queue only.' : item.status === 'READY_TO_PUBLISH' ? 'Publishing attempts, connection state, and delivery results remain auditable.' : 'Use the tabs above to inspect the brief, versions, review history, and publishing state.'}
             </p>
-          </div>
-
-          {actionError ? <div className="card" style={{ borderColor: 'rgba(239,68,68,.35)' }}><ErrorState message={actionError} /></div> : null}
-
-          <div className="card">
-            <div className="section-title">
-              <div>
-                <div className="eyebrow">Review workflow</div>
-                <h2 style={{ margin: '5px 0' }}>Status: {labelFor(item.status)}</h2>
-              </div>
-              <FileText size={18} color="var(--muted)" />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+              {canSubmit ? <button type="button" className="badge tone-good" onClick={submitForApproval} disabled={submitting} style={{ border: 0, padding: '8px 12px' }}>{submitting ? <><LoaderCircle size={14} className="spin" /> Sending…</> : 'Send to approval queue'}</button> : null}
+              {(reviewState || item.status === 'APPROVED' || item.status === 'READY_TO_PUBLISH') ? <a className="badge" href="/approvals" style={{ textDecoration: 'none', padding: '8px 12px' }}>Open Approval Queue</a> : null}
             </div>
-             <div className="content-filters" style={{ marginBottom: 12, gap: 6 }}>
-               {[
-                 ['DRAFT', 'Draft'],
-                 ['IN_REVIEW', 'Approval'],
-                 ['APPROVED', 'Approved'],
-                 ['READY_TO_PUBLISH', 'Ready to publish'],
-                 ['PUBLISHED', 'Published'],
-               ].map(([value, label]) => {
-                 const currentStatus = value === item.status;
-                 return (
-                   <span
-                     className="chip"
-                     key={value}
-                     style={{ opacity: currentStatus ? 1 : 0.6, borderColor: currentStatus ? 'var(--accent)' : undefined }}
-                   >
-                     {label}
-                   </span>
-                 );
-               })}
-             </div>
-            <ReviewActions
-              status={item.status}
-              versionId={item.currentVersionId}
-              canGenerate={canGenerate}
-              canReview={data?.canReview ?? false}
-              canPublish={data?.canPublish ?? false}
-              channel={item.channel ?? null}
-              onAction={review}
-              onPublish={publish}
-              busy={actionBusy}
-            />
-            {publishNote ? (
-              <p className="activity-meta" style={{ marginTop: 14, color: 'var(--accent)' }}>{publishNote}</p>
-            ) : null}
-            {generatingLive ? (
-              <div style={{ marginTop: 14 }}>
-                <div className="progress" style={{ animation: 'none' }}><span style={{ width: '65%' }} /></div>
-                <div className="activity-meta" style={{ marginTop: 8 }}>Generating content from the approved strategy and brand brain. This usually takes under a minute.</div>
-              </div>
-            ) : null}
           </div>
+          {current ? <VersionCard version={current} current /> : <EmptyState title="No generated version" description="Generate content to create the first version." />}
+        </div>
+      ) : null}
 
-          {canGenerate ? (
-            <EditorPage
-              brandId={brandId}
-              item={item}
-              onSaved={() => {
-                load().then(() => setSelectedVersionId(null));
-              }}
-            />
-          ) : null}
+      {tab === 'brief' ? <Editor brandId={brandId} item={item} onSaved={() => void load()} /> : null}
 
-          {selected ? (
-            <VersionView version={selected} current={selected.id === item.currentVersionId} />
-          ) : (
-            <EmptyState
-              title="No version yet"
-              description="This content item is still a brief. Generate a first version to start building copy from approved brand intelligence."
-            />
-          )}
+      {tab === 'versions' ? (
+        <div className="grid" style={{ gap: 14 }}>
+          {(data?.versions ?? []).map((version) => <VersionCard key={version.id} version={version} current={version.id === item.currentVersionId} />)}
+          {(data?.versions.length ?? 0) === 0 ? <EmptyState title="No versions yet" description="Generate the first version from the approved strategy." /> : null}
+        </div>
+      ) : null}
 
-          {(data?.versions.length ?? 0) > 1 ? (
-            <div className="card">
-              <div className="section-title">
-                <div>
-                  <div className="eyebrow">History</div>
-                  <h2 style={{ margin: '5px 0' }}>All versions</h2>
-                </div>
-                <ChevronRight size={18} color="var(--muted)" />
-              </div>
-              <div className="activity-list">
-                {data?.versions.map((version) => (
-                  <button
-                    type="button"
-                    key={version.id}
-                    onClick={() => setSelectedVersionId(version.id)}
-                    className="activity-item"
-                    style={{ width: '100%', textAlign: 'left', cursor: 'pointer', borderColor: version.id === selected?.id ? 'rgba(110,231,199,.35)' : undefined, background: version.id === selected?.id ? 'rgba(110,231,199,.04)' : undefined }}
-                  >
-                    <span className={`status-dot`} style={{ background: (version.metadata.manualEdit as boolean | undefined) ? '#fbbf24' : 'var(--accent)', marginTop: 5, flexShrink: 0 }} />
-                    <div className="activity-body">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                        <span className="badge" style={{ color: 'inherit', borderColor: 'var(--line)', background: 'var(--panel-2)' }}>v{version.version}{version.id === item.currentVersionId ? ' · current' : ''}{version.metadata.manualEdit ? ' · manual' : ''}</span>
-                        <span className="activity-meta">{timeAgo(version.createdAt)}</span>
-                      </div>
-                      <div className="activity-meta" style={{ marginTop: 6 }}>
-                        {version.headline || '(untitled)'}
-                        {version.model ? ` · ${version.model}` : ''}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
+      {tab === 'reviews' ? (
+        <div className="card">
+          <div className="section-title"><div><div className="eyebrow">Audit trail</div><h3 style={{ margin: '4px 0 0' }}>Review history</h3></div><Check size={17} /></div>
+          <ReviewHistory reviews={data?.reviews ?? []} />
+        </div>
+      ) : null}
 
-          <div className="card">
-            <div className="section-title">
-              <div>
-                <div className="eyebrow">Review log</div>
-                <h2 style={{ margin: '5px 0' }}>Approvals & decisions</h2>
-              </div>
-              <Check size={18} color="var(--muted)" />
-            </div>
-            <ReviewsList reviews={data?.reviews ?? []} />
-          </div>
-        </>
-      )}
+      {tab === 'publishing' && contentId ? <PublishingPanel brandId={brandId} contentId={contentId} channel={item.channel} /> : null}
     </div>
   );
 }

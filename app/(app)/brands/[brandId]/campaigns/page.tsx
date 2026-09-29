@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { CAN_VIEW_CAMPAIGNS, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CampaignStudio } from '@/components/campaign/campaign-studio';
+import { BrandWorkspaceNav } from '@/components/brand/brand-workspace-nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,6 @@ export default async function BrandCampaignsPage({ params }: { params: Promise<{
   if (auth.error) redirect('/login');
 
   const { brandId } = await params;
-
   const supabase = await createSupabaseServerClient();
   const { data: brand } = await supabase
     .from('brands')
@@ -24,18 +24,16 @@ export default async function BrandCampaignsPage({ params }: { params: Promise<{
 
   return (
     <main className="main">
-      <div className="topbar" style={{ marginBottom: 20, flexWrap: 'wrap' }}>
+      <div className="topbar" style={{ marginBottom: 14, flexWrap: 'wrap' }}>
         <div>
           <a href={`/brands/${brandId}`} className="metric-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
             <ArrowLeft size={15} /> {brand.name}
           </a>
           <h1 style={{ fontSize: 'clamp(24px, 3vw, 34px)', marginTop: 8 }}>Campaigns</h1>
-          <p className="subtitle">
-            Plan and run campaigns grounded in the approved strategy — objectives, budget, dates and channels.
-          </p>
+          <p className="subtitle" style={{ marginBottom: 0 }}>Plan and run campaigns grounded in the approved strategy.</p>
         </div>
       </div>
-
+      <BrandWorkspaceNav brandId={brandId} current="campaigns" />
       <CampaignStudio brandId={brandId} brandName={brand.name} />
     </main>
   );

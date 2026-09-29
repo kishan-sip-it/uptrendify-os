@@ -1,0 +1,237 @@
+/* UpTrendifyOS semantic UI layer. Loaded after globals.css so shared controls and theme tokens stay centralized. */
+:root {
+  --text-strong: #f5f7fb;
+  --text: #e5e9f2;
+  --text-muted: #aab3c2;
+  --text-subtle: #7d8797;
+  --surface: #0b0f16;
+  --surface-raised: #111722;
+  --surface-elevated: #171e2a;
+  --border: #283241;
+  --border-strong: #394659;
+  --accent-contrast: #07110f;
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --success: #6ee7c7;
+}
+
+html[data-theme="light"] {
+  --text-strong: #10151f;
+  --text: #1d2633;
+  --text-muted: #5d6878;
+  --text-subtle: #768294;
+  --surface: #f7f9fc;
+  --surface-raised: #ffffff;
+  --surface-elevated: #ffffff;
+  --border: #d9e0e9;
+  --border-strong: #bdc7d5;
+  --accent-contrast: #07110f;
+}
+
+html[data-theme="dark"] {
+  --text-strong: #f5f7fb;
+  --text: #e5e9f2;
+  --text-muted: #aab3c2;
+  --text-subtle: #7d8797;
+  --surface: #0b0f16;
+  --surface-raised: #111722;
+  --surface-elevated: #171e2a;
+  --border: #283241;
+  --border-strong: #394659;
+  --accent-contrast: #07110f;
+}
+
+html[data-theme="system"] {
+  --text-strong: #10151f;
+  --text: #1d2633;
+  --text-muted: #5d6878;
+  --text-subtle: #768294;
+  --surface: #f7f9fc;
+  --surface-raised: #ffffff;
+  --surface-elevated: #ffffff;
+  --border: #d9e0e9;
+  --border-strong: #bdc7d5;
+  --accent-contrast: #07110f;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] {
+    --text-strong: #f5f7fb;
+    --text: #e5e9f2;
+    --text-muted: #aab3c2;
+    --text-subtle: #7d8797;
+    --surface: #0b0f16;
+    --surface-raised: #111722;
+    --surface-elevated: #171e2a;
+    --border: #283241;
+    --border-strong: #394659;
+    --accent-contrast: #07110f;
+  }
+}
+
+body {
+  color: var(--text);
+  background: var(--surface);
+}
+
+h1, h2, h3, h4, h5, h6,
+strong, .activity-title, .metric-value, .section-title,
+.topbar h1, .topbar h2, .topbar h3 {
+  color: var(--text-strong);
+}
+
+.subtitle, .activity-meta, .metric-label, .field-help, .field-note {
+  color: var(--text-muted);
+}
+
+.card {
+  border-color: var(--border);
+  background: var(--surface-raised);
+}
+
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  width: 100%;
+  min-height: 42px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  padding: 10px 12px;
+  font: inherit;
+  line-height: 1.35;
+  outline: none;
+  transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
+}
+
+textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+select {
+  appearance: auto;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-subtle);
+  opacity: 1;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):hover,
+textarea:hover,
+select:hover {
+  border-color: color-mix(in srgb, var(--border-strong) 72%, var(--accent));
+}
+
+input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+  color: var(--text-subtle);
+  background: color-mix(in srgb, var(--surface) 76%, var(--surface-raised));
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
+input[aria-invalid="true"],
+textarea[aria-invalid="true"],
+select[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 15%, transparent);
+}
+
+option {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.badge,
+.theme-option,
+.brand-workspace-tab,
+.review-tab {
+  color: var(--text);
+}
+
+.badge:hover:not(:disabled),
+.theme-option:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.tone-good {
+  color: var(--success) !important;
+}
+
+.tone-danger {
+  color: var(--danger) !important;
+}
+
+.tone-warn {
+  color: var(--warning) !important;
+}
+
+.brand-workspace-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 0 0 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 10%, transparent);
+}
+
+.brand-workspace-nav-scroll {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 4px;
+  scrollbar-width: thin;
+}
+
+.brand-workspace-tab {
+  flex: 0 0 auto;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 13px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background-color .16s ease, color .16s ease;
+}
+
+.brand-workspace-tab:hover {
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--surface-elevated) 80%, transparent);
+}
+
+.brand-workspace-tab.active {
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+
+@media (max-width: 720px) {
+  .brand-workspace-nav {
+    margin-bottom: 14px;
+  }
+
+  .brand-workspace-tab {
+    min-height: 36px;
+    padding-inline: 11px;
+    font-size: 12px;
+  }
+}
