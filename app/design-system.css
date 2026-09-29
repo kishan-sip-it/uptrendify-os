@@ -180,26 +180,10 @@ option {
   border-color: var(--border-strong);
 }
 
-.tone-good {
-  color: var(--success) !important;
-}
+.tone-good { color: var(--success) !important; }
+.tone-danger { color: var(--danger) !important; }
+.tone-warn { color: var(--warning) !important; }
 
-.tone-danger {
-  color: var(--danger) !important;
-}
-
-.tone-warn {
-  color: var(--warning) !important;
-}
-
-/*
- * Focus hierarchy
- *
- * .section-title is the shared visual anchor used across Brand Brain, Strategy,
- * Campaigns, Content, Approvals and other operational surfaces. Strengthening
- * this primitive here keeps page implementations unchanged and gives users a
- * predictable scan path: kicker -> section title -> supporting content.
- */
 .section-title {
   position: relative;
   display: flex;
@@ -222,9 +206,7 @@ option {
   background: var(--focus-rule-strong);
 }
 
-.section-title > div:first-child {
-  min-width: 0;
-}
+.section-title > div:first-child { min-width: 0; }
 
 .section-title .eyebrow {
   display: block;
@@ -253,21 +235,11 @@ option {
   margin-top: 2px;
 }
 
-/* A compact variant for nested section groups. */
-.section-title--compact {
-  margin-bottom: 10px;
-  padding-bottom: 9px;
-}
-
-.section-title--compact::before {
-  bottom: 9px;
-}
-
+.section-title--compact { margin-bottom: 10px; padding-bottom: 9px; }
+.section-title--compact::before { bottom: 9px; }
 .section-title--compact h2,
 .section-title--compact h3,
-.section-title--compact h4 {
-  font-size: 15px;
-}
+.section-title--compact h4 { font-size: 15px; }
 
 .brand-workspace-nav {
   position: sticky;
@@ -281,38 +253,10 @@ option {
   box-shadow: 0 8px 24px color-mix(in srgb, #000 10%, transparent);
 }
 
-.brand-workspace-nav-scroll {
-  display: flex;
-  gap: 4px;
-  overflow-x: auto;
-  padding: 4px;
-  scrollbar-width: thin;
-}
-
-.brand-workspace-tab {
-  flex: 0 0 auto;
-  min-height: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 13px;
-  border-radius: 8px;
-  text-decoration: none;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 600;
-  transition: background-color .16s ease, color .16s ease;
-}
-
-.brand-workspace-tab:hover {
-  color: var(--text-strong);
-  background: color-mix(in srgb, var(--surface-elevated) 80%, transparent);
-}
-
-.brand-workspace-tab.active {
-  color: var(--accent-contrast);
-  background: var(--accent);
-}
+.brand-workspace-nav-scroll { display: flex; gap: 4px; overflow-x: auto; padding: 4px; scrollbar-width: thin; }
+.brand-workspace-tab { flex: 0 0 auto; min-height: 38px; display: inline-flex; align-items: center; justify-content: center; padding: 0 13px; border-radius: 8px; text-decoration: none; color: var(--text-muted); font-size: 13px; font-weight: 600; transition: background-color .16s ease, color .16s ease; }
+.brand-workspace-tab:hover { color: var(--text-strong); background: color-mix(in srgb, var(--surface-elevated) 80%, transparent); }
+.brand-workspace-tab.active { color: var(--accent-contrast); background: var(--accent); }
 
 /* Phase flash: concise context, delivered as a toast rather than consuming page space. */
 .phase-briefing {
@@ -336,69 +280,44 @@ option {
   animation: phase-flash-in .22s ease-out both;
 }
 
-.phase-briefing-copy {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-  flex: 1;
+.phase-briefing-copy { min-width: 0; display: grid; gap: 4px; flex: 1; }
+.phase-briefing-copy strong { color: var(--text-strong) !important; font-size: 14px; line-height: 1.3; }
+.phase-briefing-copy span:not(.eyebrow) { color: var(--text-muted) !important; font-size: 12px; line-height: 1.5; }
+.phase-briefing .badge { flex: 0 0 auto; white-space: nowrap; cursor: pointer; }
+.phase-briefing-close { flex: 0 0 auto; border: 0; background: transparent; color: var(--text-subtle); cursor: pointer; padding: 3px; border-radius: 6px; }
+.phase-briefing-close:hover { color: var(--text-strong); background: var(--surface-hover, var(--surface)); }
+@keyframes phase-flash-in { from { opacity: 0; transform: translateY(-8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+/* Additional semantic aliases used by preview and newer surfaces. */
+html[data-theme="light"] { --accent-contrast: #ffffff; --success: #287552; --danger: #b42318; --warning: #8a5b00; }
+html[data-theme="dark"] { --accent-contrast: #10151f; }
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] { --accent-contrast: #10151f; --success: #86d7b1; --danger: #f87171; --warning: #fbbf24; }
 }
 
-.phase-briefing-copy strong {
-  color: var(--text-strong) !important;
-  font-size: 14px;
-  line-height: 1.3;
-}
-
-.phase-briefing-copy span:not(.eyebrow) {
-  color: var(--text-muted) !important;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.phase-briefing .badge {
-  flex: 0 0 auto;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.phase-briefing-close {
-  flex: 0 0 auto;
-  border: 0;
-  background: transparent;
-  color: var(--text-subtle);
-  cursor: pointer;
-  padding: 3px;
-  border-radius: 6px;
-}
-
-.phase-briefing-close:hover {
+/* Keep the system appearance coherent. The selected accent remains the user's accent; system only selects light/dark surfaces. */
+html[data-theme="system"] .landing-pipeline-glow .landing-pipeline-step,
+html[data-theme="system"] .landing-pipeline-glow,
+html[data-theme="system"] .landing-metric-glow {
   color: var(--text-strong);
-  background: var(--surface-hover, var(--surface));
 }
 
-@keyframes phase-flash-in {
-  from { opacity: 0; transform: translateY(-8px) scale(.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
+/* Theme-safe channel/publishing surfaces. */
+.preview-surface { background: var(--surface); color: var(--text); border-color: var(--border); }
+.preview-raised { background: var(--surface-raised); color: var(--text); border-color: var(--border); }
+.preview-strong { color: var(--text-strong); }
+
+/* New-user creation state: explicit object + action, never an ambiguous "working" label. */
+.creation-state { display: flex; align-items: flex-start; gap: 10px; padding: 13px 15px; border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border)); border-left: 3px solid var(--accent); border-radius: 12px; background: color-mix(in srgb, var(--accent) 7%, var(--surface-raised)); }
+.creation-state-copy { display: grid; gap: 3px; min-width: 0; }
+.creation-state-title { color: var(--text-strong); font-weight: 700; font-size: 13px; }
+.creation-state-detail { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.creation-state-success { border-color: color-mix(in srgb, var(--success) 35%, var(--border)); border-left-color: var(--success); background: color-mix(in srgb, var(--success) 7%, var(--surface-raised)); }
+.creation-state-error { border-color: color-mix(in srgb, var(--danger) 38%, var(--border)); border-left-color: var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--surface-raised)); }
 
 @media (max-width: 720px) {
-  .brand-workspace-nav {
-    margin-bottom: 14px;
-  }
-
-  .brand-workspace-tab {
-    min-height: 36px;
-    padding-inline: 11px;
-    font-size: 12px;
-  }
-
-  .section-title {
-    padding-left: 11px;
-  }
-
-  .phase-briefing {
-    top: 72px !important;
-    right: 12px !important;
-    width: calc(100vw - 24px) !important;
-  }
+  .brand-workspace-nav { margin-bottom: 14px; }
+  .brand-workspace-tab { min-height: 36px; padding-inline: 11px; font-size: 12px; }
+  .section-title { padding-left: 11px; }
+  .phase-briefing { top: 72px !important; right: 12px !important; width: calc(100vw - 24px) !important; }
 }
