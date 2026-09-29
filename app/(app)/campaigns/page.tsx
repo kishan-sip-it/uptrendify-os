@@ -125,7 +125,8 @@ export default async function CampaignsHubPage() {
     <main className="main">
       <div className="topbar" style={{ marginBottom: 20, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: 'clamp(24px, 3vw, 34px)', marginTop: 8 }}>Campaigns</h1>
+          <div className="eyebrow">Organization view</div>
+          <h1 style={{ fontSize: 'clamp(24px, 3vw, 34px)', marginTop: 8 }}>All campaigns</h1>
           <p className="subtitle">
             Every campaign across your organization, grouped by client and brand.
           </p>

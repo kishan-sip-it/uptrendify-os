@@ -29,8 +29,9 @@ export default async function BrandCampaignsPage({ params }: { params: Promise<{
           <a href={`/brands/${brandId}`} className="metric-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
             <ArrowLeft size={15} /> {brand.name}
           </a>
-          <h1 style={{ fontSize: 'clamp(24px, 3vw, 34px)', marginTop: 8 }}>Campaigns</h1>
-          <p className="subtitle" style={{ marginBottom: 0 }}>Plan and run campaigns grounded in the approved strategy.</p>
+          <div className="eyebrow" style={{ marginTop: 10 }}>Brand workspace</div>
+          <h1 style={{ fontSize: 'clamp(24px, 3vw, 34px)', marginTop: 6 }}>Campaigns</h1>
+          <p className="subtitle" style={{ marginBottom: 0 }}>Campaigns for {brand.name}. The sidebar Campaigns entry is the organization-wide index.</p>
         </div>
       </div>
       <BrandWorkspaceNav brandId={brandId} current="campaigns" />
