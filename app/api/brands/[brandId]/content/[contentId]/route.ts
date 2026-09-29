@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_GENERATE_CONTENT, CAN_PUBLISH_CONTENT, CAN_REVIEW_CONTENT, CAN_VIEW_CONTENT, requireOrgRole } from '@/lib/auth/roles';
-import { contentItemInputSchema } from '@/lib/content/schema';
-import { CONTENT_BODY_MAX } from '@/lib/content/schema';
+import { contentItemInputSchema, CONTENT_BODY_MAX } from '@/lib/content/schema';
+import { CONTENT_TASK_TYPE } from '@/lib/content/pipeline';
 import { obs } from '@/lib/obs/logger';
 
 const paramsSchema = z.object({ brandId: z.string().uuid(), contentId: z.string().uuid() });
@@ -54,7 +54,6 @@ function normalizeItem(item: Record<string, unknown>) {
 export async function GET(_request: Request, { params }: { params: Promise<{ brandId: string; contentId: string }> }) {
   try {
     const { brandId, contentId } = paramsSchema.parse(await params);
-
     const auth = await requireOrgRole(CAN_VIEW_CONTENT);
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
 
@@ -79,6 +78,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
       .order('created_at', { ascending: false })
       .limit(30);
     if (reviewsResult.error) throw reviewsResult.error;
+
+    const generationResult = await supabase
+      .from('ai_tasks')
+      .select('id,status,error_code,error_message,provider,model,started_at,finished_at,output_metadata,created_at')
+      .eq('content_item_id', contentId)
+      .eq('organization_id', auth.context.organizationId)
+      .eq('task_type', CONTENT_TASK_TYPE)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (generationResult.error) throw generationResult.error;
 
     const versions = (versionsResult.data ?? []).map((version) => ({
       id: version.id,
@@ -106,12 +116,25 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
       createdAt: review.created_at,
     }));
 
+    const generation = generationResult.data ? {
+      id: generationResult.data.id,
+      status: generationResult.data.status,
+      errorCode: generationResult.data.error_code ?? null,
+      errorMessage: generationResult.data.error_message ?? null,
+      provider: generationResult.data.provider ?? null,
+      model: generationResult.data.model ?? null,
+      startedAt: generationResult.data.started_at ?? null,
+      finishedAt: generationResult.data.finished_at ?? null,
+      outputMetadata: generationResult.data.output_metadata ?? {},
+    } : null;
+
     return NextResponse.json(
       {
         ok: true,
         item: normalizeItem(item),
         versions,
         reviews,
+        generation,
         canGenerate: CAN_GENERATE_CONTENT.includes(auth.context.role),
         canReview: CAN_REVIEW_CONTENT.includes(auth.context.role),
         canPublish: CAN_PUBLISH_CONTENT.includes(auth.context.role),
@@ -137,32 +160,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
     const item = await loadItem(supabase, { brandId, contentId, organizationId: auth.context.organizationId });
     if (!item) return NextResponse.json({ error: 'Content not found' }, { status: 404 });
 
-    if (Object.keys(body).length === 0) {
-      return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
-    }
+    if (Object.keys(body).length === 0) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
 
     if (body.clientId !== undefined) {
-      const brandContext = await supabase
-        .from('brands')
-        .select('client_id')
-        .eq('id', brandId)
-        .eq('organization_id', auth.context.organizationId)
-        .maybeSingle();
+      const brandContext = await supabase.from('brands').select('client_id').eq('id', brandId).eq('organization_id', auth.context.organizationId).maybeSingle();
       if (brandContext.error) throw brandContext.error;
       if (!brandContext.data) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
-
-      if (body.clientId !== null && body.clientId !== brandContext.data.client_id) {
-        return NextResponse.json({ error: 'Client does not own this brand' }, { status: 409 });
-      }
-
-      if (body.clientId === null) {
-        return NextResponse.json({ error: 'Content client attribution cannot be cleared from a brand-owned content item' }, { status: 409 });
-      }
+      if (body.clientId !== null && body.clientId !== brandContext.data.client_id) return NextResponse.json({ error: 'Client does not own this brand' }, { status: 409 });
+      if (body.clientId === null) return NextResponse.json({ error: 'Content client attribution cannot be cleared from a brand-owned content item' }, { status: 409 });
     }
 
-    const itemRow: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    };
+    const itemRow: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body.title !== undefined) itemRow.title = body.title;
     if (body.type !== undefined) itemRow.type = body.type;
     if (body.channel !== undefined) itemRow.channel = body.channel;
@@ -179,96 +187,37 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
     let manualVersionId: string | null = null;
     if (body.body !== undefined) {
       const currentId = item.current_version_id as string | null;
-      const currentResult = currentId
-        ? await supabase
-            .from('content_versions')
-            .select('id,version,headline,body,cta,rationale,brand_fact_references,strategy_references,metadata')
-            .eq('id', currentId)
-            .eq('organization_id', auth.context.organizationId)
-            .maybeSingle()
-        : { data: null, error: null };
+      const currentResult = currentId ? await supabase.from('content_versions').select('id,version,headline,body,cta,rationale,brand_fact_references,strategy_references,metadata').eq('id', currentId).eq('organization_id', auth.context.organizationId).maybeSingle() : { data: null, error: null };
       if (currentResult.error) throw currentResult.error;
-
-      const nextVersionResult = await supabase
-        .from('content_versions')
-        .select('version')
-        .eq('content_item_id', contentId)
-        .eq('organization_id', auth.context.organizationId)
-        .order('version', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const nextVersionResult = await supabase.from('content_versions').select('version').eq('content_item_id', contentId).eq('organization_id', auth.context.organizationId).order('version', { ascending: false }).limit(1).maybeSingle();
       if (nextVersionResult.error) throw nextVersionResult.error;
       const nextVersion = ((nextVersionResult.data?.version as number | undefined) ?? 0) + 1;
-
       const previous = currentResult.data as Record<string, unknown> | null;
       const bodyChanged = !previous || (previous.body as string) !== body.body;
       if (bodyChanged) {
         const previousMetadata = (previous?.metadata ?? {}) as Record<string, unknown>;
         let candidateVersion = nextVersion;
-
         for (let attempt = 0; attempt < 4 && !manualVersionId; attempt += 1) {
-          const insert = await supabase
-            .from('content_versions')
-            .insert({
-              organization_id: auth.context.organizationId,
-              content_item_id: contentId,
-              version: candidateVersion,
-              body: body.body,
-              headline: (body.title ?? previous?.headline ?? item.title) as string,
-              cta: (previous?.cta as string | null) ?? null,
-              strategy_id: item.strategy_id as string | null,
-              provider: null,
-              model: null,
-              author_user_id: auth.context.userId,
-              rationale: (previous?.rationale as string | null) ?? null,
-              brand_fact_references: (previous?.brand_fact_references ?? []) as unknown[],
-              strategy_references: (previous?.strategy_references ?? []) as unknown[],
-              metadata: { ...previousMetadata, manualEdit: true },
-            })
-            .select('id')
-            .single();
-
-          if (!insert.error) {
-            manualVersionId = insert.data.id;
-            break;
-          }
-
+          const insert = await supabase.from('content_versions').insert({ organization_id: auth.context.organizationId, content_item_id: contentId, version: candidateVersion, body: body.body, headline: (body.title ?? previous?.headline ?? item.title) as string, cta: (previous?.cta as string | null) ?? null, strategy_id: item.strategy_id as string | null, provider: null, model: null, author_user_id: auth.context.userId, rationale: (previous?.rationale as string | null) ?? null, brand_fact_references: (previous?.brand_fact_references ?? []) as unknown[], strategy_references: (previous?.strategy_references ?? []) as unknown[], metadata: { ...previousMetadata, manualEdit: true } }).select('id').single();
+          if (!insert.error) { manualVersionId = insert.data.id; break; }
           if (insert.error.code !== '23505') throw insert.error;
           candidateVersion += 1;
         }
-
         if (!manualVersionId) throw new Error('CONTENT_VERSION_CONFLICT');
       }
     }
 
     if (manualVersionId) {
-      const versionUpdate = await supabase
-        .from('content_items')
-        .update({ current_version_id: manualVersionId, updated_at: new Date().toISOString() })
-        .eq('id', contentId)
-        .eq('organization_id', auth.context.organizationId);
+      const versionUpdate = await supabase.from('content_items').update({ current_version_id: manualVersionId, updated_at: new Date().toISOString() }).eq('id', contentId).eq('organization_id', auth.context.organizationId);
       if (versionUpdate.error) throw versionUpdate.error;
     }
 
-    await supabase.from('audit_logs').insert({
-      organization_id: auth.context.organizationId,
-      actor_user_id: auth.context.userId,
-      action: 'content.updated',
-      entity_type: 'content',
-      entity_id: contentId,
-      metadata: {
-        updatedFields: Object.keys(body).filter((key) => key !== 'body'),
-        manualEdit: Boolean(manualVersionId),
-      },
-    });
-
+    await supabase.from('audit_logs').insert({ organization_id: auth.context.organizationId, actor_user_id: auth.context.userId, action: 'content.updated', entity_type: 'content', entity_id: contentId, metadata: { updatedFields: Object.keys(body).filter((key) => key !== 'body'), manualEdit: Boolean(manualVersionId) } });
     const refreshed = await loadItem(supabase, { brandId, contentId, organizationId: auth.context.organizationId });
     return NextResponse.json({ ok: true, item: refreshed ? normalizeItem(refreshed) : null });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid content update' }, { status: 400 });
-    if (error instanceof Error && error.message === 'CONTENT_VERSION_CONFLICT') {
-      return NextResponse.json({ error: 'A newer content version was saved concurrently. Reload and try again.' }, { status: 409 });
-    }
+    if (error instanceof Error && error.message === 'CONTENT_VERSION_CONFLICT') return NextResponse.json({ error: 'A newer content version was saved concurrently. Reload and try again.' }, { status: 409 });
     obs.error('Content update failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Could not update content item' }, { status: 500 });
   }
