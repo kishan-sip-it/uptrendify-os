@@ -3,27 +3,598 @@
 import { X, Send, Sparkles } from 'lucide-react';
 import { channelLabel, contentTypeLabel } from '@/lib/content/schema';
 
-type PreviewItem = { brandName: string | null; title: string; type: string; channel: string | null; brandStyle: { primaryColor: string | null; secondaryColors: string[]; visualIdentity: Record<string, unknown> } | null; currentVersion: { version: number; headline: string; body: string; cta?: string | null } | null };
-function safeColor(value: string | null | undefined, fallback: string) { return value && /^#[0-9A-Fa-f]{6}$/.test(value) ? value : fallback; }
-function splitBody(body: string) { return body.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean); }
-function luminance(hex: string) { const value = hex.replace('#', ''); const rgb = [0, 2, 4].map((index) => parseInt(value.slice(index, index + 2), 16) / 255); const linear = rgb.map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4); return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]; }
-function contrastText(hex: string) { return luminance(hex) > 0.48 ? '#10151f' : '#ffffff'; }
-function visualChannels(channel: string, type: string) { return ['linkedin', 'linkedin_ads', 'facebook', 'facebook_ads', 'instagram', 'instagram_ads', 'x', 'tiktok', 'youtube', 'google_ads', 'meta_ads', 'social', 'other'].includes(channel) || ['social_post', 'ad_copy', 'video_script'].includes(type); }
+type PreviewItem = {
+  brandName: string | null;
+  title: string;
+  type: string;
+  channel: string | null;
+  brandStyle: {
+    primaryColor: string | null;
+    secondaryColors: string[];
+    visualIdentity: Record<string, unknown>;
+  } | null;
+  currentVersion: {
+    version: number;
+    headline: string;
+    body: string;
+    cta?: string | null;
+  } | null;
+};
 
-function BrandVisual({ brandName, headline, primary, secondary }: { brandName: string; headline: string; primary: string; secondary: string }) {
-  const foreground = contrastText(primary); const safeHeadline = headline.length > 92 ? `${headline.slice(0, 89)}…` : headline;
-  return <div className="preview-visual-frame" aria-label="Generated brand visual preview"><svg viewBox="0 0 900 560" role="img" aria-label={`Brand visual for ${brandName}`} style={{ width: '100%', height: 'auto', display: 'block' }}><defs><linearGradient id="ut-brand-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor={primary} /><stop offset="100%" stopColor={secondary} /></linearGradient><filter id="ut-soft-glow"><feGaussianBlur stdDeviation="28" /></filter></defs><rect width="900" height="560" rx="28" fill="#f7f9fc" /><rect x="24" y="24" width="852" height="512" rx="24" fill="url(#ut-brand-gradient)" opacity="0.13" /><circle cx="760" cy="110" r="150" fill={primary} opacity="0.18" filter="url(#ut-soft-glow)" /><circle cx="790" cy="430" r="120" fill={secondary} opacity="0.16" filter="url(#ut-soft-glow)" /><rect x="58" y="58" width="10" height="150" rx="5" fill={primary} /><text x="92" y="88" fill="#5d6878" fontFamily="Inter, sans-serif" fontSize="20" fontWeight="700" letterSpacing="2">{brandName.toUpperCase()}</text><text x="92" y="190" fill="#10151f" fontFamily="Plus Jakarta Sans, Inter, sans-serif" fontSize="48" fontWeight="800"><tspan x="92" dy="0">{safeHeadline.slice(0, 42)}</tspan>{safeHeadline.length > 42 ? <tspan x="92" dy="58">{safeHeadline.slice(42, 84)}</tspan> : null}{safeHeadline.length > 84 ? <tspan x="92" dy="58">{safeHeadline.slice(84)}</tspan> : null}</text><rect x="92" y="410" width="150" height="12" rx="6" fill={primary} opacity="0.9" /><rect x="92" y="438" width="220" height="9" rx="4.5" fill="#bdc7d5" /><rect x="92" y="462" width="165" height="9" rx="4.5" fill="#d9e0e9" /><circle cx="790" cy="470" r="38" fill={primary} /><circle cx="790" cy="470" r="18" fill={foreground} opacity="0.9" /></svg></div>;
+function safeColor(value: string | null | undefined, fallback: string) {
+  return value && /^#[0-9A-Fa-f]{6}$/.test(value) ? value : fallback;
 }
 
-export function PublishPreview({ item, busy, onClose, onConfirm }: { item: PreviewItem; busy: boolean; onClose: () => void; onConfirm: () => void }) {
-  const primary = safeColor(item.brandStyle?.primaryColor, '#8b7cff'); const secondary = safeColor(item.brandStyle?.secondaryColors?.[0], '#d946ef'); const body = item.currentVersion?.body ?? ''; const paragraphs = splitBody(body); const channel = item.channel ?? 'selected channel'; const textOnPrimary = contrastText(primary); const needsVisual = visualChannels(channel, item.type);
-  return <div role="dialog" aria-modal="true" aria-labelledby="publish-preview-title" style={{ position: 'fixed', inset: 0, zIndex: 1600, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(3,7,13,.72)', backdropFilter: 'blur(8px)' }}><div className="preview-raised" style={{ width: 'min(960px, 100%)', maxHeight: 'min(900px, calc(100vh - 40px))', overflow: 'auto', border: '1px solid var(--border-strong)', borderRadius: 16, boxShadow: '0 28px 90px rgba(0,0,0,.4)' }}>
-    <div style={{ position: 'sticky', top: 0, zIndex: 2, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, padding: '16px 18px', borderBottom: '1px solid var(--border)', background: 'color-mix(in srgb, var(--surface-raised) 94%, transparent)', backdropFilter: 'blur(12px)' }}><div><div className="eyebrow">Pre-publish review</div><h2 id="publish-preview-title" className="preview-strong" style={{ margin: '5px 0 3px' }}>Preview for {channelLabel(channel)}</h2><div className="activity-meta">{item.brandName ?? 'Brand'} · {contentTypeLabel(item.type)} · version {item.currentVersion?.version ?? '—'}</div></div><button type="button" className="badge tone-muted" onClick={onClose} disabled={busy} aria-label="Close preview" style={{ border: 0, cursor: busy ? 'not-allowed' : 'pointer', padding: 8 }}><X size={16} /></button></div>
-    <div style={{ padding: 18 }}><div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 260px', gap: 18, alignItems: 'start' }}><div><div className="eyebrow" style={{ marginBottom: 8 }}>Channel preview</div>{needsVisual ? <div className="preview-surface" style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 14, marginBottom: 14 }}><div className="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 6px 10px' }}><Sparkles size={13} /> Brand visual generated for preview</div><BrandVisual brandName={item.brandName ?? 'Your brand'} headline={item.currentVersion?.headline || item.title} primary={primary} secondary={secondary} /></div> : null}<div className="preview-surface" style={{ display: 'grid', placeItems: 'center', minHeight: 430, padding: 18, border: '1px solid var(--border)', borderRadius: 14 }}>
-      {channel === 'email' ? <div style={{ width: 'min(560px,100%)', background: 'var(--surface-raised)', color: 'var(--text)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 14px 40px rgba(0,0,0,.18)' }}><div style={{ height: 10, background: `linear-gradient(90deg, ${primary}, ${secondary})` }} /><div style={{ padding: 24 }}><div style={{ fontWeight: 750, fontSize: 14, marginBottom: 20, color: primary }}>{item.brandName ?? 'Your brand'}</div><h3 className="preview-strong" style={{ fontSize: 24, lineHeight: 1.2, margin: '0 0 14px' }}>{item.currentVersion?.headline || item.title}</h3>{paragraphs.slice(0,5).map((paragraph,index)=><p key={index} style={{ lineHeight:1.65, margin:'0 0 14px' }}>{paragraph}</p>)}{item.currentVersion?.cta ? <div style={{ display:'inline-block', padding:'10px 16px', borderRadius:7, background:primary, color:textOnPrimary, fontWeight:700 }}>{item.currentVersion.cta}</div> : null}</div></div> : channel === 'website' ? <div style={{ width:'min(640px,100%)', background:'var(--surface-raised)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}><div style={{ height:7, background:primary }} /><div style={{ padding:28 }}><div style={{ color:primary, fontWeight:750, marginBottom:22 }}>{item.brandName ?? 'Your brand'}</div><h3 className="preview-strong" style={{ fontSize:30, lineHeight:1.15, margin:'0 0 16px' }}>{item.currentVersion?.headline || item.title}</h3>{paragraphs.slice(0,6).map((paragraph,index)=><p key={index} style={{ lineHeight:1.65, margin:'0 0 14px' }}>{paragraph}</p>)}{item.currentVersion?.cta ? <span style={{ display:'inline-block', padding:'10px 16px', borderRadius:8, background:primary, color:textOnPrimary, fontWeight:700 }}>{item.currentVersion.cta}</span> : null}</div></div> : <div style={{ width:'min(620px,100%)', background:'var(--surface-raised)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}><div style={{ display:'flex', alignItems:'center', gap:9, padding:'12px 14px', borderBottom:'1px solid var(--border)' }}><span style={{ width:28, height:28, borderRadius:'50%', display:'grid', placeItems:'center', background:primary, color:textOnPrimary, fontSize:11, fontWeight:800 }}>{(item.brandName ?? 'B').slice(0,1).toUpperCase()}</span><strong>{item.brandName ?? 'Your brand'}</strong><span className="activity-meta">· {channelLabel(channel)}</span></div><div style={{ padding:20 }}><h3 className="preview-strong" style={{ margin:'0 0 12px', fontSize:21, lineHeight:1.25 }}>{item.currentVersion?.headline || item.title}</h3>{paragraphs.slice(0,8).map((paragraph,index)=><p key={index} style={{ lineHeight:1.6, margin:'0 0 12px', whiteSpace:'pre-wrap' }}>{paragraph}</p>)}{item.currentVersion?.cta ? <div style={{ marginTop:14, color:primary, fontWeight:750 }}>{item.currentVersion.cta}</div> : null}</div><div style={{ height:5, background:`linear-gradient(90deg, ${primary}, ${secondary})` }} /></div>}
-    </div></div>
-    <aside className="preview-raised" style={{ border:'1px solid var(--border)', borderRadius:12, padding:14 }}><div className="eyebrow">Applied brand context</div><div style={{ display:'grid', gap:12, marginTop:10 }}><div><div className="activity-meta">Primary color</div><div style={{ display:'flex', alignItems:'center', gap:8, marginTop:5 }}><span aria-hidden="true" style={{ width:28, height:28, borderRadius:7, background:primary, border:'1px solid var(--border-strong)' }} /><code style={{ fontSize:12 }}>{primary}</code></div></div>{item.brandStyle?.secondaryColors?.length ? <div><div className="activity-meta">Secondary palette</div><div style={{ display:'flex', gap:6, marginTop:6, flexWrap:'wrap' }}>{item.brandStyle.secondaryColors.slice(0,4).map((color)=><span key={color} title={color} style={{ width:22, height:22, borderRadius:6, background:safeColor(color,'#808080'), border:'1px solid var(--border-strong)' }} />)}</div></div> : null}<div><div className="activity-meta">Selected channel</div><strong style={{ display:'block', marginTop:4 }}>{channelLabel(channel)}</strong></div><div><div className="activity-meta">Brand grounding</div><strong style={{ display:'block', marginTop:4 }}>{needsVisual ? 'Copy + visual treatment' : 'Copy + channel treatment'}</strong></div><div><div className="activity-meta">Publishing state</div><strong style={{ display:'block', marginTop:4 }}>Ready to publish</strong></div></div><p className="field-help" style={{ marginTop:14 }}>This preview uses the selected brand palette and the approved generation context. No delivery occurs until you confirm Publish.</p></aside>
-    </div></div>
-    <div style={{ position:'sticky', bottom:0, display:'flex', justifyContent:'flex-end', gap:9, padding:'14px 18px', borderTop:'1px solid var(--border)', background:'color-mix(in srgb,var(--surface-raised) 96%,transparent)', backdropFilter:'blur(12px)' }}><button type="button" className="badge tone-muted" onClick={onClose} disabled={busy} style={{ border:0, cursor:busy?'not-allowed':'pointer', padding:'9px 14px' }}>Back to queue</button><button type="button" className="badge tone-good" onClick={onConfirm} disabled={busy || !item.channel || !item.currentVersion} style={{ border:0, cursor:busy?'not-allowed':'pointer', padding:'9px 14px', display:'inline-flex', alignItems:'center', gap:7, opacity:busy || !item.channel || !item.currentVersion ? .6 : 1 }}><Send size={14} /> {busy ? 'Publishing…' : `Confirm publish to ${channelLabel(channel)}`}</button></div>
-  </div></div>;
+function splitBody(body: string) {
+  return body
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function luminance(hex: string) {
+  const value = hex.replace('#', '');
+  const rgb = [0, 2, 4].map(
+    (index) => parseInt(value.slice(index, index + 2), 16) / 255,
+  );
+  const linear = rgb.map((channel) =>
+    channel <= 0.03928
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4,
+  );
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+function contrastText(hex: string) {
+  return luminance(hex) > 0.48 ? '#10151f' : '#ffffff';
+}
+
+function visualChannels(channel: string, type: string) {
+  return (
+    [
+      'linkedin',
+      'linkedin_ads',
+      'facebook',
+      'facebook_ads',
+      'instagram',
+      'instagram_ads',
+      'x',
+      'tiktok',
+      'youtube',
+      'google_ads',
+      'meta_ads',
+      'social',
+      'other',
+    ].includes(channel) ||
+    ['social_post', 'ad_copy', 'video_script'].includes(type)
+  );
+}
+
+/**
+ * SVG text does not wrap like normal HTML text. Keep preview headlines inside
+ * the designed text column instead of slicing at arbitrary character offsets,
+ * which can push the final line outside the artwork bounds.
+ */
+function wrapHeadline(value: string, maxCharsPerLine = 27, maxLines = 3) {
+  const normalized = value.trim().replace(/\s+/g, ' ');
+  if (!normalized) return ['Untitled content'];
+
+  const words = normalized.split(' ');
+  const lines: string[] = [];
+  let current = '';
+
+  for (const word of words) {
+    if (word.length > maxCharsPerLine) {
+      if (current) {
+        lines.push(current);
+        current = '';
+      }
+      for (let index = 0; index < word.length; index += maxCharsPerLine) {
+        lines.push(word.slice(index, index + maxCharsPerLine));
+      }
+      continue;
+    }
+
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length <= maxCharsPerLine) {
+      current = candidate;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+
+  if (current) lines.push(current);
+  if (lines.length <= maxLines) return lines;
+
+  const visible = lines.slice(0, maxLines);
+  const last = visible[maxLines - 1].replace(/[.…]+$/, '');
+  visible[maxLines - 1] = `${last.slice(0, Math.max(1, maxCharsPerLine - 1))}…`;
+  return visible;
+}
+
+function BrandVisual({
+  brandName,
+  headline,
+  primary,
+  secondary,
+}: {
+  brandName: string;
+  headline: string;
+  primary: string;
+  secondary: string;
+}) {
+  const foreground = contrastText(primary);
+  const headlineLines = wrapHeadline(headline);
+  const safeBrandName = brandName.trim().slice(0, 28).toUpperCase();
+
+  return (
+    <div className="preview-visual-frame" aria-label="Generated brand visual preview">
+      <svg
+        viewBox="0 0 900 560"
+        role="img"
+        aria-label={`Brand visual for ${brandName}`}
+        style={{ width: '100%', height: 'auto', display: 'block' }}
+      >
+        <defs>
+          <linearGradient id="ut-brand-gradient" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={primary} />
+            <stop offset="100%" stopColor={secondary} />
+          </linearGradient>
+          <filter id="ut-soft-glow">
+            <feGaussianBlur stdDeviation="28" />
+          </filter>
+        </defs>
+        <rect width="900" height="560" rx="28" fill="#f7f9fc" />
+        <rect
+          x="24"
+          y="24"
+          width="852"
+          height="512"
+          rx="24"
+          fill="url(#ut-brand-gradient)"
+          opacity="0.13"
+        />
+        <circle
+          cx="760"
+          cy="110"
+          r="150"
+          fill={primary}
+          opacity="0.18"
+          filter="url(#ut-soft-glow)"
+        />
+        <circle
+          cx="790"
+          cy="430"
+          r="120"
+          fill={secondary}
+          opacity="0.16"
+          filter="url(#ut-soft-glow)"
+        />
+        <rect x="58" y="58" width="10" height="150" rx="5" fill={primary} />
+        <text
+          x="92"
+          y="88"
+          fill="#5d6878"
+          fontFamily="Inter, sans-serif"
+          fontSize="20"
+          fontWeight="700"
+          letterSpacing="2"
+        >
+          {safeBrandName}
+        </text>
+        <text
+          x="92"
+          y="190"
+          fill="#10151f"
+          fontFamily="Plus Jakarta Sans, Inter, sans-serif"
+          fontSize="44"
+          fontWeight="800"
+        >
+          {headlineLines.map((line, index) => (
+            <tspan key={`${line}-${index}`} x="92" dy={index === 0 ? 0 : 54}>
+              {line}
+            </tspan>
+          ))}
+        </text>
+        <rect x="92" y="410" width="150" height="12" rx="6" fill={primary} opacity="0.9" />
+        <rect x="92" y="438" width="220" height="9" rx="4.5" fill="#bdc7d5" />
+        <rect x="92" y="462" width="165" height="9" rx="4.5" fill="#d9e0e9" />
+        <circle cx="790" cy="470" r="38" fill={primary} />
+        <circle cx="790" cy="470" r="18" fill={foreground} opacity="0.9" />
+      </svg>
+    </div>
+  );
+}
+
+export function PublishPreview({
+  item,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  item: PreviewItem;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const primary = safeColor(item.brandStyle?.primaryColor, '#8b7cff');
+  const secondary = safeColor(item.brandStyle?.secondaryColors?.[0], '#d946ef');
+  const body = item.currentVersion?.body ?? '';
+  const paragraphs = splitBody(body);
+  const channel = item.channel ?? 'selected channel';
+  const textOnPrimary = contrastText(primary);
+  const needsVisual = visualChannels(channel, item.type);
+  const headline = item.currentVersion?.headline || item.title;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="publish-preview-title"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1600,
+        display: 'grid',
+        placeItems: 'center',
+        padding: 20,
+        background: 'rgba(3,7,13,.72)',
+        backdropFilter: 'blur(8px)',
+      }}
+    >
+      <div
+        className="preview-raised"
+        style={{
+          width: 'min(960px, 100%)',
+          maxHeight: 'min(900px, calc(100vh - 40px))',
+          overflow: 'auto',
+          border: '1px solid var(--border-strong)',
+          borderRadius: 16,
+          boxShadow: '0 28px 90px rgba(0,0,0,.4)',
+        }}
+      >
+        <div
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 2,
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 16,
+            padding: '16px 18px',
+            borderBottom: '1px solid var(--border)',
+            background: 'color-mix(in srgb, var(--surface-raised) 94%, transparent)',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          <div>
+            <div className="eyebrow">Pre-publish review</div>
+            <h2 id="publish-preview-title" className="preview-strong" style={{ margin: '5px 0 3px' }}>
+              Preview for {channelLabel(channel)}
+            </h2>
+            <div className="activity-meta">
+              {item.brandName ?? 'Brand'} · {contentTypeLabel(item.type)} · version {item.currentVersion?.version ?? '—'}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="badge tone-muted"
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Close preview"
+            style={{ border: 0, cursor: busy ? 'not-allowed' : 'pointer', padding: 8 }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div style={{ padding: 18 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1fr) 260px',
+              gap: 18,
+              alignItems: 'start',
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>
+                Channel preview
+              </div>
+
+              {needsVisual ? (
+                <div
+                  className="preview-surface"
+                  style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 14, marginBottom: 14 }}
+                >
+                  <div
+                    className="eyebrow"
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 6px 10px' }}
+                  >
+                    <Sparkles size={13} /> Brand visual generated for preview
+                  </div>
+                  <BrandVisual
+                    brandName={item.brandName ?? 'Your brand'}
+                    headline={headline}
+                    primary={primary}
+                    secondary={secondary}
+                  />
+                </div>
+              ) : null}
+
+              <div
+                className="preview-surface"
+                style={{
+                  display: 'grid',
+                  placeItems: 'center',
+                  minHeight: 430,
+                  padding: 18,
+                  border: '1px solid var(--border)',
+                  borderRadius: 14,
+                  minWidth: 0,
+                }}
+              >
+                {channel === 'email' ? (
+                  <div
+                    style={{
+                      width: 'min(560px,100%)',
+                      background: 'var(--surface-raised)',
+                      color: 'var(--text)',
+                      borderRadius: 10,
+                      overflow: 'hidden',
+                      boxShadow: '0 14px 40px rgba(0,0,0,.18)',
+                    }}
+                  >
+                    <div style={{ height: 10, background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
+                    <div style={{ padding: 24, minWidth: 0 }}>
+                      <div style={{ fontWeight: 750, fontSize: 14, marginBottom: 20, color: primary }}>
+                        {item.brandName ?? 'Your brand'}
+                      </div>
+                      <h3
+                        className="preview-strong"
+                        style={{ fontSize: 24, lineHeight: 1.2, margin: '0 0 14px', overflowWrap: 'anywhere' }}
+                      >
+                        {headline}
+                      </h3>
+                      {paragraphs.slice(0, 5).map((paragraph, index) => (
+                        <p key={index} style={{ lineHeight: 1.65, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
+                          {paragraph}
+                        </p>
+                      ))}
+                      {item.currentVersion?.cta ? (
+                        <div
+                          style={{
+                            display: 'inline-block',
+                            maxWidth: '100%',
+                            padding: '10px 16px',
+                            borderRadius: 7,
+                            background: primary,
+                            color: textOnPrimary,
+                            fontWeight: 700,
+                            overflowWrap: 'anywhere',
+                          }}
+                        >
+                          {item.currentVersion.cta}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : channel === 'website' ? (
+                  <div
+                    style={{
+                      width: 'min(640px,100%)',
+                      background: 'var(--surface-raised)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div style={{ height: 7, background: primary }} />
+                    <div style={{ padding: 28, minWidth: 0 }}>
+                      <div style={{ color: primary, fontWeight: 750, marginBottom: 22, overflowWrap: 'anywhere' }}>
+                        {item.brandName ?? 'Your brand'}
+                      </div>
+                      <h3
+                        className="preview-strong"
+                        style={{ fontSize: 30, lineHeight: 1.15, margin: '0 0 16px', overflowWrap: 'anywhere' }}
+                      >
+                        {headline}
+                      </h3>
+                      {paragraphs.slice(0, 6).map((paragraph, index) => (
+                        <p key={index} style={{ lineHeight: 1.65, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
+                          {paragraph}
+                        </p>
+                      ))}
+                      {item.currentVersion?.cta ? (
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            maxWidth: '100%',
+                            padding: '10px 16px',
+                            borderRadius: 8,
+                            background: primary,
+                            color: textOnPrimary,
+                            fontWeight: 700,
+                            overflowWrap: 'anywhere',
+                          }}
+                        >
+                          {item.currentVersion.cta}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      width: 'min(620px,100%)',
+                      background: 'var(--surface-raised)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 9,
+                        padding: '12px 14px',
+                        borderBottom: '1px solid var(--border)',
+                        minWidth: 0,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 28,
+                          height: 28,
+                          flexShrink: 0,
+                          borderRadius: '50%',
+                          display: 'grid',
+                          placeItems: 'center',
+                          background: primary,
+                          color: textOnPrimary,
+                          fontSize: 11,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {(item.brandName ?? 'B').slice(0, 1).toUpperCase()}
+                      </span>
+                      <strong style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{item.brandName ?? 'Your brand'}</strong>
+                      <span className="activity-meta" style={{ flexShrink: 0 }}>
+                        · {channelLabel(channel)}
+                      </span>
+                    </div>
+                    <div style={{ padding: 20, minWidth: 0 }}>
+                      <h3
+                        className="preview-strong"
+                        style={{ margin: '0 0 12px', fontSize: 21, lineHeight: 1.25, overflowWrap: 'anywhere' }}
+                      >
+                        {headline}
+                      </h3>
+                      {paragraphs.slice(0, 8).map((paragraph, index) => (
+                        <p
+                          key={index}
+                          style={{ lineHeight: 1.6, margin: '0 0 12px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
+                        >
+                          {paragraph}
+                        </p>
+                      ))}
+                      {item.currentVersion?.cta ? (
+                        <div style={{ marginTop: 14, color: primary, fontWeight: 750, overflowWrap: 'anywhere' }}>
+                          {item.currentVersion.cta}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div style={{ height: 5, background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <aside
+              className="preview-raised"
+              style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, minWidth: 0 }}
+            >
+              <div className="eyebrow">Applied brand context</div>
+              <div style={{ display: 'grid', gap: 12, marginTop: 10 }}>
+                <div>
+                  <div className="activity-meta">Primary color</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+                    <span
+                      aria-hidden="true"
+                      style={{ width: 28, height: 28, borderRadius: 7, background: primary, border: '1px solid var(--border-strong)' }}
+                    />
+                    <code style={{ fontSize: 12 }}>{primary}</code>
+                  </div>
+                </div>
+                {item.brandStyle?.secondaryColors?.length ? (
+                  <div>
+                    <div className="activity-meta">Secondary palette</div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                      {item.brandStyle.secondaryColors.slice(0, 4).map((color) => (
+                        <span
+                          key={color}
+                          title={color}
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: 6,
+                            background: safeColor(color, '#808080'),
+                            border: '1px solid var(--border-strong)',
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <div>
+                  <div className="activity-meta">Selected channel</div>
+                  <strong style={{ display: 'block', marginTop: 4, overflowWrap: 'anywhere' }}>
+                    {channelLabel(channel)}
+                  </strong>
+                </div>
+                <div>
+                  <div className="activity-meta">Brand grounding</div>
+                  <strong style={{ display: 'block', marginTop: 4 }}>
+                    {needsVisual ? 'Copy + visual treatment' : 'Copy + channel treatment'}
+                  </strong>
+                </div>
+                <div>
+                  <div className="activity-meta">Publishing state</div>
+                  <strong style={{ display: 'block', marginTop: 4 }}>Ready to publish</strong>
+                </div>
+              </div>
+              <p className="field-help" style={{ marginTop: 14 }}>
+                This preview uses the selected brand palette and the approved generation context. No delivery occurs until you confirm Publish.
+              </p>
+            </aside>
+          </div>
+        </div>
+
+        <div
+          style={{
+            position: 'sticky',
+            bottom: 0,
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 9,
+            padding: '14px 18px',
+            borderTop: '1px solid var(--border)',
+            background: 'color-mix(in srgb,var(--surface-raised) 96%,transparent)',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          <button
+            type="button"
+            className="badge tone-muted"
+            onClick={onClose}
+            disabled={busy}
+            style={{ border: 0, cursor: busy ? 'not-allowed' : 'pointer', padding: '9px 14px' }}
+          >
+            Back to queue
+          </button>
+          <button
+            type="button"
+            className="badge tone-good"
+            onClick={onConfirm}
+            disabled={busy || !item.channel || !item.currentVersion}
+            style={{
+              border: 0,
+              cursor: busy ? 'not-allowed' : 'pointer',
+              padding: '9px 14px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 7,
+              opacity: busy || !item.channel || !item.currentVersion ? 0.6 : 1,
+            }}
+          >
+            <Send size={14} />
+            {busy ? 'Publishing…' : `Confirm publish to ${channelLabel(channel)}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
