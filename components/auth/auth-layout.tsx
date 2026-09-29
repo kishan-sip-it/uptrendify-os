@@ -23,6 +23,7 @@ export function AuthLayout({
           width: 'min(1380px, 100%)',
           marginInline: 'auto',
           justifyContent: 'center',
+          alignItems: 'center',
         }}
       >
         <aside className="auth-showcase" aria-label="How UpTrendifyOS works">
@@ -62,6 +63,29 @@ export function AuthLayout({
             <p className="subtitle">{subtitle}</p>
           </div>
           {children}
+          <div
+            className="card"
+            aria-label="What happens next"
+            style={{
+              marginTop: 14,
+              padding: '14px 16px',
+              display: 'grid',
+              gap: 10,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <strong style={{ display: 'block', color: 'var(--text)' }}>What happens next</strong>
+                <span className="field-note">The workflow stays visible after you enter the workspace.</span>
+              </div>
+              <CheckCircle2 size={17} color="var(--accent)" aria-hidden="true" />
+            </div>
+            <div style={{ display: 'grid', gap: 7 }}>
+              <div className="field-note"><strong style={{ color: 'var(--text)' }}>01</strong>&nbsp; Set your brand rules and audience.</div>
+              <div className="field-note"><strong style={{ color: 'var(--text)' }}>02</strong>&nbsp; Research, review intelligence, then unlock strategy.</div>
+              <div className="field-note"><strong style={{ color: 'var(--text)' }}>03</strong>&nbsp; Create content, approve it, then prepare publishing.</div>
+            </div>
+          </div>
           {footer ? <div className="auth-footer">{footer}</div> : null}
         </section>
       </div>
