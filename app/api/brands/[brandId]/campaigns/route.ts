@@ -3,11 +3,69 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_MANAGE_CAMPAIGNS, CAN_VIEW_CAMPAIGNS, requireOrgRole } from '@/lib/auth/roles';
 import { isCampaignStatus } from '@/lib/campaign/lifecycle';
-import { safeValidateCampaignCreate } from '@/lib/campaign/schema';
-import { loadBrand, loadStrategy, serializeCampaign } from '@/lib/campaign/service';
+import { normalizeCampaignStrategyIds, safeValidateCampaignCreate } from '@/lib/campaign/schema';
+import { loadBrand, loadStrategy, serializeCampaign, type CampaignStrategyRef, summarizeStrategyOutput } from '@/lib/campaign/service';
 import { obs } from '@/lib/obs/logger';
 
 const paramsSchema = z.object({ brandId: z.string().uuid() });
+
+async function loadCampaignStrategySets(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  args: { campaignIds: string[]; organizationId: string },
+) {
+  const byCampaign = new Map<string, CampaignStrategyRef[]>();
+  if (args.campaignIds.length === 0) return byCampaign;
+
+  const result = await supabase
+    .from('campaign_strategies')
+    .select('campaign_id,strategy_id,is_primary,sort_order,strategy:strategies(id,title,version,status,output)')
+    .in('campaign_id', args.campaignIds)
+    .eq('organization_id', args.organizationId)
+    .order('sort_order', { ascending: true });
+  if (result.error) throw result.error;
+
+  for (const row of (result.data ?? []) as Array<Record<string, unknown>>) {
+    const strategy = row.strategy as Record<string, unknown> | null;
+    const campaignId = String(row.campaign_id);
+    if (!strategy) continue;
+    const ref: CampaignStrategyRef = {
+      id: String(strategy.id),
+      title: String(strategy.title),
+      version: Number(strategy.version),
+      status: String(strategy.status),
+      isPrimary: Boolean(row.is_primary),
+      sortOrder: Number(row.sort_order ?? 0),
+      outputSummary: summarizeStrategyOutput((strategy.output ?? null) as Record<string, unknown> | null),
+    };
+    byCampaign.set(campaignId, [...(byCampaign.get(campaignId) ?? []), ref]);
+  }
+  return byCampaign;
+}
+
+async function validateStrategySet(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  args: { strategyIds: string[]; brandId: string; organizationId: string },
+) {
+  const uniqueIds = Array.from(new Set(args.strategyIds));
+  if (uniqueIds.length === 0) return { strategies: [], ids: [] as string[] };
+
+  const result = await supabase
+    .from('strategies')
+    .select('id,title,version,status,output')
+    .in('id', uniqueIds)
+    .eq('brand_id', args.brandId)
+    .eq('organization_id', args.organizationId);
+  if (result.error) throw result.error;
+
+  const strategies = result.data ?? [];
+  if (strategies.length !== uniqueIds.length) throw new Error('One or more selected strategies were not found for this brand');
+  if (strategies.some((strategy) => strategy.status !== 'SUCCEEDED')) {
+    throw new Error('Only approved strategies can ground a campaign');
+  }
+
+  const ordered = uniqueIds.map((id) => strategies.find((strategy) => strategy.id === id)!);
+  return { strategies: ordered, ids: uniqueIds };
+}
 
 export async function GET(request: Request, { params }: { params: Promise<{ brandId: string }> }) {
   try {
@@ -31,7 +89,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ bran
     let query = supabase
       .from('campaigns')
       .select(
-        'id,name,objective,description,status,start_date,end_date,budget,currency,channels,strategy_id,client_id,created_at,updated_at,strategy:strategies(id,title,version,status)',
+        'id,name,objective,description,status,start_date,end_date,budget,currency,channels,strategy_id,client_id,created_at,updated_at,strategy:strategies(id,title,version,status,output)',
         { count: 'exact' },
       )
       .eq('brand_id', brandId)
@@ -64,6 +122,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ bran
       }
     }
 
+    const strategySets = await loadCampaignStrategySets(supabase, {
+      campaignIds,
+      organizationId: auth.context.organizationId,
+    });
+
     const strategiesResult = await supabase
       .from('strategies')
       .select('id,title,version,status,created_at')
@@ -75,7 +138,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ bran
     if (strategiesResult.error) throw strategiesResult.error;
 
     const normalized = campaigns.map((campaign) => ({
-      ...serializeCampaign(campaign),
+      ...serializeCampaign(campaign, strategySets.get(campaign.id as string) ?? []),
       contentCount: contentCounts.get(campaign.id as string) ?? 0,
     }));
 
@@ -102,7 +165,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ bran
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid brand id' }, { status: 400 });
     obs.error('Campaign list failed', { error: error instanceof Error ? error.message : String(error) });
-    return NextResponse.json({ error: 'Could not load campaigns' }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error && error.message.includes('selected strategies') ? error.message : 'Could not load campaigns' }, { status: 500 });
   }
 }
 
@@ -110,7 +173,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
   try {
     const { brandId } = paramsSchema.parse(await params);
     const parsed = safeValidateCampaignCreate(await request.json().catch(() => ({})));
-    if (!parsed.success) return NextResponse.json({ error: 'Invalid campaign request' }, { status: 400 });
+    if (!parsed.success) return NextResponse.json({ error: 'Invalid campaign request', details: parsed.error.flatten() }, { status: 400 });
     const body = parsed.data;
 
     const auth = await requireOrgRole(CAN_MANAGE_CAMPAIGNS);
@@ -120,23 +183,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     const brand = await loadBrand(supabase, { brandId, organizationId: auth.context.organizationId });
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
 
-    const strategy = await loadStrategy(supabase, {
-      strategyId: body.strategyId,
+    const strategyIds = normalizeCampaignStrategyIds(body);
+    const validated = await validateStrategySet(supabase, {
+      strategyIds,
       organizationId: auth.context.organizationId,
       brandId,
     });
-    if (!strategy) return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
-    if (strategy.status !== 'SUCCEEDED') {
-      return NextResponse.json({ error: 'Only approved strategies can ground a campaign' }, { status: 409 });
-    }
+    if (validated.ids.length === 0) return NextResponse.json({ error: 'At least one approved strategy is required' }, { status: 422 });
 
+    const primaryStrategy = validated.strategies[0];
     const insert = await supabase
       .from('campaigns')
       .insert({
         organization_id: auth.context.organizationId,
         brand_id: brand.id,
         client_id: brand.client_id,
-        strategy_id: strategy.id,
+        strategy_id: primaryStrategy.id,
         name: body.name,
         objective: body.objective ?? null,
         description: body.description ?? null,
@@ -153,13 +215,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       .single();
     if (insert.error) throw insert.error;
 
+    const links = validated.ids.map((strategyId, index) => ({
+      organization_id: auth.context.organizationId,
+      campaign_id: insert.data.id,
+      strategy_id: strategyId,
+      is_primary: index === 0,
+      sort_order: index,
+      created_by: auth.context.userId,
+    }));
+    const linksResult = await supabase
+      .from('campaign_strategies')
+      .upsert(links, { onConflict: 'campaign_id,strategy_id' });
+    if (linksResult.error) {
+      await supabase.from('campaigns').delete().eq('id', insert.data.id).eq('organization_id', auth.context.organizationId);
+      throw linksResult.error;
+    }
+
     await supabase.from('audit_logs').insert({
       organization_id: auth.context.organizationId,
       actor_user_id: auth.context.userId,
       action: 'campaign.created',
       entity_type: 'campaign',
       entity_id: insert.data.id,
-      metadata: { brandId: brand.id, strategyId: strategy.id },
+      metadata: { brandId: brand.id, strategyId: primaryStrategy.id, strategyIds: validated.ids },
     });
 
     obs.info('Campaign created', {
@@ -167,12 +245,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       brandId: brand.id,
       organizationId: auth.context.organizationId,
       createdBy: auth.context.userId,
+      strategyIds: validated.ids,
     });
 
     return NextResponse.json({ ok: true, campaignId: insert.data.id, item: insert.data }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid campaign request' }, { status: 400 });
-    obs.error('Campaign create failed', { error: error instanceof Error ? error.message : String(error) });
+    const message = error instanceof Error ? error.message : String(error);
+    obs.error('Campaign create failed', { error: message });
+    if (message.includes('Only approved strategies') || message.includes('selected strategies') || message.includes('At least one approved strategy')) {
+      return NextResponse.json({ error: message }, { status: 409 });
+    }
     return NextResponse.json({ error: 'Could not create campaign' }, { status: 500 });
   }
 }
