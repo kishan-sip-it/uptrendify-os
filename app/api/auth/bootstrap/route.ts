@@ -12,6 +12,9 @@ export async function GET() {
     const supabase = await createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    if (!user.email_confirmed_at) {
+      return NextResponse.json({ error: 'Email confirmation required' }, { status: 401 });
+    }
 
     const { data: membership, error } = await supabase
       .from('organization_members')
@@ -60,7 +63,7 @@ export async function POST(request: Request) {
   try {
     const supabase = await createSupabaseServerClient();
     const authorization = request.headers.get('authorization');
-    const accessToken = authorization?.match(/^Bearer\\s+(.+)$/i)?.[1]?.trim() || null;
+    const accessToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || null;
 
     const { data: { user }, error: userError } = accessToken
       ? await supabase.auth.getUser(accessToken)
@@ -87,6 +90,9 @@ export async function POST(request: Request) {
     }
 
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    if (!user.email_confirmed_at) {
+      return NextResponse.json({ error: 'Email confirmation required' }, { status: 401 });
+    }
 
     const parsedBody = bootstrapSchema.parse(await request.json().catch(() => ({})));
 
