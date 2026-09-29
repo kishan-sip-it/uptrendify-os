@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { campaignCreateSchema, campaignUpdateSchema } from './schema';
+import { campaignCreateSchema, campaignUpdateSchema, normalizeCampaignStrategyIds } from './schema';
 
 const STRATEGY_ID = '00000000-0000-4000-8000-00000000000a';
+const STRATEGY_ID_2 = '00000000-0000-4000-8000-00000000000b';
 
 const VALID = {
   name: 'Summer Growth',
@@ -20,6 +21,16 @@ describe('campaignCreateSchema', () => {
     const result = campaignCreateSchema.safeParse(VALID);
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.currency).toBe('USD');
+  });
+
+  it('accepts multiple approved strategy ids', () => {
+    const result = campaignCreateSchema.safeParse({ ...VALID, strategyId: undefined, strategyIds: [STRATEGY_ID, STRATEGY_ID_2] });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an empty strategy set', () => {
+    const result = campaignCreateSchema.safeParse({ ...VALID, strategyId: undefined, strategyIds: [] });
+    expect(result.success).toBe(false);
   });
 
   it('accepts an empty planning shape (dates/budget/channels omitted)', () => {
@@ -94,6 +105,11 @@ describe('campaignUpdateSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts a multiple-strategy update', () => {
+    const result = campaignUpdateSchema.safeParse({ strategyIds: [STRATEGY_ID, STRATEGY_ID_2] });
+    expect(result.success).toBe(true);
+  });
+
   it('accepts an empty update body', () => {
     const result = campaignUpdateSchema.safeParse({});
     expect(result.success).toBe(true);
@@ -107,5 +123,15 @@ describe('campaignUpdateSchema', () => {
   it('rejects unknown keys', () => {
     const result = campaignUpdateSchema.safeParse({ slippage: 0.5 });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('normalizeCampaignStrategyIds', () => {
+  it('deduplicates an explicit strategy set while preserving order', () => {
+    expect(normalizeCampaignStrategyIds({ strategyIds: [STRATEGY_ID, STRATEGY_ID_2, STRATEGY_ID] })).toEqual([STRATEGY_ID, STRATEGY_ID_2]);
+  });
+
+  it('keeps legacy single strategy input compatible', () => {
+    expect(normalizeCampaignStrategyIds({ strategyId: STRATEGY_ID })).toEqual([STRATEGY_ID]);
   });
 });
