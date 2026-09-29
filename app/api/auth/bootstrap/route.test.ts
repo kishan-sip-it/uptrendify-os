@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { GET, POST } from './route';
 
 const USER_ID = '00000000-0000-4000-8000-000000000002';
-const ORG_ID = '00000000-0000-4000-8000-000000000001';
+const ORG_ID = '00000000-0000-0000-0000-000000000001';
 
 const mocks = vi.hoisted(() => ({
   createSupabaseServerClient: vi.fn(),
@@ -14,7 +14,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }));
 
 function makeClient(options: {
-  user?: { id: string; user_metadata?: { organizationName?: string } } | null;
+  user?: { id: string; email_confirmed_at?: string | null; user_metadata?: { organizationName?: string } } | null;
   membership?: { organization_id: string; role: string } | null;
   rpcResult?: unknown;
   rpcError?: { message: string } | null;
@@ -22,7 +22,14 @@ function makeClient(options: {
 }) {
   const client: any = {
     auth: {
-      getUser: async () => ({ data: { user: options.user ?? null }, error: options.authError ?? null }),
+      getUser: async () => ({
+        data: {
+          user: options.user
+            ? { ...options.user, email_confirmed_at: options.user.email_confirmed_at ?? '2026-09-29T00:00:00.000Z' }
+            : null,
+        },
+        error: options.authError ?? null,
+      }),
     },
     from: (table: string) => {
       const chain: any = {};
@@ -69,6 +76,22 @@ describe('POST /api/auth/bootstrap', () => {
       onboardingCompleted: false,
     });
     expect(client.rpc).toHaveBeenCalledWith('bootstrap_organization', { organization_name: 'Aurora Labs' });
+  });
+
+  it('returns 401 for an authenticated but unverified user', async () => {
+    const client = makeClient({ user: { id: USER_ID, email_confirmed_at: null } });
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/auth/bootstrap', {
+        method: 'POST',
+        body: JSON.stringify({ organizationName: 'Aurora Labs' }),
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: 'Email confirmation required' });
+    expect(client.rpc).not.toHaveBeenCalled();
   });
 
   it('returns the existing organization from POST without requiring the organization name again', async () => {
@@ -138,7 +161,6 @@ describe('POST /api/auth/bootstrap', () => {
 
     expect(response.status).toBe(401);
   });
-
 
   it('returns 401 for a missing auth session instead of reporting the auth service as unavailable', async () => {
     const client = makeClient({
