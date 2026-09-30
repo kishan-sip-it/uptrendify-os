@@ -97,7 +97,7 @@ export function CampaignCreatePage({ brandId, brandName }: { brandId: string; br
       if (response.status === 401) { window.location.href = '/login'; return; }
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || 'Could not create campaign');
-      const campaignId = body?.campaign?.id ?? body?.id;
+      const campaignId = body?.campaign?.id ?? body?.campaignId ?? body?.id;
       if (!campaignId) throw new Error('Campaign was created but its destination could not be resolved.');
       window.location.href = `/brands/${brandId}/campaigns/${campaignId}?created=1`;
     } catch (err) {

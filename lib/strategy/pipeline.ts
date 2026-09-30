@@ -66,8 +66,8 @@ async function loadBrainSnapshot(supabase: SupabaseClient, args: { organizationI
         visualIdentity: (brandResult.data?.visual_identity ?? {}) as Record<string, unknown>,
       },
       facts,
-      insights: [],
-      evidenceClaims: [],
+      insights,
+      evidenceClaims,
       sources,
       researchRunId: runsResult.data?.[0]?.id ?? null,
     },
@@ -120,7 +120,7 @@ export async function runStrategyGeneration(input: StrategyPipelineInput, deps: 
   } else aiTaskId = aiTaskInsert.data.id;
 
   const fail = (code: string, message: string) => failTask(supabase, { aiTaskId, strategyId, organizationId, code, message });
-  let provider: AiProvider | null = deps.provider !== undefined ? deps.provider : createDefaultRegistry().default();
+  const provider = deps.provider !== undefined ? deps.provider : createDefaultRegistry().default();
   const providerId = provider?.id;
   if (!provider) { await fail('PROVIDER_UNCONFIGURED', 'No AI provider is configured.'); return { status: 'FAILED', aiTaskId, version, errorCode: 'PROVIDER_UNCONFIGURED', errorMessage: 'No AI provider is configured.' }; }
   const model = provider.defaultModel;

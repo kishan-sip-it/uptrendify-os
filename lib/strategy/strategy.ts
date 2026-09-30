@@ -37,6 +37,12 @@ export type StrategyExtractionOutcome = {
   usage?: { inputTokens?: number; outputTokens?: number };
 };
 
+function isJsonModeGenerationFailure(error: unknown): error is AiProviderError {
+  return error instanceof AiProviderError
+    && error.status === 400
+    && /generate json|failed_generation/i.test(error.message);
+}
+
 export async function extractStrategy(
   provider: AiProvider,
   contextText: string,
@@ -52,9 +58,27 @@ export async function extractStrategy(
     ...(model ? { model } : {}),
   };
 
-  const attempt = async (promptText: string): Promise<GenerateResult> => provider.generate({ ...input, prompt: promptText });
+  const attempt = async (promptText: string, jsonMode = true): Promise<GenerateResult> => provider.generate({ ...input, prompt: promptText, json: jsonMode });
 
-  const first = await attempt(prompt);
+  let first: GenerateResult;
+  let jsonMode = true;
+  try {
+    first = await attempt(prompt, true);
+  } catch (error) {
+    if (!isJsonModeGenerationFailure(error)) throw error;
+
+    // Some provider/model combinations can reject JSON object mode with a 400
+    // even though the same prompt succeeds as plain text. Keep the strict
+    // application-side parser and schema validation, but retry once without
+    // provider-side JSON enforcement so a provider formatting quirk cannot
+    // strand strategy generation.
+    jsonMode = false;
+    first = await attempt(
+      `${prompt}\n\nIf provider-side JSON mode is unavailable, still return ONLY the same valid JSON object as plain text. Do not add markdown or commentary.`,
+      false,
+    );
+  }
+
   try {
     const result = parseStrategy(first.text);
     return { result, model: first.model, usage: first.usage };
@@ -64,7 +88,7 @@ export async function extractStrategy(
 
     let second: GenerateResult;
     try {
-      second = await attempt(buildStrategyRepairPrompt(prompt, validationMessage, first.text));
+      second = await attempt(buildStrategyRepairPrompt(prompt, validationMessage, first.text), jsonMode);
     } catch (repairError) {
       if (repairError instanceof AiProviderError) throw repairError;
       throw new StrategyValidationError('AI output was invalid and the repair attempt failed');
