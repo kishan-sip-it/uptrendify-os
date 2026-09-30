@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, Circle, ClipboardCheck, LockKeyhole } from 'lucide-react';
+import { CheckCircle2, Circle, ClipboardCheck, LockKeyhole, RefreshCw, RotateCcw } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
@@ -219,6 +219,15 @@ export function GlobalWorkflowChecklist() {
 
   const nextTask = config.tasks.find((task) => !completed[task.id] && !task.locked);
 
+  function restartChecklist() {
+    try { window.sessionStorage.removeItem(storageKey); } catch { /* best effort */ }
+    setCompleted({});
+  }
+
+  function refreshCurrentPage() {
+    window.location.reload();
+  }
+
   return (
     <>
       <style jsx global>{`
@@ -239,8 +248,13 @@ export function GlobalWorkflowChecklist() {
           backdrop-filter: blur(14px);
         }
         .contextual-workflow-header { display:flex; gap:9px; align-items:flex-start; margin-bottom:12px; }
+        .contextual-workflow-header-copy { min-width:0; flex:1; }
         .contextual-workflow-title { color:var(--text); font-weight:700; font-size:13px; line-height:1.3; }
         .contextual-workflow-subtitle { color:var(--muted); font-size:11px; line-height:1.45; margin-top:3px; }
+        .contextual-workflow-controls { display:flex; gap:4px; flex-shrink:0; }
+        .contextual-workflow-control { width:28px; height:28px; display:grid; place-items:center; padding:0; border:1px solid var(--line); border-radius:8px; background:var(--surface-muted); color:var(--muted); cursor:pointer; }
+        .contextual-workflow-control:hover { color:var(--text); border-color:var(--accent); background:color-mix(in srgb,var(--accent) 8%,var(--surface-muted)); }
+        .contextual-workflow-control:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
         .contextual-workflow-list { display:grid; gap:5px; }
         .contextual-workflow-item { position:relative; display:grid; grid-template-columns:22px 1fr; gap:8px; padding:9px 8px; border-radius:10px; color:var(--muted); }
         .contextual-workflow-item.is-current { color:var(--text); background:color-mix(in srgb,var(--accent) 9%,var(--surface-muted)); border:1px solid color-mix(in srgb,var(--accent) 28%,var(--line)); }
@@ -263,9 +277,17 @@ export function GlobalWorkflowChecklist() {
       <aside className="contextual-workflow-checklist" aria-label="Contextual workflow checklist">
         <div className="contextual-workflow-header">
           <ClipboardCheck size={16} color="var(--accent)" style={{ flexShrink: 0, marginTop: 1 }} />
-          <div>
+          <div className="contextual-workflow-header-copy">
             <div className="contextual-workflow-title">{config.title}</div>
             <div className="contextual-workflow-subtitle">{config.subtitle}</div>
+          </div>
+          <div className="contextual-workflow-controls">
+            <button type="button" className="contextual-workflow-control" onClick={restartChecklist} aria-label="Restart this checklist" title="Restart this checklist">
+              <RotateCcw size={14} />
+            </button>
+            <button type="button" className="contextual-workflow-control" onClick={refreshCurrentPage} aria-label="Refresh this page" title="Refresh this page">
+              <RefreshCw size={14} />
+            </button>
           </div>
         </div>
         <div className="contextual-workflow-list">
