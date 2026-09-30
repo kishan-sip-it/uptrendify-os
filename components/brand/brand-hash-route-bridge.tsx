@@ -13,9 +13,17 @@ export function BrandHashRouteBridge() {
   const router = useRouter();
 
   useEffect(() => {
-    const view = HASH_TO_VIEW[window.location.hash];
-    if (!view || !/^\/brands\/[^/]+$/.test(pathname)) return;
-    router.replace(`${pathname}?view=${view}`);
+    if (!/^\/brands\/[^/]+$/.test(pathname)) return;
+
+    const navigateFromHash = () => {
+      const view = HASH_TO_VIEW[window.location.hash];
+      if (!view) return;
+      router.replace(`${pathname}?view=${view}`);
+    };
+
+    navigateFromHash();
+    window.addEventListener('hashchange', navigateFromHash);
+    return () => window.removeEventListener('hashchange', navigateFromHash);
   }, [pathname, router]);
 
   return null;
