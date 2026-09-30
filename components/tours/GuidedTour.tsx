@@ -131,21 +131,16 @@ export function GuidedTour({
     <>
       <div className="tour-backdrop" aria-hidden="true" />
       {rect ? (
-        <>
-          <div
-            className="tour-highlight"
-            style={{ top: rect.top - 7, left: rect.left - 7, width: rect.width + 14, height: rect.height + 14 }}
-            aria-hidden="true"
-          />
-          <div
-            className={'tour-pointer ' + placement}
-            style={{
-              left: Math.min(window.innerWidth - 28, Math.max(28, rect.left + rect.width / 2)),
-              top: placement === 'below' ? rect.bottom + 9 : rect.top - 9,
-            }}
-            aria-hidden="true"
-          />
-        </>
+        <div
+          className="tour-highlight"
+          style={{
+            top: rect.top - 7,
+            left: rect.left - 7,
+            width: rect.width + 14,
+            height: rect.height + 14,
+          }}
+          aria-hidden="true"
+        />
       ) : null}
 
       <section
