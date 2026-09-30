@@ -29,7 +29,7 @@ function makeClient(overrides: Array<[string, unknown]> = []) {
     queues.set(table, existing);
   }
 
-  const chain = (table: string, initialQueue?: boolean) => {
+  const chain = (table: string) => {
     const execute = () => {
       const queue = queues.get(table) ?? [];
       const next = queue.shift();
@@ -100,7 +100,7 @@ describe('POST /api/brands/[brandId]/campaigns', () => {
     const body = await res.json();
 
     expect(res.status).toBe(201);
-    expect(body).toMatchObject({ ok: true, campaignId: CAMP_ID });
+    expect(body).toMatchObject({ ok: true, campaignId: CAMP_ID, campaign: { id: CAMP_ID } });
     const insert = client.from.mock.calls.find((call) => call[0] === 'campaigns');
     expect(insert).toBeTruthy();
   });

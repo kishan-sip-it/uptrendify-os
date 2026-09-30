@@ -34,7 +34,7 @@ export const CAMPAIGN_ACTION_LABELS: Record<CampaignStatusAction, string> = {
 };
 
 export const CAMPAIGN_ACTION_HINTS: Record<CampaignStatusAction, string> = {
-  plan: 'Campaign has been approved and scheduled',
+  plan: 'Move the campaign from Draft to Planned when its details are ready for execution and the content workflow.',
   activate: 'Campaign is now running',
   pause: 'Pause the running campaign',
   complete: 'Mark this campaign as finished',

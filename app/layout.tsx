@@ -4,6 +4,7 @@ import './design-system.css';
 import './workspace-layout.css';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { NetworkStatus } from '@/components/ui/NetworkStatus';
+import { GlobalWorkflowChecklist } from '@/components/ui/global-workflow-checklist';
 
 export const metadata: Metadata = {
   title: 'UpTrendifyOS — AI Marketing Agency OS',
@@ -15,7 +16,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBoot }} /></head>
-      <body><NetworkStatus />{children}<SpeedInsights /></body>
+      <body><NetworkStatus /><GlobalWorkflowChecklist />{children}<SpeedInsights /></body>
     </html>
   );
 }

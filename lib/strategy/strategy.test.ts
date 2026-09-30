@@ -27,12 +27,12 @@ function validStrategyText() {
   });
 }
 
-function fakeProvider(generate: (input: { prompt: string }) => Promise<GenerateResult>): AiProvider {
+function fakeProvider(generate: (input: { prompt: string; json?: boolean }) => Promise<GenerateResult>): AiProvider {
   return {
     id: 'fake',
     defaultModel: 'fake-model',
     configured: () => true,
-    generate,
+    generate: generate as AiProvider['generate'],
     health: async () => ({ id: 'fake', ok: true, configured: true }),
   };
 }
@@ -70,6 +70,20 @@ describe('extractStrategy', () => {
     expect(generate).toHaveBeenCalledTimes(1);
     expect(generate.mock.calls[0][0].json).toBe(true);
     expect(generate.mock.calls[0][0].prompt).toContain(context);
+  });
+
+  it('falls back to plain-text JSON when provider JSON mode returns a 400 generation failure', async () => {
+    const generate = vi
+      .fn()
+      .mockRejectedValueOnce(new AiProviderError('http', "Provider returned 400: Failed to generate JSON. Please adjust your prompt. See 'failed_generation' for more details.", 400))
+      .mockResolvedValueOnce({ text: validStrategyText(), model: 'fake-model' });
+
+    const outcome = await extractStrategy(fakeProvider(generate), context);
+    expect(outcome.result.objectives).toHaveLength(3);
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate.mock.calls[0][0].json).toBe(true);
+    expect(generate.mock.calls[1][0].json).toBe(false);
+    expect(generate.mock.calls[1][0].prompt).toContain('provider-side JSON mode is unavailable');
   });
 
   it('repairs an invalid first response using the repair prompt', async () => {
