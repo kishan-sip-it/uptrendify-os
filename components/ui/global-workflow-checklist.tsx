@@ -1,7 +1,8 @@
 'use client';
 
 import { CheckCircle2, Circle, ClipboardCheck, LockKeyhole } from 'lucide-react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 const WORKFLOW = [
   { key: 'research', label: 'Research', description: 'Understand the business from its public evidence.' },
@@ -36,8 +37,20 @@ function stageIndex(stage: Stage): number {
 
 export function GlobalWorkflowChecklist() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const stage = resolveStage(pathname, searchParams.get('view'));
+  const [view, setView] = useState<string | null>(null);
+
+  useEffect(() => {
+    const syncView = () => setView(new URLSearchParams(window.location.search).get('view'));
+    syncView();
+    window.addEventListener('popstate', syncView);
+    window.addEventListener('hashchange', syncView);
+    return () => {
+      window.removeEventListener('popstate', syncView);
+      window.removeEventListener('hashchange', syncView);
+    };
+  }, [pathname]);
+
+  const stage = resolveStage(pathname, view);
   const show = Boolean(stage);
   const currentIndex = stage ? stageIndex(stage) : -1;
   const brandMatch = pathname.match(/^\/brands\/([^/]+)/);
@@ -104,6 +117,8 @@ export function GlobalWorkflowChecklist() {
         .workflow-checklist-next span { display:block; margin-top:3px; color:var(--muted); font-size:10px; line-height:1.45; }
         .workflow-checklist-next a { display:inline-flex; margin-top:7px; color:var(--accent); font-size:10px; font-weight:700; text-decoration:none; }
         .workflow-checklist-next a:hover { text-decoration:underline; }
+        .phase-briefing { animation: phase-flash-in .22s ease-out both, phase-flash-out .35s ease-in 6s forwards !important; }
+        @keyframes phase-flash-out { to { opacity:0; transform:translateY(-8px) scale(.985); visibility:hidden; pointer-events:none; } }
         @media (max-width: 1199px) {
           body:has(.workflow-checklist) .shell > .main { padding-left: 28px; }
           .workflow-checklist { display:none; }
