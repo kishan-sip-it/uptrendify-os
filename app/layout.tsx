@@ -2,9 +2,11 @@ import type { Metadata } from 'next';
 import './globals.css';
 import './design-system.css';
 import './workspace-layout.css';
+import './public-pages.css';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { NetworkStatus } from '@/components/ui/NetworkStatus';
 import { GlobalWorkflowChecklist } from '@/components/ui/global-workflow-checklist';
+import { PublicUtilityBar } from '@/components/public/public-utility-bar';
 
 export const metadata: Metadata = {
   title: 'UpTrendifyOS — AI Marketing Agency OS',
@@ -16,7 +18,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBoot }} /></head>
-      <body><NetworkStatus /><GlobalWorkflowChecklist />{children}<SpeedInsights /></body>
+      <body><NetworkStatus /><GlobalWorkflowChecklist /><PublicUtilityBar />{children}<SpeedInsights /></body>
     </html>
   );
 }
