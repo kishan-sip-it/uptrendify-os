@@ -1,14 +1,13 @@
 'use client';
 
 import { CheckCircle2, Info, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 export function FlashMessage({
   message,
   detail,
   href,
   actionLabel = 'Continue',
-  duration = 6500,
   tone = 'success',
 }: {
   message: string;
@@ -20,12 +19,15 @@ export function FlashMessage({
 }) {
   const [visible, setVisible] = useState(true);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setVisible(false), duration);
-    return () => window.clearTimeout(timer);
-  }, [duration]);
-
   if (!visible) return null;
+
+  const isSuccess = tone === 'success';
+  const borderColor = isSuccess
+    ? 'color-mix(in srgb, var(--accent) 48%, var(--line))'
+    : 'color-mix(in srgb, var(--accent-2) 48%, var(--line))';
+  const background = isSuccess
+    ? 'color-mix(in srgb, var(--accent) 8%, var(--surface-card))'
+    : 'color-mix(in srgb, var(--accent-2) 8%, var(--surface-card))';
 
   return (
     <div
@@ -34,7 +36,8 @@ export function FlashMessage({
       aria-live="polite"
       style={{
         position: 'relative',
-        borderColor: tone === 'success' ? 'color-mix(in srgb, var(--accent) 45%, var(--line))' : 'color-mix(in srgb, var(--accent-2) 45%, var(--line))',
+        borderColor,
+        background,
         paddingRight: 44,
       }}
     >
@@ -47,7 +50,7 @@ export function FlashMessage({
         <X size={15} />
       </button>
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-        {tone === 'success' ? <CheckCircle2 size={18} color="var(--accent)" style={{ marginTop: 1, flexShrink: 0 }} /> : <Info size={18} color="var(--accent-2)" style={{ marginTop: 1, flexShrink: 0 }} />}
+        {isSuccess ? <CheckCircle2 size={18} color="var(--accent)" style={{ marginTop: 1, flexShrink: 0 }} /> : <Info size={18} color="var(--accent-2)" style={{ marginTop: 1, flexShrink: 0 }} />}
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700 }}>{message}</div>
           {detail ? <p className="activity-meta" style={{ margin: '4px 0 0', lineHeight: 1.5 }}>{detail}</p> : null}
