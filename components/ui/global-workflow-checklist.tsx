@@ -2,7 +2,7 @@
 
 import { CheckCircle2, Circle, ClipboardCheck, LockKeyhole, RefreshCw, RotateCcw } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 
 type Task = {
   id: string;
@@ -168,21 +168,11 @@ function taskMatchesClick(task: Task, text: string): boolean {
 
 export function GlobalWorkflowChecklist() {
   const pathname = usePathname();
-  const [view, setView] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const view = searchParams.get('view');
   const config = useMemo(() => routeConfig(pathname, view), [pathname, view]);
   const storageKey = useMemo(() => getStorageKey(pathname, view), [pathname, view]);
   const [completed, setCompleted] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    const syncView = () => setView(new URLSearchParams(window.location.search).get('view'));
-    syncView();
-    window.addEventListener('popstate', syncView);
-    window.addEventListener('hashchange', syncView);
-    return () => {
-      window.removeEventListener('popstate', syncView);
-      window.removeEventListener('hashchange', syncView);
-    };
-  }, [pathname]);
 
   useEffect(() => {
     if (!config) return;
