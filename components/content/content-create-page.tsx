@@ -34,7 +34,7 @@ export function CreateContentPage({
         onCreated={() =>
           router.push(
             initialCampaignId
-              ? `/brands/${brandId}/campaigns/${initialCampaignId}`
+              ? `/brands/${brandId}/content`
               : `/brands/${brandId}/content`,
           )
         }
