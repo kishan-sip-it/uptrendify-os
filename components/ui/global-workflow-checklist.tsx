@@ -18,6 +18,8 @@ type ChecklistConfig = {
   tasks: Task[];
 };
 
+const CHECKLIST_STORAGE_PREFIX = 'uptrendify:contextual-checklist:';
+
 function normalize(value: string): string {
   return value.replace(/\s+/g, ' ').trim().toLowerCase();
 }
@@ -155,7 +157,7 @@ function getStorageKey(pathname: string, view: string | null): string {
   const brand = pathname.match(/^\/brands\/([^/]+)/)?.[1] ?? 'global';
   const campaign = pathname.match(/\/campaigns\/([^/]+)/)?.[1] ?? '';
   const content = pathname.match(/\/content\/([^/]+)/)?.[1] ?? '';
-  return `uptrendify:contextual-checklist:${brand}:${campaign}:${content}:${view ?? ''}`;
+  return `${CHECKLIST_STORAGE_PREFIX}${brand}:${campaign}:${content}:${view ?? ''}`;
 }
 
 function taskMatchesClick(task: Task, text: string): boolean {
@@ -224,8 +226,18 @@ export function GlobalWorkflowChecklist() {
     setCompleted({});
   }
 
-  function refreshCurrentPage() {
-    window.location.reload();
+  function refreshAllChecklists() {
+    try {
+      const keysToRemove: string[] = [];
+      for (let index = 0; index < window.sessionStorage.length; index += 1) {
+        const key = window.sessionStorage.key(index);
+        if (key?.startsWith(CHECKLIST_STORAGE_PREFIX)) keysToRemove.push(key);
+      }
+      keysToRemove.forEach((key) => window.sessionStorage.removeItem(key));
+    } catch {
+      // Best effort: checklist state is client-only and must never block the workflow.
+    }
+    setCompleted({});
   }
 
   return (
@@ -285,7 +297,7 @@ export function GlobalWorkflowChecklist() {
             <button type="button" className="contextual-workflow-control" onClick={restartChecklist} aria-label="Restart this checklist" title="Restart this checklist">
               <RotateCcw size={14} />
             </button>
-            <button type="button" className="contextual-workflow-control" onClick={refreshCurrentPage} aria-label="Refresh this page" title="Refresh this page">
+            <button type="button" className="contextual-workflow-control" onClick={refreshAllChecklists} aria-label="Refresh all checklists" title="Refresh all checklists">
               <RefreshCw size={14} />
             </button>
           </div>
