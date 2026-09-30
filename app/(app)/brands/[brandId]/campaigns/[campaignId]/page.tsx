@@ -48,9 +48,9 @@ export default async function BrandCampaignDetailPage({ params, searchParams }: 
         <div style={{ marginBottom: 16 }}>
           <FlashMessage
             message="Campaign created as Draft."
-            detail="Review the campaign, then move it to Planned when the details are ready. Planned campaigns are the handoff point for the next workflow step, including content creation and approval."
-            href="#campaign-lifecycle"
-            actionLabel="Review next action"
+            detail="First move the campaign to Planned when its details are ready. Then use the button below to create content for this campaign."
+            href={`/brands/${brandId}/content/new?campaignId=${campaignId}`}
+            actionLabel="Click here: Create campaign content"
           />
         </div>
       ) : null}
