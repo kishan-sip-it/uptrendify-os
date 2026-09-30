@@ -103,21 +103,22 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
 
     const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase
-      .from('brands')
-      .delete()
-      .eq('id', brandId)
-      .eq('organization_id', auth.context.organizationId)
-      .select('id,name')
-      .maybeSingle();
+    const { data, error } = await supabase.rpc('delete_brand', { target_brand_id: brandId });
 
-    if (error) throw error;
-    if (!data) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+    if (error) {
+      if (error.message.includes('BRAND_NOT_FOUND')) {
+        return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+      }
+      if (error.message.includes('BRAND_DELETE_FORBIDDEN')) {
+        return NextResponse.json({ error: 'You do not have permission to delete this brand.' }, { status: 403 });
+      }
+      throw error;
+    }
 
     return NextResponse.json({
       ok: true,
-      deletedBrand: data,
-      message: 'Brand and its related research, content, campaigns and strategy data were deleted.',
+      deletedBrand: data?.deleted_brand ?? null,
+      message: data?.message ?? 'Brand and its related research, content, campaigns and strategy data were deleted.',
     });
   } catch (error) {
     obs.error('Brand deletion failed', { error: error instanceof Error ? error.message : String(error) });
