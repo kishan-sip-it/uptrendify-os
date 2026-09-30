@@ -1,0 +1,30 @@
+/* Workspace layout: use the shell width without stretching individual components blindly.
+   Most app pages render their own <main class="main"> inside AppShell's main section.
+   The nested page shell used to inherit the same 1500px cap, leaving large dead gutters
+   on wide screens. Keep the component-level grids/cards intact while giving the page frame
+   the available workspace width. */
+.shell > .main {
+  max-width: none;
+  width: 100%;
+  padding: 28px clamp(24px, 2.5vw, 48px) 40px;
+}
+
+.shell > .main > main.main,
+.shell > .main > .main {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+@media (min-width: 1600px) {
+  .shell > .main {
+    padding-inline: clamp(36px, 3vw, 64px);
+  }
+}
+
+@media (max-width: 720px) {
+  .shell > .main {
+    padding: 20px 16px 32px;
+  }
+}
