@@ -353,6 +353,10 @@ export function Landing() {
           <a href="#why" onClick={() => setMobileOpen(false)}>Why it exists</a>
           <a href="#how-it-works" onClick={() => setMobileOpen(false)}>How it works</a>
           <a href="#workflow" onClick={() => setMobileOpen(false)}>Workflow</a>
+          <a href="/about" onClick={() => setMobileOpen(false)}>About</a>
+          <a href="/contact" onClick={() => setMobileOpen(false)}>Contact</a>
+          <a href="/feedback" onClick={() => setMobileOpen(false)}>Feedback</a>
+          <a href="/report-issue" onClick={() => setMobileOpen(false)}>Report issue</a>
         </nav>
         <div className="landing-actions">
           {accountLoading ? (
@@ -394,6 +398,10 @@ export function Landing() {
             <a href="#why" onClick={() => setMobileOpen(false)}>Why it exists</a>
             <a href="#how-it-works" onClick={() => setMobileOpen(false)}>How it works</a>
             <a href="#workflow" onClick={() => setMobileOpen(false)}>Workflow</a>
+            <a href="/about" onClick={() => setMobileOpen(false)}>About</a>
+            <a href="/contact" onClick={() => setMobileOpen(false)}>Contact</a>
+            <a href="/feedback" onClick={() => setMobileOpen(false)}>Feedback</a>
+            <a href="/report-issue" onClick={() => setMobileOpen(false)}>Report issue</a>
             {account ? (
               <a href={ROLE_DESTINATIONS[account.role].href} className="landing-cta" style={{ justifyContent: 'center' }} onClick={() => setMobileOpen(false)}>
                 {ROLE_DESTINATIONS[account.role].label}
@@ -723,6 +731,12 @@ export function Landing() {
         <div className="landing-footer-links">
           <a href="#platform">Platform</a>
           <a href="#how-it-works">How it works</a>
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+          <a href="/feedback">Feedback</a>
+          <a href="/report-issue">Report issue</a>
+          <a href="/terms">Terms</a>
+          <a href="/privacy">Privacy</a>
           <a href="/login">Sign in</a>
         </div>
         <div className="landing-footer-note">© {new Date().getFullYear()} UpTrendifyOS · Research → Review → Strategy</div>
