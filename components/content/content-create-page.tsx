@@ -31,13 +31,7 @@ export function CreateContentPage({
       <CreateContentForm
         brandId={brandId}
         initialCampaignId={initialCampaignId}
-        onCreated={() =>
-          router.push(
-            initialCampaignId
-              ? `/brands/${brandId}/campaigns/${initialCampaignId}`
-              : `/brands/${brandId}/content`,
-          )
-        }
+        onCreated={(contentId) => router.push(`/brands/${brandId}/content/${contentId}`)}
       />
     </section>
   );

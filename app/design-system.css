@@ -188,3 +188,6 @@ html[data-theme="dark"] { --accent-contrast:#10151f; }
 @media (prefers-reduced-motion: reduce) {
   .auth-card-wrap { scroll-behavior: auto; }
 }
+
+/* Phase briefings are no longer part of the persistent application surface. */
+.phase-briefing { display: none !important; }

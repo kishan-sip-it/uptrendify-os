@@ -18,7 +18,7 @@ function timeAgo(iso: string): string { const seconds = Math.max(0, Math.round((
 type DraftIntent = ContentIntentLike & { clientId?: string | null; campaignId?: string | null };
 const EMPTY_INTENT: DraftIntent = { type: 'social_post', channel: 'linkedin', title: '', objective: '', audience: '', context: '', tone: '', cta: '', instructions: '', campaignId: '' };
 
-export function CreateContentForm({ brandId, initialCampaignId, onCreated }: { brandId: string; initialCampaignId?: string | null; onCreated?: () => void }) {
+export function CreateContentForm({ brandId, initialCampaignId, onCreated }: { brandId: string; initialCampaignId?: string | null; onCreated?: (contentId: string) => void }) {
   const [intent, setIntent] = useState<DraftIntent>(() => ({ ...EMPTY_INTENT, campaignId: initialCampaignId ?? '' }));
   const [otherSpecification, setOtherSpecification] = useState('');
   const [busy, setBusy] = useState(false);
@@ -57,7 +57,8 @@ export function CreateContentForm({ brandId, initialCampaignId, onCreated }: { b
       if (response.status === 401) { window.location.href = '/login'; return; }
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || 'Could not create content item');
-      setIntent(EMPTY_INTENT); setOtherSpecification(''); onCreated?.();
+      if (!body?.contentId) throw new Error('Content was created but no content id was returned.');
+      setIntent(EMPTY_INTENT); setOtherSpecification(''); onCreated?.(body.contentId);
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not create content item'); }
     finally { setBusy(false); }
   }
