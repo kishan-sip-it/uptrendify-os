@@ -1,17 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  ArrowRight, BarChart3, Blocks, Bot, Boxes, CheckCircle2, CircleHelp, FileCheck2, Globe2, Layers,
-  LockKeyhole, Menu, Search, ShieldCheck, Sparkles, Target, Users, Workflow, X,
+  ArrowRight, Bot, CalendarDays, Check, CheckCircle2, ChevronDown, FileText, Globe2,
+  Layers3, Menu, MessageSquareText, Play, Search, ShieldCheck, Sparkles, Target,
+  Users, Workflow, X, Zap,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
-import BorderGlow from '@/components/react-bits/BorderGlow';
-import SwarmCursor from '@/components/react-bits/SwarmCursor';
-import WarpText from '@/components/react-bits/WarpText';
-
-type StepState = 'pending' | 'running' | 'done';
+import styles from './landing.module.css';
 
 type OrgRole = 'OWNER' | 'ADMIN' | 'STRATEGIST' | 'EDITOR' | 'APPROVER' | 'CLIENT';
 
@@ -27,231 +24,113 @@ function isOrgRole(value: unknown): value is OrgRole {
     value === 'EDITOR' || value === 'APPROVER' || value === 'CLIENT';
 }
 
-const ROLE_DESTINATIONS: Record<OrgRole, { label: string; href: string; title: string; body: string }> = {
-  OWNER: { label: 'Open workspace', href: '/dashboard', title: 'Workspace owner', body: 'Manage the workspace, brands, team access and the next workflow action.' },
-  ADMIN: { label: 'Open workspace', href: '/dashboard', title: 'Workspace admin', body: 'Keep brands, members and operational work moving from the command center.' },
-  STRATEGIST: { label: 'Open Strategy', href: '/dashboard', title: 'Strategy focus', body: 'Move from approved Brand Brain into strategy and the next marketing decision.' },
-  EDITOR: { label: 'Open Content Studio', href: '/brands', title: 'Execution focus', body: 'Turn approved strategy into content and keep the execution queue moving.' },
-  APPROVER: { label: 'Open Approvals', href: '/approvals', title: 'Approval focus', body: 'Review the exact content version that is waiting for your decision.' },
-  CLIENT: { label: 'Open workspace', href: '/dashboard', title: 'Client view', body: 'See the work your workspace has prepared and the items that need your attention.' },
+const ROLE_DESTINATIONS: Record<OrgRole, { label: string; href: string }> = {
+  OWNER: { label: 'Open workspace', href: '/dashboard' },
+  ADMIN: { label: 'Open workspace', href: '/dashboard' },
+  STRATEGIST: { label: 'Open Strategy', href: '/dashboard' },
+  EDITOR: { label: 'Open Content Studio', href: '/brands' },
+  APPROVER: { label: 'Open Approvals', href: '/approvals' },
+  CLIENT: { label: 'Open workspace', href: '/dashboard' },
 };
 
-function initialsForAccount(account: LandingAccount): string {
-  const fromName = account.firstName.trim();
-  if (fromName) return fromName.slice(0, 2).toUpperCase();
-  return (account.email || 'U').slice(0, 1).toUpperCase();
+function initialsForAccount(account: LandingAccount) {
+  const name = account.firstName.trim();
+  return name ? name.slice(0, 2).toUpperCase() : (account.email || 'U').slice(0, 1).toUpperCase();
 }
 
-const WORKFLOW: { icon: LucideIcon; label: string; note: string; tone: string }[] = [
-  { icon: Search, label: 'Research', note: 'Understand the business from its website', tone: '#278b69' },
-  { icon: Bot, label: 'Brand Intelligence', note: 'Turn evidence into structured suggestions', tone: '#3b8f7a' },
-  { icon: FileCheck2, label: 'Brand review', note: 'Approve the facts you trust', tone: '#4f9f89' },
-  { icon: Target, label: 'Strategy', note: 'Build the marketing plan', tone: '#5cae96' },
-  { icon: Sparkles, label: 'Content Studio', note: 'Create the assets to publish', tone: '#69bfa5' },
-  { icon: Boxes, label: 'Campaigns', note: 'Organize assets around initiatives', tone: '#4da98d' },
-  { icon: CheckCircle2, label: 'Approval → Publishing', note: 'Approve the exact version, then connect a channel', tone: '#278b69' },
-];
-
-const FEATURES: { icon: LucideIcon; title: string; description: string }[] = [
-  { icon: Globe2, title: 'Audit any public site', description: 'Read relevant public pages, extract evidence and keep the result reviewable instead of pretending a guess is a fact.' },
-  { icon: FileCheck2, title: 'Human-in-the-loop review', description: 'Every brand-intelligence suggestion lands in a review inbox. Approve, edit, reject, or ask the AI to regenerate each field.' },
-  { icon: LockKeyhole, title: 'Strategies from approved truth', description: 'The strategy engine is gated: it only consumes facts you approved, so nothing made-up ever ships to a client.' },
-  { icon: Users, title: 'Agency + business workspaces', description: 'Agencies can manage multiple brands while a business can focus on its own brand — with roles, brand switchers and tenant isolation.' },
-  { icon: BarChart3, title: 'Live run dashboard', description: 'Watch research jobs, approval pipelines and strategy versions stream in real time as your AI works.' },
-  { icon: Layers, title: 'One system, forever', description: 'Research, brand intelligence, strategy, content and campaigns — a single OS your whole team runs on.' },
-];
-
-const METRICS: { value: string; label: string }[] = [
-  { value: '7', label: 'Connected workflow stages' },
-  { value: '1', label: 'Shared brand context' },
-  { value: 'Human', label: 'Approval stays in the loop' },
-  { value: '1', label: 'Workspace for the workflow' },
-];
-
-const PIPELINE: { step: string; label: string }[] = WORKFLOW.map((item, index) => ({
-  step: String(index + 1).padStart(2, '0'),
-  label: item.label,
-}));
-
-const CONTROL_MODULES: { icon: LucideIcon; title: string; eyebrow: string; description: string }[] = [
-  { icon: Search, eyebrow: '01 · Research', title: 'See what the website actually says', description: 'Crawl public pages, preserve source URLs and separate verified evidence from anything the system could not confirm.' },
-  { icon: ShieldCheck, eyebrow: '02 · Brand Brain', title: 'Decide what becomes trusted context', description: 'AI suggestions stay editable until a person approves the exact facts that strategy is allowed to use.' },
-  { icon: Target, eyebrow: '03 · Strategy', title: 'Turn approved facts into a plan', description: 'Build objectives, audiences, positioning and content direction without starting from a blank prompt every time.' },
-  { icon: FileCheck2, eyebrow: '04 · Execution', title: 'Move work through real gates', description: 'Content, campaigns, approval and publishing stay separate so the workflow never confuses a draft with something ready to ship.' },
-];
-
-const EVIDENCE_PHASES = [
-  { label: 'Discover', title: 'Find the real public footprint', body: 'Start from the brand website, follow useful public pages and keep the source trail attached to what was found.' },
-  { label: 'Extract', title: 'Structure the useful evidence', body: 'Organize identity, offer, audience, positioning, messaging, SEO and competitive signals into reviewable topics.' },
-  { label: 'Review', title: 'Put a human gate in front of AI truth', body: 'Approve, edit or reject suggestions. Approved intelligence becomes the trusted input for the next workflow stage.' },
-  { label: 'Act', title: 'Make work from trusted context', body: 'Generate strategy, content and campaigns from the same approved context instead of re-briefing every screen.' },
-];
-
-const AUDIENCE_CARDS = [
-  { icon: Users, title: 'Agencies', description: 'Keep multiple client brands isolated, switch workspaces safely and give each brand its own voice, rules and approval chain.' },
-  { icon: Globe2, title: 'Growing teams', description: 'Keep research, strategy, content and campaigns connected so handoffs do not erase the context created by the previous team member.' },
-  { icon: Sparkles, title: 'Brand owners', description: 'Start with your own website, teach the system your rules and stay in control of what becomes authoritative.' },
-];
-
-const FAQ = [
-  { question: 'Does AI get to decide what is true?', answer: 'No. Research produces evidence and Brand Brain produces reviewable suggestions. Human approval is the gate before those facts become authoritative.' },
-  { question: 'What happens when a website is difficult to crawl?', answer: 'The research pipeline can try rendered-page extraction for JavaScript-heavy sites and reports the actual limitation when content remains unavailable.' },
-  { question: 'Can an agency manage more than one brand?', answer: 'Yes. Agency workspaces are designed around multiple brands with tenant isolation, roles and separate brand context.' },
-  { question: 'What happens before anything is published?', answer: 'Content has its own lifecycle and approval stage. A connector must exist before an external channel can actually receive the content.' },
-];
-
-function EvidenceExplorer() {
-  const [active, setActive] = useState(0);
-  const phase = EVIDENCE_PHASES[active];
-
-  return (
-    <div
-      className="landing-evidence-explorer"
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, .9fr) minmax(0, 1.1fr)',
-        gap: 16,
-        padding: 18,
-        border: '1px solid var(--line)',
-        borderRadius: 20,
-        background: 'var(--panel)',
-        boxShadow: '0 24px 70px rgba(40,35,25,.08)',
-        minHeight: 360,
-      }}
-    >
-      <div style={{ display: 'grid', gap: 8 }}>
-        {EVIDENCE_PHASES.map((item, index) => (
-          <button
-            key={item.label}
-            type="button"
-            onClick={() => setActive(index)}
-            aria-pressed={active === index}
-            style={{
-              width: '100%',
-              textAlign: 'left',
-              border: '1px solid',
-              borderColor: active === index ? 'color-mix(in srgb, var(--accent) 45%, var(--line))' : 'var(--line)',
-              background: active === index ? 'color-mix(in srgb, var(--accent) 8%, var(--panel))' : 'transparent',
-              color: 'var(--text)',
-              borderRadius: 14,
-              padding: '12px 14px',
-              cursor: 'pointer',
-            }}
-          >
-            <span style={{ display: 'block', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em' }}>{String(index + 1).padStart(2, '0')}</span>
-            <strong style={{ display: 'block', marginTop: 4 }}>{item.label}</strong>
-          </button>
-        ))}
-      </div>
-      <div style={{ padding: 12, minHeight: 318, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <div className="landing-eyebrow"><ShieldCheck size={13} /> {phase.label}</div>
-        <h3 style={{ fontSize: 'clamp(22px, 3vw, 34px)', margin: '16px 0 10px' }}>{phase.title}</h3>
-        <p className="subtitle" style={{ maxWidth: 560 }}>{phase.body}</p>
-        <div style={{ marginTop: 22, display: 'grid', gap: 8 }}>
-          <div className="badge"><CheckCircle2 size={13} /> Evidence remains traceable</div>
-          <div className="badge"><CheckCircle2 size={13} /> Human review stays explicit</div>
-          <div className="badge"><CheckCircle2 size={13} /> Next stage uses the approved context</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
+function Reveal({ children, delay = 0, className = '' }: { children: ReactNode; delay?: number; className?: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.12 },
-    );
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setVisible(true);
+        observer.disconnect();
+      }
+    }, { threshold: 0.08 });
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
 
   return (
-    <div
-      ref={ref}
-      className={`landing-reveal${visible ? ' in' : ''}`}
-      style={{ transitionDelay: `${delay}ms` }}
-    >
+    <div ref={ref} className={`${styles.reveal} ${visible ? styles.revealIn : ''} ${className}`} style={{ transitionDelay: `${delay}ms` }}>
       {children}
     </div>
   );
 }
 
-function WorkflowDemo() {
-  const [stepIndex, setStepIndex] = useState<StepState[]>(new Array(WORKFLOW.length).fill('pending'));
-  const [liveLog, setLiveLog] = useState<string>('Idle — start a research run');
-  const started = useRef(false);
-
-  useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    const timer = window.setTimeout(() => setStepIndex((prev) => prev.map(() => 'pending')), 500);
-    const sequence: { index: number; log: string; wait: number; done?: boolean }[] = [
-      { index: 0, log: 'Discovering public pages…', wait: 400 },
-      { index: 1, log: 'Extracting product claims from the available pages', wait: 900, done: true },
-      { index: 2, log: 'Brand intelligence drafted · waiting for human review', wait: 1100, done: true },
-      { index: 3, log: 'Approved intelligence → strategy unlocked', wait: 900, done: true },
-      { index: 4, log: 'Roadmap drafted · waiting on client', wait: 600, done: true },
-    ];
-    const timeouts: number[] = [];
-    sequence.forEach((entry, i) => {
-      const id = window.setTimeout(() => {
-        setStepIndex((prev) => prev.map((s, idx) => (idx === entry.index ? 'running' : s)));
-        setLiveLog(entry.log);
-        if (entry.done) {
-          const doneId = window.setTimeout(() => {
-            setStepIndex((prev) => prev.map((s, idx) => (idx === entry.index ? 'done' : s)));
-          }, 500);
-          timeouts.push(doneId);
-        }
-      }, timer + i * entry.wait);
-      timeouts.push(id);
-    });
-    return () => {
-      window.clearTimeout(timer);
-      timeouts.forEach((id) => window.clearTimeout(id));
-    };
-  }, []);
-
+function AILoopGraphic() {
   return (
-    <div className="landing-terminal" role="img" aria-label="Research pipeline progressing through crawl, extraction, review, strategy and execution">
-      <div className="landing-terminal-bar">
-        <span />
-        <span />
-        <span />
-        <span className="landing-terminal-title">uptrendify://brand/acme-scout/research</span>
+    <div className={styles.aiGraphic} aria-hidden="true">
+      <div className={`${styles.aiNode} ${styles.nodeLeft}`}><div className={styles.nodeIcon}><FileText size={22} /></div><span>Brand</span></div>
+      <div className={`${styles.aiNode} ${styles.nodeLeftBottom}`}><div className={styles.nodeIcon}><Globe2 size={22} /></div><span>Research</span></div>
+      <div className={`${styles.aiNode} ${styles.nodeRight}`}><div className={styles.nodeIcon}><Workflow size={22} /></div><span>Strategy</span></div>
+      <div className={`${styles.aiNode} ${styles.nodeRightBottom}`}><div className={styles.nodeIcon}><CalendarDays size={22} /></div><span>Campaigns</span></div>
+      <div className={styles.aiCore}>
+        <div className={styles.aiCoreGlow} />
+        <div className={styles.aiCube}><span>AI</span></div>
+        <div className={styles.aiBase} />
       </div>
-      <div className="landing-terminal-body">
-        <div className="landing-steps">
-          {WORKFLOW.map((entry, i) => {
-            const Icon = entry.icon;
-            const state = stepIndex[i] ?? 'pending';
-            return (
-              <div className={`landing-step step-${state}`} key={entry.label}>
-                <span className="landing-step-icon" style={{ ['--step-tone' as string]: entry.tone }}>
-                  <Icon size={15} />
-                </span>
-                <div>
-                  <div className="landing-step-label">{entry.label}</div>
-                  <div className="landing-step-note">{entry.note}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="landing-log">▸ <span className="landing-log-live">{liveLog}</span></div>
+      <div className={`${styles.aiArrow} ${styles.arrowOne}`} />
+      <div className={`${styles.aiArrow} ${styles.arrowTwo}`} />
+      <div className={`${styles.aiArrow} ${styles.arrowThree}`} />
+      <div className={`${styles.aiArrow} ${styles.arrowFour}`} />
+    </div>
+  );
+}
+
+function ProductCard({ icon: Icon, title, body, number }: { icon: LucideIcon; title: string; body: string; number: string }) {
+  return (
+    <div className={styles.productCard}>
+      <div className={styles.productCardTop}><span className={styles.cardNumber}>{number}</span><span className={styles.productIcon}><Icon size={20} /></span></div>
+      <h3>{title}</h3>
+      <p>{body}</p>
+      <span className={styles.cardLink}>Explore <ArrowRight size={13} /></span>
+    </div>
+  );
+}
+
+function Mosaic() {
+  return (
+    <div className={styles.mosaic}>
+      <div className={`${styles.mosaicCard} ${styles.mosaicSmall}`}>
+        <div className={styles.miniIcons}><Search size={15} /><Bot size={15} /><CheckCircle2 size={15} /></div>
+        <strong>Connected workflow</strong><span>Research → Review → Strategy</span>
+      </div>
+      <div className={`${styles.mosaicCard} ${styles.mosaicImage}`}>
+        <div className={styles.orbitalPortrait}><div className={styles.portraitGlow} /><div className={styles.portraitFigure}><Users size={74} strokeWidth={1.2} /></div></div>
+        <span className={styles.floatingTag}>UpTrendifyOS</span>
+      </div>
+      <div className={`${styles.mosaicCard} ${styles.mosaicMetric}`}>
+        <span className={styles.metricValue}>100%</span><strong>Traceable context</strong><span>Every stage carries the brand context forward.</span>
+      </div>
+      <div className={`${styles.mosaicCard} ${styles.mosaicPhoto}`}>
+        <div className={styles.abstractDashboard}><div /><div /><div /><div /><div /><div /></div>
+      </div>
+      <div className={`${styles.mosaicCard} ${styles.mosaicQuote}`}>
+        <MessageSquareText size={18} /><p>“One operating system for the work between research and publishing.”</p><span>UpTrendifyOS workflow</span>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowStack({ reverse = false, eyebrow, title, body, items, icon: Icon }: { reverse?: boolean; eyebrow: string; title: string; body: string; items: string[]; icon: LucideIcon }) {
+  return (
+    <div className={`${styles.workflowFeature} ${reverse ? styles.workflowReverse : ''}`}>
+      <div className={styles.workflowVisual}>
+        <div className={styles.stackShadow} />
+        <div className={`${styles.stackLayer} ${styles.layerOne}`}><Icon size={28} /></div>
+        <div className={`${styles.stackLayer} ${styles.layerTwo}`}><Check size={26} /></div>
+        <div className={`${styles.stackLayer} ${styles.layerThree}`}><Sparkles size={27} /></div>
+        <div className={styles.stackLabel}>UpTrendifyOS</div>
+      </div>
+      <div className={styles.workflowCopy}>
+        <span className={styles.eyebrow}>{eyebrow}</span><h3>{title}</h3><p>{body}</p>
+        <ul>{items.map((item) => <li key={item}><CheckCircle2 size={15} />{item}</li>)}</ul>
+        <a href="/about" className={styles.textLink}>Learn more <ArrowRight size={14} /></a>
       </div>
     </div>
   );
@@ -263,53 +142,33 @@ export function Landing() {
   const [accountLoading, setAccountLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [account, setAccount] = useState<LandingAccount | null>(null);
-  const heroRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadAccount() {
       try {
         const supabase = createSupabaseBrowserClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
-          if (!cancelled) {
-            setAuthenticated(false);
-            setAccount(null);
-          }
+          if (!cancelled) { setAuthenticated(false); setAccount(null); }
           return;
         }
-
         if (!cancelled) setAuthenticated(true);
-
         const response = await fetch('/api/auth/organizations', { cache: 'no-store' });
         const body = await response.json().catch(() => null);
         const organizations = Array.isArray(body?.organizations) ? body.organizations : [];
         const current = organizations.find((item: { id?: string }) => item.id === body?.currentOrganizationId) ?? organizations[0] ?? null;
-
         if (!cancelled && current && isOrgRole(current.role)) {
-          setAccount({
-            email: user.email ?? '',
-            firstName: typeof user.user_metadata?.first_name === 'string' ? user.user_metadata.first_name : '',
-            organizationName: current.name || 'Workspace',
-            role: current.role,
-          });
-        } else if (!cancelled) {
-          // A signed-in user must never fall back to public CTAs just because
-          // workspace discovery is temporarily unavailable.
-          setAccount(null);
-        }
+          setAccount({ email: user.email ?? '', firstName: typeof user.user_metadata?.first_name === 'string' ? user.user_metadata.first_name : '', organizationName: current.name || 'Workspace', role: current.role });
+        } else if (!cancelled) setAccount(null);
       } catch {
         if (!cancelled) setAccount(null);
       } finally {
         if (!cancelled) setAccountLoading(false);
       }
     }
-
     void loadAccount();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   async function handleStart() {
@@ -318,428 +177,66 @@ export function Landing() {
       const supabase = createSupabaseBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
       window.location.href = user ? '/dashboard' : '/register';
-    } catch {
-      // Auth/network failure must not break the public landing CTA.
-      window.location.href = '/register';
-    }
+    } catch { window.location.href = '/register'; }
   }
+  const closeMobile = () => setMobileOpen(false);
 
   return (
-    <div className="landing">
-      <SwarmCursor
-        color="#8fb5a1"
-        accentColor="#a7c3b4"
-        count={4}
-        size={3}
-        merge={0.77}
-        glow={0.2}
-        opacity={0.22}
-        spread={100}
-        separation={0.15}
-        speed={0.65}
-        wander={0.25}
-        trail={0.75}
-        scatterOnClick
-        enabled
-        repelRef={heroRef}
-        excludeSelector=".landing-nav, .landing-links, .landing-actions, .landing-mobile, .landing-hero, a, button, input, textarea, select, [role='button'], [data-swarm-exclude], .landing-metric, .landing-feature-card, .landing-how-card, .border-glow-card"
-      />
-      <header className="landing-nav">
-        <a href="/" className="landing-logo" aria-label="UpTrendifyOS home">
-          <span className="logo" style={{ width: 22, height: 22 }} /> UpTrendifyOS
-        </a>
-        <nav className="landing-links" aria-label="Primary">
-          <a href="#platform" onClick={() => setMobileOpen(false)}>Platform</a>
-          <a href="#why" onClick={() => setMobileOpen(false)}>Why it exists</a>
-          <a href="#how-it-works" onClick={() => setMobileOpen(false)}>How it works</a>
-          <a href="#workflow" onClick={() => setMobileOpen(false)}>Workflow</a>
-          <a href="/about" onClick={() => setMobileOpen(false)}>About</a>
-          <a href="/contact" onClick={() => setMobileOpen(false)}>Contact</a>
-          <a href="/feedback" onClick={() => setMobileOpen(false)}>Feedback</a>
-          <a href="/report-issue" onClick={() => setMobileOpen(false)}>Report issue</a>
-        </nav>
-        <div className="landing-actions">
-          {accountLoading ? (
-            <span className="landing-account-loading" aria-hidden="true" />
-          ) : account ? (
-            <>
-              <span className="landing-account-pill" title={account.email}>
-                <span className="landing-account-avatar">{initialsForAccount(account)}</span>
-                <span className="landing-account-copy">
-                  <strong>{account.organizationName}</strong>
-                  <small>{account.role.toLowerCase()}</small>
-                </span>
-              </span>
-              <a className="landing-cta" href={ROLE_DESTINATIONS[account.role].href}>
-                {ROLE_DESTINATIONS[account.role].label} <ArrowRight size={14} />
-              </a>
-            </>
-          ) : authenticated ? (
-            <a className="landing-cta" href="/dashboard">Open workspace <ArrowRight size={14} /></a>
-          ) : (
-            <>
-              <a className="landing-ghost" href="/login">Sign in</a>
-              <a className="landing-cta" href="/register">Get started <ArrowRight size={14} /></a>
-            </>
-          )}
+    <div className={styles.page}>
+      <header className={styles.nav}>
+        <a href="/" className={styles.brand} aria-label="UpTrendifyOS home"><span className={styles.brandMark}><span /></span><span>UpTrendifyOS</span></a>
+        <nav className={styles.navLinks} aria-label="Primary navigation"><a href="#platform">Platform</a><a href="#workflow">Workflow</a><a href="#teams">For teams</a><a href="/about">About</a></nav>
+        <div className={styles.navActions}>
+          {accountLoading ? <span className={styles.accountSkeleton} aria-hidden="true" /> : account ? <><span className={styles.accountPill} title={account.email}><span className={styles.accountAvatar}>{initialsForAccount(account)}</span><span><strong>{account.organizationName}</strong><small>{account.role.toLowerCase()}</small></span></span><a className={styles.darkButton} href={ROLE_DESTINATIONS[account.role].href}>{ROLE_DESTINATIONS[account.role].label}<ArrowRight size={14} /></a></> : authenticated ? <a className={styles.darkButton} href="/dashboard">Open workspace<ArrowRight size={14} /></a> : <><a className={styles.navSignIn} href="/login">Log in</a><a className={styles.darkButton} href="/register">Start free<ArrowRight size={14} /></a></>}
         </div>
-        <button
-          type="button"
-          className="landing-menu"
-          aria-label="Toggle navigation"
-          aria-expanded={mobileOpen}
-          onClick={() => setMobileOpen((open) => !open)}
-        >
-          {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-        </button>
-        {mobileOpen ? (
-          <div className="landing-mobile">
-            <a href="#platform" onClick={() => setMobileOpen(false)}>Platform</a>
-            <a href="#why" onClick={() => setMobileOpen(false)}>Why it exists</a>
-            <a href="#how-it-works" onClick={() => setMobileOpen(false)}>How it works</a>
-            <a href="#workflow" onClick={() => setMobileOpen(false)}>Workflow</a>
-            <a href="/about" onClick={() => setMobileOpen(false)}>About</a>
-            <a href="/contact" onClick={() => setMobileOpen(false)}>Contact</a>
-            <a href="/feedback" onClick={() => setMobileOpen(false)}>Feedback</a>
-            <a href="/report-issue" onClick={() => setMobileOpen(false)}>Report issue</a>
-            {account ? (
-              <a href={ROLE_DESTINATIONS[account.role].href} className="landing-cta" style={{ justifyContent: 'center' }} onClick={() => setMobileOpen(false)}>
-                {ROLE_DESTINATIONS[account.role].label}
-              </a>
-            ) : authenticated ? (
-              <a href="/dashboard" className="landing-cta" style={{ justifyContent: 'center' }} onClick={() => setMobileOpen(false)}>
-                Open workspace
-              </a>
-            ) : (
-              <>
-                <a href="/login" onClick={() => setMobileOpen(false)}>Sign in</a>
-                <a href="/register" className="landing-cta" style={{ justifyContent: 'center' }} onClick={() => setMobileOpen(false)}>Get started</a>
-              </>
-            )}
-          </div>
-        ) : null}
+        <button className={styles.menuButton} type="button" onClick={() => setMobileOpen((v) => !v)} aria-label="Toggle navigation" aria-expanded={mobileOpen}>{mobileOpen ? <X size={20} /> : <Menu size={20} />}</button>
+        {mobileOpen && <div className={styles.mobileMenu}><a href="#platform" onClick={closeMobile}>Platform</a><a href="#workflow" onClick={closeMobile}>Workflow</a><a href="#teams" onClick={closeMobile}>For teams</a><a href="/about" onClick={closeMobile}>About</a><a href="/contact" onClick={closeMobile}>Contact</a><a href="/feedback" onClick={closeMobile}>Feedback</a><a href="/report-issue" onClick={closeMobile}>Report issue</a>{account ? <a className={styles.darkButton} href={ROLE_DESTINATIONS[account.role].href} onClick={closeMobile}>{ROLE_DESTINATIONS[account.role].label}</a> : authenticated ? <a className={styles.darkButton} href="/dashboard" onClick={closeMobile}>Open workspace</a> : <><a href="/login" onClick={closeMobile}>Log in</a><a className={styles.darkButton} href="/register" onClick={closeMobile}>Start free</a></>}</div>}
       </header>
 
-      <section ref={heroRef} className="landing-hero">
-        <div className="landing-hero-ambient" aria-hidden="true" />
-        <Reveal>
-          <div className="landing-eyebrow"><Sparkles size={13} /> AI Marketing Agency OS</div>
-        </Reveal>
-        <Reveal delay={80}>
-          <WarpText
-            text="From a brand website to a complete marketing workflow."
-            color="var(--text)"
-            fontSize="clamp(2.5rem, 6vw, 5rem)"
-            fontWeight={800}
-            warpStrength={0.05}
-            speed={0.4}
-            pointerStrength={0.3}
-          />
-        </Reveal>
-        <Reveal delay={160}>
-          <p className="landing-hero-sub">
-            Research the business. Review what AI discovered. Build the strategy. Create content, organize campaigns, approve the exact version, and prepare it for publishing.
-          </p>
-        </Reveal>
-        <Reveal delay={240}>
-          <div className="landing-hero-actions">
-            <button type="button" className="landing-cta" onClick={handleStart} disabled={loading} style={{ fontSize: 15, padding: '14px 22px', cursor: 'pointer' }}>
-              {loading ? 'Working…' : <>Start your workspace <ArrowRight size={15} /></>}
-            </button>
-            <a className="landing-ghost" href="#how-it-works">See the workflow</a>
-          </div>
-        </Reveal>
-        {/* Layout contract: this slot is always present so auth resolution can never push
-            the hero pipeline/terminal and metrics downward after first paint. */}
-        <div className="landing-account-context-slot" aria-live="polite">
-          {account ? (
-            <div className="landing-account-context" aria-label="Current workspace context">
-              <div>
-                <div className="landing-eyebrow"><Users size={13} /> {ROLE_DESTINATIONS[account.role].title}</div>
-                <strong>{ROLE_DESTINATIONS[account.role].body}</strong>
-              </div>
-              <a className="landing-cta landing-account-continue" href={ROLE_DESTINATIONS[account.role].href}>
-                Continue <ArrowRight size={13} />
-              </a>
-            </div>
-          ) : null}
-        </div>
-        <Reveal delay={320}>
-          <div className="landing-pipeline" aria-hidden="true">
-            {PIPELINE.map((item) => (
-              <BorderGlow
-                key={item.step}
-                className="landing-pipeline-glow"
-                backgroundColor="#f3faf6"
-                borderRadius={999}
-                glowRadius={18}
-                glowIntensity={0.6}
-                colors={['#67C79F', '#278B69', '#9AD9BE']}
-              >
-                <div className="landing-pipeline-step">
-                  <span className="landing-pipeline-badge">{item.step}</span>
-                  <span className="landing-pipeline-label">{item.label}</span>
-                </div>
-              </BorderGlow>
-            ))}
-          </div>
-        </Reveal>
-        <Reveal delay={400}>
-          <WorkflowDemo />
-        </Reveal>
-      </section>
-
-      <section className="landing-metrics" aria-label="Platform at a glance">
-        {METRICS.map((metric, i) => (
-          <Reveal delay={i * 70} key={metric.label}>
-            <BorderGlow
-              className="landing-card-glow landing-metric-glow"
-              borderRadius={16}
-              edgeSensitivity={16}
-              glowColor="280 85 85"
-              backgroundColor="#fffdf8"
-              glowRadius={48}
-              glowIntensity={0.65}
-              coneSpread={28}
-              animated={false}
-              colors={['#67C79F', '#278B69', '#9AD9BE']}
-              fillOpacity={0.28}
-            >
-              <div className="landing-metric">
-                <div className="landing-metric-value">{metric.value}</div>
-                <div className="landing-metric-label">{metric.label}</div>
-              </div>
-            </BorderGlow>
+      <main>
+        <section className={styles.hero}>
+          <div className={styles.heroGlow} />
+          <Reveal className={styles.heroContent}>
+            <span className={styles.eyebrow}><Sparkles size={13} /> AI Marketing Operating System</span>
+            <h1>Automate the busywork.<br /><span>Focus on what matters.</span></h1>
+            <p>Turn brand research into approved intelligence, strategy, campaigns and publish-ready content without losing context between teams.</p>
+            <div className={styles.heroActions}><button className={styles.primaryButton} type="button" onClick={handleStart} disabled={loading}>{loading ? 'Working…' : <>Start your workspace <ArrowRight size={15} /></>}</button><a className={styles.playLink} href="#workflow"><span className={styles.playIcon}><Play size={11} fill="currentColor" /></span> See how it works</a></div>
           </Reveal>
-        ))}
-      </section>
+          <Reveal delay={100} className={styles.heroVisualWrap}><AILoopGraphic /></Reveal>
+        </section>
 
-      <section className="landing-section" id="platform">
-        <Reveal>
-          <div className="landing-section-head">
-            <div className="landing-eyebrow"><Blocks size={13} /> The platform</div>
-            <h2>Built like mission control for growth, not a chat wrapper.</h2>
-            <p>Every AI claim has a source. Every strategy has a review. Every brand has a clear workspace and next action.</p>
-          </div>
-        </Reveal>
-        <div className="landing-features">
-          {FEATURES.map((feature, i) => {
-            const Icon = feature.icon;
-            return (
-              <Reveal delay={(i % 3) * 80} key={feature.title}>
-                <BorderGlow
-                  className="landing-card-glow landing-feature-glow hover-lift"
-                  borderRadius={16}
-                  edgeSensitivity={16}
-                  glowColor="280 85 85"
-                  backgroundColor="#fffdf8"
-                  glowRadius={48}
-                  glowIntensity={0.65}
-                  coneSpread={28}
-                  animated={false}
-                  colors={['#9FC7B4', '#4F8B72', '#C6DCCF']}
-                  fillOpacity={0.28}
-                >
-                  <div className="landing-feature-card">
-                    <span className="landing-feature-icon"><Icon size={19} /></span>
-                    <h3>{feature.title}</h3>
-                    <p>{feature.description}</p>
-                  </div>
-                </BorderGlow>
-              </Reveal>
-            );
-          })}
-        </div>
-      </section>
+        <section className={styles.centerSection} id="platform">
+          <Reveal><span className={styles.eyebrow}>Next-Gen <span className={styles.inlineIcons}>◈ ◉ ◇</span> Marketing Automation</span><h2>One connected system for the work that moves your brand forward.</h2><p className={styles.sectionIntro}>Research the business, build the Brand Brain, create strategy, organize campaigns, generate content, approve the exact version and prepare it for publishing.</p></Reveal>
+          <div className={styles.productGrid}><Reveal delay={50}><ProductCard number="01" icon={Globe2} title="Evidence first" body="Start with public brand research and keep the source trail attached to the intelligence." /></Reveal><Reveal delay={120}><ProductCard number="02" icon={ShieldCheck} title="Human approval" body="Review the Brand Brain before it becomes trusted context for downstream strategy." /></Reveal><Reveal delay={190}><ProductCard number="03" icon={Workflow} title="Workflow aware" body="Move from approved truth to strategy, campaign, content, approval and publishing." /></Reveal></div>
+        </section>
 
-      <section className="landing-section landing-alt" id="why">
-        <Reveal>
-          <div className="landing-section-head">
-            <div className="landing-eyebrow"><Workflow size={13} /> Why it exists</div>
-            <h2>Marketing gets noisy when every stage starts from zero.</h2>
-            <p>UpTrendifyOS keeps the context moving forward so the next stage can use the work that already happened.</p>
-          </div>
-        </Reveal>
-        <div className="landing-features">
-          {[
-            { icon: Search, title: 'Context gets lost', description: 'Research, strategy and content often live in separate tools, so the same brand story gets retyped again and again.' },
-            { icon: Bot, title: 'AI needs guardrails', description: 'AI can produce plausible output. UpTrendifyOS separates discovery from human-approved brand truth.' },
-            { icon: FileCheck2, title: 'Approval belongs in the workflow', description: 'Review is a real stage, so the user knows what is trusted and what can happen next.' },
-          ].map((feature, i) => {
-            const Icon = feature.icon;
-            return (
-              <Reveal delay={(i % 3) * 80} key={feature.title}>
-                <div className="landing-feature-card hover-lift">
-                  <span className="landing-feature-icon"><Icon size={19} /></span>
-                  <h3>{feature.title}</h3>
-                  <p>{feature.description}</p>
-                </div>
-              </Reveal>
-            );
-          })}
-        </div>
-      </section>
+        <section className={styles.agentsSection} id="teams">
+          <Reveal><span className={styles.eyebrow}>AI Agents for Every Team</span><h2>Built around the way marketing teams actually work.</h2><p className={styles.sectionIntro}>A shared operating system for agencies, growing teams and brand owners, with roles and tenant boundaries preserved underneath.</p></Reveal>
+          <Reveal delay={90}><Mosaic /></Reveal>
+        </section>
 
-      <section className="landing-section landing-alt" id="how-it-works">
-        <Reveal>
-          <div className="landing-section-head">
-            <div className="landing-eyebrow"><Bot size={13} /> How it works</div>
-            <h2>From noisy website to client-approved strategy.</h2>
-            <p>A workflow your whole team can trust, because nobody clicks “approve” on a guess.</p>
-          </div>
-        </Reveal>
-        <div className="landing-how">
-          {[
-            { icon: Search, title: '1 · Research', description: 'Give UpTrendifyOS a public brand website. The system crawls it, extracts evidence and reports what it could actually verify.' },
-            { icon: Bot, title: '2 · Brand Intelligence', description: 'AI organizes the evidence into identity, audience, offer, positioning, messaging, SEO and competition topics.' },
-            { icon: FileCheck2, title: '3 · Brand review', description: 'Approve, edit or reject the suggestions. Nothing becomes an authoritative brand fact without a human decision.' },
-            { icon: Target, title: '4 · Strategy', description: 'Once the Brand Brain gate is satisfied, generate a marketing plan grounded in the approved intelligence.' },
-            { icon: Sparkles, title: '5 · Content Studio', description: 'Turn the strategy into actual content assets with versioning and the existing content workflow.' },
-            { icon: Boxes, title: '6 · Campaigns', description: 'Group content around an objective, audience, channels, dates and budget.' },
-            { icon: CheckCircle2, title: '7 · Approval & Publishing', description: 'Approve the exact content version. Publishing remains honest: unconnected channels stay READY TO PUBLISH.' },
-          ].map((step, i) => {
-            const Icon = step.icon;
-            return (
-              <Reveal delay={i * 90} key={step.title}>
-                <BorderGlow
-                  className="landing-card-glow landing-how-glow"
-                  borderRadius={16}
-                  edgeSensitivity={16}
-                  glowColor="280 85 85"
-                  backgroundColor="#fffdf8"
-                  glowRadius={48}
-                  glowIntensity={0.65}
-                  coneSpread={28}
-                  animated={false}
-                  colors={['#9FC7B4', '#4F8B72', '#C6DCCF']}
-                  fillOpacity={0.28}
-                >
-                  <div className="landing-how-card">
-                    <span className="landing-how-icon"><Icon size={18} /></span>
-                    <h3>{step.title}</h3>
-                    <p>{step.description}</p>
-                  </div>
-                </BorderGlow>
-              </Reveal>
-            );
-          })}
-        </div>
-      </section>
+        <section className={styles.modularSection} id="workflow">
+          <Reveal><span className={styles.eyebrow}>Modular workflows</span><h2>Build the workflow your team needs.</h2><p className={styles.sectionIntro}>Each stage has a clear responsibility, while the same approved brand context keeps the whole system connected.</p></Reveal>
+          <Reveal delay={80}><WorkflowStack eyebrow="01 · Research → Brand Brain" title="Turn a public website into structured brand intelligence." body="UpTrendifyOS discovers the public footprint, extracts useful evidence and turns it into reviewable suggestions instead of hiding uncertainty behind a polished answer." items={['Source-aware research', 'Structured Brand Brain suggestions', 'Human approval before strategy']} icon={Search} /></Reveal>
+          <Reveal delay={80}><WorkflowStack reverse eyebrow="02 · Strategy → Campaigns" title="Turn approved context into an actionable marketing plan." body="Once the Brand Brain gate is satisfied, strategy can use the approved context to define objectives, audiences, positioning, messaging and campaign direction." items={['Approved-context strategy', 'Campaign planning linked to strategy', 'Clear next action at every stage']} icon={Target} /></Reveal>
+          <Reveal delay={80}><WorkflowStack eyebrow="03 · Content → Publishing" title="Create, review and publish without crossing the approval boundary." body="Content versions remain separate from final approval. The Approval Queue owns the decision, and publishing reports a real provider outcome rather than pretending a disconnected channel worked." items={['Versioned content', 'Central Approval Queue', 'SUCCESS / NOT_CONNECTED / FAILED outcomes']} icon={Zap} /></Reveal>
+        </section>
 
+        <section className={styles.testimonialSection}>
+          <Reveal><span className={styles.eyebrow}>The UpTrendifyOS principle</span><div className={styles.testimonial}><div className={styles.quoteMark}>“</div><p>Research should become context. Context should become decisions. Decisions should become work.</p><span>UpTrendifyOS · Research → Review → Strategy → Execution</span></div></Reveal>
+          <div className={styles.statsGrid}><Reveal delay={50}><div className={styles.stat}><strong>7</strong><span>connected workflow stages</span></div></Reveal><Reveal delay={100}><div className={styles.stat}><strong>1</strong><span>shared brand context</span></div></Reveal><Reveal delay={150}><div className={styles.stat}><strong>6</strong><span>role-aware workspace roles</span></div></Reveal><Reveal delay={200}><div className={styles.stat}><strong>0</strong><span>fake publishing success states</span></div></Reveal></div>
+        </section>
 
-      <section className="landing-section landing-alt" id="control-room">
-        <Reveal>
-          <div className="landing-section-head">
-            <div className="landing-eyebrow"><Layers size={13} /> The control room</div>
-            <h2>One system, four decisions, one continuous context.</h2>
-            <p>UpTrendifyOS is not a single AI prompt. It is a sequence of product stages, each with a clear responsibility and a visible handoff.</p>
-          </div>
-        </Reveal>
-        <div className="landing-features">
-          {CONTROL_MODULES.map((item, i) => {
-            const Icon = item.icon;
-            return (
-              <Reveal delay={i * 70} key={item.title}>
-                <div className="landing-feature-card hover-lift">
-                  <span className="landing-feature-icon"><Icon size={19} /></span>
-                  <div className="eyebrow" style={{ marginBottom: 12 }}>{item.eyebrow}</div>
-                  <h3>{item.title}</h3>
-                  <p>{item.description}</p>
-                </div>
-              </Reveal>
-            );
-          })}
-        </div>
-      </section>
+        <section className={styles.ctaSection}>
+          <div className={styles.ctaGlow} />
+          <Reveal><span className={styles.eyebrow}>Ready to turn AI adoption into a usable workflow?</span><h2>Put your brand context to work.</h2><p>Start with research. Keep the evidence. Approve the truth. Then move into strategy, campaigns, content and publishing.</p><div className={styles.heroActions}><button className={styles.primaryButton} type="button" onClick={handleStart} disabled={loading}>{loading ? 'Working…' : <>Build your workspace <ArrowRight size={15} /></>}</button><a className={styles.outlineButton} href="/about">Explore UpTrendifyOS</a></div></Reveal>
+        </section>
+      </main>
 
-      <section className="landing-section" id="evidence-chain">
-        <Reveal>
-          <div className="landing-section-head">
-            <div className="landing-eyebrow"><ShieldCheck size={13} /> Evidence chain</div>
-            <h2>Follow the work from discovery to action.</h2>
-            <p>Click through the stages to see how context is preserved instead of disappearing between tools.</p>
-          </div>
-        </Reveal>
-        <Reveal delay={90}>
-          <EvidenceExplorer />
-        </Reveal>
-      </section>
-
-      <section className="landing-section landing-alt" id="teams">
-        <Reveal>
-          <div className="landing-section-head">
-            <div className="landing-eyebrow"><Users size={13} /> Built for real teams</div>
-            <h2>Different workflows. Same operating system.</h2>
-            <p>Keep the collaboration model flexible without changing the underlying research → review → execution flow.</p>
-          </div>
-        </Reveal>
-        <div className="landing-features">
-          {AUDIENCE_CARDS.map((item, i) => {
-            const Icon = item.icon;
-            return (
-              <Reveal delay={i * 80} key={item.title}>
-                <div className="landing-feature-card hover-lift">
-                  <span className="landing-feature-icon"><Icon size={19} /></span>
-                  <h3>{item.title}</h3>
-                  <p>{item.description}</p>
-                </div>
-              </Reveal>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="landing-section" id="faq">
-        <Reveal>
-          <div className="landing-section-head">
-            <div className="landing-eyebrow"><CircleHelp size={13} /> FAQ</div>
-            <h2>Questions worth answering before you start.</h2>
-          </div>
-        </Reveal>
-        <div style={{ display: 'grid', gap: 10, maxWidth: 860, margin: '0 auto' }}>
-          {FAQ.map((item) => (
-            <details key={item.question} style={{ border: '1px solid var(--line)', borderRadius: 14, padding: '14px 16px', background: 'var(--panel)' }}>
-              <summary style={{ cursor: 'pointer', fontWeight: 700 }}>{item.question}</summary>
-              <p className="subtitle" style={{ margin: '10px 0 2px' }}>{item.answer}</p>
-            </details>
-          ))}
-        </div>
-      </section>
-
-      <section className="landing-section" id="workflow">
-        <Reveal>
-          <div className="landing-section-head">
-            <div className="landing-eyebrow"><Globe2 size={13} /> Try it live</div>
-            <h2>Give it a URL. Watch it work.</h2>
-            <p>Understand your brand first. Then move forward with evidence, strategy and clear next actions.</p>
-          </div>
-        </Reveal>
-        <Reveal delay={120}>
-          <div className="landing-cta-wrap">
-            <button type="button" className="landing-cta" onClick={handleStart} disabled={loading} style={{ fontSize: 15, padding: '15px 26px', cursor: 'pointer' }}>
-              {loading ? 'Working…' : <>Create your workspace <ArrowRight size={15} /></>}
-            </button>
-            <a className="landing-ghost" href="/login">I already have an account</a>
-          </div>
-        </Reveal>
-      </section>
-
-      <footer className="landing-footer">
-        <div className="landing-logo">
-          <span className="logo" style={{ width: 18, height: 18 }} /> UpTrendifyOS
-        </div>
-        <div className="landing-footer-links">
-          <a href="#platform">Platform</a>
-          <a href="#how-it-works">How it works</a>
-          <a href="/about">About</a>
-          <a href="/contact">Contact</a>
-          <a href="/feedback">Feedback</a>
-          <a href="/report-issue">Report issue</a>
-          <a href="/terms">Terms</a>
-          <a href="/privacy">Privacy</a>
-          <a href="/login">Sign in</a>
-        </div>
-        <div className="landing-footer-note">© {new Date().getFullYear()} UpTrendifyOS · Research → Review → Strategy</div>
+      <footer className={styles.footer}>
+        <div className={styles.footerBrand}><a href="/" className={styles.brand}><span className={styles.brandMark}><span /></span>UpTrendifyOS</a><p>AI-powered marketing operations from research to publishing.</p></div>
+        <div className={styles.footerColumns}><div><strong>Product</strong><a href="#platform">Platform</a><a href="#workflow">Workflow</a><a href="#teams">For teams</a></div><div><strong>Company</strong><a href="/about">About</a><a href="/contact">Contact</a><a href="/feedback">Feedback</a><a href="/report-issue">Report issue</a></div><div><strong>Legal</strong><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/login">Log in</a></div></div>
+        <div className={styles.footerBottom}>© {new Date().getFullYear()} UpTrendifyOS · Research → Review → Strategy → Execution</div>
       </footer>
     </div>
   );
