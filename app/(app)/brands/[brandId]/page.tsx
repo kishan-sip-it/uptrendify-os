@@ -1,10 +1,9 @@
 import { redirect } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { CAN_REVIEW_SUGGESTIONS, CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
+import { CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { BrandOverview } from '@/components/brand/brand-overview';
 import { BrandBrainReview } from '@/components/brand/brand-brain-review';
-import { BrandBrainAiDecision } from '@/components/brand/brand-brain-ai-decision';
 import { BrandStrategy } from '@/components/brand/brand-strategy';
 import { BrandEditor } from '@/components/brand/brand-editor';
 import { BrandWorkspaceNav } from '@/components/brand/brand-workspace-nav';
@@ -32,7 +31,16 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
 
   if (!brand) redirect('/brands');
 
-  const canManageBrain = CAN_REVIEW_SUGGESTIONS.includes(auth.context.role);
+  const { data: approvedSuggestions } = await supabase
+    .from('brand_suggestions')
+    .select('status,field')
+    .eq('brand_id', brandId)
+    .eq('organization_id', auth.context.organizationId)
+    .in('status', ['APPROVED', 'EDITED']);
+
+  const strategyGateApprovedCount = approvedSuggestions?.length ?? 0;
+  const strategyGateBrandNameApproved = (approvedSuggestions ?? []).some((suggestion) => suggestion.field === 'brand_name');
+  const showFourApprovalStrategyGate = strategyGateApprovedCount >= 4 && !strategyGateBrandNameApproved;
 
   return (
     <main className="main">
@@ -53,7 +61,27 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
 
       <BrandWorkspaceNav brandId={brandId} current={view} />
       {view === 'overview' ? <BrandOverview brandId={brandId} brandName={brand.name} /> : null}
-      {view === 'brain' ? <><BrandBrainAiDecision brandId={brandId} canManage={canManageBrain} /><BrandBrainReview brandId={brandId} brandName={brand.name} /></> : null}
+      {view === 'brain' ? (
+        <>
+          <BrandBrainReview brandId={brandId} brandName={brand.name} />
+          {showFourApprovalStrategyGate ? (
+            <div className="card" style={{ marginTop: 16, borderColor: 'color-mix(in srgb, var(--accent) 45%, var(--line))' }}>
+              <div className="section-title" style={{ flexWrap: 'wrap', gap: 12 }}>
+                <div>
+                  <div className="eyebrow">Brand Brain approved</div>
+                  <h3 style={{ margin: '4px 0 6px' }}>Four approved findings are enough to continue.</h3>
+                  <p className="subtitle" style={{ margin: 0 }}>
+                    {strategyGateApprovedCount} approved or edited findings are ready. Continue directly to the Strategy workspace.
+                  </p>
+                </div>
+                <a className="badge auth-submit" href="#strategy" style={{ textDecoration: 'none' }}>
+                  Continue to Strategy →
+                </a>
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : null}
       {view === 'strategy' ? <BrandStrategy brandId={brandId} brandName={brand.name} /> : null}
     </main>
   );
