@@ -110,6 +110,29 @@ export function GuidedTour({
         width: 'min(410px, calc(100vw - 32px))',
       };
 
+  const backdropStyle: React.CSSProperties = {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 2000,
+    background: 'rgba(0, 0, 0, 0.70)',
+    pointerEvents: 'none',
+  };
+
+  const highlightStyle: React.CSSProperties | null = rect
+    ? {
+        position: 'fixed',
+        zIndex: 2001,
+        top: rect.top - 8,
+        left: rect.left - 8,
+        width: rect.width + 16,
+        height: rect.height + 16,
+        borderRadius: 12,
+        border: '1px solid color-mix(in srgb, var(--accent) 70%, white)',
+        boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.70), 0 0 28px color-mix(in srgb, var(--accent) 42%, transparent)',
+        pointerEvents: 'none',
+      }
+    : null;
+
   async function persist(status: 'SKIPPED' | 'COMPLETED') {
     setOpen(false);
     await fetch('/api/tours', {
@@ -129,25 +152,8 @@ export function GuidedTour({
 
   return (
     <>
-      <div className="tour-backdrop" aria-hidden="true" />
-      {rect ? (
-        <>
-          <div
-            className="tour-highlight"
-            style={{ top: rect.top - 7, left: rect.left - 7, width: rect.width + 14, height: rect.height + 14 }}
-            aria-hidden="true"
-          />
-          <div
-            className={'tour-pointer ' + placement}
-            style={{
-              left: Math.min(window.innerWidth - 28, Math.max(28, rect.left + rect.width / 2)),
-              top: placement === 'below' ? rect.bottom + 9 : rect.top - 9,
-            }}
-            aria-hidden="true"
-          />
-        </>
-      ) : null}
-
+      <div className="tour-backdrop" style={backdropStyle} aria-hidden="true" />
+      {highlightStyle ? <div className="tour-highlight" style={highlightStyle} aria-hidden="true" /> : null}
       <section
         className="tour-card"
         style={cardStyle}
