@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
+import { CAN_REVIEW_SUGGESTIONS, CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { BrandOverview } from '@/components/brand/brand-overview';
 import { BrandBrainReview } from '@/components/brand/brand-brain-review';
@@ -32,7 +32,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
 
   if (!brand) redirect('/brands');
 
-  const canManageBrain = Boolean(auth.context.roles?.some((role: string) => ['OWNER', 'ADMIN', 'MANAGER'].includes(role)));
+  const canManageBrain = CAN_REVIEW_SUGGESTIONS.includes(auth.context.role);
 
   return (
     <main className="main">
