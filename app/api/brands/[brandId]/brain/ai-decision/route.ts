@@ -15,12 +15,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ br
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
 
     const supabase = await createSupabaseServerClient();
-    const { data: brand } = await supabase
-      .from('brands')
-      .select('id')
-      .eq('id', brandId)
-      .eq('organization_id', auth.context.organizationId)
-      .maybeSingle();
+    const { data: brand } = await supabase.from('brands').select('id').eq('id', brandId).eq('organization_id', auth.context.organizationId).maybeSingle();
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
 
     const { data: rows, error } = await supabase
@@ -29,8 +24,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ br
       .eq('brand_id', brandId)
       .eq('organization_id', auth.context.organizationId)
       .eq('status', 'PENDING')
+      .is('ai_decision', null)
       .order('field', { ascending: true });
     if (error) throw error;
+
+    if ((rows ?? []).length === 0) {
+      return NextResponse.json({ ok: true, decisions: [], provider: 'none', model: 'none', generatedAt: new Date().toISOString(), message: 'All pending suggestions already have an AI recommendation or are intentionally held for human review.' }, { headers: { 'Cache-Control': 'no-store' } });
+    }
 
     const result = await decideBrandBrainSuggestions((rows ?? []).map((row: any) => ({
       id: row.id,
@@ -47,19 +47,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ br
 
     const now = new Date().toISOString();
     for (const decision of result.decisions) {
-      const { error: updateError } = await supabase
-        .from('brand_suggestions')
-        .update({
-          ai_decision: decision.decision,
-          ai_confidence: decision.confidence,
-          ai_reason: decision.reason,
-          ai_decided_at: now,
-          updated_at: now,
-        })
-        .eq('id', decision.suggestionId)
-        .eq('brand_id', brandId)
-        .eq('organization_id', auth.context.organizationId)
-        .eq('status', 'PENDING');
+      const { error: updateError } = await supabase.from('brand_suggestions').update({
+        ai_decision: decision.decision,
+        ai_confidence: decision.confidence,
+        ai_reason: decision.reason,
+        ai_decided_at: now,
+        updated_at: now,
+      }).eq('id', decision.suggestionId).eq('brand_id', brandId).eq('organization_id', auth.context.organizationId).eq('status', 'PENDING').is('ai_decision', null);
       if (updateError) throw updateError;
     }
 
