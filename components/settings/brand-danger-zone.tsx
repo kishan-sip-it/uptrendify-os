@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { AlertTriangle, RefreshCcw, Trash2 } from 'lucide-react';
 
 type Brand = { id: string; name: string; status: 'ACTIVE' | 'ARCHIVED' };
 type Action = 'reset' | 'delete';
 
-const dangerActionStyle: React.CSSProperties = {
+const dangerActionStyle: CSSProperties = {
   border: '1px solid color-mix(in srgb, var(--danger, #ef4444) 55%, var(--line))',
   background: 'color-mix(in srgb, var(--danger, #ef4444) 7%, var(--surface))',
   color: 'var(--danger, #ef4444)',
