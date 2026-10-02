@@ -32,26 +32,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
     if (ids.length === 0) return NextResponse.json({ ok: true, approved: 0, rejected: 0, total: 0 });
 
-    const { data: pending, error: pendingError } = await supabase
+    const { data: rows, error: pendingError } = await supabase
       .from('brand_suggestions')
-      .select('id')
+      .select('id,ai_decision')
       .eq('brand_id', brandId)
       .eq('organization_id', auth.context.organizationId)
       .eq('status', 'PENDING')
       .in('id', ids);
     if (pendingError) throw pendingError;
 
-    const pendingIds = new Set((pending ?? []).map((row) => row.id));
+    const pendingById = new Map((rows ?? []).map((row) => [row.id, row.ai_decision]));
     let approved = 0;
     let rejected = 0;
 
     for (const suggestionId of approveIds) {
-      if (!pendingIds.has(suggestionId)) continue;
+      if (!pendingById.has(suggestionId) || pendingById.get(suggestionId) !== 'APPROVE') continue;
       await approveSuggestion(supabase, { organizationId: auth.context.organizationId, brandId, suggestionId, userId: auth.context.userId });
       approved += 1;
     }
     for (const suggestionId of rejectIds) {
-      if (!pendingIds.has(suggestionId)) continue;
+      if (!pendingById.has(suggestionId) || pendingById.get(suggestionId) !== 'REJECT') continue;
       await rejectSuggestion(supabase, { organizationId: auth.context.organizationId, brandId, suggestionId, userId: auth.context.userId });
       rejected += 1;
     }

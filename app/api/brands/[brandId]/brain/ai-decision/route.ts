@@ -45,7 +45,25 @@ export async function POST(_request: Request, { params }: { params: Promise<{ br
       confidence: row.confidence,
     })));
 
-    return NextResponse.json({ ok: true, ...result, generatedAt: new Date().toISOString() }, { headers: { 'Cache-Control': 'no-store' } });
+    const now = new Date().toISOString();
+    for (const decision of result.decisions) {
+      const { error: updateError } = await supabase
+        .from('brand_suggestions')
+        .update({
+          ai_decision: decision.decision,
+          ai_confidence: decision.confidence,
+          ai_reason: decision.reason,
+          ai_decided_at: now,
+          updated_at: now,
+        })
+        .eq('id', decision.suggestionId)
+        .eq('brand_id', brandId)
+        .eq('organization_id', auth.context.organizationId)
+        .eq('status', 'PENDING');
+      if (updateError) throw updateError;
+    }
+
+    return NextResponse.json({ ok: true, ...result, generatedAt: now }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid brand id' }, { status: 400 });
     obs.error('Brand Brain AI decision failed', { error: error instanceof Error ? error.message : String(error) });
