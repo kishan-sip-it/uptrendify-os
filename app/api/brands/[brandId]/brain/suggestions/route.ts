@@ -6,10 +6,17 @@ import { approveSuggestion, rejectSuggestion } from '@/lib/brain/review';
 import { obs } from '@/lib/obs/logger';
 
 const paramsSchema = z.object({ brandId: z.string().uuid() });
-const batchSchema = z.object({
-  action: z.enum(['approve_all', 'dismiss_all']),
-  fields: z.array(z.string()).optional(),
-});
+const batchSchema = z.union([
+  z.object({
+    action: z.enum(['approve_all', 'dismiss_all']),
+    fields: z.array(z.string()).optional(),
+  }),
+  z.object({
+    action: z.literal('ai_confirm'),
+    approveIds: z.array(z.string().uuid()).default([]),
+    rejectIds: z.array(z.string().uuid()).default([]),
+  }),
+]);
 
 export async function GET(_request: Request, { params }: { params: Promise<{ brandId: string }> }) {
   try {
@@ -58,6 +65,58 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       .eq('organization_id', auth.context.organizationId)
       .maybeSingle();
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+
+    if (parsed.action === 'ai_confirm') {
+      const approveIds = [...new Set(parsed.approveIds)];
+      const rejectIds = [...new Set(parsed.rejectIds)];
+      const ids = [...new Set([...approveIds, ...rejectIds])];
+      if (ids.length === 0) return NextResponse.json({ ok: true, approved: 0, rejected: 0, total: 0 });
+
+      const { data: pending, error: pendingError } = await supabase
+        .from('brand_suggestions')
+        .select('id')
+        .eq('brand_id', brandId)
+        .eq('organization_id', auth.context.organizationId)
+        .eq('status', 'PENDING')
+        .in('id', ids);
+      if (pendingError) throw pendingError;
+
+      const pendingIds = new Set((pending ?? []).map((row) => row.id));
+      let approved = 0;
+      let rejected = 0;
+
+      for (const suggestionId of approveIds) {
+        if (!pendingIds.has(suggestionId)) continue;
+        try {
+          await approveSuggestion(supabase, {
+            organizationId: auth.context.organizationId,
+            brandId,
+            suggestionId,
+            userId: auth.context.userId,
+          });
+          approved += 1;
+        } catch (actionError) {
+          obs.warn('AI batch approval failed', { suggestionId, error: actionError instanceof Error ? actionError.message : String(actionError) });
+        }
+      }
+
+      for (const suggestionId of rejectIds) {
+        if (!pendingIds.has(suggestionId)) continue;
+        try {
+          await rejectSuggestion(supabase, {
+            organizationId: auth.context.organizationId,
+            brandId,
+            suggestionId,
+            userId: auth.context.userId,
+          });
+          rejected += 1;
+        } catch (actionError) {
+          obs.warn('AI batch rejection failed', { suggestionId, error: actionError instanceof Error ? actionError.message : String(actionError) });
+        }
+      }
+
+      return NextResponse.json({ ok: true, approved, rejected, total: approved + rejected });
+    }
 
     let query = supabase
       .from('brand_suggestions')
