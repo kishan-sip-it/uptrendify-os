@@ -18,7 +18,6 @@ type Suggestion = {
 };
 
 type Decision = { suggestionId: string; decision: 'APPROVE' | 'REJECT' | 'REVIEW'; confidence: number; reason: string };
-
 type BrainPayload = { suggestions: Suggestion[]; suggestionCounts: { pending: number; total: number } };
 
 function valueText(value: Suggestion['proposed_value']) {
@@ -76,9 +75,7 @@ export function BrandBrainAiDecision({ brandId, canManage }: { brandId: string; 
   const editSuggestion = async (id: string, value: string) => {
     setBusy(true); setError(null);
     try {
-      const response = await fetch(`/api/brands/${brandId}/brain/suggestions/${id}`, {
-        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'edit', value }),
-      });
+      const response = await fetch(`/api/brands/${brandId}/brain/suggestions/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'edit', value }) });
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || 'Could not edit this suggestion.');
       setDecisions((current) => current.map((item) => item.suggestionId === id ? { ...item, decision: 'REVIEW' } : item));
@@ -106,14 +103,13 @@ export function BrandBrainAiDecision({ brandId, canManage }: { brandId: string; 
     if (approveIds.length === 0 && rejectIds.length === 0) { setOpen(false); return; }
     setBusy(true); setError(null);
     try {
-      const response = await fetch(`/api/brands/${brandId}/brain/ai-decision/confirm`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ approveIds, rejectIds }),
-      });
+      const response = await fetch(`/api/brands/${brandId}/brain/ai-decision/confirm`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ approveIds, rejectIds }) });
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || 'Could not confirm the AI batch.');
-      await refresh();
       setOpen(false);
       setDecisions([]);
+      await refresh();
+      window.location.reload();
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not confirm the AI batch.'); }
     finally { setBusy(false); }
   };
