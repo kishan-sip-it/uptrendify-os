@@ -1,0 +1,21 @@
+.brain-topic-panel .grid > .suggestion-card {
+  position: relative;
+  border-color: color-mix(in srgb, var(--accent) 14%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--line) 72%, transparent), 0 10px 28px color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.brain-topic-panel .grid > .suggestion-card + .suggestion-card::before {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: -7px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 28%, var(--line)), transparent);
+  pointer-events: none;
+}
+
+.brain-topic-panel .suggestion-card-head {
+  padding-bottom: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+}
