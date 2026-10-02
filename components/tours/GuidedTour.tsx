@@ -110,28 +110,21 @@ export function GuidedTour({
         width: 'min(410px, calc(100vw - 32px))',
       };
 
-  const backdropStyle: React.CSSProperties = {
+  const spotlight = rect
+    ? {
+        top: Math.max(0, rect.top - 8),
+        left: Math.max(0, rect.left - 8),
+        right: Math.min(window.innerWidth, rect.right + 8),
+        bottom: Math.min(window.innerHeight, rect.bottom + 8),
+      }
+    : null;
+
+  const dimStyle: React.CSSProperties = {
     position: 'fixed',
-    inset: 0,
     zIndex: 2000,
     background: 'rgba(0, 0, 0, 0.70)',
     pointerEvents: 'none',
   };
-
-  const highlightStyle: React.CSSProperties | null = rect
-    ? {
-        position: 'fixed',
-        zIndex: 2001,
-        top: rect.top - 8,
-        left: rect.left - 8,
-        width: rect.width + 16,
-        height: rect.height + 16,
-        borderRadius: 12,
-        border: '1px solid color-mix(in srgb, var(--accent) 70%, white)',
-        boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.70), 0 0 28px color-mix(in srgb, var(--accent) 42%, transparent)',
-        pointerEvents: 'none',
-      }
-    : null;
 
   async function persist(status: 'SKIPPED' | 'COMPLETED') {
     setOpen(false);
@@ -152,8 +145,32 @@ export function GuidedTour({
 
   return (
     <>
-      <div className="tour-backdrop" style={backdropStyle} aria-hidden="true" />
-      {highlightStyle ? <div className="tour-highlight" style={highlightStyle} aria-hidden="true" /> : null}
+      {spotlight ? (
+        <>
+          <div className="tour-backdrop" style={{ ...dimStyle, top: 0, left: 0, right: 0, height: spotlight.top }} aria-hidden="true" />
+          <div className="tour-backdrop" style={{ ...dimStyle, top: spotlight.bottom, left: 0, right: 0, bottom: 0 }} aria-hidden="true" />
+          <div className="tour-backdrop" style={{ ...dimStyle, top: spotlight.top, left: 0, width: spotlight.left, height: spotlight.bottom - spotlight.top }} aria-hidden="true" />
+          <div className="tour-backdrop" style={{ ...dimStyle, top: spotlight.top, left: spotlight.right, right: 0, height: spotlight.bottom - spotlight.top }} aria-hidden="true" />
+          <div
+            className="tour-highlight"
+            style={{
+              position: 'fixed',
+              zIndex: 2001,
+              top: spotlight.top,
+              left: spotlight.left,
+              width: spotlight.right - spotlight.left,
+              height: spotlight.bottom - spotlight.top,
+              borderRadius: 12,
+              border: '1px solid color-mix(in srgb, var(--accent) 70%, white)',
+              boxShadow: '0 0 28px color-mix(in srgb, var(--accent) 42%, transparent)',
+              pointerEvents: 'none',
+            }}
+            aria-hidden="true"
+          />
+        </>
+      ) : (
+        <div className="tour-backdrop" style={{ ...dimStyle, inset: 0 }} aria-hidden="true" />
+      )}
       <section
         className="tour-card"
         style={cardStyle}
