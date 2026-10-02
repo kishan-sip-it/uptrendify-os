@@ -4,6 +4,7 @@ import { CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { BrandOverview } from '@/components/brand/brand-overview';
 import { BrandBrainReview } from '@/components/brand/brand-brain-review';
+import { BrandBrainAiDecision } from '@/components/brand/brand-brain-ai-decision';
 import { BrandStrategy } from '@/components/brand/brand-strategy';
 import { BrandEditor } from '@/components/brand/brand-editor';
 import { BrandWorkspaceNav } from '@/components/brand/brand-workspace-nav';
@@ -31,6 +32,8 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
 
   if (!brand) redirect('/brands');
 
+  const canManageBrain = Boolean(auth.context.roles?.some((role: string) => ['OWNER', 'ADMIN', 'MANAGER'].includes(role)));
+
   return (
     <main className="main">
       <BrandHashRouteBridge />
@@ -50,7 +53,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
 
       <BrandWorkspaceNav brandId={brandId} current={view} />
       {view === 'overview' ? <BrandOverview brandId={brandId} brandName={brand.name} /> : null}
-      {view === 'brain' ? <BrandBrainReview brandId={brandId} brandName={brand.name} /> : null}
+      {view === 'brain' ? <><BrandBrainAiDecision brandId={brandId} canManage={canManageBrain} /><BrandBrainReview brandId={brandId} brandName={brand.name} /></> : null}
       {view === 'strategy' ? <BrandStrategy brandId={brandId} brandName={brand.name} /> : null}
     </main>
   );
