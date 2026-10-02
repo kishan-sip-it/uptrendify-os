@@ -7,6 +7,7 @@ import { BrandBrainReview } from '@/components/brand/brand-brain-review';
 import { BrandBrainAiDecision } from '@/components/brand/brand-brain-ai-decision';
 import { BrandStrategy } from '@/components/brand/brand-strategy';
 import { BrandEditor } from '@/components/brand/brand-editor';
+import { BrandWorkspaceActions } from '@/components/brand/brand-workspace-actions';
 import { BrandWorkspaceNav } from '@/components/brand/brand-workspace-nav';
 import { BrandHashRouteBridge } from '@/components/brand/brand-hash-route-bridge';
 
@@ -52,7 +53,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
       </div>
 
       <BrandWorkspaceNav brandId={brandId} current={view} />
-      {view === 'overview' ? <BrandOverview brandId={brandId} brandName={brand.name} /> : null}
+      {view === 'overview' ? <><BrandOverview brandId={brandId} brandName={brand.name} /><BrandWorkspaceActions brandId={brandId} brandName={brand.name} /></> : null}
       {view === 'brain' ? <><BrandBrainAiDecision brandId={brandId} canManage={canManageBrain} /><BrandBrainReview brandId={brandId} brandName={brand.name} /></> : null}
       {view === 'strategy' ? <BrandStrategy brandId={brandId} brandName={brand.name} /> : null}
     </main>
