@@ -12,6 +12,7 @@ const actionSchema = z
     z.object({ action: z.literal('approve') }),
     z.object({ action: z.literal('reject') }),
     z.object({ action: z.literal('regenerate') }),
+    z.object({ action: z.literal('unapprove') }),
     z.object({
       action: z.literal('edit'),
       value: z.union([z.string().min(1).max(4000), z.array(z.string().min(1).max(600)).max(200)]),
@@ -47,12 +48,37 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
         return NextResponse.json({ ok: true, suggestion: updated });
       }
       case 'edit': {
-        const value = Array.isArray(body.value) ? body.value : body.value;
-        const updated = await editSuggestion(supabase, { ...base, suggestionId, userId: auth.context.userId, editedValue: value });
+        const updated = await editSuggestion(supabase, { ...base, suggestionId, userId: auth.context.userId, editedValue: body.value });
         return NextResponse.json({ ok: true, suggestion: updated });
       }
       case 'reject': {
         const updated = await rejectSuggestion(supabase, { ...base, suggestionId, userId: auth.context.userId });
+        return NextResponse.json({ ok: true, suggestion: updated });
+      }
+      case 'unapprove': {
+        const { data: current, error: currentError } = await supabase
+          .from('brand_suggestions')
+          .select('id,status')
+          .eq('id', suggestionId)
+          .eq('brand_id', brandId)
+          .eq('organization_id', auth.context.organizationId)
+          .maybeSingle();
+        if (currentError) throw currentError;
+        if (!current) return NextResponse.json({ error: 'Suggestion not found' }, { status: 404 });
+        if (current.status !== 'APPROVED' && current.status !== 'EDITED') {
+          return NextResponse.json({ error: 'Only approved or edited suggestions can be moved back to review.' }, { status: 409 });
+        }
+        const { data: updated, error: updateError } = await supabase
+          .from('brand_suggestions')
+          .update({ status: 'PENDING', reviewed_at: null, reviewed_by: null, updated_at: new Date().toISOString() })
+          .eq('id', suggestionId)
+          .eq('brand_id', brandId)
+          .eq('organization_id', auth.context.organizationId)
+          .eq('status', current.status)
+          .select('*')
+          .maybeSingle();
+        if (updateError) throw updateError;
+        if (!updated) return NextResponse.json({ error: 'Suggestion changed while you were reviewing it. Reload and try again.' }, { status: 409 });
         return NextResponse.json({ ok: true, suggestion: updated });
       }
       case 'regenerate': {
