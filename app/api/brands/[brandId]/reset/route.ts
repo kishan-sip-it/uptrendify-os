@@ -1,0 +1,37 @@
+import { NextResponse } from 'next/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { CAN_CREATE_BRANDS, requireOrgRole } from '@/lib/auth/roles';
+import { obs } from '@/lib/obs/logger';
+
+export async function POST(_request: Request, { params }: { params: Promise<{ brandId: string }> }) {
+  try {
+    const { brandId } = await params;
+    const auth = await requireOrgRole(CAN_CREATE_BRANDS);
+    if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
+
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase.rpc('reset_brand_workspace', { target_brand_id: brandId });
+
+    if (error) {
+      if (error.message.includes('BRAND_NOT_FOUND')) {
+        return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+      }
+      if (error.message.includes('BRAND_RESET_FORBIDDEN')) {
+        return NextResponse.json({ error: 'You do not have permission to reset this brand.' }, { status: 403 });
+      }
+      if (error.message.includes('function public.reset_brand_workspace') || error.message.includes('reset_brand_workspace')) {
+        return NextResponse.json({ error: 'Brand reset is not available yet. Apply the latest database migration.' }, { status: 503 });
+      }
+      throw error;
+    }
+
+    return NextResponse.json({
+      ok: true,
+      brand: data?.brand ?? null,
+      message: data?.message ?? 'Brand workspace reset. Brand identity and integration configuration were preserved.',
+    });
+  } catch (error) {
+    obs.error('Brand workspace reset failed', { error: error instanceof Error ? error.message : String(error) });
+    return NextResponse.json({ error: 'Could not reset brand workspace' }, { status: 500 });
+  }
+}
