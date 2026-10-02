@@ -96,7 +96,7 @@ export function BrandBrainAiDecision({ brandId, canManage }: { brandId: string; 
   }), [decisions]);
 
   const pendingCount = brain?.suggestionCounts.pending ?? 0;
-  const approvedCount = (brain?.suggestionCounts.approved ?? 0) + (brain?.suggestionCounts.edited ?? 0) ?? 0;
+  const approvedCount = (brain?.suggestionCounts.approved ?? 0) + (brain?.suggestionCounts.edited ?? 0);
   const rejectedCount = brain?.suggestionCounts.rejected ?? 0;
 
   const priorityDecisions = useMemo(() => {
@@ -306,6 +306,7 @@ export function BrandBrainAiDecision({ brandId, canManage }: { brandId: string; 
           {decisions.length ? <button type="button" className="badge" onClick={() => setOpen(true)} style={{ cursor: 'pointer' }}><Sparkles size={13} /> Open AI recommendations</button> : null}
         </div>
 
+        {rejectedCount > 0 ? <span className="subtitle" style={{ display: 'block', marginTop: 10, fontSize: 12 }}>{rejectedCount} suggestion{rejectedCount === 1 ? '' : 's'} already dismissed.</span> : null}
         {error ? <p className="subtitle" role="alert" style={{ color: 'var(--danger)', margin: '12px 0 0' }}>{error}</p> : null}
       </section>
 
