@@ -1,0 +1,56 @@
+/* Cool light surface palette only. Layout, component structure and workflow behavior remain unchanged. */
+:root {
+  --bg: #f7f9fc;
+  --panel: #ffffff;
+  --panel-2: #f8fafc;
+  --line: #e2e8f0;
+  --text: #0f172a;
+  --muted: #64748b;
+  --accent: #2563eb;
+  --accent-2: #60a5fa;
+  --focus: #3b82f6;
+  --surface-sidebar: #ffffff;
+  --surface-card: #ffffff;
+  --surface-card-2: #f8fafc;
+  --surface-muted: #f8fafc;
+  --surface-hover: #f1f5f9;
+  --surface-inset: #f8fafc;
+  --surface-input: #ffffff;
+  --surface-overlay: rgba(255,255,255,.94);
+  --surface-progress: #dbe3ef;
+  --surface-skeleton: #e8eef6;
+  --text-inverse: #ffffff;
+  --text-danger: #b91c1c;
+  --text-warning: #a16207;
+  --text-info: #1d4ed8;
+  --text-success: #15803d;
+  --text-neutral: #475569;
+}
+
+html[data-theme="light"] {
+  --bg: #f7f9fc;
+  --panel: #ffffff;
+  --panel-2: #f8fafc;
+  --line: #e2e8f0;
+  --text: #0f172a;
+  --muted: #64748b;
+  --accent: #2563eb;
+  --accent-2: #60a5fa;
+  --focus: #3b82f6;
+  --surface-sidebar: #ffffff;
+  --surface-card: #ffffff;
+  --surface-card-2: #f8fafc;
+  --surface-muted: #f8fafc;
+  --surface-hover: #f1f5f9;
+  --surface-inset: #f8fafc;
+  --surface-input: #ffffff;
+  --surface-overlay: rgba(255,255,255,.94);
+  --surface-progress: #dbe3ef;
+  --surface-skeleton: #e8eef6;
+  --text-inverse: #ffffff;
+  --text-danger: #b91c1c;
+  --text-warning: #a16207;
+  --text-info: #1d4ed8;
+  --text-success: #15803d;
+  --text-neutral: #475569;
+}
