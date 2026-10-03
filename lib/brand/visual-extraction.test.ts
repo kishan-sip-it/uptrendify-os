@@ -1,0 +1,149 @@
+import { describe, expect, it } from 'vitest';
+import {
+  extractBrandIdentity,
+  isNeutral,
+  normalizeHex,
+  parseCssColor,
+  readableTextOn,
+  relativeLuminance,
+  saturationOf,
+} from './visual-extraction';
+
+const PAGE = `<!doctype html>
+<html>
+<head>
+  <title>Broya Living</title>
+  <meta name="description" content="Better for you Bone Broth you can consume anytime, anywhere" />
+  <meta property="og:site_name" content="Broya Living" />
+  <meta name="theme-color" content="#B0352F" />
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <style>
+    :root { --brand: #B0352F; --ink: #221F20; --sand: #F0D6AB; --leaf: #ADC35D; }
+    body { color: #221F20; background: #ffffff; }
+    .btn { background: #B0352F; color: #ffffff; }
+    .btn:hover { background: #9c2b26; }
+    .muted { color: #6b7280; }
+    /* commented out legacy colour #00ff00 must not be counted */
+  </style>
+</head>
+<body>
+  <img src="/assets/wordmark.svg" alt="Broya Living logo" />
+  <a href="https://www.instagram.com/broya">Instagram</a>
+  <a href="https://www.linkedin.com/company/broya">LinkedIn</a>
+  <a href="https://broya.com/about">About</a>
+  <div style="color: #ADC35D">Accent</div>
+</body>
+</html>`;
+
+describe('parseCssColor', () => {
+  it('parses hex, short hex, rgb, rgba and hsl', () => {
+    expect(parseCssColor('#B0352F')).toBe('#b0352f');
+    expect(parseCssColor('#abc')).toBe('#aabbcc');
+    expect(parseCssColor('rgb(176, 53, 47)')).toBe('#b0352f');
+    expect(parseCssColor('rgba(176,53,47,0.5)')).toBe('#b0352f');
+    expect(parseCssColor('hsl(0, 66%, 44%)')).toBe('#ba2626');
+  });
+
+  it('rejects values that carry no usable colour', () => {
+    expect(parseCssColor('transparent')).toBeNull();
+    expect(parseCssColor('currentColor')).toBeNull();
+    expect(parseCssColor('inherit')).toBeNull();
+    expect(parseCssColor('not-a-colour')).toBeNull();
+    expect(parseCssColor(undefined)).toBeNull();
+  });
+});
+
+describe('normalizeHex', () => {
+  it('expands shorthand and lowercases', () => {
+    expect(normalizeHex('#FFF')).toBe('#ffffff');
+    expect(normalizeHex('B0352F')).toBe('#b0352f');
+    expect(normalizeHex('#12345')).toBeNull();
+  });
+});
+
+describe('colour classification', () => {
+  it('separates chromatic brand colours from neutrals', () => {
+    expect(isNeutral('#ffffff')).toBe(true);
+    expect(isNeutral('#000000')).toBe(true);
+    expect(isNeutral('#6b7280')).toBe(true);
+    expect(isNeutral('#b0352f')).toBe(false);
+    expect(isNeutral('#adc35d')).toBe(false);
+  });
+
+  it('measures saturation and luminance', () => {
+    expect(saturationOf('#ffffff')).toBe(0);
+    expect(relativeLuminance('#ffffff')).toBeCloseTo(1, 3);
+    expect(relativeLuminance('#000000')).toBeCloseTo(0, 3);
+  });
+
+  it('chooses readable text for a brand colour background', () => {
+    expect(readableTextOn('#f0d6ab')).toBe('#0f172a');
+    expect(readableTextOn('#221f20')).toBe('#ffffff');
+  });
+});
+
+describe('extractBrandIdentity', () => {
+  const identity = extractBrandIdentity(PAGE, 'https://broya.com/');
+
+  it('reads identity metadata', () => {
+    expect(identity.brandName).toBe('Broya Living');
+    expect(identity.description).toContain('Bone Broth');
+  });
+
+  it('detects the real palette and leads with the declared theme colour', () => {
+    expect(identity.primaryColor).toBe('#b0352f');
+    expect(identity.palette.map((c) => c.hex)).toContain('#f0d6ab');
+    expect(identity.palette.map((c) => c.hex)).toContain('#adc35d');
+    expect(identity.palette[0]?.role).toBe('primary');
+  });
+
+  it('ranks neutral chrome separately from brand colours', () => {
+    const roles = identity.palette.filter((c) => c.hex === '#221f20' || c.hex === '#6b7280');
+    for (const entry of roles) expect(entry.role).toBe('neutral');
+  });
+
+  it('ignores colours inside CSS comments', () => {
+    expect(identity.palette.map((c) => c.hex)).not.toContain('#00ff00');
+  });
+
+  it('detects fonts from the Google Fonts link', () => {
+    expect(identity.fonts.map((f) => f.family)).toContain('Rubik');
+    expect(identity.fonts[0]?.source).toBe('google-fonts');
+  });
+
+  it('detects a logo and a favicon', () => {
+    expect(identity.logoUrl).toBe('https://broya.com/assets/wordmark.svg');
+    expect(identity.faviconUrl).toBe('https://broya.com/apple-touch-icon.png');
+  });
+
+  it('detects third-party social profiles but not the brand own domain', () => {
+    const platforms = identity.socialProfiles.map((p) => p.platform).sort();
+    expect(platforms).toEqual(['Instagram', 'LinkedIn']);
+    expect(identity.socialProfiles.every((p) => !p.url.includes('broya.com/about'))).toBe(true);
+  });
+
+  it('records what was inspected for provenance', () => {
+    expect(identity.inspected.join(' ')).toContain('meta[name="theme-color"]');
+  });
+});
+
+describe('extractBrandIdentity with no usable evidence', () => {
+  const bare = extractBrandIdentity('<html><head></head><body><p>hi</p></body></html>', null);
+
+  it('does not fabricate colour, font or logo values', () => {
+    expect(bare.palette).toEqual([]);
+    expect(bare.primaryColor).toBeNull();
+    expect(bare.secondaryColors).toEqual([]);
+    expect(bare.accentColors).toEqual([]);
+    expect(bare.fonts).toEqual([]);
+    expect(bare.logoUrl).toBeNull();
+    expect(bare.faviconUrl).toBeNull();
+    expect(bare.brandName).toBeNull();
+    expect(bare.description).toBeNull();
+  });
+
+  it('reports a real warning instead of failing silently', () => {
+    expect(bare.warnings.length).toBeGreaterThan(0);
+  });
+});
