@@ -50,6 +50,22 @@ export function GuidedTour({
   }, [stageKey]);
 
   useEffect(() => {
+    const onGuideReset = (event: Event) => {
+      const requestedStage = (event as CustomEvent<{ stageKey?: string }>).detail?.stageKey;
+      if (requestedStage !== stageKey) return;
+      void fetch('/api/tours?stageKey=' + encodeURIComponent(stageKey), { method: 'DELETE' })
+        .catch(() => undefined)
+        .finally(() => {
+          setIndex(0);
+          setOpen(true);
+        });
+    };
+
+    window.addEventListener('uptrendify:reset-guide', onGuideReset);
+    return () => window.removeEventListener('uptrendify:reset-guide', onGuideReset);
+  }, [stageKey]);
+
+  useEffect(() => {
     let cancelled = false;
 
     fetch('/api/tours?stageKey=' + encodeURIComponent(stageKey), { cache: 'no-store' })
