@@ -21,8 +21,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
 
   const { brandId } = await params;
   const query = await searchParams;
-  const view: BrandView =
-    query.view === 'profile' || query.view === 'brain' || query.view === 'strategy' ? query.view : 'overview';
+  const view: BrandView = query.view === 'brain' || query.view === 'strategy' ? query.view : query.view === 'overview' ? 'overview' : 'profile';
 
   const supabase = await createSupabaseServerClient();
   const { data: brand } = await supabase
@@ -39,9 +38,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
       <BrandHashRouteBridge />
       <div className="topbar" style={{ marginBottom: 14, flexWrap: 'wrap' }}>
         <div>
-          <a href="/dashboard" className="metric-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-            <ArrowLeft size={15} /> Back to command center
-          </a>
+          <a href="/dashboard" className="metric-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><ArrowLeft size={15} /> Back to command center</a>
           <h1 style={{ fontSize: 'clamp(24px, 3vw, 34px)', marginTop: 8 }}>{brand.name}</h1>
           <p className="subtitle" style={{ marginBottom: 0 }}>
             {brand.website_url ? <a href={brand.website_url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{brand.website_url}</a> : null}
@@ -52,23 +49,17 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
       </div>
 
       <BrandWorkspaceNav brandId={brandId} current={view} />
-      {view === 'profile' ? (
-        <BrandProfileWorkspace
-          brandId={brandId}
-          websiteUrl={brand.website_url}
-          identity={readIdentity({
-            name: brand.name,
-            description: brand.description,
-            industry: brand.industry,
-            primary_color: brand.primary_color,
-            secondary_colors: brand.secondary_colors,
-            visual_identity: brand.visual_identity,
-            positioning: brand.positioning,
-            messaging: brand.messaging,
-            audience_details: brand.audience_details,
-          })}
-        />
-      ) : null}
+      {view === 'profile' ? <BrandProfileWorkspace brandId={brandId} websiteUrl={brand.website_url} identity={readIdentity({
+        name: brand.name,
+        description: brand.description,
+        industry: brand.industry,
+        primary_color: brand.primary_color,
+        secondary_colors: brand.secondary_colors,
+        visual_identity: brand.visual_identity,
+        positioning: brand.positioning,
+        messaging: brand.messaging,
+        audience_details: brand.audience_details,
+      })} /> : null}
       {view === 'overview' ? <BrandOverview brandId={brandId} brandName={brand.name} /> : null}
       {view === 'brain' ? <BrandBrainReview brandId={brandId} brandName={brand.name} /> : null}
       {view === 'strategy' ? <BrandStrategy brandId={brandId} brandName={brand.name} /> : null}
