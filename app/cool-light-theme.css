@@ -109,3 +109,116 @@ html[data-theme="light"] .landing-how-card {
 html[data-theme="light"] .landing-evidence-explorer {
   box-shadow: 0 24px 70px color-mix(in srgb, #64748b 8%, transparent) !important;
 }
+
+/* Final light-theme correction: override the legacy warm-light rules in globals.css without changing layout or dark/system tokens. */
+html[data-theme="light"] .sidebar,
+html[data-theme="light"] .card,
+html[data-theme="light"] .next-action-card,
+html[data-theme="light"] .campaign-card,
+html[data-theme="light"] .obj-card,
+html[data-theme="light"] .strategy-acc,
+html[data-theme="light"] .activity-item,
+html[data-theme="light"] .source-item,
+html[data-theme="light"] .content-item,
+html[data-theme="light"] .switch-panel-inner {
+  background: var(--surface-card) !important;
+  border-color: var(--line);
+  box-shadow: 0 12px 38px color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+html[data-theme="light"] .nav-item.active,
+html[data-theme="light"] .nav-item:hover,
+html[data-theme="light"] .brand-switcher-trigger,
+html[data-theme="light"] .org-switcher-trigger,
+html[data-theme="light"] .chip,
+html[data-theme="light"] .progress,
+html[data-theme="light"] .onboarding-step-number {
+  background: var(--surface-muted) !important;
+  border-color: var(--line);
+}
+
+html[data-theme="light"] input,
+html[data-theme="light"] textarea,
+html[data-theme="light"] select,
+html[data-theme="light"] .content-filter-input,
+html[data-theme="light"] .content-filter-select,
+html[data-theme="light"] .content-form input,
+html[data-theme="light"] .content-form select,
+html[data-theme="light"] .content-form textarea,
+html[data-theme="light"] .auth-card-form input,
+html[data-theme="light"] .auth-card-form select,
+html[data-theme="light"] .onboarding-grid input,
+html[data-theme="light"] .onboarding-grid select,
+html[data-theme="light"] .onboarding-grid textarea,
+html[data-theme="light"] .choice-grid input {
+  background: var(--surface-input) !important;
+  color: var(--text) !important;
+  border-color: var(--border-strong, var(--line)) !important;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder {
+  color: var(--text-subtle) !important;
+}
+
+html[data-theme="light"] .activity-item:hover,
+html[data-theme="light"] .source-item:hover {
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface-muted)) !important;
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+
+html[data-theme="light"] .landing-hero {
+  background:
+    radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--accent-2) 10%, transparent), transparent 42%),
+    linear-gradient(180deg, var(--surface-card-2), var(--bg));
+}
+
+html[data-theme="light"] .landing-alt,
+html[data-theme="light"] .landing-feature-card,
+html[data-theme="light"] .landing-how-card,
+html[data-theme="light"] .landing-metric,
+html[data-theme="light"] .landing-terminal,
+html[data-theme="light"] .landing-step,
+html[data-theme="light"] .landing-log,
+html[data-theme="light"] .landing-pipeline-glow .landing-pipeline-step,
+html[data-theme="light"] .landing-mobile {
+  background: var(--surface-card) !important;
+  border-color: var(--line);
+  color: var(--text);
+}
+
+html[data-theme="light"] .landing-terminal-bar {
+  background: var(--surface-muted) !important;
+  border-color: var(--line);
+}
+
+html[data-theme="light"] .landing .border-glow-card {
+  --card-bg: var(--surface-card) !important;
+}
+
+html[data-theme="light"] .landing-evidence-explorer {
+  background: var(--surface-card) !important;
+  box-shadow: 0 24px 70px color-mix(in srgb, var(--text) 8%, transparent) !important;
+}
+
+html[data-theme="light"] .auth-shell,
+html[data-theme="light"] .auth-showcase {
+  background:
+    radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 34%),
+    var(--surface-card);
+  color: var(--text);
+  border-color: var(--line);
+}
+
+html[data-theme="light"] .public-header,
+html[data-theme="light"] .public-story-card,
+html[data-theme="light"] .public-info-card,
+html[data-theme="light"] .public-form,
+html[data-theme="light"] .public-contact-panel,
+html[data-theme="light"] .public-legal-card,
+html[data-theme="light"] .public-about-cta,
+html[data-theme="light"] .public-accordion {
+  background: var(--surface-card) !important;
+  border-color: var(--line) !important;
+  color: var(--text);
+}
