@@ -65,10 +65,47 @@ html[data-theme="light"] {
   }
 }
 
-html[data-theme="light"] body,
-html[data-theme="system"] body {
+html[data-theme="light"] body {
   background:
     radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 30%),
     radial-gradient(circle at 88% 10%, color-mix(in srgb, var(--accent-2) 10%, transparent), transparent 28%),
     var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] body {
+    background:
+      radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 30%),
+      radial-gradient(circle at 88% 10%, color-mix(in srgb, var(--accent-2) 8%, transparent), transparent 28%),
+      var(--bg);
+  }
+}
+
+/* Existing landing components carry a few inline warm-light values. Keep their geometry and effects, but bind them to semantic cool surfaces. */
+html[data-theme="light"] .landing-card-glow,
+html[data-theme="light"] .landing-pipeline-glow,
+html[data-theme="light"] .landing-metric-glow,
+html[data-theme="light"] .landing-feature-glow,
+html[data-theme="light"] .landing-how-glow {
+  --card-bg: var(--surface-card) !important;
+}
+
+html[data-theme="light"] .landing-alt {
+  background: color-mix(in srgb, var(--surface-muted) 72%, transparent) !important;
+}
+
+html[data-theme="light"] .landing-log {
+  background: var(--surface-card) !important;
+  border-color: var(--line) !important;
+}
+
+html[data-theme="light"] .landing-metric,
+html[data-theme="light"] .landing-feature-card,
+html[data-theme="light"] .landing-how-card {
+  background: var(--surface-card) !important;
+  border-color: var(--line) !important;
+}
+
+html[data-theme="light"] .landing-evidence-explorer {
+  box-shadow: 0 24px 70px color-mix(in srgb, #64748b 8%, transparent) !important;
 }
