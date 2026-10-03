@@ -4,6 +4,7 @@ import './design-system.css';
 import './workspace-layout.css';
 import './public-pages.css';
 import './shared-theme.css';
+import './light-surface-theme.css';
 import './brand-brain-ux.css';
 import './authenticated-ui.css';
 import { SpeedInsights } from '@vercel/speed-insights/next';
