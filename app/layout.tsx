@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import './cool-light-theme.css';
 import './design-system.css';
 import './workspace-layout.css';
 import './public-pages.css';
