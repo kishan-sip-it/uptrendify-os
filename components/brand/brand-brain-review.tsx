@@ -441,6 +441,7 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
       if (response.status === 401) { window.location.href = '/login'; return; }
       const body = await response.json().catch(() => null);
       if (!response.ok && response.status !== 409) throw new Error(body?.error || 'Could not start the website import');
+      window.dispatchEvent(new CustomEvent('uptrendify:reset-guide', { detail: { stageKey: 'brand-brain' } }));
       await load();
     } catch (err) {
       setStartError(err instanceof Error ? err.message : 'Could not start the website import');
@@ -501,7 +502,7 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
   const suggestions = data?.suggestions ?? [];
   const counts = data?.suggestionCounts ?? { pending: 0, approved: 0, rejected: 0, edited: 0, notFound: 0, total: 0, needsReview: 0 };
   const hasStrategyGateApproval =
-    counts.approved + counts.edited >= 4 &&
+    counts.approved + counts.edited >= 5 &&
     suggestions.some((suggestion) => suggestion.field === 'brand_name' && (suggestion.status === 'APPROVED' || suggestion.status === 'EDITED'));
   const pendingRows = suggestions.filter((s) => s.status === 'PENDING');
 
@@ -708,23 +709,22 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
               })()}
             </>
           ) : <EmptyState title="No suggestions in this view" description="Change the review filter to inspect another part of the Brand Brain." />}
-        {hasStrategyGateApproval ? (
-          <div className="card" style={{ marginTop: 16, borderColor: 'color-mix(in srgb, var(--accent) 45%, var(--line))' }}>
-            <div className="section-title" style={{ flexWrap: 'wrap', gap: 12 }}>
-              <div>
-                <div className="eyebrow">Brand Brain approved</div>
-                <h3 style={{ margin: '4px 0 6px' }}>Your verified Brand Brain is ready for strategy.</h3>
-                <p className="subtitle" style={{ margin: 0 }}>
-                  {counts.approved + counts.edited} approved or edited findings are ready. Continue directly to the Strategy workspace.
-                </p>
+          {hasStrategyGateApproval ? (
+            <div className="card" style={{ marginTop: 16, borderColor: 'color-mix(in srgb, var(--accent) 45%, var(--line))' }}>
+              <div className="section-title" style={{ flexWrap: 'wrap', gap: 12 }}>
+                <div>
+                  <div className="eyebrow">Brand Brain approved</div>
+                  <h3 style={{ margin: '4px 0 6px' }}>Your verified Brand Brain is ready for strategy.</h3>
+                  <p className="subtitle" style={{ margin: 0 }}>
+                    {counts.approved + counts.edited} approved or edited findings are ready. Continue directly to the Strategy workspace.
+                  </p>
+                </div>
+                <a className="badge auth-submit" href="#strategy" style={{ textDecoration: 'none' }}>
+                  Continue to Strategy →
+                </a>
               </div>
-              <a className="badge auth-submit" href="#strategy" style={{ textDecoration: 'none' }}>
-                Continue to Strategy →
-              </a>
             </div>
-          </div>
-        ) : null}
-
+          ) : null}
         </>
       )}
     </div>
