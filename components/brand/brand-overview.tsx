@@ -425,6 +425,7 @@ export function BrandOverview({ brandId, brandName }: { brandId: string; brandNa
       }
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || 'Could not start research');
+      window.dispatchEvent(new CustomEvent('uptrendify:reset-guide', { detail: { stageKey: 'brand' } }));
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Could not start research');
