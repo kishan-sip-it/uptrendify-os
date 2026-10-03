@@ -40,14 +40,14 @@ export default function NewBrandPage() {
         <BrandIntake
           onCreated={(brandId) => {
             setCreatedBrandId(brandId);
-            setStatus({ kind: 'success', message: 'Brand created, identity imported, and research started. Opening the Brand Profile…' });
-            window.setTimeout(() => router.replace('/brands/' + brandId), 400);
+            setStatus({ kind: 'success', message: 'Brand created, complete Brand IQ imported, and research started. Opening the Brand Profile…' });
+            window.setTimeout(() => router.replace('/brands/' + brandId + '?view=profile'), 400);
           }}
         />
         {status.kind === 'success' ? (
           <div style={{ marginTop: 14 }}>
             <SuccessState message={status.message} />
-            {createdBrandId ? <a className="badge" href={'/brands/' + createdBrandId} style={{ marginTop: 10 }}><CheckCircle2 size={14} /> Open brand workspace</a> : null}
+            {createdBrandId ? <a className="badge" href={'/brands/' + createdBrandId + '?view=profile'} style={{ marginTop: 10 }}><CheckCircle2 size={14} /> Open brand profile</a> : null}
           </div>
         ) : null}
       </div>
