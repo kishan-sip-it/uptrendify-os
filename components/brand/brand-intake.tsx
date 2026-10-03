@@ -102,7 +102,7 @@ export function BrandIntake({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          name: resolvedName,
+          brandName: resolvedName,
           websiteUrl: resolvedUrl,
           description: identity.description ?? undefined,
         }),
