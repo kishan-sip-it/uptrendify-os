@@ -8,10 +8,12 @@ import { BrandStrategy } from '@/components/brand/brand-strategy';
 import { BrandEditor } from '@/components/brand/brand-editor';
 import { BrandWorkspaceNav } from '@/components/brand/brand-workspace-nav';
 import { BrandHashRouteBridge } from '@/components/brand/brand-hash-route-bridge';
+import { BrandProfileWorkspace } from '@/components/brand/brand-profile-workspace';
+import { readIdentity } from '@/lib/brand/identity-mapping';
 
 export const dynamic = 'force-dynamic';
 
-type BrandView = 'overview' | 'brain' | 'strategy';
+type BrandView = 'profile' | 'overview' | 'brain' | 'strategy';
 
 export default async function BrandPage({ params, searchParams }: { params: Promise<{ brandId: string }>; searchParams: Promise<{ view?: string }> }) {
   const auth = await requireOrgRole(CAN_VIEW_BRAND);
@@ -19,12 +21,13 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
 
   const { brandId } = await params;
   const query = await searchParams;
-  const view: BrandView = query.view === 'brain' || query.view === 'strategy' ? query.view : 'overview';
+  const view: BrandView =
+    query.view === 'profile' || query.view === 'brain' || query.view === 'strategy' ? query.view : 'overview';
 
   const supabase = await createSupabaseServerClient();
   const { data: brand } = await supabase
     .from('brands')
-    .select('id,name,website_url,industry,created_at')
+    .select('id,name,website_url,industry,created_at,description,primary_color,secondary_colors,visual_identity,positioning,messaging,audience_details')
     .eq('id', brandId)
     .eq('organization_id', auth.context.organizationId)
     .maybeSingle();
@@ -49,6 +52,23 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
       </div>
 
       <BrandWorkspaceNav brandId={brandId} current={view} />
+      {view === 'profile' ? (
+        <BrandProfileWorkspace
+          brandId={brandId}
+          websiteUrl={brand.website_url}
+          identity={readIdentity({
+            name: brand.name,
+            description: brand.description,
+            industry: brand.industry,
+            primary_color: brand.primary_color,
+            secondary_colors: brand.secondary_colors,
+            visual_identity: brand.visual_identity,
+            positioning: brand.positioning,
+            messaging: brand.messaging,
+            audience_details: brand.audience_details,
+          })}
+        />
+      ) : null}
       {view === 'overview' ? <BrandOverview brandId={brandId} brandName={brand.name} /> : null}
       {view === 'brain' ? <BrandBrainReview brandId={brandId} brandName={brand.name} /> : null}
       {view === 'strategy' ? <BrandStrategy brandId={brandId} brandName={brand.name} /> : null}

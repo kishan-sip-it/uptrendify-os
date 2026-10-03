@@ -568,15 +568,15 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
 
         {run ? <ImportStepper data={data!} live={live} /> : null}
 
-        {startError ? <div className="card" style={{ borderColor: 'rgba(239,68,68,.35)', marginTop: 12 }}><ErrorState message={startError} /></div> : null}
-        {error ? <div className="card" style={{ borderColor: 'rgba(239,68,68,.35)', marginTop: 12 }}><ErrorState message={error} /></div> : null}
+        {startError ? <div style={{ marginTop: 12 }}><ErrorState message={startError} /></div> : null}
+        {error ? <div style={{ marginTop: 12 }}><ErrorState message={error} /></div> : null}
       </div>
 
       {run && (run.status === 'FAILED' || run.status === 'PARTIAL') ? (
         <div
-          className="card"
+          className={run.status === 'FAILED' ? 'panel-status panel-status-danger' : 'panel-status panel-status-warning'}
           role="alert"
-          style={{ borderColor: run.status === 'FAILED' ? 'rgba(239,68,68,.42)' : 'rgba(234,179,8,.42)', marginBottom: 16 }}
+          style={{ marginBottom: 16 }}
         >
           <div className="eyebrow">{run.status === 'FAILED' ? 'Latest research stopped' : 'Latest research completed with gaps'}</div>
           <h3 style={{ margin: '5px 0 8px' }}>{run.errorMessage || 'The latest research run did not finish cleanly.'}</h3>
@@ -591,7 +591,7 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
       {loading ? (
         <LoadingState label="Loading brand intelligence…" />
       ) : live ? (
-        <div className="card" role="status" aria-live="polite">
+        <div className="panel-status panel-status-info" role="status" aria-live="polite">
           <div className="eyebrow">Live update</div>
           <h3 style={{ margin: '5px 0 8px' }}>Brand Brain is being updated</h3>
           <p className="subtitle" style={{ margin: 0 }}>
@@ -611,8 +611,8 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
         )
       ) : (
         <>
-          <div className="card">
-            <div className="review-tabs" role="tablist" aria-label="Suggestion filters">
+<div className="panel-subtle">
+              <div className="review-tabs" role="tablist" aria-label="Suggestion filters">
               {tabs.map((item) => (
                 <button
                   key={item.key}
@@ -710,7 +710,7 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
             </>
           ) : <EmptyState title="No suggestions in this view" description="Change the review filter to inspect another part of the Brand Brain." />}
           {hasStrategyGateApproval ? (
-            <div className="card" style={{ marginTop: 16, borderColor: 'color-mix(in srgb, var(--accent) 45%, var(--line))' }}>
+            <div className="panel-status panel-status-success" style={{ marginTop: 16 }}>
               <div className="section-title" style={{ flexWrap: 'wrap', gap: 12 }}>
                 <div>
                   <div className="eyebrow">Brand Brain approved</div>
