@@ -1,0 +1,535 @@
+/*
+ * Authenticated workspace visual layer.
+ * UI-only: no workflow, data, auth, RLS, RBAC or lifecycle behavior is changed.
+ * Loaded last so existing semantic theme tokens remain the source of truth.
+ */
+
+.shell {
+  --app-radius-sm: 10px;
+  --app-radius-md: 14px;
+  --app-radius-lg: 18px;
+  --app-shadow-soft: 0 10px 30px color-mix(in srgb, var(--text) 5%, transparent);
+  --app-shadow-card: 0 18px 50px color-mix(in srgb, var(--text) 7%, transparent);
+  --app-shadow-float: 0 24px 70px color-mix(in srgb, var(--text) 13%, transparent);
+}
+
+/* Workspace frame */
+.shell > .sidebar {
+  padding: 20px 14px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-sidebar) 96%, transparent), color-mix(in srgb, var(--surface-sidebar) 88%, transparent)),
+    radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 36%);
+  border-right-color: color-mix(in srgb, var(--line) 88%, var(--accent));
+  box-shadow: 12px 0 44px color-mix(in srgb, var(--text) 4%, transparent);
+  z-index: 50;
+}
+
+.shell > .main {
+  min-width: 0;
+  padding: 24px clamp(18px, 2.7vw, 44px) 52px;
+}
+
+.shell .brand-mark {
+  padding: 4px 8px 18px;
+}
+
+.shell .brand-mark-link {
+  min-height: 36px;
+}
+
+.shell .logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  box-shadow: 0 0 32px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* Navigation */
+.shell .nav {
+  gap: 4px;
+}
+
+.shell .nav-item {
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .18s ease;
+}
+
+.shell .nav-item svg {
+  flex: 0 0 auto;
+  opacity: .82;
+}
+
+.shell .nav-item:hover {
+  transform: translateX(1px);
+  border-color: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel-2));
+}
+
+.shell .nav-item.active {
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--line));
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel-2));
+  box-shadow: inset 2px 0 0 var(--accent), 0 6px 18px color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.shell .nav-item-accent {
+  margin-top: 4px;
+  min-height: 40px;
+  border-style: dashed;
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
+}
+
+.shell .sidebar > .card {
+  margin-top: 20px !important;
+  padding: 14px;
+  border-radius: var(--app-radius-md);
+  box-shadow: var(--app-shadow-soft);
+}
+
+.shell .logout-button {
+  min-height: 40px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  transition: border-color .18s ease, background-color .18s ease, color .18s ease;
+}
+
+/* Topbar */
+.shell .topbar-compact {
+  min-height: 42px;
+  margin-bottom: 14px;
+  gap: 10px;
+  padding: 3px;
+}
+
+.shell .brand-switcher-trigger,
+.shell .org-switcher-trigger,
+.shell .user-avatar,
+.shell .guide-button,
+.shell .sidebar-open,
+.shell .sidebar-close {
+  transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.shell .brand-switcher-trigger {
+  min-height: 36px;
+  padding: 7px 11px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--panel) 88%, var(--panel-2));
+}
+
+.shell .brand-switcher-trigger:hover,
+.shell .org-switcher-trigger:hover,
+.shell .user-avatar:hover,
+.shell .guide-button:hover {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.shell .user-avatar {
+  width: 38px;
+  height: 38px;
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.shell .topbar-title h1 {
+  font-size: clamp(20px, 2.2vw, 28px);
+  letter-spacing: -.035em;
+}
+
+.shell .current-location {
+  margin: 0 0 16px;
+  padding-left: 2px;
+  color: var(--text-subtle, var(--muted));
+  font-size: 11px;
+  letter-spacing: .03em;
+}
+
+/* Cards and hierarchy */
+.shell .card {
+  border-radius: var(--app-radius-lg);
+  border-color: color-mix(in srgb, var(--line) 92%, var(--accent));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-card) 98%, var(--accent)), var(--surface-card));
+  box-shadow: var(--app-shadow-card);
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.shell .card:hover {
+  border-color: color-mix(in srgb, var(--line) 78%, var(--accent));
+}
+
+.shell .section-title {
+  margin-bottom: 14px;
+  padding-bottom: 11px;
+}
+
+.shell .section-title h2,
+.shell .section-title h3,
+.shell .section-title h4 {
+  letter-spacing: -.025em;
+}
+
+.shell .metric {
+  min-height: 112px;
+  padding: 15px 16px;
+}
+
+.shell .metric-value {
+  font-size: clamp(27px, 3vw, 34px);
+  margin-top: 7px;
+}
+
+.shell .grid {
+  gap: 12px;
+}
+
+.shell .grid-4,
+.shell .grid-3,
+.shell .kpi-grid,
+.shell .roadmap-grid {
+  gap: 12px;
+}
+
+/* Status and compact controls */
+.shell .badge {
+  min-height: 27px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.shell .chip {
+  min-height: 23px;
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--surface-muted) 82%, var(--accent));
+}
+
+.shell .status-dot {
+  flex: 0 0 auto;
+}
+
+/* Forms and controls */
+.shell input:not([type="checkbox"]):not([type="radio"]),
+.shell textarea,
+.shell select,
+.shell .content-filter-input,
+.shell .content-filter-select,
+.shell .suggestion-edit-input {
+  border-radius: 11px;
+  border-color: color-mix(in srgb, var(--border-strong, var(--line)) 88%, var(--accent));
+  background: var(--surface-input, var(--surface-card));
+}
+
+.shell input:not([type="checkbox"]):not([type="radio"]):hover,
+.shell textarea:hover,
+.shell select:hover,
+.shell .content-filter-input:hover,
+.shell .content-filter-select:hover,
+.shell .suggestion-edit-input:hover {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+}
+
+.shell input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+.shell textarea:focus-visible,
+.shell select:focus-visible,
+.shell .content-filter-input:focus-visible,
+.shell .content-filter-select:focus-visible,
+.shell .suggestion-edit-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent), 0 8px 24px color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.shell button.badge,
+.shell .action-badge,
+.shell .text-button,
+.shell .tour-primary,
+.shell .brand-form-submit {
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background-color .16s ease;
+}
+
+.shell button.badge:hover:not(:disabled),
+.shell .action-badge:hover:not(:disabled),
+.shell .text-button:hover:not(:disabled),
+.shell .tour-primary:hover:not(:disabled),
+.shell .brand-form-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 9px 22px color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+/* Next actions are the primary navigation cue on dashboards */
+.shell .next-actions-grid {
+  gap: 12px;
+}
+
+.shell .next-action-card {
+  min-height: 108px;
+  padding: 13px;
+  border-radius: var(--app-radius-md);
+  background: color-mix(in srgb, var(--surface-card) 92%, var(--accent));
+}
+
+.shell .next-action-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--app-shadow-card);
+}
+
+.shell .next-action-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+}
+
+/* Lists, research and evidence */
+.shell .activity-list,
+.shell .source-list,
+.shell .suggestion-evidence-list {
+  gap: 8px;
+}
+
+.shell .activity-item,
+.shell .source-item,
+.shell .suggestion-card,
+.shell .obj-card,
+.shell .campaign-card,
+.shell .strategy-acc {
+  border-radius: var(--app-radius-md);
+  border-color: color-mix(in srgb, var(--line) 94%, var(--accent));
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.shell .activity-item,
+.shell .source-item {
+  padding: 10px 11px;
+  background: color-mix(in srgb, var(--surface-muted) 88%, var(--surface-card));
+}
+
+.shell .activity-item:hover,
+.shell .source-item:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface-muted));
+}
+
+.shell .source-item a {
+  overflow-wrap: anywhere;
+}
+
+.shell .suggestion-card {
+  padding: 13px 14px;
+  background: color-mix(in srgb, var(--surface-card) 94%, var(--accent));
+}
+
+.shell .suggestion-value {
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-inset) 90%, var(--accent));
+}
+
+/* Brand workspace navigation */
+.shell .brand-workspace-nav {
+  margin-bottom: 14px;
+  border-radius: var(--app-radius-md);
+  box-shadow: 0 12px 34px color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.shell .brand-workspace-nav-scroll {
+  gap: 3px;
+  padding: 4px;
+}
+
+.shell .brand-workspace-tab {
+  min-height: 36px;
+  border-radius: 10px;
+  padding-inline: 12px;
+  font-size: 12px;
+}
+
+/* Brand Brain topic/filter controls */
+.shell .brain-topic-nav,
+.shell .review-tabs {
+  scrollbar-width: thin;
+}
+
+.shell .brain-topic-button,
+.shell .review-tab {
+  min-height: 34px;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 12px;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
+}
+
+.shell .brain-topic-button:hover,
+.shell .review-tab:hover {
+  transform: translateY(-1px);
+}
+
+.shell .brain-topic-button.active,
+.shell .review-tab.active {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-card));
+  color: var(--text-strong, var(--text));
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* Strategy and campaign surfaces */
+.shell .strategy-acc summary {
+  min-height: 46px;
+  padding: 11px 14px;
+}
+
+.shell .strategy-acc-body {
+  padding: 3px 14px 14px;
+}
+
+.shell .obj-card,
+.shell .campaign-card {
+  padding: 12px 13px;
+  background: color-mix(in srgb, var(--surface-muted) 88%, var(--surface-card));
+}
+
+/* Content Studio density */
+.shell .content-item {
+  border-radius: var(--app-radius-md);
+  padding: 14px;
+}
+
+.shell .content-item-footer {
+  margin-top: 0;
+}
+
+.shell .content-form {
+  gap: 11px;
+}
+
+/* Settings: structured panels rather than one long undifferentiated page */
+.shell .settings-grid {
+  gap: 14px;
+}
+
+.shell .settings-tool-grid {
+  gap: 9px;
+}
+
+.shell .settings-tool {
+  min-height: 86px;
+  padding: 12px;
+  border-radius: 12px;
+  transition: border-color .18s ease, background-color .18s ease, transform .18s ease;
+}
+
+.shell .settings-tool:hover {
+  transform: translateY(-1px);
+}
+
+.shell .settings-archive-row,
+.shell .team-row {
+  border-radius: 12px;
+}
+
+/* Empty/loading/error states */
+.shell .skeleton {
+  border-radius: 9px;
+}
+
+.shell .card[role="alert"] {
+  border-radius: 12px;
+}
+
+/* Popovers and dialogs */
+.shell .switch-panel {
+  filter: drop-shadow(0 18px 45px color-mix(in srgb, var(--text) 12%, transparent));
+}
+
+.shell .switch-panel-inner {
+  border-radius: var(--app-radius-md);
+  padding: 6px;
+  background: color-mix(in srgb, var(--surface-elevated) 96%, transparent);
+  border-color: color-mix(in srgb, var(--line) 86%, var(--accent));
+  box-shadow: var(--app-shadow-float);
+  backdrop-filter: blur(18px);
+}
+
+.shell .switch-option {
+  min-height: 38px;
+  border-radius: 9px;
+}
+
+.shell .switch-option:hover {
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-muted));
+}
+
+.shell .editor-backdrop,
+.shell .tour-center {
+  background: color-mix(in srgb, var(--bg) 66%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.shell .editor-modal,
+.shell .tour-card {
+  border-radius: 18px;
+  box-shadow: var(--app-shadow-float);
+}
+
+/* Keep destructive surfaces clearly distinct while staying theme-safe. */
+.shell .danger-hold-button,
+.shell .danger-zone,
+.shell [data-danger="true"] {
+  border-color: color-mix(in srgb, var(--text-danger) 34%, var(--line));
+}
+
+/* Responsive: reduce density without hiding product controls. */
+@media (max-width: 1100px) {
+  .shell > .sidebar {
+    width: 292px;
+    padding: 18px 14px;
+  }
+  .shell > .main {
+    padding: 20px 20px 44px;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell > .main {
+    padding: 16px 14px 34px;
+  }
+  .shell .topbar-compact {
+    margin-bottom: 10px;
+  }
+  .shell .card {
+    border-radius: 15px;
+    padding: 14px;
+  }
+  .shell .section-title {
+    gap: 10px;
+  }
+  .shell .section-title h2,
+  .shell .section-title h3,
+  .shell .section-title h4 {
+    font-size: 16px;
+  }
+  .shell .metric {
+    min-height: 100px;
+  }
+  .shell .next-action-card {
+    min-height: 0;
+  }
+  .shell .settings-tool {
+    min-height: 76px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell .nav-item,
+  .shell .card,
+  .shell .next-action-card,
+  .shell .settings-tool,
+  .shell button,
+  .shell a {
+    transition: none !important;
+  }
+}
