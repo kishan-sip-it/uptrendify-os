@@ -1,0 +1,546 @@
+/* ==========================================================================
+   Brand Profile workspace
+   --------------------------------------------------------------------------
+   Structure follows the reference composition: a hairline-separated panel
+   header, an identity row (logo + name + domain), then working sections built
+   from definition rows (icon | label | value) rather than a grid of cards.
+
+   Deliberate constraints:
+   - No card-inside-card. Sections are flat; only genuinely bounded groups get
+     a surface.
+   - The detected brand palette is injected as --brand-* custom properties by
+     the component and consumed through color-mix() against semantic tokens, so
+     an arbitrary brand colour can never break theme contrast.
+   ========================================================================== */
+
+.brand-profile {
+  display: grid;
+  gap: var(--section-gap, 22px);
+}
+
+/* ---------- Panel header ---------- */
+.brand-panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 14px);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.brand-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand-panel-head-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.brand-panel-head-text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.brand-panel-head-title {
+  margin: 0;
+  color: var(--text-strong);
+  font-family: var(--font-display, 'Plus Jakarta Sans', system-ui, sans-serif);
+  font-size: var(--type-section, 18px);
+  font-weight: var(--weight-bold, 700);
+  line-height: 1.25;
+  letter-spacing: var(--tracking-tight, -0.02em);
+}
+
+.brand-panel-head-sub {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: var(--type-secondary, 13px);
+  line-height: 1.5;
+}
+
+.brand-panel-body {
+  padding: 20px;
+  display: grid;
+  gap: 22px;
+}
+
+/* ---------- Identity row ---------- */
+.brand-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.brand-identity-logo {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  /* Subtle brand tint, kept light enough that the mark stays readable in
+     both themes. */
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--brand-primary, var(--accent)) 16%, var(--surface)),
+    color-mix(in srgb, var(--brand-secondary, var(--accent-2)) 12%, var(--surface))
+  );
+  color: var(--text-strong);
+}
+
+.brand-identity-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 8px;
+}
+
+.brand-identity-text {
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.brand-identity-name {
+  margin: 0;
+  color: var(--text-strong);
+  font-family: var(--font-display, 'Plus Jakarta Sans', system-ui, sans-serif);
+  font-size: 26px;
+  font-weight: var(--weight-bold, 700);
+  line-height: 1.2;
+  letter-spacing: var(--tracking-tight, -0.02em);
+  overflow-wrap: anywhere;
+}
+
+.brand-identity-domain {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: var(--type-secondary, 13px);
+  overflow-wrap: anywhere;
+}
+
+.brand-identity-domain a:hover {
+  color: var(--accent);
+}
+
+.brand-identity-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Brand-tinted accent strip: reads as the brand without flooding the card. */
+.brand-strip {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--brand-primary, var(--accent)),
+    var(--brand-secondary, var(--accent-2))
+  );
+}
+
+/* ---------- Section ---------- */
+.brand-section {
+  display: grid;
+  gap: 4px;
+}
+
+.brand-section-head {
+  margin-bottom: 10px;
+}
+
+.brand-section-title {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: var(--type-subsection, 15px);
+  font-weight: var(--weight-bold, 700);
+  letter-spacing: var(--tracking-tight, -0.02em);
+}
+
+.brand-section-hint {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: var(--type-meta, 12px);
+  line-height: 1.5;
+}
+
+/* ---------- Definition rows (icon | label | value) ---------- */
+.brand-fields {
+  display: grid;
+}
+
+.brand-field {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+  padding: 13px 0;
+  border-top: 1px solid var(--border);
+}
+
+.brand-field:first-child {
+  border-top: 0;
+}
+
+.brand-field-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--type-secondary, 13px);
+  font-weight: var(--weight-medium, 500);
+}
+
+.brand-field-label svg {
+  flex: 0 0 auto;
+  color: var(--text-subtle);
+}
+
+.brand-field-value {
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--type-body, 14px);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.brand-field-value a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+/* "Not detected" is an intentional state, not an error. */
+.brand-not-detected {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-subtle);
+  font-size: var(--type-meta, 12px);
+  font-style: italic;
+}
+
+/* ---------- Colour swatches ---------- */
+.brand-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.brand-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface);
+  font-size: var(--type-meta, 12px);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.brand-swatch-dot {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  background: var(--swatch);
+}
+
+.brand-swatch-role {
+  color: var(--text-subtle);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+/* ---------- Tag chips ---------- */
+.brand-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.brand-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--type-meta, 12px);
+}
+
+.brand-tag-primary {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+  color: var(--text-strong);
+  font-weight: var(--weight-semibold, 600);
+}
+
+.brand-tag-remove {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+  padding: 0;
+}
+
+.brand-tag-remove:hover {
+  background: var(--status-danger-bg);
+  color: var(--status-danger);
+}
+
+.brand-tag-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-pill, 999px);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--type-meta, 12px);
+  cursor: pointer;
+}
+
+.brand-tag-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---------- Inline edit ---------- */
+.brand-edit {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control, 10px);
+  background: var(--surface);
+}
+
+.brand-edit-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.brand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control, 10px);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--type-secondary, 13px);
+  font-weight: var(--weight-medium, 500);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.brand-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.brand-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.brand-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.brand-btn-primary:hover:not(:disabled) {
+  color: var(--accent-contrast);
+  filter: brightness(1.06);
+}
+
+/* ---------- Voice preview ---------- */
+.brand-voice-summary {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brand-primary, var(--accent));
+  border-radius: var(--radius-card, 14px);
+  background: color-mix(in srgb, var(--brand-primary, var(--accent)) 6%, var(--surface-raised));
+  color: var(--brand-primary, var(--accent));
+  font-size: var(--type-section, 18px);
+  font-weight: var(--weight-semibold, 600);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.brand-voice-axes {
+  display: grid;
+  gap: 12px;
+}
+
+.brand-axis {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr) 130px;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--type-meta, 12px);
+  color: var(--text-muted);
+}
+
+.brand-axis-track {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+}
+
+.brand-axis-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 55%, var(--surface-inset));
+}
+
+.brand-axis-knob {
+  position: absolute;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 2px solid var(--surface-raised);
+  transform: translate(-50%, -50%);
+  transition: left 0.25s ease;
+}
+
+.brand-axis-end {
+  text-align: right;
+}
+
+/* ---------- Audience persona grid ---------- */
+.brand-persona-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--grid-gap, 16px);
+}
+
+.brand-persona {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 15px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 14px);
+  background: var(--surface-raised);
+  min-width: 0;
+}
+
+.brand-persona-name {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: var(--type-body, 14px);
+  font-weight: var(--weight-bold, 700);
+  overflow-wrap: anywhere;
+}
+
+.brand-persona-desc {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-meta, 12px);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.brand-persona-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+}
+
+.brand-persona-fact-label {
+  margin: 0 0 2px;
+  color: var(--text-subtle);
+  font-size: 11px;
+}
+
+.brand-persona-fact-value {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--type-meta, 12px);
+  font-weight: var(--weight-medium, 500);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Compact add chips ---------- */
+.brand-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 860px) {
+  .brand-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .brand-axis {
+    grid-template-columns: 96px minmax(0, 1fr) 96px;
+    gap: 8px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 720px) {
+  .brand-panel-head,
+  .brand-panel-body {
+    padding-inline: 15px;
+  }
+
+  .brand-identity-logo {
+    width: 50px;
+    height: 50px;
+  }
+
+  .brand-identity-name {
+    font-size: 21px;
+  }
+
+  .brand-persona-grid {
+    grid-template-columns: 1fr;
+  }
+}

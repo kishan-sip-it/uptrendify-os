@@ -7,7 +7,7 @@ import { obs } from '@/lib/obs/logger';
 const inputSchema = z.object({
   clientName: z.string().trim().min(2).max(120).optional(),
   brandName: z.string().trim().min(2).max(120),
-  websiteUrl: z.string().url(),
+  websiteUrl: z.string().trim().url(),
   description: z.string().trim().max(4000).optional(),
   industry: z.string().trim().max(120).optional(),
   marketCountry: z.string().trim().max(120).optional(),
@@ -18,9 +18,23 @@ function slugify(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 70) || 'brand';
 }
 
+function normaliseWebsiteUrl(value: string): string {
+  const url = new URL(value.trim());
+  url.hash = '';
+  return url.toString();
+}
+
 export async function POST(request: Request) {
   try {
-    const body = inputSchema.parse(await request.json());
+    const raw = await request.json().catch(() => null);
+    const parsed = inputSchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid input', details: parsed.error.flatten(), fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        { status: 400 },
+      );
+    }
+    const body = { ...parsed.data, websiteUrl: normaliseWebsiteUrl(parsed.data.websiteUrl) };
 
     const auth = await requireOrgRole(CAN_CREATE_BRANDS);
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
@@ -119,8 +133,7 @@ export async function POST(request: Request) {
     obs.info('Brand created', { organizationId, brandId: createdBrand.data.id, actorRole: auth.context.role });
     return NextResponse.json({ ok: true, brand: createdBrand.data }, { status: 201 });
   } catch (error) {
-    if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid input', details: error.flatten() }, { status: 400 });
     obs.error('Brand creation failed', { error: error instanceof Error ? error.message : String(error) });
-    return NextResponse.json({ error: 'Failed to create brand' }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to create brand' }, { status: 500 });
   }
 }

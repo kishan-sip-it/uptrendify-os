@@ -4,10 +4,11 @@ import { usePathname, useSearchParams } from 'next/navigation';
 
 type BrandWorkspaceNavProps = {
   brandId: string;
-  current?: 'overview' | 'brain' | 'strategy' | 'campaigns' | 'content';
+  current?: 'profile' | 'overview' | 'brain' | 'strategy' | 'campaigns' | 'content';
 };
 
 const tabs = [
+  { key: 'profile' as const, label: 'Profile', href: (id: string) => `/brands/${id}?view=profile` },
   { key: 'overview' as const, label: 'Overview', href: (id: string) => `/brands/${id}` },
   { key: 'brain' as const, label: 'Brand Brain', href: (id: string) => `/brands/${id}?view=brain` },
   { key: 'strategy' as const, label: 'Strategy', href: (id: string) => `/brands/${id}?view=strategy` },

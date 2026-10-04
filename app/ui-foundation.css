@@ -1,0 +1,714 @@
+/* ==========================================================================
+   UpTrendifyOS UI Foundation
+   --------------------------------------------------------------------------
+   Single authoritative semantic layer. Loaded LAST (after globals.css,
+   design-system.css, shared-theme.css and the page-specific layers) so it
+   resolves the competing definitions that previously accumulated in
+   globals.css.
+
+   Rules this file follows:
+   - Presentation only. No copy, no behaviour, no data flow.
+   - Derives every colour from the existing --theme-* palette, so the
+     established visual identity (cool white / blue in light, navy / blue in
+     dark) is preserved rather than replaced.
+   - Adds the token categories that did not exist at all: shape, elevation,
+     layout and typography scale.
+   - Compresses the five competing .card / .badge / .main definitions into
+     one authoritative rule each.
+
+   Anything page-specific stays in globals.css. This file is the floor.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. TYPOGRAPHY
+   One scale, referenced by every heading level and text role below.
+   -------------------------------------------------------------------------- */
+:root {
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Type scale - sizes */
+  --type-page: 24px;
+  --type-section: 18px;
+  --type-subsection: 15px;
+  --type-body: 14px;
+  --type-secondary: 13px;
+  --type-meta: 12px;
+  --type-eyebrow: 11px;
+
+  /* Type scale - weights */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Type scale - tracking */
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-eyebrow: 0.14em;
+
+  /* Type scale - leading */
+  --leading-tight: 1.25;
+  --leading-snug: 1.4;
+  --leading-body: 1.6;
+
+  /* Roles, so pages never re-derive these */
+  --role-page-size: var(--type-page);
+  --role-section-size: var(--type-section);
+  --role-subsection-size: var(--type-subsection);
+  --role-body-size: var(--type-body);
+  --role-secondary-size: var(--type-secondary);
+  --role-meta-size: var(--type-meta);
+  --role-eyebrow-size: var(--type-eyebrow);
+}
+
+/* --------------------------------------------------------------------------
+   2. SHAPE
+   Four radii only. Nothing in the product should introduce a fifth.
+   -------------------------------------------------------------------------- */
+:root {
+  --radius-sm: 6px;
+  --radius-control: 10px;
+  --radius-card: 14px;
+  --radius-container: 18px;
+  --radius-pill: 999px;
+}
+
+/* --------------------------------------------------------------------------
+   3. ELEVATION
+   Two levels: resting cards, and things that float above the page.
+   Both derive from --text so they stay neutral in every theme. The previous
+   hardcoded rgba(30,62,48,.07) card shadow was green-tinted, which read as a
+   colour cast on white surfaces.
+   -------------------------------------------------------------------------- */
+:root {
+  --shadow-card: 0 1px 2px color-mix(in srgb, var(--text) 5%, transparent),
+    0 8px 24px color-mix(in srgb, var(--text) 4%, transparent);
+  --shadow-overlay: 0 12px 32px color-mix(in srgb, var(--text) 14%, transparent),
+    0 32px 64px color-mix(in srgb, var(--text) 10%, transparent);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+/* --------------------------------------------------------------------------
+   4. LAYOUT
+   Predictable spacing for page -> container -> section -> card -> group.
+   -------------------------------------------------------------------------- */
+:root {
+  --page-max: 1360px;
+  --page-pad-inline: clamp(16px, 3vw, 40px);
+  --page-pad-block: 28px;
+  --section-gap: 22px;
+  --card-pad: 18px;
+  --card-pad-sm: 14px;
+  --grid-gap: 16px;
+  --grid-gap-sm: 10px;
+  --grid-gap-lg: 22px;
+  --content-gap: 12px;
+  --form-gap: 14px;
+
+  /* Status tints - one definition per semantic state, used by badges,
+     panels, inline styles and the shared feedback components. */
+  --status-success: var(--success);
+  --status-warning: var(--warning);
+  --status-danger: var(--danger);
+  --status-info: var(--text-info);
+  --status-neutral: var(--text-muted);
+  --status-success-bg: color-mix(in srgb, var(--success) 10%, var(--surface-raised));
+  --status-warning-bg: color-mix(in srgb, var(--warning) 12%, var(--surface-raised));
+  --status-danger-bg: color-mix(in srgb, var(--danger) 10%, var(--surface-raised));
+  --status-info-bg: color-mix(in srgb, var(--text-info) 10%, var(--surface-raised));
+  --status-neutral-bg: color-mix(in srgb, var(--text-muted) 10%, var(--surface-raised));
+  --status-success-line: color-mix(in srgb, var(--success) 34%, var(--border));
+  --status-warning-line: color-mix(in srgb, var(--warning) 38%, var(--border));
+  --status-danger-line: color-mix(in srgb, var(--danger) 36%, var(--border));
+  --status-info-line: color-mix(in srgb, var(--text-info) 32%, var(--border));
+  --status-neutral-line: color-mix(in srgb, var(--text-muted) 28%, var(--border));
+}
+
+/* --------------------------------------------------------------------------
+   5. COMPLETE THE DARK PALETTE
+   shared-theme.css remaps most tokens for dark, but a handful (progress,
+   skeleton, inset, overlay, neutral text, inverse text, focus) were only
+   defined for data-theme="dark" and never for the resolved states, so they
+   fell back to the light values. These close those gaps. The product only
+   ever resolves data-theme to light or dark; the system block is retained so
+   a future system preference inherits the same complete palette.
+   -------------------------------------------------------------------------- */
+html[data-theme='dark'] {
+  --surface-inset: #070b12;
+  --surface-overlay: rgba(7, 11, 18, 0.96);
+  --surface-progress: #1c2a40;
+  --surface-skeleton: #172236;
+  --text-inverse: #07111f;
+  --text-neutral: var(--text-muted);
+  --focus: var(--accent);
+  --accent-2: #93c5fd;
+}
+
+/* --------------------------------------------------------------------------
+   6. BASE TYPOGRAPHY
+   Collapses the competing declarations. The previous body rule asked for
+   'DM Sans', which is never loaded, so the whole application silently
+   rendered in the system fallback while Inter and Plus Jakarta Sans were
+   downloaded and unused for body copy.
+   -------------------------------------------------------------------------- */
+body {
+  font-family: var(--font-sans);
+  font-size: var(--type-body);
+  line-height: var(--leading-body);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  color: var(--text-strong);
+  font-family: var(--font-display);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  overflow-wrap: break-word;
+}
+
+h1 {
+  font-size: var(--type-page);
+}
+h2 {
+  font-size: var(--type-section);
+}
+h3 {
+  font-size: var(--type-subsection);
+}
+h4,
+h5,
+h6 {
+  font-size: var(--type-secondary);
+}
+
+p {
+  line-height: var(--leading-body);
+}
+
+/* Text roles - one treatment each, applied by class rather than per page. */
+.eyebrow {
+  display: block;
+  margin: 0 0 5px;
+  color: var(--accent);
+  font-size: var(--type-eyebrow);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-eyebrow);
+  line-height: var(--leading-tight);
+  text-transform: uppercase;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: var(--type-secondary);
+  line-height: var(--leading-body);
+  max-width: 72ch;
+}
+
+.activity-meta,
+.metric-label,
+.field-help,
+.field-note,
+.fact-label,
+.metric-hint {
+  color: var(--text-muted);
+  font-size: var(--type-meta);
+  line-height: var(--leading-snug);
+}
+
+.activity-meta {
+  margin-top: 2px;
+}
+
+/* Brand wordmark used an unloaded display face; align it with the scale. */
+.brand-mark {
+  font-family: var(--font-display);
+  font-size: var(--type-section);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+}
+
+/* --------------------------------------------------------------------------
+   7. PAGE CONTAINER
+   globals.css declared .main three times and then re-declared its max-width
+   only for dark, so the container width silently depended on the theme.
+   Layout is now theme-independent.
+   -------------------------------------------------------------------------- */
+.main {
+  width: 100%;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: var(--page-pad-block) var(--page-pad-inline) 56px;
+}
+
+html[data-theme='dark'] .main {
+  max-width: var(--page-max);
+}
+
+/* --------------------------------------------------------------------------
+   8. CARDS AND PANELS
+   One card definition, replacing five. Plus the small set of reusable
+   surface patterns the rest of the product composes from.
+   -------------------------------------------------------------------------- */
+.card,
+.panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--card-pad);
+  box-shadow: var(--shadow-card);
+  color: var(--text);
+  min-width: 0;
+}
+
+html[data-theme='dark'] .card {
+  box-shadow: var(--shadow-card);
+}
+
+/* Subtle panel - grouping without elevation. */
+.panel-subtle {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--card-pad-sm);
+  box-shadow: none;
+}
+
+/* Interactive / selectable card - one active language, shared with tabs,
+   nav rows and review options so selection looks identical everywhere. */
+.card-interactive,
+.selectable-row {
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.card-interactive:hover,
+.selectable-row:hover {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface-raised));
+}
+
+.card-interactive.is-active,
+.selectable-row.is-active,
+.card-interactive[data-selected='true'],
+.selectable-row[data-selected='true'] {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-raised));
+}
+
+/* Status panels - one per semantic state, replacing the ad-hoc inline
+   border/background pairs that were hardcoded per component. */
+.panel-status {
+  border: 1px solid var(--status-neutral-line);
+  background: var(--status-neutral-bg);
+  border-radius: var(--radius-card);
+  padding: var(--card-pad-sm);
+}
+
+.panel-status-success {
+  border-color: var(--status-success-line);
+  background: var(--status-success-bg);
+}
+.panel-status-warning {
+  border-color: var(--status-warning-line);
+  background: var(--status-warning-bg);
+}
+.panel-status-danger {
+  border-color: var(--status-danger-line);
+  background: var(--status-danger-bg);
+}
+.panel-status-info {
+  border-color: var(--status-info-line);
+  background: var(--status-info-bg);
+}
+
+/* Empty state - deliberately not a tall card. */
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--content-gap);
+  padding: 40px 20px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+/* --------------------------------------------------------------------------
+   9. GRID AND DENSITY
+   Grid children must be allowed to shrink, otherwise long URLs and long
+   headlines push the whole page into horizontal overflow.
+   -------------------------------------------------------------------------- */
+.grid {
+  display: grid;
+  gap: var(--grid-gap);
+}
+
+.grid > *,
+.kpi-grid > *,
+.roadmap-grid > *,
+.activity-list > * {
+  min-width: 0;
+}
+
+/* Long content cannot destroy layout. */
+.card,
+.panel,
+.activity-item,
+.content-item-preview,
+.evidence-item,
+.fact-value,
+.brain-topic-panel,
+.publish-preview {
+  overflow-wrap: anywhere;
+}
+
+a,
+.activity-title,
+.metric-value,
+h1,
+h2,
+h3 {
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+   10. FORM CONTROLS
+   One block for every control so no two forms look like different products.
+   Checkbox and radio are sized explicitly because they were previously
+   inheriting the 42px text-input height.
+   -------------------------------------------------------------------------- */
+input:not([type='checkbox']):not([type='radio']),
+textarea,
+select,
+.content-filter-input,
+.content-filter-select {
+  width: 100%;
+  min-height: 42px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-input);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--type-body);
+  line-height: var(--leading-snug);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+textarea {
+  min-height: 104px;
+  resize: vertical;
+  line-height: var(--leading-body);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-subtle);
+  opacity: 1;
+}
+
+input:not([type='checkbox']):not([type='radio']):hover,
+textarea:hover,
+select:hover {
+  border-color: color-mix(in srgb, var(--border-strong) 70%, var(--accent));
+}
+
+input:not([type='checkbox']):not([type='radio']):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+/* Native :focus without :focus-visible kept a second, weaker ring. */
+input:not([type='checkbox']):not([type='radio']):focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+  color: var(--text-subtle);
+  background: color-mix(in srgb, var(--surface) 70%, var(--surface-raised));
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
+input[aria-invalid='true'],
+textarea[aria-invalid='true'],
+select[aria-invalid='true'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+input[aria-invalid='true']::placeholder,
+textarea[aria-invalid='true']::placeholder {
+  color: color-mix(in srgb, var(--danger) 70%, var(--text-subtle));
+}
+
+option {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+/* Checkbox / radio - explicit box so they align with adjacent inputs. */
+input[type='checkbox'],
+input[type='radio'] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+input[type='checkbox']:disabled,
+input[type='radio']:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* --------------------------------------------------------------------------
+   11. STATUS AND BADGES
+   One pill, one set of tones. globals.css mixed theme-aware colour-mix()
+   with hardcoded dark-mode rgba() values on tone-warn, tone-muted and
+   replay-badge, so those three states rendered dark-on-dark in light mode.
+   -------------------------------------------------------------------------- */
+.badge,
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--status-neutral-line);
+  background: var(--status-neutral-bg);
+  color: var(--status-neutral);
+  border-radius: var(--radius-pill);
+  padding: 4px 9px;
+  font-size: var(--type-meta);
+  font-weight: var(--weight-medium);
+  line-height: 1.4;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.chip {
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+.badge.tone-good,
+.badge.tone-success {
+  border-color: var(--status-success-line);
+  background: var(--status-success-bg);
+  color: var(--status-success);
+}
+
+.badge.tone-warn,
+.badge.tone-warning {
+  border-color: var(--status-warning-line);
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+}
+
+.badge.tone-danger,
+.badge.tone-error {
+  border-color: var(--status-danger-line);
+  background: var(--status-danger-bg);
+  color: var(--status-danger);
+}
+
+.badge.tone-info {
+  border-color: var(--status-info-line);
+  background: var(--status-info-bg);
+  color: var(--status-info);
+}
+
+.badge.tone-muted,
+.badge.replay-badge {
+  border-color: var(--status-warning-line);
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+}
+
+/* Badge text must stay legible against its own tint in both themes. */
+html[data-theme='dark'] .badge,
+html[data-theme='dark'] .chip {
+  color: color-mix(in srgb, currentColor 82%, var(--text-strong));
+}
+
+/* --------------------------------------------------------------------------
+   12. NAVIGATION ACTIVE STATES
+   Sidebar, workspace tabs and review tabs previously each had their own
+   active treatment. They now share one.
+   -------------------------------------------------------------------------- */
+.nav-item.active,
+.brand-workspace-tab.active,
+.review-tab.active,
+.theme-option.active {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.nav-item.active {
+  box-shadow: inset 3px 0 0 var(--accent-contrast);
+}
+
+.nav-item,
+.brand-workspace-tab,
+.review-tab {
+  transition: background-color 0.15s ease, color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+/* --------------------------------------------------------------------------
+   13. SECTION HEADER
+   One treatment, already partly present in design-system.css. Sized from the
+   type scale rather than a page-specific px value.
+   -------------------------------------------------------------------------- */
+.section-title {
+  margin: 0 0 var(--content-gap);
+  font-size: var(--type-section);
+}
+
+.section-title--compact h2,
+.section-title--compact h3,
+.section-title--compact h4 {
+  font-size: var(--type-subsection);
+}
+
+/* --------------------------------------------------------------------------
+   15. NORMALISE PRE-EXISTING ONE-OFF SURFACES
+   These selectors already existed in globals.css with hardcoded dark-era
+   values (a purple rgba for approved/active, amber for edited, and a
+   green-tinted modal scrim left over from the previous palette). They are
+   remapped here onto the semantic tokens so status colour means the same
+   thing everywhere. Visual structure is untouched.
+   -------------------------------------------------------------------------- */
+.review-tab {
+  padding: 7px 13px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--type-secondary);
+}
+
+.review-tab:hover {
+  color: var(--text-strong);
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+}
+
+.review-tab-count {
+  font-size: var(--type-eyebrow);
+  opacity: 0.85;
+  margin-left: 4px;
+}
+
+.suggestion-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  padding: var(--card-pad-sm) 16px;
+}
+
+.suggestion-card[data-status='APPROVED'] {
+  border-color: var(--status-success-line);
+  background: var(--status-success-bg);
+}
+
+.suggestion-card[data-status='EDITED'] {
+  border-color: var(--status-warning-line);
+  background: var(--status-warning-bg);
+}
+
+.suggestion-card[data-status='REJECTED'] {
+  opacity: 0.62;
+}
+
+.suggestion-card[data-status='NOT_FOUND'] {
+  border-color: var(--status-neutral-line);
+  background: var(--status-neutral-bg);
+}
+
+.brain-topic-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--card-pad);
+  background: var(--surface-raised);
+  min-width: 0;
+}
+
+/* Neutral scrim. The previous value was green-tinted. */
+.editor-backdrop {
+  background: color-mix(in srgb, var(--text) 34%, transparent);
+}
+
+/* --------------------------------------------------------------------------
+   16. RESPONSIVE
+   Normalised breakpoints for the shared primitives only. Grid columns are
+   allowed to collapse; type and control sizes are not shrunk indiscriminately.
+   -------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --page-pad-block: 20px;
+    --card-pad: 15px;
+    --grid-gap: 12px;
+    --section-gap: 18px;
+    --type-page: 21px;
+    --type-section: 17px;
+  }
+
+  .grid-4,
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  /* Controls stay usable rather than shrinking into the layout. */
+  input:not([type='checkbox']):not([type='radio']),
+  textarea,
+  select {
+    min-height: 44px;
+    font-size: 16px; /* prevents iOS zoom-on-focus */
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

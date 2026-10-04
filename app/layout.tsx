@@ -7,6 +7,8 @@ import './shared-theme.css';
 import './brand-brain-ux.css';
 import './authenticated-ui.css';
 import './cool-light-theme.css';
+import './ui-foundation.css';
+import './brand-profile.css';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { NetworkStatus } from '@/components/ui/NetworkStatus';
 import { GlobalWorkflowChecklist } from '@/components/ui/global-workflow-checklist';
