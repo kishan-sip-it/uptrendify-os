@@ -77,22 +77,34 @@ function isPrivateIp(ip: string) {
 export type LookupAddress = { address: string; family: number };
 
 const dnsLookupTimeoutMs = 5_000;
+const transientDnsCodes = new Set(['EAI_AGAIN', 'EBUSY', 'ECONNRESET', 'ETIMEDOUT']);
 
 async function resolveAllAddresses(hostname: string): Promise<LookupAddress[]> {
-  const addresses = await Promise.race([
-    dns.lookup(hostname, { all: true, verbatim: true }),
-    new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Research hostname lookup timed out')), dnsLookupTimeoutMs);
-    }),
-  ]);
-  const seen = new Set<string>();
-  const unique: LookupAddress[] = [];
-  for (const entry of addresses) {
-    if (seen.has(entry.address)) continue;
-    seen.add(entry.address);
-    unique.push(entry);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const addresses = await Promise.race([
+        dns.lookup(hostname, { all: true, verbatim: true }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Research hostname lookup timed out')), dnsLookupTimeoutMs);
+        }),
+      ]);
+      const seen = new Set<string>();
+      const unique: LookupAddress[] = [];
+      for (const entry of addresses) {
+        if (seen.has(entry.address)) continue;
+        seen.add(entry.address);
+        unique.push(entry);
+      }
+      return unique;
+    } catch (error) {
+      lastError = error;
+      const code = typeof (error as { code?: unknown }).code === 'string' ? (error as { code: string }).code : '';
+      if (attempt >= 2 || !transientDnsCodes.has(code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
   }
-  return unique;
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 export async function resolvePublicAddresses(hostname: string): Promise<LookupAddress[]> {
@@ -100,8 +112,6 @@ export async function resolvePublicAddresses(hostname: string): Promise<LookupAd
   return orderPublicAddresses(unique.filter((entry) => !isPrivateIp(entry.address)));
 }
 
-// Prefer reachable public IPv4 first (virtually always routable), keep public
-// IPv6 as a fallback so IPv6-only targets still work where the network allows.
 export function orderPublicAddresses(addresses: LookupAddress[]): LookupAddress[] {
   return [...addresses.filter((a) => a.family === 4), ...addresses.filter((a) => a.family === 6)];
 }
@@ -114,7 +124,6 @@ export function assertPublicHttpUrl(raw: string) {
   if (isPrivateIp(url.hostname)) throw new Error('Private, loopback or link-local targets are blocked');
   return url;
 }
-
 
 export type DnsLookupCallback = (
   error: Error | null,
@@ -130,8 +139,6 @@ export function publicAddressLookup(hostname: string, options: { all?: boolean }
         return;
       }
       if (options.all === true) {
-        // Node autoSelectFamily path: hand over the full ordered list and let
-        // the socket layer fall back across addresses.
         callback(null, addresses, undefined);
         return;
       }
@@ -143,9 +150,6 @@ export function publicAddressLookup(hostname: string, options: { all?: boolean }
 
 export const publicLookupDispatcher = new Agent({
   connect: {
-    // Happy Eyeballs: Node tries every public address we return until one
-    // connects, so an unreachable first DNS record (e.g. IPv6 without a route)
-    // no longer makes otherwise-reachable sites fail.
     autoSelectFamily: true,
     autoSelectFamilyAttemptTimeout: 400,
     lookup: publicAddressLookup,
