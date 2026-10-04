@@ -1,4 +1,3 @@
-import { after } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createDefaultRegistry } from '@/lib/ai/registry';
 import { withTransientRetry } from '@/lib/ai/retry';
@@ -42,4 +41,6 @@ export async function runContentGeneration(input: ContentPipelineInput, deps: Co
   } catch (error) { const message = error instanceof Error ? error.message : String(error); const classification = classifyProviderFailure(error); const code = isContentValidationError(error) ? 'CONTENT_VALIDATION_FAILED' : classification.code === 'UNKNOWN' ? 'AI_GENERATION_FAILED' : classification.code; obs.error('Content generation failed', { contentId, brandId, organizationId, provider: providerId, model, error: message }); await fail(code, message, providerId, model); return { status: 'FAILED', aiTaskId, provider: providerId, model, errorCode: code, errorMessage: message }; }
 }
 
-export function scheduleContentExecution(input: ContentPipelineInput): void { after(() => { runContentGeneration(input).catch(async (error) => { const message = error instanceof Error ? error.message : String(error); obs.error('Content pipeline failed', { contentId: input.contentId, brandId: input.brandId, error: message }); try { await input.supabase.from('content_items').update({ updated_at: new Date().toISOString() }).eq('id', input.contentId).eq('organization_id', input.organizationId); } catch (markError) { obs.error('Failed to touch content item after pipeline failure', { contentId: input.contentId, error: markError instanceof Error ? markError.message : String(markError) }); } }); }); }
+export async function scheduleContentExecution(input: ContentPipelineInput): Promise<ContentGenerationOutcome> {
+  return runContentGeneration(input);
+}
