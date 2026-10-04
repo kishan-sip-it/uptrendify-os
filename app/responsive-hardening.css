@@ -1,0 +1,371 @@
+/* Global responsive hardening. Layout-only: no workflow or data semantics. */
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+*, *::before, *::after {
+  min-width: 0;
+}
+
+img, video, svg, canvas {
+  max-width: 100%;
+}
+
+button, a, input, textarea, select {
+  max-width: 100%;
+}
+
+.card, .panel, .surface, .activity-item, .source-item, .suggestion-card,
+.content-item, .campaign-card, .obj-card, .strategy-acc, .next-action-card {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.detail-list,
+.fact-list,
+.definition-list {
+  min-width: 0;
+}
+
+.detail-row {
+  min-width: 0;
+}
+
+.detail-row dd,
+.detail-row dt,
+.fact-value,
+.fact-label {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.content-form-row {
+  min-width: 0;
+}
+
+.chip-row,
+.content-filters {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chip-toggle {
+  cursor: pointer;
+  transition: color .16s ease, background-color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.chip-toggle:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-muted));
+}
+
+.chip-toggle-active,
+.chip-toggle[aria-pressed="true"] {
+  color: var(--accent-contrast, #fff) !important;
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), 0 7px 18px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.chip-toggle-active:hover:not(:disabled),
+.chip-toggle[aria-pressed="true"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, var(--text-strong)) !important;
+  transform: translateY(-1px);
+}
+
+.brand-workspace-nav-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.brand-workspace-tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .shell {
+    grid-template-columns: 1fr !important;
+  }
+
+  .shell > .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0;
+    z-index: 1200;
+    width: min(320px, 88vw) !important;
+    height: 100dvh !important;
+    max-height: 100dvh;
+    transform: translateX(-105%);
+    transition: transform .22s ease;
+    overflow-y: auto;
+    overflow-x: hidden;
+    box-shadow: 24px 0 70px color-mix(in srgb, #000 28%, transparent);
+  }
+
+  .shell.shell-mobile-open > .sidebar {
+    transform: translateX(0);
+  }
+
+  .shell > .main {
+    width: 100%;
+    min-width: 0;
+    padding: 18px 18px 38px !important;
+  }
+
+  .sidebar-open {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+  }
+
+  .sidebar-close {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+  }
+
+  .shell.shell-mobile-open::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    background: color-mix(in srgb, #000 42%, transparent);
+    backdrop-filter: blur(3px);
+  }
+
+  .shell .topbar {
+    min-width: 0;
+  }
+
+  .shell .topbar-title {
+    min-width: 0;
+    flex: 1 1 220px;
+  }
+
+  .shell .topbar-title h1 {
+    overflow-wrap: anywhere;
+  }
+
+  .grid-4,
+  .grid-3,
+  .kpi-grid,
+  .roadmap-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .public-header,
+  .public-content,
+  .public-footer {
+    max-width: calc(100% - 28px);
+  }
+
+  .auth-layout-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 480px) !important;
+    gap: 24px;
+  }
+}
+
+@media (max-width: 900px) {
+  .grid-4,
+  .grid-3,
+  .kpi-grid,
+  .roadmap-grid,
+  .public-info-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .content-form-row,
+  .public-form-layout,
+  .public-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+  }
+
+  .topbar > * {
+    min-width: 0;
+  }
+
+  .detail-row,
+  .fact-row {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+  }
+
+  .detail-row dd {
+    margin-left: 0;
+  }
+
+  .auth-layout-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .auth-showcase {
+    max-height: none;
+  }
+
+  .auth-card-wrap {
+    max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .main,
+  .shell > .main {
+    padding-inline: 14px !important;
+  }
+
+  .card {
+    border-radius: 14px;
+    padding: 14px;
+  }
+
+  h1 {
+    font-size: clamp(25px, 8vw, 34px);
+  }
+
+  .topbar {
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+
+  .topbar-title h1 {
+    font-size: clamp(21px, 7vw, 29px);
+  }
+
+  .brand-workspace-nav {
+    position: sticky;
+    top: 0;
+  }
+
+  .brand-workspace-nav-scroll {
+    padding: 3px;
+  }
+
+  .brand-workspace-tab {
+    min-height: 35px;
+    padding-inline: 10px;
+    font-size: 12px;
+  }
+
+  .section-title {
+    gap: 10px;
+  }
+
+  .section-title > * {
+    min-width: 0;
+  }
+
+  .content-filters {
+    align-items: stretch;
+  }
+
+  .content-filters > input,
+  .content-filters > select,
+  .content-filter-input,
+  .content-filter-select {
+    width: 100%;
+  }
+
+  .source-item,
+  .activity-item {
+    gap: 9px;
+  }
+
+  .public-header {
+    width: calc(100% - 20px);
+    margin-top: 10px;
+    padding: 10px;
+  }
+
+  .public-header-cta,
+  .public-button {
+    min-height: 40px;
+  }
+
+  .public-hero {
+    width: calc(100% - 24px);
+    margin-top: 58px;
+  }
+
+  .public-content {
+    width: calc(100% - 24px);
+    margin-bottom: 72px;
+  }
+
+  .public-story-card,
+  .public-info-card,
+  .public-form,
+  .public-contact-panel,
+  .public-legal-card,
+  .public-about-cta {
+    border-radius: 16px;
+    padding: 18px;
+  }
+
+  .public-utility-bar {
+    width: calc(100vw - 16px);
+    bottom: 8px;
+  }
+
+  .auth-layout-grid {
+    gap: 14px;
+  }
+
+  .auth-card-wrap {
+    padding-inline: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .shell > .main {
+    padding: 14px 10px 28px !important;
+  }
+
+  .shell .card {
+    padding: 12px;
+  }
+
+  .brand-workspace-tab {
+    min-height: 33px;
+    padding-inline: 9px;
+    font-size: 11px;
+  }
+
+  .badge {
+    max-width: 100%;
+    white-space: normal;
+    text-align: left;
+  }
+
+  .chip {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .public-brand {
+    font-size: 15px;
+  }
+
+  .public-header-cta {
+    padding-inline: 10px;
+  }
+
+  .auth-card-wrap {
+    padding-bottom: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell > .sidebar {
+    transition: none;
+  }
+}
