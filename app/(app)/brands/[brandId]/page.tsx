@@ -62,7 +62,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
         messaging: brand.messaging,
         audience_details: brand.audience_details,
       })} /> : null}
-      {view === 'overview' ? <BrandOverview brandId={brandId} /> : null}
+      {view === 'overview' ? <BrandOverview brandId={brandId} brandName={brand.name} /> : null}
       {view === 'brain' ? <BrandBrainReview brandId={brandId} brandName={brand.name} /> : null}
       {view === 'strategy' ? (
         <div className={styles.strategyShell}>
