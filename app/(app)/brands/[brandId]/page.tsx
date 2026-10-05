@@ -9,6 +9,8 @@ import { BrandEditor } from '@/components/brand/brand-editor';
 import { BrandWorkspaceNav } from '@/components/brand/brand-workspace-nav';
 import { BrandHashRouteBridge } from '@/components/brand/brand-hash-route-bridge';
 import { BrandProfileWorkspace } from '@/components/brand/brand-profile-workspace';
+import { StrategyGenerationLimitBanner } from '@/components/brand/strategy-generation-limit-banner';
+import styles from './strategy-workspace.module.css';
 import { readIdentity } from '@/lib/brand/identity-mapping';
 
 export const dynamic = 'force-dynamic';
@@ -60,9 +62,14 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
         messaging: brand.messaging,
         audience_details: brand.audience_details,
       })} /> : null}
-      {view === 'overview' ? <BrandOverview brandId={brandId} brandName={brand.name} /> : null}
+      {view === 'overview' ? <BrandOverview brandId={brandId} /> : null}
       {view === 'brain' ? <BrandBrainReview brandId={brandId} brandName={brand.name} /> : null}
-      {view === 'strategy' ? <BrandStrategy brandId={brandId} brandName={brand.name} /> : null}
+      {view === 'strategy' ? (
+        <div className={styles.strategyShell}>
+          <StrategyGenerationLimitBanner brandId={brandId} />
+          <BrandStrategy brandId={brandId} brandName={brand.name} />
+        </div>
+      ) : null}
     </main>
   );
 }
