@@ -10,6 +10,7 @@ describe('translateResearchError', () => {
   it('maps transient DNS failures to DNS_TEMPORARY_FAILURE', () => {
     const err = Object.assign(new Error('EAI_AGAIN'), { code: 'EAI_AGAIN' });
     expect(translateResearchError(err).code).toBe('DNS_TEMPORARY_FAILURE');
+    expect(translateResearchError(Object.assign(new Error('getaddrinfo EBUSY samaaroh.freehosting.dev'), { code: 'EBUSY' })).code).toBe('DNS_TEMPORARY_FAILURE');
   });
 
   it('maps unreachable network errors to NETWORK_UNREACHABLE', () => {

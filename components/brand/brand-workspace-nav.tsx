@@ -4,11 +4,12 @@ import { usePathname, useSearchParams } from 'next/navigation';
 
 type BrandWorkspaceNavProps = {
   brandId: string;
-  current?: 'overview' | 'brain' | 'strategy' | 'campaigns' | 'content';
+  current?: 'profile' | 'overview' | 'brain' | 'strategy' | 'campaigns' | 'content';
 };
 
 const tabs = [
-  { key: 'overview' as const, label: 'Overview', href: (id: string) => `/brands/${id}` },
+  { key: 'profile' as const, label: 'Profile', href: (id: string) => `/brands/${id}?view=profile` },
+  { key: 'overview' as const, label: 'Overview', href: (id: string) => `/brands/${id}?view=overview` },
   { key: 'brain' as const, label: 'Brand Brain', href: (id: string) => `/brands/${id}?view=brain` },
   { key: 'strategy' as const, label: 'Strategy', href: (id: string) => `/brands/${id}?view=strategy` },
   { key: 'campaigns' as const, label: 'Campaigns', href: (id: string) => `/brands/${id}/campaigns` },
@@ -27,7 +28,11 @@ export function BrandWorkspaceNav({ brandId, current }: BrandWorkspaceNavProps) 
         ? 'brain'
         : queryView === 'strategy'
           ? 'strategy'
-          : 'overview';
+          : queryView === 'overview'
+            ? 'overview'
+            : queryView === 'profile'
+              ? 'profile'
+              : 'overview';
   const active = current ?? inferred;
 
   return (
