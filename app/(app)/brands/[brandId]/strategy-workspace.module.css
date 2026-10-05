@@ -1,0 +1,3 @@
+.strategyShell :global(#strategy > .card:has(.progress) ~ .card:has(.progress)) {
+  display: none;
+}
