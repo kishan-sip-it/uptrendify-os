@@ -7,6 +7,9 @@ import { scheduleContentExecution, CONTENT_TASK_TYPE } from '@/lib/content/pipel
 import { completeReplayContentGeneration, isReplayOrganization } from '@/lib/replay';
 import { obs } from '@/lib/obs/logger';
 
+export const runtime = 'nodejs';
+export const maxDuration = 120;
+
 const paramsSchema = z.object({ brandId: z.string().uuid(), contentId: z.string().uuid() });
 const bodySchema = z.object({ idempotencyKey: z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9:_-]+$/).optional() }).strict();
 
@@ -23,7 +26,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     const brand = await loadBrand(supabase, brandId, auth.context.organizationId); if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 }); const item = await loadItem(supabase, { brandId, contentId, organizationId: auth.context.organizationId }); if (!item) return NextResponse.json({ error: 'Content not found' }, { status: 404 });
     const campaignId = (item.campaign_id as string | null) ?? null; const snapshot = await loadContentSnapshot(supabase, { organizationId: auth.context.organizationId, brandId, campaignId }); const strategySet = snapshot.strategies ?? (snapshot.strategy ? [snapshot.strategy] : []);
     const gate = evaluateContentGate(snapshot); if (!gate.ok) return NextResponse.json({ error: gate.message, gate: { ok: false, code: gate.code, counts: gate.counts, strategyReady: gate.strategy.ready, strategyCount: gate.strategy.count } }, { status: 422 });
-    const running = await supabase.from('ai_tasks').select('id,status').eq('content_item_id', contentId).eq('organization_id', auth.context.organizationId).eq('task_type', CONTENT_TASK_TYPE).eq('status', 'RUNNING').limit(1).maybeSingle(); if (running.error) throw running.error; if (running.data) return NextResponse.json({ error: 'A generation is already running for this content item', aiTaskId: running.data.id, status: 'RUNNING' }, { status: 409 });
+
+    const running = await supabase.from('ai_tasks').select('id,status,started_at,provider,model').eq('content_item_id', contentId).eq('organization_id', auth.context.organizationId).eq('task_type', CONTENT_TASK_TYPE).eq('status', 'RUNNING').limit(1).maybeSingle();
+    if (running.error) throw running.error;
+    if (running.data) {
+      const startedAt = running.data.started_at ? new Date(running.data.started_at).getTime() : 0;
+      const orphaned = !running.data.provider && startedAt > 0 && Date.now() - startedAt > 60_000;
+      if (orphaned) {
+        await supabase.from('ai_tasks').update({ status: 'FAILED', error_code: 'ORPHANED_EXECUTION', error_message: 'The previous generation worker never started. It was safely released for a new attempt.', finished_at: new Date().toISOString() }).eq('id', running.data.id).eq('status', 'RUNNING');
+        obs.warn('Released orphaned content generation task', { contentId, aiTaskId: running.data.id });
+      } else {
+        return NextResponse.json({ error: 'A generation is already running for this content item', aiTaskId: running.data.id, status: 'RUNNING' }, { status: 409 });
+      }
+    }
+
     if (body.idempotencyKey) { const prior = await supabase.from('ai_tasks').select('id,status,output_metadata,error_code,error_message,provider,model').eq('organization_id', auth.context.organizationId).eq('idempotency_key', body.idempotencyKey).eq('task_type', CONTENT_TASK_TYPE).maybeSingle(); if (prior.error) throw prior.error; if (prior.data) { if (prior.data.status === 'RUNNING') return NextResponse.json({ error: 'A generation is already running for this request', aiTaskId: prior.data.id, status: 'RUNNING' }, { status: 409 }); const metadata = (prior.data.output_metadata ?? {}) as { version?: number }; if (prior.data.status === 'SUCCEEDED') return NextResponse.json({ ok: true, version: metadata.version ?? null, status: 'SUCCEEDED', provider: prior.data.provider, model: prior.data.model, replay: true }, { status: 200 }); return NextResponse.json({ error: prior.data.error_message ?? 'A previous generation failed', status: 'FAILED', errorCode: prior.data.error_code }, { status: 409 }); } }
     const context = (item.context ?? {}) as { campaignContext?: string | null };
     const intent = { type: item.type as string, channel: item.channel as string, title: item.title as string, objective: (item.objective as string | null) ?? null, audience: (item.audience as string | null) ?? null, context: context.campaignContext ?? null, tone: (item.tone as string | null) ?? null, cta: (item.cta as string | null) ?? null, instructions: (item.instructions as string | null) ?? null };
@@ -32,6 +48,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       const replayIdempotencyKey = body.idempotencyKey ?? `content:replay:${contentId}:${crypto.randomUUID()}`; const replayTaskInsert = await supabase.from('ai_tasks').insert({ organization_id: auth.context.organizationId, brand_id: brand.id, content_item_id: contentId, strategy_id: snapshot.strategy?.id ?? null, task_type: CONTENT_TASK_TYPE, status: 'RUNNING', idempotency_key: replayIdempotencyKey, input_metadata: { replay: true, intentType: intent.type, intentChannel: intent.channel, campaignId, strategyIds: strategySet.map((strategy) => strategy.id) }, started_at: new Date().toISOString(), ...(auth.context.userId ? { created_by: auth.context.userId } : {}) }).select('id').single();
       if (replayTaskInsert.error) throw replayTaskInsert.error; const outcome = await completeReplayContentGeneration(supabase, { organizationId: auth.context.organizationId, brandId: brand.id, contentId, userId: auth.context.userId, intent, aiTaskId: replayTaskInsert.data.id }); return NextResponse.json({ ok: true, status: outcome.status, version: outcome.version, replay: true }, { status: 201 });
     }
-    scheduleContentExecution({ supabase, organizationId: auth.context.organizationId, brandId: brand.id, contentId, campaignId, intent, createdBy: auth.context.userId }); return NextResponse.json({ ok: true, status: 'RUNNING', strategyCount: strategySet.length }, { status: 201 });
-  } catch (error) { if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid generate request' }, { status: 400 }); obs.error('Content generation request failed', { error: error instanceof Error ? error.message : String(error) }); return NextResponse.json({ error: 'Could not generate content' }, { status: 500 }); }
+
+    const outcome = await scheduleContentExecution({ supabase, organizationId: auth.context.organizationId, brandId: brand.id, contentId, campaignId, intent, createdBy: auth.context.userId });
+    if (outcome.status === 'SUCCEEDED') {
+      return NextResponse.json({ ok: true, status: outcome.status, version: outcome.version ?? null, provider: outcome.provider ?? null, model: outcome.model ?? null, strategyCount: strategySet.length }, { status: 201 });
+    }
+    return NextResponse.json({ ok: false, status: outcome.status, error: outcome.errorMessage ?? 'Content generation failed', errorCode: outcome.errorCode ?? 'AI_GENERATION_FAILED', provider: outcome.provider ?? null, model: outcome.model ?? null }, { status: 502 });
+  } catch (error) { if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid generate request' }, { status: 400 }); obs.error('Content generation request failed', { error: error instanceof Error ? error.message : String(error) }); return NextResponse.json({ error: error instanceof Error ? error.message : 'Could not generate content' }, { status: 500 }); }
 }

@@ -1,0 +1,28 @@
+.strategyShell :global(#strategy > .card[data-generating='true']) {
+  position: relative;
+  overflow: hidden;
+}
+
+.strategyShell :global(#strategy > .card[data-generating='true'] .progress) {
+  position: relative;
+  overflow: hidden;
+}
+
+.strategyShell :global(#strategy > .card[data-generating='true'] .progress span) {
+  display: none;
+}
+
+.strategyShell :global(#strategy > .card[data-generating='true'] .progress::after) {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  background: linear-gradient(90deg, transparent, var(--accent-2), var(--accent), transparent);
+  background-size: 220% 100%;
+  animation: strategyGenerationProgress 1.4s linear infinite;
+}
+
+@keyframes strategyGenerationProgress {
+  from { transform: translateX(-160%); }
+  to { transform: translateX(280%); }
+}

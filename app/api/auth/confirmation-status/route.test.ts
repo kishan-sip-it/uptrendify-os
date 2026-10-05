@@ -101,4 +101,21 @@ describe('POST /api/auth/confirmation-status', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ confirmed: false });
   });
+
+  it('returns an actionable temporary-unavailable response when the status provider fails', async () => {
+    mocks.getUserById.mockRejectedValue(new Error('Supabase admin environment is not configured'));
+
+    const response = await POST(
+      new Request('https://example.com/api/auth/confirmation-status', {
+        method: 'POST',
+        body: JSON.stringify({ userId: USER_ID, nonce: NONCE }),
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: 'Confirmation check is temporarily unavailable. Please try again in a moment.',
+    });
+  });
 });

@@ -3,6 +3,7 @@ export type ResearchErrorInfo = { code: string; message: string };
 const NODE_CODE_MAP: Record<string, string> = {
   ENOTFOUND: 'DNS_NOT_FOUND',
   EAI_AGAIN: 'DNS_TEMPORARY_FAILURE',
+  EBUSY: 'DNS_TEMPORARY_FAILURE',
   ECONNREFUSED: 'CONNECTION_REFUSED',
   ECONNRESET: 'CONNECTION_RESET',
   EPIPE: 'CONNECTION_RESET',

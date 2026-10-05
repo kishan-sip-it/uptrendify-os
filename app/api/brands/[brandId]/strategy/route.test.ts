@@ -21,7 +21,10 @@ vi.mock('@/lib/auth/roles', () => ({
 vi.mock('@/lib/supabase/server', () => ({ createSupabaseServerClient: mocks.createSupabaseServerClient }));
 vi.mock('@/lib/strategy/pipeline', () => ({
   scheduleStrategyExecution: mocks.scheduleStrategyExecution,
+  recoverStaleStrategyExecution: vi.fn(),
   STRATEGY_ACTIVE_STATUSES: ['QUEUED', 'RUNNING'],
+  STRATEGY_GENERATION_LIMIT: 3,
+  gateMessage: vi.fn(() => 'Insufficient approved Brand Brain'),
 }));
 
 function makeClient(overrides: Array<[string, unknown]> = []) {
@@ -88,6 +91,7 @@ describe('POST /api/brands/[brandId]/strategy', () => {
   it('queues a strategy with the next version and schedules execution', async () => {
     const client = makeClient([
       ['brands', { data: { id: BRAND_ID, name: 'Aurora' }, error: null }],
+      ['strategies', { count: 0, error: null }],
       ['strategies', { data: null, error: null }],
       ['strategies', { data: { version: 2 }, error: null }],
       ['strategies', { data: { id: STRATEGY_ID, status: 'QUEUED', version: 3 }, error: null }],
@@ -107,6 +111,7 @@ describe('POST /api/brands/[brandId]/strategy', () => {
   it('returns 409 when a strategy is already being generated for the brand', async () => {
     const client = makeClient([
       ['brands', { data: { id: BRAND_ID, name: 'Aurora' }, error: null }],
+      ['strategies', { count: 0, error: null }],
       ['strategies', { data: { id: STRATEGY_ID, status: 'RUNNING' }, error: null }],
     ]);
     mocks.createSupabaseServerClient.mockResolvedValue(client);
@@ -120,6 +125,7 @@ describe('POST /api/brands/[brandId]/strategy', () => {
   it('replays a terminal strategy as 200 for a repeated idempotency key', async () => {
     const client = makeClient([
       ['brands', { data: { id: BRAND_ID, name: 'Aurora' }, error: null }],
+      ['strategies', { count: 0, error: null }],
       ['strategies', { data: { id: STRATEGY_ID, status: 'SUCCEEDED', version: 1 }, error: null }],
     ]);
     mocks.createSupabaseServerClient.mockResolvedValue(client);
@@ -134,6 +140,7 @@ describe('POST /api/brands/[brandId]/strategy', () => {
   it('returns 409 when a repeated idempotency key is still active', async () => {
     const client = makeClient([
       ['brands', { data: { id: BRAND_ID, name: 'Aurora' }, error: null }],
+      ['strategies', { count: 0, error: null }],
       ['strategies', { data: { id: STRATEGY_ID, status: 'QUEUED', version: 1 }, error: null }],
     ]);
     mocks.createSupabaseServerClient.mockResolvedValue(client);
@@ -147,10 +154,12 @@ describe('POST /api/brands/[brandId]/strategy', () => {
   it('recovers from a version conflict by recomputing the version and inserting again', async () => {
     const client = makeClient([
       ['brands', { data: { id: BRAND_ID, name: 'Aurora' }, error: null }],
+      ['strategies', { count: 0, error: null }],
       ['strategies', { data: null, error: null }],
       ['strategies', { data: { version: 1 }, error: null }],
       ['strategies', { data: null, error: { code: '23505', message: 'duplicate key' } }],
       ['strategies', { data: null, error: null }],
+      ['strategies', { count: 0, error: null }],
       ['strategies', { data: { version: 4 }, error: null }],
       ['strategies', { data: { id: STRATEGY_ID, status: 'QUEUED', version: 5 }, error: null }],
     ]);
@@ -161,6 +170,34 @@ describe('POST /api/brands/[brandId]/strategy', () => {
 
     expect(res.status).toBe(201);
     expect(body).toMatchObject({ strategyId: STRATEGY_ID, version: 5 });
+  });
+
+  it('returns 403 when the successful generation limit is reached', async () => {
+    const client = makeClient([
+      ['brands', { data: { id: BRAND_ID, name: 'Aurora' }, error: null }],
+      ['strategies', { count: 3, error: null }],
+    ]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const res = await POST(REQ, { params: Promise.resolve({ brandId: BRAND_ID }) });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ errorCode: 'STRATEGY_GENERATION_LIMIT_REACHED', generationCount: 3, generationLimit: 3 });
+    expect(mocks.scheduleStrategyExecution).not.toHaveBeenCalled();
+  });
+
+  it('allows another generation when failed attempts exist but fewer than three succeeded', async () => {
+    const client = makeClient([
+      ['brands', { data: { id: BRAND_ID, name: 'Aurora' }, error: null }],
+      ['strategies', { count: 2, error: null }],
+      ['strategies', { data: null, error: null }],
+      ['strategies', { data: { version: 7 }, error: null }],
+      ['strategies', { data: { id: STRATEGY_ID, status: 'QUEUED', version: 8 }, error: null }],
+    ]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const res = await POST(REQ, { params: Promise.resolve({ brandId: BRAND_ID }) });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ strategyId: STRATEGY_ID, version: 8 });
   });
 
   it('returns 404 when the brand is not in the organization', async () => {
@@ -224,6 +261,7 @@ describe('GET /api/brands/[brandId]/strategy', () => {
           error: null,
         },
       ],
+      ['strategies', { count: 1, error: null }],
     ]);
     mocks.requireOrgRole.mockResolvedValue({ error: null, ...authContext() });
     mocks.createSupabaseServerClient.mockResolvedValue(client);
@@ -243,6 +281,7 @@ describe('GET /api/brands/[brandId]/strategy', () => {
     expect(body.versions).toHaveLength(2);
     expect(body.versions[0].version).toBe(2);
     expect(body.canGenerate).toBe(true);
+    expect(body.generationCount).toBe(1);
   });
 
   it('returns latest as null when no strategy exists yet', async () => {
@@ -250,6 +289,7 @@ describe('GET /api/brands/[brandId]/strategy', () => {
       ['brands', { data: { id: BRAND_ID, name: 'Aurora' }, error: null }],
       ['strategies', { data: null, error: null }],
       ['strategies', { data: [], error: null }],
+      ['strategies', { count: 0, error: null }],
     ]);
     mocks.requireOrgRole.mockResolvedValue({ error: null, ...authContext() });
     mocks.createSupabaseServerClient.mockResolvedValue(client);
@@ -260,6 +300,7 @@ describe('GET /api/brands/[brandId]/strategy', () => {
     expect(res.status).toBe(200);
     expect(body.latest).toBeNull();
     expect(body.versions).toEqual([]);
+    expect(body.generationCount).toBe(0);
   });
 
   it('returns 404 when the brand is missing', async () => {
