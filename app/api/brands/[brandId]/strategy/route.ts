@@ -39,7 +39,8 @@ async function loadGenerationCount(supabase: Awaited<ReturnType<typeof createSup
     .from('strategies')
     .select('id', { count: 'exact', head: true })
     .eq('brand_id', brandId)
-    .eq('organization_id', organizationId);
+    .eq('organization_id', organizationId)
+    .eq('status', 'SUCCEEDED');
   if (result.error) throw result.error;
   return result.count ?? 0;
 }
@@ -208,6 +209,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
           );
         }
 
+        const retryCount = await loadGenerationCount(supabase, brandId, auth.context.organizationId);
+        if (retryCount >= STRATEGY_GENERATION_LIMIT) {
+          return NextResponse.json(generationLimitResponse(retryCount), { status: 403 });
+        }
+
         const retryVersion = await supabase
           .from('strategies')
           .select('version')
@@ -217,10 +223,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
           .limit(1)
           .maybeSingle();
         if (retryVersion.error || !retryVersion.data) throw inserted.error;
-        if (retryVersion.data.version >= STRATEGY_GENERATION_LIMIT) {
-          const count = await loadGenerationCount(supabase, brandId, auth.context.organizationId);
-          return NextResponse.json(generationLimitResponse(count), { status: 403 });
-        }
         inserted = await insertRow(retryVersion.data.version + 1);
       }
       if (inserted.error) throw inserted.error;
