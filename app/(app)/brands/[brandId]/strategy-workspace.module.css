@@ -7,19 +7,32 @@
   overflow: hidden;
 }
 
-.strategyShell :global(#strategy > .card:first-child:has(button .spin)::after) {
+.strategyShell :global(#strategy > .card:first-child .progress span) {
+  width: 100% !important;
+  opacity: 0;
+}
+
+.strategyShell :global(#strategy > .card:first-child .progress) {
+  position: relative;
+  overflow: hidden;
+}
+
+.strategyShell :global(#strategy > .card:first-child .progress::after) {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 4px;
-  background: linear-gradient(90deg, transparent 0%, var(--accent-2) 30%, var(--accent) 50%, transparent 80%);
+  inset: 0 auto 0 0;
+  width: 38%;
+  background: linear-gradient(90deg, transparent, var(--accent-2), var(--accent), transparent);
   background-size: 220% 100%;
   animation: strategyGenerationProgress 1.4s linear infinite;
 }
 
+.strategyShell :global(#strategy > .card:first-child:has(button .spin) .progress),
+.strategyShell :global(#strategy > .card:first-child:has(button .spin)::after) {
+  display: block;
+}
+
 @keyframes strategyGenerationProgress {
-  from { background-position: 120% 0; }
-  to { background-position: -120% 0; }
+  from { transform: translateX(-160%); }
+  to { transform: translateX(280%); }
 }
