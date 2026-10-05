@@ -130,7 +130,7 @@ html[data-theme="light"] .nav-item.active,
 html[data-theme="light"] .nav-item:hover,
 html[data-theme="light"] .brand-switcher-trigger,
 html[data-theme="light"] .org-switcher-trigger,
-html[data-theme="light"] .chip,
+html[data-theme="light"] .chip:not(.chip-toggle-active),
 html[data-theme="light"] .progress,
 html[data-theme="light"] .onboarding-step-number {
   background: var(--surface-muted) !important;
