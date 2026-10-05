@@ -1,0 +1,73 @@
+:root {
+  --interactive-selected-bg: color-mix(in srgb, var(--accent) 18%, var(--panel));
+  --interactive-selected-border: color-mix(in srgb, var(--accent) 68%, var(--line));
+  --interactive-selected-text: var(--text);
+  --interactive-selected-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+html[data-theme="dark"] {
+  --interactive-selected-bg: color-mix(in srgb, var(--accent) 22%, var(--panel));
+  --interactive-selected-border: color-mix(in srgb, var(--accent) 72%, var(--line));
+  --interactive-selected-text: var(--text);
+  --interactive-selected-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] {
+    --interactive-selected-bg: color-mix(in srgb, var(--accent) 22%, var(--panel));
+    --interactive-selected-border: color-mix(in srgb, var(--accent) 72%, var(--line));
+    --interactive-selected-text: var(--text);
+    --interactive-selected-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+}
+
+/* Persistent interactive selection states. These are separate from ::selection. */
+.chip-toggle.chip-toggle-active,
+.review-tab.active,
+.brain-topic-button.active,
+.theme-option.active,
+.nav-item.active,
+[aria-selected="true"],
+[aria-pressed="true"],
+[data-state="on"],
+[data-selected="true"],
+[data-active="true"] {
+  background: var(--interactive-selected-bg);
+  border-color: var(--interactive-selected-border);
+  color: var(--interactive-selected-text);
+  box-shadow: var(--interactive-selected-shadow);
+}
+
+.chip-toggle.chip-toggle-active:hover,
+.review-tab.active:hover,
+.brain-topic-button.active:hover,
+.theme-option.active:hover,
+.nav-item.active:hover,
+[aria-selected="true"]:hover,
+[aria-pressed="true"]:hover,
+[data-state="on"]:hover,
+[data-selected="true"]:hover,
+[data-active="true"]:hover {
+  background: var(--interactive-selected-bg);
+  border-color: var(--interactive-selected-border);
+  color: var(--interactive-selected-text);
+}
+
+.chip-toggle.chip-toggle-active:focus-visible,
+.review-tab.active:focus-visible,
+.brain-topic-button.active:focus-visible,
+.theme-option.active:focus-visible,
+.nav-item.active:focus-visible,
+[aria-selected="true"]:focus-visible,
+[aria-pressed="true"]:focus-visible,
+[data-state="on"]:focus-visible,
+[data-selected="true"]:focus-visible,
+[data-active="true"]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  accent-color: var(--accent);
+}
