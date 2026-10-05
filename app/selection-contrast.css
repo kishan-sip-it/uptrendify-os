@@ -1,0 +1,26 @@
+:root {
+  --selection-bg: color-mix(in srgb, var(--accent) 30%, #ffffff);
+  --selection-text: var(--text);
+}
+
+html[data-theme="dark"] {
+  --selection-bg: color-mix(in srgb, var(--accent) 42%, #0b111c);
+  --selection-text: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] {
+    --selection-bg: color-mix(in srgb, var(--accent) 42%, #0b111c);
+    --selection-text: #ffffff;
+  }
+}
+
+::selection {
+  background: var(--selection-bg);
+  color: var(--selection-text);
+}
+
+::-moz-selection {
+  background: var(--selection-bg);
+  color: var(--selection-text);
+}
