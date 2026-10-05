@@ -1,0 +1,16 @@
+/* Keep the contextual workflow checklist anchored to the viewport on desktop.
+   The component owns its design and responsive rules; this layer only protects
+   its positioning from later/global layout rules that could make it scroll with
+   the document. */
+@media (min-width: 1261px) {
+  .contextual-workflow-checklist {
+    position: fixed !important;
+    top: 142px !important;
+    right: 24px !important;
+    bottom: auto !important;
+    max-height: calc(100vh - 166px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+  }
+}
