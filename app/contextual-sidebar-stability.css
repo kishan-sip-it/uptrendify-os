@@ -1,0 +1,51 @@
+/* The workflow checklist is a viewport-anchored contextual surface. Keep the main
+   workspace as the scroll container and reserve space for the desktop sidebar. */
+body:has(.contextual-workflow-checklist) .shell > .main {
+  padding-right: 320px;
+}
+
+.contextual-workflow-checklist {
+  position: fixed !important;
+  right: 24px;
+  top: 142px;
+  width: 276px;
+  max-height: calc(100vh - 166px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 25;
+}
+
+/* The Strategy workspace currently has one authoritative generation progress
+   surface in its header. The legacy second live card is a duplicate render path,
+   not a second job/state. Keep the authoritative header progress and suppress only
+   the later duplicate card while a live progress bar is present. */
+#strategy > .card:has(.progress) ~ .card:has(.progress) {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  body:has(.contextual-workflow-checklist) .shell > .main {
+    padding-right: 22px;
+  }
+
+  .contextual-workflow-checklist {
+    right: 16px;
+    left: auto;
+    width: min(276px, calc(100vw - 32px));
+  }
+}
+
+@media (max-width: 720px) {
+  body:has(.contextual-workflow-checklist) .shell > .main {
+    padding-bottom: 360px;
+  }
+
+  .contextual-workflow-checklist {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    top: auto;
+    width: auto;
+    max-height: min(42vh, 320px);
+  }
+}
