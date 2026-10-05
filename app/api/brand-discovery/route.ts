@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { CAN_VIEW_DASHBOARD, requireOrgRole } from '@/lib/auth/roles';
 import { discoverBrandWebsites } from '@/lib/brand-discovery';
+import { filterBrandDiscoveryCandidates } from '@/lib/brand-discovery-filter';
 
 export async function GET(request: Request) {
   const auth = await requireOrgRole(CAN_VIEW_DASHBOARD);
@@ -10,7 +11,7 @@ export async function GET(request: Request) {
   if (query.length < 2) return NextResponse.json({ ok: true, candidates: [] });
 
   try {
-    const candidates = await discoverBrandWebsites(query);
+    const candidates = filterBrandDiscoveryCandidates(await discoverBrandWebsites(query));
     return NextResponse.json(
       { ok: true, candidates },
       { headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=300' } },
