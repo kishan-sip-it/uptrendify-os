@@ -21,6 +21,39 @@ function isActive(status: string): status is ActiveStatus {
   return (STRATEGY_ACTIVE_STATUSES as readonly string[]).includes(status);
 }
 
+const STRATEGY_STALE_AFTER_MS = 5 * 60 * 1000;
+
+function isStaleGeneration(row: { status: string; created_at: string; started_at: string | null }): boolean {
+  if (!isActive(row.status)) return false;
+  const anchor = row.started_at ?? row.created_at;
+  return Date.now() - new Date(anchor).getTime() >= STRATEGY_STALE_AFTER_MS;
+}
+
+async function recoverStaleStrategy(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  args: { strategyId: string; organizationId: string },
+): Promise<void> {
+  const finishedAt = new Date().toISOString();
+  const message = 'Strategy generation timed out before completion. No completed strategy version was persisted. You can safely retry generation.';
+  const strategyUpdate = await supabase
+    .from('strategies')
+    .update({ status: 'FAILED', error_code: 'GENERATION_TIMEOUT', error_message: message, finished_at: finishedAt })
+    .eq('id', args.strategyId)
+    .eq('organization_id', args.organizationId)
+    .in('status', [...STRATEGY_ACTIVE_STATUSES]);
+  if (strategyUpdate.error) throw strategyUpdate.error;
+
+  const aiTaskUpdate = await supabase
+    .from('ai_tasks')
+    .update({ status: 'FAILED', error_code: 'GENERATION_TIMEOUT', error_message: message, finished_at: finishedAt })
+    .eq('strategy_id', args.strategyId)
+    .eq('organization_id', args.organizationId)
+    .in('status', ['QUEUED', 'RUNNING']);
+  if (aiTaskUpdate.error) throw aiTaskUpdate.error;
+
+  obs.info('Stale strategy generation recovered', { strategyId: args.strategyId, organizationId: args.organizationId });
+}
+
 async function loadBrand(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, brandId: string, organizationId: string) {
   const result = await supabase
     .from('brands')
@@ -77,25 +110,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     if (body.idempotencyKey) {
       const existing = await supabase
         .from('strategies')
-        .select('id,status,version')
+        .select('id,status,version,created_at,started_at')
         .eq('organization_id', auth.context.organizationId)
         .eq('idempotency_key', body.idempotencyKey)
         .maybeSingle();
       if (existing.error) throw existing.error;
       if (existing.data) {
         if (isActive(existing.data.status)) {
-          return NextResponse.json(
-            { error: 'A strategy is already being generated for this request', strategyId: existing.data.id, status: existing.data.status },
-            { status: 409 },
-          );
+          if (isStaleGeneration(existing.data)) {
+            await recoverStaleStrategy(supabase, { strategyId: existing.data.id, organizationId: auth.context.organizationId });
+          } else {
+            return NextResponse.json(
+              { error: 'A strategy is already being generated for this request', strategyId: existing.data.id, status: existing.data.status },
+              { status: 409 },
+            );
+          }
         }
-        return NextResponse.json({ ok: true, ...replayResponse(existing.data) }, { status: 200 });
+        if (!isActive(existing.data.status)) return NextResponse.json({ ok: true, ...replayResponse(existing.data) }, { status: 200 });
       }
     }
 
     const active = await supabase
       .from('strategies')
-      .select('id,status')
+      .select('id,status,created_at,started_at')
       .eq('brand_id', brandId)
       .eq('organization_id', auth.context.organizationId)
       .in('status', [...STRATEGY_ACTIVE_STATUSES])
@@ -103,16 +140,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       .maybeSingle();
     if (active.error) throw active.error;
     if (active.data) {
-      return NextResponse.json(
-        { error: 'A strategy is already being generated for this brand', strategyId: active.data.id, status: active.data.status },
-        { status: 409 },
-      );
+      if (isStaleGeneration(active.data)) {
+        await recoverStaleStrategy(supabase, { strategyId: active.data.id, organizationId: auth.context.organizationId });
+      } else {
+        return NextResponse.json(
+          { error: 'A strategy is already being generated for this brand', strategyId: active.data.id, status: active.data.status },
+          { status: 409 },
+        );
+      }
     }
 
     const versionResult = await supabase
       .from('strategies')
       .select('version')
-      .eq('brand_id', brandId)
+      .eq('brand_id', brand.id)
       .eq('organization_id', auth.context.organizationId)
       .order('version', { ascending: false })
       .limit(1)
@@ -142,24 +183,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
         if (body.idempotencyKey) {
           const existing = await supabase
             .from('strategies')
-            .select('id,status,version')
+            .select('id,status,version,created_at,started_at')
             .eq('organization_id', auth.context.organizationId)
             .eq('idempotency_key', body.idempotencyKey)
             .maybeSingle();
           if (!existing.error && existing.data) {
             if (isActive(existing.data.status)) {
-              return NextResponse.json(
-                { error: 'A strategy is already being generated for this request', strategyId: existing.data.id, status: existing.data.status },
-                { status: 409 },
-              );
+              if (isStaleGeneration(existing.data)) {
+                await recoverStaleStrategy(supabase, { strategyId: existing.data.id, organizationId: auth.context.organizationId });
+              } else {
+                return NextResponse.json(
+                  { error: 'A strategy is already being generated for this request', strategyId: existing.data.id, status: existing.data.status },
+                  { status: 409 },
+                );
+              }
             }
-            return NextResponse.json({ ok: true, ...replayResponse(existing.data) }, { status: 200 });
+            if (!isActive(existing.data.status)) return NextResponse.json({ ok: true, ...replayResponse(existing.data) }, { status: 200 });
           }
         }
 
         const concurrent = await supabase
           .from('strategies')
-          .select('id,status,version')
+          .select('id,status,version,created_at,started_at')
           .eq('brand_id', brand.id)
           .eq('organization_id', auth.context.organizationId)
           .in('status', [...STRATEGY_ACTIVE_STATUSES])
@@ -167,14 +212,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
           .maybeSingle();
 
         if (!concurrent.error && concurrent.data) {
-          return NextResponse.json(
-            { error: 'A strategy is already being generated for this brand', strategyId: concurrent.data.id, status: concurrent.data.status },
-            { status: 409 },
-          );
+          if (isStaleGeneration(concurrent.data)) {
+            await recoverStaleStrategy(supabase, { strategyId: concurrent.data.id, organizationId: auth.context.organizationId });
+          } else {
+            return NextResponse.json(
+              { error: 'A strategy is already being generated for this brand', strategyId: concurrent.data.id, status: concurrent.data.status },
+              { status: 409 },
+            );
+          }
         }
 
-        // Otherwise the conflict came from the (brand_id, version) uniqueness
-        // constraint; advance once and retry without masking unrelated errors.
         const retryVersion = await supabase
           .from('strategies')
           .select('version')
@@ -252,6 +299,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
       .maybeSingle();
     if (latestResult.error) throw latestResult.error;
 
+    let latestRow = latestResult.data;
+    if (latestRow && isStaleGeneration(latestRow)) {
+      await recoverStaleStrategy(supabase, { strategyId: latestRow.id, organizationId: auth.context.organizationId });
+      latestRow = {
+        ...latestRow,
+        status: 'FAILED',
+        error_code: 'GENERATION_TIMEOUT',
+        error_message: 'Strategy generation timed out before completion. No completed strategy version was persisted. You can safely retry generation.',
+        finished_at: new Date().toISOString(),
+      };
+    }
+
     const versionsResult = await supabase
       .from('strategies')
       .select('id,title,status,version,provider,model,error_code,error_message,created_at,started_at,finished_at')
@@ -261,7 +320,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
       .limit(10);
     if (versionsResult.error) throw versionsResult.error;
 
-    const latestRow = latestResult.data;
     const latest = latestRow
       ? {
           id: latestRow.id,
