@@ -10,7 +10,7 @@ const STRATEGY_ID = '00000000-0000-4000-8000-000000000004';
 const mocks = vi.hoisted(() => ({
   requireOrgRole: vi.fn(),
   createSupabaseServerClient: vi.fn(),
-  scheduleStrategyExecution: vi.fn(),
+  scheduleStrategyExecution: vi.fn().mockResolvedValue({ status: 'QUEUED' }),
 }));
 
 vi.mock('@/lib/auth/roles', () => ({

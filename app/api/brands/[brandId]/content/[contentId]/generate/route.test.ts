@@ -10,7 +10,7 @@ const CONTENT_ID = '00000000-0000-4000-8000-000000000004';
 const mocks = vi.hoisted(() => ({
   requireOrgRole: vi.fn(),
   createSupabaseServerClient: vi.fn(),
-  scheduleContentExecution: vi.fn(),
+  scheduleContentExecution: vi.fn().mockResolvedValue({ status: 'SUCCEEDED', version: 1, provider: 'gemini', model: 'gemini-2.5-flash' }),
   completeReplayContentGeneration: vi.fn(),
   isReplayOrganization: vi.fn(),
   loadContentSnapshot: vi.fn(),
@@ -128,7 +128,7 @@ describe('POST /api/brands/[brandId]/content/[contentId]/generate', () => {
     const body = await res.json();
 
     expect(res.status).toBe(201);
-    expect(body).toMatchObject({ ok: true, status: 'RUNNING' });
+    expect(body).toMatchObject({ ok: true, status: 'SUCCEEDED' });
     expect(mocks.scheduleContentExecution).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: ORG_ID,
