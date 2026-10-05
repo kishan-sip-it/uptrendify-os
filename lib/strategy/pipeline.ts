@@ -1,4 +1,3 @@
-import { after } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createDefaultRegistry } from '@/lib/ai/registry';
 import { withTransientRetry } from '@/lib/ai/retry';
@@ -12,6 +11,8 @@ import { checkApprovalGate, GATE_MIN_APPROVED, type SuggestionRow } from '@/lib/
 
 export const STRATEGY_TASK_TYPE = 'strategy_generation';
 export const STRATEGY_ACTIVE_STATUSES = ['QUEUED', 'RUNNING'] as const;
+export const STRATEGY_GENERATION_LIMIT = 3;
+export const STRATEGY_STALE_AFTER_MS = 5 * 60 * 1000;
 export type StrategyActiveStatus = (typeof STRATEGY_ACTIVE_STATUSES)[number];
 
 export function gateMessage(rows: SuggestionRow[]): string {
@@ -77,9 +78,30 @@ async function loadBrainSnapshot(supabase: SupabaseClient, args: { organizationI
 
 async function failTask(supabase: SupabaseClient, args: { aiTaskId?: string; strategyId: string; organizationId: string; code: string; message: string }): Promise<void> {
   const safeMessage = args.message?.slice(0, 600);
-  if (args.aiTaskId) await supabase.from('ai_tasks').update({ status: 'FAILED', error_code: args.code, error_message: safeMessage, finished_at: new Date().toISOString() }).eq('id', args.aiTaskId);
-  await supabase.from('strategies').update({ status: 'FAILED', error_code: args.code, error_message: safeMessage, finished_at: new Date().toISOString() }).eq('id', args.strategyId).eq('organization_id', args.organizationId);
+  if (args.aiTaskId) await supabase.from('ai_tasks').update({ status: 'FAILED', error_code: args.code, error_message: safeMessage, finished_at: new Date().toISOString() }).eq('id', args.aiTaskId).eq('organization_id', args.organizationId);
+  await supabase.from('strategies').update({ status: 'FAILED', error_code: args.code, error_message: safeMessage, finished_at: new Date().toISOString() }).eq('id', args.strategyId).eq('organization_id', args.organizationId).in('status', [...STRATEGY_ACTIVE_STATUSES]);
   obs.info('Strategy generation marked failed', { strategyId: args.strategyId, code: args.code });
+}
+
+export async function recoverStaleStrategyExecution(supabase: SupabaseClient, args: { organizationId: string; brandId: string }): Promise<void> {
+  const cutoff = new Date(Date.now() - STRATEGY_STALE_AFTER_MS).toISOString();
+  const [runningResult, queuedResult] = await Promise.all([
+    supabase.from('strategies').select('id').eq('organization_id', args.organizationId).eq('brand_id', args.brandId).eq('status', 'RUNNING').lt('started_at', cutoff).limit(20),
+    supabase.from('strategies').select('id').eq('organization_id', args.organizationId).eq('brand_id', args.brandId).eq('status', 'QUEUED').lt('created_at', cutoff).limit(20),
+  ]);
+  if (runningResult.error) throw runningResult.error;
+  if (queuedResult.error) throw queuedResult.error;
+  const stale = [...(runningResult.data ?? []), ...(queuedResult.data ?? [])];
+  if (stale.length === 0) return;
+
+  const finishedAt = new Date().toISOString();
+  for (const strategy of stale) {
+    const update = await supabase.from('strategies').update({ status: 'FAILED', error_code: 'GENERATION_TIMEOUT', error_message: 'Strategy generation timed out and was recovered. Please retry generation.', finished_at: finishedAt }).eq('id', strategy.id).eq('organization_id', args.organizationId).in('status', [...STRATEGY_ACTIVE_STATUSES]);
+    if (update.error) throw update.error;
+    const taskUpdate = await supabase.from('ai_tasks').update({ status: 'FAILED', error_code: 'GENERATION_TIMEOUT', error_message: 'Strategy generation timed out and was recovered.', finished_at: finishedAt }).eq('organization_id', args.organizationId).eq('strategy_id', strategy.id).in('status', ['QUEUED', 'RUNNING']);
+    if (taskUpdate.error) throw taskUpdate.error;
+    obs.info('Recovered stale strategy generation', { strategyId: strategy.id, organizationId: args.organizationId, brandId: args.brandId });
+  }
 }
 
 export async function runStrategyGeneration(input: StrategyPipelineInput, deps: StrategyPipelineDeps = {}): Promise<StrategyOutcome> {
@@ -87,7 +109,7 @@ export async function runStrategyGeneration(input: StrategyPipelineInput, deps: 
   const strategyResult = await supabase.from('strategies').select('id,version').eq('id', strategyId).eq('organization_id', organizationId).single();
   if (strategyResult.error) throw strategyResult.error;
   const version = strategyResult.data?.version as number | undefined;
-  const startedUpdate = await supabase.from('strategies').update({ status: 'RUNNING', started_at: new Date().toISOString() }).eq('id', strategyId).eq('organization_id', organizationId);
+  const startedUpdate = await supabase.from('strategies').update({ status: 'RUNNING', started_at: new Date().toISOString() }).eq('id', strategyId).eq('organization_id', organizationId).eq('status', 'QUEUED');
   if (startedUpdate.error) throw startedUpdate.error;
 
   const { snapshot, suggestionRows } = await loadBrainSnapshot(supabase, { organizationId, brandId });
@@ -113,8 +135,12 @@ export async function runStrategyGeneration(input: StrategyPipelineInput, deps: 
   let aiTaskId: string;
   if (aiTaskInsert.error) {
     if (aiTaskInsert.error.code === '23505') {
-      const existing = await supabase.from('ai_tasks').select('id').eq('organization_id', organizationId).eq('idempotency_key', `strategy:${strategyId}`).maybeSingle();
+      const existing = await supabase.from('ai_tasks').select('id,status').eq('organization_id', organizationId).eq('idempotency_key', `strategy:${strategyId}`).maybeSingle();
       if (existing.error || !existing.data) throw aiTaskInsert.error;
+      if (existing.data.status === 'SUCCEEDED') {
+        await supabase.from('strategies').update({ status: 'FAILED', error_code: 'DUPLICATE_EXECUTION', error_message: 'This strategy generation was already completed.', finished_at: new Date().toISOString() }).eq('id', strategyId).eq('organization_id', organizationId).in('status', [...STRATEGY_ACTIVE_STATUSES]);
+        return { status: 'FAILED', version, errorCode: 'DUPLICATE_EXECUTION', errorMessage: 'This strategy generation was already completed.' };
+      }
       aiTaskId = existing.data.id;
     } else throw aiTaskInsert.error;
   } else aiTaskId = aiTaskInsert.data.id;
@@ -124,7 +150,7 @@ export async function runStrategyGeneration(input: StrategyPipelineInput, deps: 
   const providerId = provider?.id;
   if (!provider) { await fail('PROVIDER_UNCONFIGURED', 'No AI provider is configured.'); return { status: 'FAILED', aiTaskId, version, errorCode: 'PROVIDER_UNCONFIGURED', errorMessage: 'No AI provider is configured.' }; }
   const model = provider.defaultModel;
-  const providerUpdate = await supabase.from('ai_tasks').update({ provider: providerId, model }).eq('id', aiTaskId);
+  const providerUpdate = await supabase.from('ai_tasks').update({ provider: providerId, model }).eq('id', aiTaskId).eq('organization_id', organizationId);
   if (providerUpdate.error) throw providerUpdate.error;
 
   let result: StrategyOutput;
@@ -134,9 +160,9 @@ export async function runStrategyGeneration(input: StrategyPipelineInput, deps: 
   try {
     const extraction = await withTransientRetry(() => extractStrategy(provider, contextText), { label: 'strategy generation', providerId });
     result = extraction.result; providerModel = extraction.model; usage = extraction.usage;
-    const persistUpdate = await supabase.from('strategies').update({ status: 'SUCCEEDED', provider: providerId, model: providerModel, output: result, input_snapshot: { ...summarizeSnapshot(snapshot), contextChars: contextText.length }, finished_at: new Date().toISOString() }).eq('id', strategyId).eq('organization_id', organizationId);
+    const persistUpdate = await supabase.from('strategies').update({ status: 'SUCCEEDED', provider: providerId, model: providerModel, output: result, input_snapshot: { ...summarizeSnapshot(snapshot), contextChars: contextText.length }, finished_at: new Date().toISOString() }).eq('id', strategyId).eq('organization_id', organizationId).eq('status', 'RUNNING');
     if (persistUpdate.error) throw persistUpdate.error;
-    const aiTaskUpdate = await supabase.from('ai_tasks').update({ status: 'SUCCEEDED', provider: providerId, model: providerModel, output_metadata: { objectives: result.objectives.length, channels: result.channels.length, campaigns: result.campaigns.length, assumptions: result.assumptions.length, contentPillars: result.contentStrategy.contentPillars.length, seoTopics: result.seoStrategy.priorityTopics.length, researchRunId: snapshot.researchRunId }, latency_ms: Date.now() - startedAt, input_tokens: usage?.inputTokens, output_tokens: usage?.outputTokens, finished_at: new Date().toISOString() }).eq('id', aiTaskId);
+    const aiTaskUpdate = await supabase.from('ai_tasks').update({ status: 'SUCCEEDED', provider: providerId, model: providerModel, output_metadata: { objectives: result.objectives.length, channels: result.channels.length, campaigns: result.campaigns.length, assumptions: result.assumptions.length, contentPillars: result.contentStrategy.contentPillars.length, seoTopics: result.seoStrategy.priorityTopics.length, researchRunId: snapshot.researchRunId }, latency_ms: Date.now() - startedAt, input_tokens: usage?.inputTokens, output_tokens: usage?.outputTokens, finished_at: new Date().toISOString() }).eq('id', aiTaskId).eq('organization_id', organizationId).eq('status', 'RUNNING');
     if (aiTaskUpdate.error) throw aiTaskUpdate.error;
     if (createdBy) await supabase.from('audit_logs').insert({ organization_id: organizationId, actor_user_id: createdBy, action: 'strategy.generated', entity_type: 'strategy', entity_id: strategyId, metadata: { version, provider: providerId, model: providerModel, aiTaskId } });
     obs.info('Strategy generated', { strategyId, brandId, organizationId, version, provider: providerId, model: providerModel, objectives: result.objectives.length });
@@ -151,13 +177,17 @@ export async function runStrategyGeneration(input: StrategyPipelineInput, deps: 
   }
 }
 
-export function scheduleStrategyExecution(input: StrategyPipelineInput): void {
-  after(() => {
-    runStrategyGeneration(input).catch(async (error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      obs.error('Strategy pipeline failed', { strategyId: input.strategyId, brandId: input.brandId, error: message });
-      try { await input.supabase.from('strategies').update({ status: 'FAILED', finished_at: new Date().toISOString(), error_code: 'PIPELINE_FAILED', error_message: 'Strategy pipeline failed' }).eq('id', input.strategyId).eq('organization_id', input.organizationId); }
-      catch (markError) { obs.error('Failed to mark strategy failed', { strategyId: input.strategyId, error: markError instanceof Error ? markError.message : String(markError) }); }
-    });
-  });
+export async function scheduleStrategyExecution(input: StrategyPipelineInput): Promise<StrategyOutcome> {
+  try {
+    return await runStrategyGeneration(input);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    obs.error('Strategy pipeline failed', { strategyId: input.strategyId, brandId: input.brandId, error: message });
+    try {
+      await input.supabase.from('strategies').update({ status: 'FAILED', finished_at: new Date().toISOString(), error_code: 'PIPELINE_FAILED', error_message: 'Strategy pipeline failed' }).eq('id', input.strategyId).eq('organization_id', input.organizationId).in('status', [...STRATEGY_ACTIVE_STATUSES]);
+    } catch (markError) {
+      obs.error('Failed to mark strategy failed', { strategyId: input.strategyId, error: markError instanceof Error ? markError.message : String(markError) });
+    }
+    return { status: 'FAILED', errorCode: 'PIPELINE_FAILED', errorMessage: 'Strategy generation failed. Please retry.' };
+  }
 }
