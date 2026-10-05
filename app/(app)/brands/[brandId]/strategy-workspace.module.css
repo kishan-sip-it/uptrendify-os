@@ -1,3 +1,25 @@
 .strategyShell :global(#strategy > .card:has(.progress) ~ .card:has(.progress)) {
   display: none;
 }
+
+.strategyShell :global(#strategy > .card:first-child) {
+  position: relative;
+  overflow: hidden;
+}
+
+.strategyShell :global(#strategy > .card:first-child:has(button .spin)::after) {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent 0%, var(--accent-2) 30%, var(--accent) 50%, transparent 80%);
+  background-size: 220% 100%;
+  animation: strategyGenerationProgress 1.4s linear infinite;
+}
+
+@keyframes strategyGenerationProgress {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
