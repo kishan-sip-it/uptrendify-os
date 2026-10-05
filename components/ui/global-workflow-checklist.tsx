@@ -248,50 +248,6 @@ export function GlobalWorkflowChecklist() {
 
   return (
     <>
-      <style jsx global>{`
-        body:has(.contextual-workflow-checklist) .shell > .main { padding-right: 320px; }
-        .contextual-workflow-checklist {
-          position: fixed;
-          right: 24px;
-          top: 142px;
-          width: 276px;
-          max-height: calc(100vh - 166px);
-          overflow-y: auto;
-          z-index: 25;
-          padding: 14px;
-          border: 1px solid var(--line);
-          border-radius: 16px;
-          background: color-mix(in srgb, var(--surface-card) 96%, transparent);
-          box-shadow: 0 18px 50px rgba(0,0,0,.2);
-          backdrop-filter: blur(14px);
-        }
-        .contextual-workflow-header { display:flex; gap:9px; align-items:flex-start; margin-bottom:12px; }
-        .contextual-workflow-header-copy { min-width:0; flex:1; }
-        .contextual-workflow-title { color:var(--text); font-weight:700; font-size:13px; line-height:1.3; }
-        .contextual-workflow-subtitle { color:var(--muted); font-size:11px; line-height:1.45; margin-top:3px; }
-        .contextual-workflow-controls { display:flex; gap:4px; flex-shrink:0; }
-        .contextual-workflow-control { width:28px; height:28px; display:grid; place-items:center; padding:0; border:1px solid var(--line); border-radius:8px; background:var(--surface-muted); color:var(--muted); cursor:pointer; }
-        .contextual-workflow-control:hover { color:var(--text); border-color:var(--accent); background:color-mix(in srgb,var(--accent) 8%,var(--surface-muted)); }
-        .contextual-workflow-control:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-        .contextual-workflow-list { display:grid; gap:5px; }
-        .contextual-workflow-item { position:relative; display:grid; grid-template-columns:22px 1fr; gap:8px; padding:9px 8px; border-radius:10px; color:var(--muted); }
-        .contextual-workflow-item.is-current { color:var(--text); background:color-mix(in srgb,var(--accent) 9%,var(--surface-muted)); border:1px solid color-mix(in srgb,var(--accent) 28%,var(--line)); }
-        .contextual-workflow-item.is-done { color:var(--text); }
-        .contextual-workflow-item.is-locked { opacity:.62; }
-        .contextual-workflow-item + .contextual-workflow-item::before { content:''; position:absolute; left:18px; top:-5px; height:5px; border-left:1px solid var(--line); }
-        .contextual-workflow-label { display:block; font-size:12px; font-weight:700; line-height:1.3; }
-        .contextual-workflow-detail { display:block; margin-top:3px; color:var(--muted); font-size:10px; line-height:1.45; }
-        .contextual-workflow-next { margin-top:11px; padding:10px; border:1px solid color-mix(in srgb,var(--accent-2) 28%,var(--line)); border-radius:11px; background:color-mix(in srgb,var(--accent-2) 7%,var(--surface-muted)); }
-        .contextual-workflow-next strong { display:block; color:var(--text); font-size:11px; line-height:1.35; }
-        .contextual-workflow-next span { display:block; margin-top:3px; color:var(--muted); font-size:10px; line-height:1.45; }
-        @media (max-width: 1260px) {
-          body:has(.contextual-workflow-checklist) .shell > .main { padding-right: 28px; }
-          .contextual-workflow-checklist { display:none; }
-        }
-        @media (max-width: 720px) {
-          body:has(.contextual-workflow-checklist) .shell > .main { padding-right:16px; }
-        }
-      `}</style>
       <aside className="contextual-workflow-checklist" aria-label="Contextual workflow checklist">
         <div className="contextual-workflow-header">
           <ClipboardCheck size={16} color="var(--accent)" style={{ flexShrink: 0, marginTop: 1 }} />
