@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_GENERATE_STRATEGY, CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { completeReplayStrategy, isReplayOrganization } from '@/lib/replay';
-import { scheduleStrategyExecution, STRATEGY_ACTIVE_STATUSES, gateMessage } from '@/lib/strategy/pipeline';
+import { recoverStaleStrategyExecution, scheduleStrategyExecution, STRATEGY_ACTIVE_STATUSES, STRATEGY_GENERATION_LIMIT, gateMessage } from '@/lib/strategy/pipeline';
 import { obs } from '@/lib/obs/logger';
 import { checkApprovalGate, loadSuggestionRows, GATE_MIN_APPROVED } from '@/lib/brain/review';
+
+export const maxDuration = 180;
 
 const paramsSchema = z.object({ brandId: z.string().uuid() });
 
@@ -32,11 +34,34 @@ async function loadBrand(supabase: Awaited<ReturnType<typeof createSupabaseServe
   return result.data as { id: string; name: string } | null;
 }
 
+async function loadGenerationCount(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, brandId: string, organizationId: string) {
+  const result = await supabase
+    .from('strategies')
+    .select('id', { count: 'exact', head: true })
+    .eq('brand_id', brandId)
+    .eq('organization_id', organizationId);
+  if (result.error) throw result.error;
+  return result.count ?? 0;
+}
+
 function replayResponse(strategy: { id: string; status: string; version: number }) {
   return {
     strategyId: strategy.id,
     status: strategy.status,
     version: strategy.version,
+  };
+}
+
+function generationLimitResponse(count: number) {
+  return {
+    error: 'Strategy generation limit reached',
+    errorCode: 'STRATEGY_GENERATION_LIMIT_REACHED',
+    generationCount: count,
+    generationLimit: STRATEGY_GENERATION_LIMIT,
+    upgrade: {
+      available: false,
+      message: "You've used all 3 strategy generations available on your current plan.",
+    },
   };
 }
 
@@ -51,6 +76,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     const supabase = await createSupabaseServerClient();
     const brand = await loadBrand(supabase, brandId, auth.context.organizationId);
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+
+    await recoverStaleStrategyExecution(supabase, {
+      organizationId: auth.context.organizationId,
+      brandId,
+    });
+
+    const generationCount = await loadGenerationCount(supabase, brandId, auth.context.organizationId);
+    if (generationCount >= STRATEGY_GENERATION_LIMIT) {
+      return NextResponse.json(generationLimitResponse(generationCount), { status: 403 });
+    }
 
     const suggestionRows = await loadSuggestionRows(supabase, {
       organizationId: auth.context.organizationId,
@@ -173,8 +208,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
           );
         }
 
-        // Otherwise the conflict came from the (brand_id, version) uniqueness
-        // constraint; advance once and retry without masking unrelated errors.
         const retryVersion = await supabase
           .from('strategies')
           .select('version')
@@ -184,6 +217,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
           .limit(1)
           .maybeSingle();
         if (retryVersion.error || !retryVersion.data) throw inserted.error;
+        if (retryVersion.data.version >= STRATEGY_GENERATION_LIMIT) {
+          const count = await loadGenerationCount(supabase, brandId, auth.context.organizationId);
+          return NextResponse.json(generationLimitResponse(count), { status: 403 });
+        }
         inserted = await insertRow(retryVersion.data.version + 1);
       }
       if (inserted.error) throw inserted.error;
@@ -212,16 +249,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       );
     }
 
-    scheduleStrategyExecution({
+    const outcome = await scheduleStrategyExecution({
       supabase,
       organizationId: auth.context.organizationId,
-      brandId: brand.id,
+      brandId,
       strategyId,
       createdBy: auth.context.userId,
     });
 
     return NextResponse.json(
-      { ok: true, strategyId, status: 'QUEUED', version: inserted.data.version },
+      { ok: true, strategyId, status: outcome.status, version: inserted.data.version, errorCode: outcome.errorCode, errorMessage: outcome.errorMessage },
       { status: 201 },
     );
   } catch (error) {
@@ -242,6 +279,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
     const brand = await loadBrand(supabase, brandId, auth.context.organizationId);
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
 
+    await recoverStaleStrategyExecution(supabase, {
+      organizationId: auth.context.organizationId,
+      brandId,
+    });
+
     const latestResult = await supabase
       .from('strategies')
       .select('id,title,status,version,provider,model,output,input_snapshot,error_code,error_message,created_at,started_at,finished_at')
@@ -260,6 +302,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
       .order('version', { ascending: false })
       .limit(10);
     if (versionsResult.error) throw versionsResult.error;
+
+    const generationCount = await loadGenerationCount(supabase, brandId, auth.context.organizationId);
 
     const latestRow = latestResult.data;
     const latest = latestRow
@@ -306,7 +350,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
         ok: true,
         latest,
         versions,
-        canGenerate: CAN_GENERATE_STRATEGY.includes(auth.context.role),
+        canGenerate: CAN_GENERATE_STRATEGY.includes(auth.context.role) && generationCount < STRATEGY_GENERATION_LIMIT,
+        generationCount,
+        generationLimit: STRATEGY_GENERATION_LIMIT,
+        generationLimitReached: generationCount >= STRATEGY_GENERATION_LIMIT,
         activeStatuses: [...STRATEGY_ACTIVE_STATUSES],
         approvalGate: {
           ok: approvalGate.ok,
