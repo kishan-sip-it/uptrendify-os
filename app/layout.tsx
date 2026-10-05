@@ -10,8 +10,10 @@ import './cool-light-theme.css';
 import './ui-foundation.css';
 import './brand-profile.css';
 import './responsive-hardening.css';
+import './ui-final-hardening.css';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { NetworkStatus } from '@/components/ui/NetworkStatus';
+import { GlobalNetworkActivity } from '@/components/ui/global-network-activity';
 import { GlobalWorkflowChecklist } from '@/components/ui/global-workflow-checklist';
 import { PublicUtilityBar } from '@/components/public/public-utility-bar';
 
@@ -25,7 +27,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBoot }} /></head>
-      <body><NetworkStatus /><GlobalWorkflowChecklist /><PublicUtilityBar />{children}<SpeedInsights /></body>
+      <body><NetworkStatus /><GlobalNetworkActivity /><GlobalWorkflowChecklist /><PublicUtilityBar />{children}<SpeedInsights /></body>
     </html>
   );
 }
