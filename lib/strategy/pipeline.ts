@@ -1,4 +1,3 @@
-import { after } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createDefaultRegistry } from '@/lib/ai/registry';
 import { withTransientRetry } from '@/lib/ai/retry';
@@ -151,13 +150,6 @@ export async function runStrategyGeneration(input: StrategyPipelineInput, deps: 
   }
 }
 
-export function scheduleStrategyExecution(input: StrategyPipelineInput): void {
-  after(() => {
-    runStrategyGeneration(input).catch(async (error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      obs.error('Strategy pipeline failed', { strategyId: input.strategyId, brandId: input.brandId, error: message });
-      try { await input.supabase.from('strategies').update({ status: 'FAILED', finished_at: new Date().toISOString(), error_code: 'PIPELINE_FAILED', error_message: 'Strategy pipeline failed' }).eq('id', input.strategyId).eq('organization_id', input.organizationId); }
-      catch (markError) { obs.error('Failed to mark strategy failed', { strategyId: input.strategyId, error: markError instanceof Error ? markError.message : String(markError) }); }
-    });
-  });
+export async function scheduleStrategyExecution(input: StrategyPipelineInput): Promise<StrategyOutcome> {
+  return runStrategyGeneration(input);
 }
