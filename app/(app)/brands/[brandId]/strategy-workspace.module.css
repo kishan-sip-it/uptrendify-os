@@ -1,23 +1,18 @@
-.strategyShell :global(#strategy > .card:has(.progress) ~ .card:has(.progress)) {
+.strategyShell :global(#strategy > .card[data-generating='true']) {
+  position: relative;
+  overflow: hidden;
+}
+
+.strategyShell :global(#strategy > .card[data-generating='true'] .progress) {
+  position: relative;
+  overflow: hidden;
+}
+
+.strategyShell :global(#strategy > .card[data-generating='true'] .progress span) {
   display: none;
 }
 
-.strategyShell :global(#strategy > .card:first-child) {
-  position: relative;
-  overflow: hidden;
-}
-
-.strategyShell :global(#strategy > .card:first-child .progress span) {
-  width: 100% !important;
-  opacity: 0;
-}
-
-.strategyShell :global(#strategy > .card:first-child .progress) {
-  position: relative;
-  overflow: hidden;
-}
-
-.strategyShell :global(#strategy > .card:first-child .progress::after) {
+.strategyShell :global(#strategy > .card[data-generating='true'] .progress::after) {
   content: '';
   position: absolute;
   inset: 0 auto 0 0;
@@ -25,11 +20,6 @@
   background: linear-gradient(90deg, transparent, var(--accent-2), var(--accent), transparent);
   background-size: 220% 100%;
   animation: strategyGenerationProgress 1.4s linear infinite;
-}
-
-.strategyShell :global(#strategy > .card:first-child:has(button .spin) .progress),
-.strategyShell :global(#strategy > .card:first-child:has(button .spin)::after) {
-  display: block;
 }
 
 @keyframes strategyGenerationProgress {
