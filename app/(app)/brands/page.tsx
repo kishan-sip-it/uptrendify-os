@@ -9,19 +9,50 @@ function isHexColor(value: unknown): value is string {
   return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
 }
 
-function analyzedPalette(brand: { primary_color?: unknown; secondary_colors?: unknown; visual_identity?: unknown }) {
-  const visualIdentity = brand.visual_identity && typeof brand.visual_identity === 'object'
-    ? brand.visual_identity as Record<string, unknown>
-    : null;
-  const primary = isHexColor(brand.primary_color)
-    ? brand.primary_color
-    : isHexColor(visualIdentity?.primaryColor)
-      ? visualIdentity.primaryColor
+/**
+ * Read the analysed palette for a brand.
+ *
+ * Prefers the full detected palette stored in visual_identity (which carries
+ * role + occurrence counts), then falls back to the dedicated colour columns so
+ * brands created before the palette scan still render something real. Nothing
+ * here invents a colour: an unscanned brand yields an empty list.
+ */
+function analyzedPalette(brand: {
+  primary_color?: unknown;
+  secondary_colors?: unknown;
+  visual_identity?: unknown;
+}): string[] {
+  const visualIdentity =
+    brand.visual_identity && typeof brand.visual_identity === 'object' && !Array.isArray(brand.visual_identity)
+      ? (brand.visual_identity as Record<string, unknown>)
       : null;
-  const secondary = Array.isArray(brand.secondary_colors)
-    ? brand.secondary_colors.filter(isHexColor)
+
+  const detected = Array.isArray(visualIdentity?.palette)
+    ? (visualIdentity?.palette as unknown[])
+        .map((entry) => (entry && typeof entry === 'object' ? (entry as { hex?: unknown }).hex : null))
+        .filter(isHexColor)
     : [];
-  return Array.from(new Set([primary, ...secondary].filter(isHexColor))).slice(0, 6);
+
+  const primary = isHexColor(brand.primary_color) ? brand.primary_color : null;
+  const secondary = Array.isArray(brand.secondary_colors) ? brand.secondary_colors.filter(isHexColor) : [];
+
+  return Array.from(new Set([...detected, primary, ...secondary].filter(isHexColor))).slice(0, 6);
+}
+
+function brandLogo(brand: { visual_identity?: unknown }): string | null {
+  const visualIdentity =
+    brand.visual_identity && typeof brand.visual_identity === 'object' && !Array.isArray(brand.visual_identity)
+      ? (brand.visual_identity as Record<string, unknown>)
+      : null;
+  const logo = visualIdentity?.logoUrl;
+  return typeof logo === 'string' && logo.length > 0 ? logo : null;
+}
+
+function brandInitials(name: string | null | undefined): string {
+  const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
+  return (words[0]![0]! + words[1]![0]!).toUpperCase();
 }
 
 export default async function BrandsListPage() {
@@ -60,12 +91,37 @@ export default async function BrandsListPage() {
         <div className="grid">
           {(brands ?? []).map((brand, i) => {
             const palette = analyzedPalette(brand);
+            const logo = brandLogo(brand);
+            // Brand colours are injected as scoped custom properties and only
+            // ever consumed through color-mix() with a semantic token, so an
+            // arbitrary brand colour tints the card instead of overriding the
+            // theme or harming text contrast.
+            const brandVars = {
+              '--brand-primary': palette[0] ?? 'var(--accent)',
+              '--brand-secondary': palette[1] ?? 'var(--accent-2)',
+            } as React.CSSProperties;
             return (
-              <a className="card brand-card hover-lift animate-fade-up" href={`/brands/${brand.id}`} key={brand.id} style={{ animationDelay: `${i * 50}ms`, display: 'block' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <h3 style={{ margin: 0 }}>{brand.name}</h3>
-                    <div className="metric-label">{brand.industry || brand.website_url?.replace(/^https?:\/\//, '') || 'Brand'}</div>
+              <a
+                className="card brand-card hover-lift animate-fade-up"
+                href={`/brands/${brand.id}`}
+                key={brand.id}
+                style={{ animationDelay: `${i * 50}ms`, display: 'block', ...brandVars }}
+              >
+                <div className="brand-strip" aria-hidden="true" />
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
+                    <span className="brand-identity-logo" style={{ width: 42, height: 42 }} aria-hidden="true">
+                      {logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={logo} alt="" style={{ padding: 5 }} />
+                      ) : (
+                        <span style={{ fontWeight: 700, fontSize: 13 }}>{brandInitials(brand.name)}</span>
+                      )}
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <h3 style={{ margin: 0, overflowWrap: 'anywhere' }}>{brand.name}</h3>
+                      <div className="metric-label">{brand.industry || brand.website_url?.replace(/^https?:\/\//, '') || 'Brand'}</div>
+                    </div>
                   </div>
                   <span className="badge tone-muted">{brand.status ?? 'ACTIVE'}</span>
                 </div>
