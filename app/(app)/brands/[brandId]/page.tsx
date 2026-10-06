@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -24,14 +24,27 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
   const view: BrandView = query.view === 'brain' || query.view === 'strategy' ? query.view : query.view === 'overview' ? 'overview' : 'profile';
 
   const supabase = await createSupabaseServerClient();
-  const { data: brand } = await supabase
+  const { data: brand, error: brandError } = await supabase
     .from('brands')
     .select('id,name,website_url,industry,created_at,description,primary_color,secondary_colors,visual_identity,positioning,messaging,audience_details')
     .eq('id', brandId)
     .eq('organization_id', auth.context.organizationId)
     .maybeSingle();
 
-  if (!brand) redirect('/brands');
+  if (brandError) {
+    return (
+      <main className="main">
+        <div className="card" role="alert">
+          <div className="eyebrow">Brand unavailable</div>
+          <h1 style={{ marginTop: 8 }}>Could not load this brand.</h1>
+          <p className="subtitle">The brand belongs to the current workspace only when its organization access check succeeds. The database returned an error while loading it.</p>
+          <a className="badge" href="/brands" style={{ marginTop: 12 }}>Back to brands</a>
+        </div>
+      </main>
+    );
+  }
+
+  if (!brand) notFound();
 
   return (
     <main className="main">

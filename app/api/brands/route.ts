@@ -19,6 +19,7 @@ function slugify(value: string) {
 }
 
 export async function POST(request: Request) {
+  let organizationId: string | null = null;
   try {
     const body = inputSchema.parse(await request.json());
 
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
 
     const supabase = await createSupabaseServerClient();
-    const organizationId = auth.context.organizationId;
+    organizationId = auth.context.organizationId;
     const { data: organization, error: organizationError } = await supabase
       .from('organizations')
       .select('workspace_type,name')
@@ -120,7 +121,36 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, brand: createdBrand.data }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid input', details: error.flatten() }, { status: 400 });
-    obs.error('Brand creation failed', { error: error instanceof Error ? error.message : String(error) });
-    return NextResponse.json({ error: 'Failed to create brand' }, { status: 500 });
+    const dbError = error as { code?: string; details?: string | null; hint?: string | null; message?: string };
+    obs.error('Brand creation failed', {
+      error: {
+        code: dbError.code ?? null,
+        message: dbError.message ?? (error instanceof Error ? error.message : String(error)),
+        details: dbError.details ?? null,
+        hint: dbError.hint ?? null,
+      },
+      organizationId,
+    });
+
+    if (dbError.code === '42703' || dbError.code === '42P01') {
+      return NextResponse.json(
+        { error: 'Brand creation is temporarily unavailable because the local database schema is behind the application.', code: 'SCHEMA_MISMATCH' },
+        { status: 500 },
+      );
+    }
+    if (dbError.code === '42501') {
+      return NextResponse.json(
+        { error: 'You do not have permission to create a brand in this workspace.', code: 'FORBIDDEN' },
+        { status: 403 },
+      );
+    }
+    if (dbError.code === '23505') {
+      return NextResponse.json(
+        { error: 'A brand with these details already exists in this workspace.', code: 'DUPLICATE_BRAND' },
+        { status: 409 },
+      );
+    }
+
+    return NextResponse.json({ error: 'Failed to create brand', code: 'BRAND_CREATION_FAILED' }, { status: 500 });
   }
 }
