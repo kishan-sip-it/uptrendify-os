@@ -14,10 +14,34 @@ const schema = z.object({
 export async function GET() {
   const auth = await requireOrgRole(['OWNER','ADMIN','STRATEGIST','EDITOR','APPROVER','CLIENT']);
   if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
+
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.from('organizations').select('id,name,workspace_type,timezone').eq('id',auth.context.organizationId).single();
-  if (error) return NextResponse.json({ error:'Could not load workspace' },{status:500});
-  return NextResponse.json({ok:true,workspace:data ? { ...data, timezone: normalizeTimezone(data.timezone) } : data});
+  const { data, error } = await supabase
+    .from('organizations')
+    .select('id,name,workspace_type,timezone')
+    .eq('id', auth.context.organizationId)
+    .single();
+
+  if (error) {
+    obs.error('Workspace lookup failed', {
+      organizationId: auth.context.organizationId,
+      error: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    return NextResponse.json(
+      {
+        error: error.code === 'PGRST116'
+          ? 'Workspace could not be resolved for this account.'
+          : 'Could not load workspace',
+        code: error.code === 'PGRST116' ? 'WORKSPACE_NOT_FOUND' : 'WORKSPACE_LOOKUP_FAILED',
+      },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ ok: true, workspace: { ...data, timezone: normalizeTimezone(data.timezone) } });
 }
 
 export async function PATCH(request: Request) {
@@ -36,7 +60,17 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ok:true,workspace:data});
   }catch(error){
     if(error instanceof z.ZodError) return NextResponse.json({error:'Invalid workspace settings'}, {status:400});
-    obs.error('Workspace update failed',{error:error instanceof Error?error.message:String(error)});
+    const supabaseError = error && typeof error === 'object'
+      ? error as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown }
+      : null;
+    obs.error('Workspace update failed',{
+      error: typeof supabaseError?.message === 'string'
+        ? supabaseError.message
+        : error instanceof Error ? error.message : String(error),
+      code: typeof supabaseError?.code === 'string' ? supabaseError.code : undefined,
+      details: typeof supabaseError?.details === 'string' ? supabaseError.details : undefined,
+      hint: typeof supabaseError?.hint === 'string' ? supabaseError.hint : undefined,
+    });
     return NextResponse.json({error:'Could not update workspace'},{status:500});
   }
 }

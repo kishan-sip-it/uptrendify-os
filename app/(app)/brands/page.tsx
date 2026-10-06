@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { ArrowRight, Globe2 } from 'lucide-react';
 import { CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { obs } from '@/lib/obs/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,12 +61,62 @@ export default async function BrandsListPage() {
   if (auth.error) redirect('/login');
 
   const supabase = await createSupabaseServerClient();
-  const { data: brands } = await supabase
+  const organizationId = auth.context.organizationId;
+
+  // Keep the portfolio query on the same core columns used by the authenticated
+  // app shell. Brand IQ presentation fields are optional enrichment and must
+  // never turn real brands into a false "No brands yet" state when one of those
+  // optional columns is unavailable or malformed.
+  const { data: coreBrands, error: coreError } = await supabase
     .from('brands')
-    .select('id,name,website_url,industry,status,created_at,primary_color,secondary_colors,visual_identity')
-    .eq('organization_id', auth.context.organizationId)
+    .select('id,name,website_url,industry,status,created_at')
+    .eq('organization_id', organizationId)
     .order('created_at', { ascending: false })
     .limit(100);
+
+  if (coreError) {
+    obs.error('Brand portfolio query failed', {
+      organizationId,
+      error: coreError.message,
+      code: coreError.code,
+      details: coreError.details,
+      hint: coreError.hint,
+    });
+  }
+
+  const brands = (coreBrands ?? []).map((brand) => ({
+    ...brand,
+    primary_color: null as string | null,
+    secondary_colors: [] as string[],
+    visual_identity: null as unknown,
+  }));
+
+  if (!coreError && brands.length > 0) {
+    const ids = brands.map((brand) => brand.id);
+    const { data: identityRows, error: identityError } = await supabase
+      .from('brands')
+      .select('id,primary_color,secondary_colors,visual_identity')
+      .in('id', ids);
+
+    if (identityError) {
+      obs.warn('Brand portfolio identity enrichment unavailable', {
+        organizationId,
+        error: identityError.message,
+        code: identityError.code,
+        details: identityError.details,
+        hint: identityError.hint,
+      });
+    } else {
+      const byId = new Map((identityRows ?? []).map((row) => [row.id, row]));
+      for (const brand of brands) {
+        const identity = byId.get(brand.id);
+        if (!identity) continue;
+        brand.primary_color = identity.primary_color;
+        brand.secondary_colors = Array.isArray(identity.secondary_colors) ? identity.secondary_colors : [];
+        brand.visual_identity = identity.visual_identity;
+      }
+    }
+  }
 
   return (
     <main className="main" style={{ maxWidth: 1100 }}>

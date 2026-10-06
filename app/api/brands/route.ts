@@ -120,7 +120,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, brand: createdBrand.data }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid input', details: error.flatten() }, { status: 400 });
-    obs.error('Brand creation failed', { error: error instanceof Error ? error.message : String(error) });
-    return NextResponse.json({ error: 'Failed to create brand' }, { status: 500 });
+
+    const supabaseError = error && typeof error === 'object'
+      ? error as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown }
+      : null;
+    const message = typeof supabaseError?.message === 'string'
+      ? supabaseError.message
+      : error instanceof Error
+        ? error.message
+        : String(error);
+    const code = typeof supabaseError?.code === 'string' ? supabaseError.code : undefined;
+
+    obs.error('Brand creation failed', {
+      organizationId: 'unresolved-or-request-scoped',
+      error: message,
+      code,
+      details: typeof supabaseError?.details === 'string' ? supabaseError.details : undefined,
+      hint: typeof supabaseError?.hint === 'string' ? supabaseError.hint : undefined,
+    });
+
+    return NextResponse.json(
+      {
+        error: code === 'PGRST116'
+          ? 'Workspace could not be resolved for this account.'
+          : 'Failed to create brand',
+        code: code === 'PGRST116' ? 'WORKSPACE_NOT_FOUND' : 'BRAND_CREATION_FAILED',
+      },
+      { status: 500 },
+    );
   }
 }
