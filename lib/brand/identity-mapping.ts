@@ -20,6 +20,7 @@ export type BrandAiProfile = {
   positioningThemes: string[];
   callsToAction: string[];
   productCategories: string[];
+  industry: string | null;
   businessModel: string | null;
   primaryMarket: string | null;
   geography: string | null;
@@ -150,6 +151,7 @@ export function parseVisualIdentity(raw: unknown): BrandVisualIdentity {
           positioningThemes: asStringArray(a.positioningThemes),
           callsToAction: asStringArray(a.callsToAction),
           productCategories: asStringArray(a.productCategories),
+          industry: asNullableString(a.industry),
           businessModel: asNullableString(a.businessModel),
           primaryMarket: asNullableString(a.primaryMarket),
           geography: asNullableString(a.geography),
