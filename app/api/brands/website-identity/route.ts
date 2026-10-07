@@ -217,6 +217,7 @@ function buildAiProfile(intelligence: Awaited<ReturnType<typeof extractBrandInte
     positioningThemes: intelligence.positioning.positioningThemes.slice(0, 12),
     callsToAction: intelligence.offer.callsToAction.slice(0, 12),
     productCategories: intelligence.identity.productCategories.slice(0, 12),
+    industry: intelligence.identity.industry,
     businessModel: intelligence.identity.businessModel,
     primaryMarket: intelligence.identity.primaryMarket,
     geography: intelligence.identity.geography,
