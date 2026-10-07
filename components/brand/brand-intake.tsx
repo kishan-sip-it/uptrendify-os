@@ -201,6 +201,11 @@ export function BrandIntake({
     );
   }
 
+  useEffect(() => {
+    if (reviewAfterScan || phase !== 'review' || !identity) return;
+    void create();
+  }, [create, identity, phase, reviewAfterScan]);
+
   if (phase === 'scanning') {
     return (
       <div role="status" aria-live="polite">
@@ -215,11 +220,6 @@ export function BrandIntake({
       </div>
     );
   }
-
-  useEffect(() => {
-    if (reviewAfterScan || phase !== 'review' || !identity) return;
-    void create();
-  }, [create, identity, phase, reviewAfterScan]);
 
   if (!identity) return null;
   const ai = identity.aiProfile;
