@@ -188,6 +188,8 @@ export function BrandIntake({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create the brand.');
       setPhase('error');
+    } finally {
+      createInFlightRef.current = false;
     }
   }, [identity, name, website, onCreated, startResearch]);
 
