@@ -38,6 +38,102 @@
   min-width: 0;
 }
 
+/* ---------- Website scan state ---------- */
+.brand-scan-status {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 14px);
+  background: var(--surface);
+}
+
+.brand-scan-status-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brand-scan-status-head strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-strong);
+  font-size: 15px;
+}
+
+.brand-scan-elapsed {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.brand-scan-progress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-inset);
+}
+
+.brand-scan-progress span {
+  display: block;
+  width: 34%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent-2) 70%, var(--accent)));
+  animation: brand-scan-progress 1.35s ease-in-out infinite;
+}
+
+@keyframes brand-scan-progress {
+  0% { transform: translateX(-110%); }
+  55%, 100% { transform: translateX(330%); }
+}
+
+.brand-scan-steps {
+  display: grid;
+  gap: 7px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.brand-scan-steps li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  padding: 5px 7px;
+  border-radius: 9px;
+  color: var(--text-subtle);
+  font-size: 12px;
+  transition: background-color .15s ease, color .15s ease;
+}
+
+.brand-scan-steps li.active {
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.brand-scan-step-index {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--surface-inset);
+  color: var(--text-subtle);
+  font-size: 10px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.brand-scan-steps li.active .brand-scan-step-index {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-inset));
+  color: var(--accent);
+}
+
 /* ---------- Panel header ---------- */
 .brand-panel {
   background: var(--surface-raised);
