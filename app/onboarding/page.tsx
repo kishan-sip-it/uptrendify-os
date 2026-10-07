@@ -138,7 +138,6 @@ export default function OnboardingPage() {
   }, []);
 
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) => {
-    if (key === 'primaryColor') primaryColorSourceRef.current = 'manual';
     setDraft((currentDraft) => ({ ...currentDraft, [key]: value }));
     setError('');
   };
