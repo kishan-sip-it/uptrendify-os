@@ -17,6 +17,45 @@ const EMPTY_AI_PROFILE: NonNullable<BrandIdentity['aiProfile']> = {
 const tags = (values: string[], empty = 'Not detected from this website') =>
   values.length ? <div className="brand-tags">{values.map((value) => <span key={value} className="brand-tag">{value}</span>)}</div> : <NotDetected label={empty} />;
 
+function BrandLivePreview({
+  identity,
+  websiteUrl,
+  ai,
+}: {
+  identity: BrandIdentity;
+  websiteUrl: string | null;
+  ai: NonNullable<BrandIdentity['aiProfile']> | null;
+}) {
+  const primary = /^#[0-9a-f]{6}$/i.test(identity.primaryColor ?? '')
+    ? identity.primaryColor!
+    : identity.palette[0]?.hex ?? '#2563eb';
+  const text = readableTextOn(primary);
+
+  return (
+    <div className="brand-live-preview" style={{ '--preview-primary': primary, '--preview-primary-text': text } as React.CSSProperties}>
+      <div className="brand-live-preview-top">
+        <div className="brand-live-preview-mark">
+          {identity.logoUrl ? <img src={identity.logoUrl} alt="" /> : <span>{brandInitials(identity.name)}</span>}
+        </div>
+        <div className="brand-live-preview-name">
+          <strong>{identity.name || 'Your brand'}</strong>
+          {websiteUrl ? <span>{websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span> : null}
+        </div>
+      </div>
+      <div className="brand-live-preview-body">
+        <span className="brand-live-preview-kicker">{ai?.tone?.[0] ?? identity.voice.tone[0] ?? 'Brand voice'}</span>
+        <h4>{ai?.valueProposition || identity.description || 'Your brand message will appear here.'}</h4>
+        <p>{identity.description || 'Edit the imported description to make this preview match how you want the brand presented.'}</p>
+        <button type="button" className="brand-live-preview-cta" style={{ background: primary, color: text }} disabled>Primary brand colour</button>
+      </div>
+      <div className="brand-live-preview-footer">
+        <span>Active brand context</span>
+        <div className="brand-live-preview-swatches">{identity.palette.slice(0, 4).map((color) => <span key={color.hex} title={color.hex} style={{ background: color.hex }} />)}</div>
+      </div>
+    </div>
+  );
+}
+
 export function BrandProfileWorkspace({
   brandId,
   websiteUrl,
@@ -124,7 +163,8 @@ export function BrandProfileWorkspace({
   }, [save, identity]);
 
   return (
-    <div className="brand-profile" style={paletteVars}>
+    <div className="brand-profile brand-profile-layout" style={paletteVars}>
+      <div className="brand-profile-main">
       <BrandPanel
         icon={<Sparkles size={17} />}
         title="Brand Profile"
@@ -138,12 +178,22 @@ export function BrandProfileWorkspace({
       </BrandPanel>
 
       <BrandPanel icon={<BookOpen size={17} />} title="Brand Guidelines" subtitle="The complete working profile used by strategy and content.">
-        <BrandSection title="Brand Essentials" hint="The core identity and positioning context.">
+        <BrandSection title="Identity" hint="Website analysis is the starting point. Edit the imported values here before they become the active brand context.">
           <div className="brand-fields">
+            <BrandField label="Brand name"><EditableTextField value={identity.name} placeholder="Brand name" onSave={(next) => save({ name: normaliseClearedText(next) ?? 'Untitled brand' })} /></BrandField>
+            <BrandField label="Website"><EditableTextField value={websiteUrl} placeholder="https://example.com" onSave={(next) => save({ websiteUrl: normaliseClearedText(next) })} /></BrandField>
             <BrandField label="What they do" icon={<BookOpen size={14} />}><EditableTextField value={identity.description} placeholder="Describe the business." multiline onSave={(next) => save({ description: normaliseClearedText(next) })} /></BrandField>
             <BrandField label="Industry" icon={<Target size={14} />}><EditableTextField value={identity.industry} placeholder="Industry" onSave={(next) => save({ industry: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="Target audience" icon={<Users size={14} />}><EditableTextField value={identity.audienceSummary} placeholder="Who should this brand reach?" multiline onSave={(next) => save({ targetAudience: normaliseClearedText(next), audienceDetails: { summary: normaliseClearedText(next) } })} /></BrandField>
             <BrandField label="Positioning" icon={<Target size={14} />}><EditableTextField value={identity.valueProposition} placeholder="Why this brand wins" multiline onSave={(next) => save({ positioning: { valueProposition: normaliseClearedText(next) } })} /></BrandField>
             <BrandField label="Logo URL"><EditableTextField value={identity.logoUrl} placeholder="https://example.com/logo.svg" onSave={(next) => saveVisualIdentity({ logoUrl: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="Primary color" icon={<Palette size={14} />}><EditablePrimaryColor value={identity.primaryColor} onSave={savePrimaryColor} /></BrandField>
+          </div>
+        </BrandSection>
+
+        <BrandSection title="Brand Essentials" hint="The core identity and positioning context.">
+          <div className="brand-fields">
+            <BrandField label="Positioning" icon={<Target size={14} />}><EditableTextField value={identity.valueProposition} placeholder="Why this brand wins" multiline onSave={(next) => save({ positioning: { valueProposition: normaliseClearedText(next) } })} /></BrandField>
             <BrandField label="Differentiators"><EditableTags label="Differentiators" values={ai?.differentiators ?? []} placeholder="Add a differentiator" onSave={(next) => saveAiProfile({ differentiators: next })} /></BrandField>
             <BrandField label="Business model"><EditableTextField value={ai?.businessModel ?? null} placeholder="How the business makes money or delivers value" onSave={(next) => saveAiProfile({ businessModel: normaliseClearedText(next) })} /></BrandField>
             <BrandField label="Primary market"><EditableTextField value={ai?.primaryMarket ?? null} placeholder="Primary market" onSave={(next) => saveAiProfile({ primaryMarket: normaliseClearedText(next) })} /></BrandField>
@@ -163,7 +213,6 @@ export function BrandProfileWorkspace({
 
         <BrandSection title="Colors" hint="Actual declared palette, including external stylesheets, theme metadata and inline styles.">
           <div className="brand-fields">
-            <BrandField label="Primary color" icon={<Palette size={14} />}><EditablePrimaryColor value={identity.primaryColor} onSave={savePrimaryColor} /></BrandField>
             <BrandField label="Brand palette" icon={<Palette size={14} />}><EditableColorPalette palette={identity.palette.map((c) => ({ hex: c.hex, role: c.role }))} onSave={savePalette} /></BrandField>
             <BrandField label="Fonts" icon={<Type size={14} />}>
               <div>
@@ -191,7 +240,6 @@ export function BrandProfileWorkspace({
 
         <BrandSection title="Audience" hint="Target audience, segments, needs and use cases.">
           <div className="brand-fields">
-            <BrandField label="Target audience" icon={<Users size={14} />}><EditableTextField value={identity.audienceSummary} placeholder="Who should this brand reach?" multiline onSave={(next) => save({ audienceDetails: { summary: normaliseClearedText(next) } })} /></BrandField>
             <BrandField label="Customer types"><EditableTags label="Customer types" values={ai?.customerTypes ?? []} placeholder="Add a customer type" onSave={(next) => saveAiProfile({ customerTypes: next })} /></BrandField>
             <BrandField label="Personas" icon={<Users size={14} />}><EditablePersonas personas={ai?.personas ?? []} onSave={(next) => saveAiProfile({ personas: next })} /></BrandField>
             <BrandField label="Pain points"><EditableTags label="Pain points" values={ai?.painPoints ?? []} placeholder="Add a pain point" onSave={(next) => saveAiProfile({ painPoints: next })} /></BrandField>
@@ -221,30 +269,6 @@ export function BrandProfileWorkspace({
           {identity.socialProfiles.length ? <div className="brand-tags">{identity.socialProfiles.map((profile) => <a key={profile.platform} href={profile.url} target="_blank" rel="noreferrer" className="brand-tag" style={{ textDecoration: 'none' }}>{profile.platform}</a>)}</div> : <NotDetected label="No social profiles detected" />}
         </BrandSection>
 
-        <BrandSection title="Live Preview" hint="This preview updates from the active brand context, so you can see the effect of your edits before strategy, campaigns and content use them.">
-          <div className="brand-live-preview" style={{ '--preview-primary': previewPrimary, '--preview-primary-text': previewText } as React.CSSProperties}>
-            <div className="brand-live-preview-top">
-              <div className="brand-live-preview-mark">
-                {identity.logoUrl ? <img src={identity.logoUrl} alt="" /> : <span>{brandInitials(identity.name)}</span>}
-              </div>
-              <div className="brand-live-preview-name">
-                <strong>{identity.name || 'Your brand'}</strong>
-                {websiteUrl ? <span>{websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span> : null}
-              </div>
-            </div>
-            <div className="brand-live-preview-body">
-              <span className="brand-live-preview-kicker">{ai?.tone?.[0] ?? identity.voice.tone[0] ?? 'Brand voice'}</span>
-              <h4>{ai?.valueProposition || identity.description || 'Your brand message will appear here.'}</h4>
-              <p>{identity.description || 'Edit the imported description to make this preview match how you want the brand presented.'}</p>
-              <button type="button" className="brand-live-preview-cta" style={{ background: previewPrimary, color: previewText }} disabled>Primary brand colour</button>
-            </div>
-            <div className="brand-live-preview-footer">
-              <span>Active brand context</span>
-              <div className="brand-live-preview-swatches">{identity.palette.slice(0, 4).map((color) => <span key={color.hex} title={color.hex} style={{ background: color.hex }} />)}</div>
-            </div>
-          </div>
-        </BrandSection>
-
         <BrandSection title="Import provenance" hint="Exactly what the scanner inspected.">
           <div className="brand-fields">
             <BrandField label="Pages scanned"><span>{identity.crawl?.pageCount ?? 1}</span></BrandField>
@@ -254,6 +278,15 @@ export function BrandProfileWorkspace({
           </div>
         </BrandSection>
       </BrandPanel>
+      </div>
+      <aside className="brand-profile-preview-column" aria-label="Live brand preview">
+        <BrandPanel icon={<Sparkles size={17} />} title="Live preview" subtitle="See the active brand identity before it reaches strategy, campaigns and content.">
+          <BrandLivePreview identity={identity} websiteUrl={websiteUrl} ai={ai} />
+          <p className="brand-section-hint" style={{ margin: 0 }}>
+            Edit any field on the left and save it. The saved value becomes the active brand context.
+          </p>
+        </BrandPanel>
+      </aside>
     </div>
   );
 }
