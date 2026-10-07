@@ -250,8 +250,6 @@ export async function GET(request: Request) {
 
     let identity = extractBrandIdentity(outcome.html, outcome.finalUrl);
     const stylesheetUrls = externalStylesheetUrls(outcome.html, outcome.finalUrl);
-    const cssBlocks = cssResults.filter(Boolean);
-    identity = mergeExternalCss(identity, cssBlocks);
 
     const pageCandidates = prioritizedLinks(outcome.html, outcome.finalUrl);
     const pageUrls = [outcome.finalUrl, ...pageCandidates];
@@ -272,6 +270,9 @@ export async function GET(request: Request) {
       })),
     ]);
     for (const page of extraPages) if (page?.text) evidencePages.push(page);
+
+    const cssBlocks = cssResults.filter(Boolean);
+    identity = mergeExternalCss(identity, cssBlocks);
 
     const assets = (() => {
       const $ = cheerio.load(outcome.html);
