@@ -4,6 +4,16 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_VIEW_BRAND, CAN_CREATE_BRANDS, requireOrgRole } from '@/lib/auth/roles';
 import { obs } from '@/lib/obs/logger';
 
+const brandRuleSchema = z.object({
+  id: z.string().trim().min(1).max(120),
+  title: z.string().trim().min(1).max(160),
+  description: z.string().trim().min(1).max(2000),
+}).strict();
+
+const brandRulesSchema = z.object({
+  customRules: z.array(brandRuleSchema).optional(),
+}).passthrough();
+
 const updateSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   websiteUrl: z.string().url().nullable().optional(),
@@ -13,7 +23,7 @@ const updateSchema = z.object({
   targetAudience: z.string().trim().max(1000).nullable().optional(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
   secondaryColors: z.array(z.string().regex(/^#[0-9A-Fa-f]{6}$/)).max(8).optional(),
-  brandRules: z.record(z.string(), z.unknown()).optional(),
+  brandRules: brandRulesSchema.optional(),
   audienceDetails: z.record(z.string(), z.unknown()).optional(),
   offerDetails: z.record(z.string(), z.unknown()).optional(),
   positioning: z.record(z.string(), z.unknown()).optional(),
