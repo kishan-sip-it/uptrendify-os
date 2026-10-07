@@ -271,7 +271,7 @@ export function EditablePrimaryColor({
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <input
           type="color"
-          value={draft}
+          value={/^#[0-9a-f]{6}$/i.test(draft) ? draft : '#000000'}
           onChange={(event) => { setDraft(event.target.value); setError(null); }}
           aria-label="Primary brand colour picker"
           disabled={pending}
