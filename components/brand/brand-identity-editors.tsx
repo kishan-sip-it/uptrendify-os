@@ -4,6 +4,7 @@ import { startTransition, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Plus, RefreshCw, X } from 'lucide-react';
 import type { CustomBrandRule } from '@/lib/brand/identity-mapping';
+import { NotDetected } from './brand-profile-primitives';
 
 /**
  * Client-side editing for imported Brand Identity values.
