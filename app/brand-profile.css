@@ -18,6 +18,26 @@
   gap: var(--section-gap, 22px);
 }
 
+.brand-profile-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 390px);
+  align-items: start;
+}
+
+.brand-profile-main {
+  min-width: 0;
+}
+
+.brand-profile-preview-column {
+  min-width: 0;
+  position: sticky;
+  top: 18px;
+  align-self: start;
+}
+
+.brand-profile-preview-column .brand-panel {
+  min-width: 0;
+}
+
 /* ---------- Panel header ---------- */
 .brand-panel {
   background: var(--surface-raised);
@@ -640,6 +660,16 @@
 }
 
 /* ---------- Responsive ---------- */
+@media (max-width: 1080px) {
+  .brand-profile-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brand-profile-preview-column {
+    position: static;
+  }
+}
+
 @media (max-width: 860px) {
   .brand-field {
     grid-template-columns: minmax(0, 1fr);
