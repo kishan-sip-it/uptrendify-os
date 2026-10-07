@@ -9,7 +9,7 @@ import { readableTextOn } from '@/lib/brand/visual-extraction';
 import { TONE_OPTIONS, VOICE_AXES, describeVoice, voiceAxisValues } from '@/lib/brand/voice';
 
 const EMPTY_AI_PROFILE: NonNullable<BrandIdentity['aiProfile']> = {
-  products: [], services: [], audience: null, personas: [], customerTypes: [], painPoints: [], useCases: [],
+  industry: null, products: [], services: [], audience: null, personas: [], customerTypes: [], painPoints: [], useCases: [],
   tone: [], terminology: [], recurringClaims: [], messagingThemes: [], valueProposition: null, differentiators: [],
   positioningThemes: [], callsToAction: [], productCategories: [], businessModel: null, primaryMarket: null, geography: null, evidence: [],
 };
