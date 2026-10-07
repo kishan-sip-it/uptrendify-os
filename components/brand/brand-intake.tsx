@@ -53,11 +53,13 @@ export function BrandIntake({
   initialWebsite = '',
   initialBrandName = '',
   startResearch = true,
+  showReview = true,
 }: {
   onCreated: (brandId: string, details?: { brandName: string; websiteUrl: string }) => void;
   initialWebsite?: string;
   initialBrandName?: string;
   startResearch?: boolean;
+  showReview?: boolean;
 }) {
   const [phase, setPhase] = useState<Phase>('input');
   const [website, setWebsite] = useState(initialWebsite);
@@ -65,6 +67,7 @@ export function BrandIntake({
   const [identity, setIdentity] = useState<IntakeIdentity | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const reviewAfterScan = showReview !== false;
 
   const scan = useCallback(async () => {
     const value = website.trim();
@@ -178,14 +181,14 @@ export function BrandIntake({
       setError(err instanceof Error ? err.message : 'Could not create the brand.');
       setPhase('error');
     }
-  }, [identity, name, website, onCreated]);
+  }, [identity, name, website, onCreated, startResearch]);
 
   if (phase === 'input' || phase === 'error') {
     return (      <div>
         <label className="brand-field" style={{ display: 'block', borderTop: 0, paddingTop: 0 }}>
           <span style={{ display: 'block', marginBottom: 8, color: 'var(--text)', fontWeight: 650 }}>Start with the brand website</span>
           <span style={{ display: 'block', marginBottom: 10, color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>
-            We read the public site, its products and services, visual identity, audience and messaging. You review the imported Brand IQ before anything is saved.
+            We read the public site, its products, services, visual identity, audience and messaging. The existing Brand IQ pipeline uses those findings to create the brand without asking you to repeat them manually.
           </span>
           <div style={{ position: 'relative' }}>
             <Globe2 size={17} style={{ position: 'absolute', left: 13, top: 14, color: 'var(--text-subtle)', pointerEvents: 'none' }} />
@@ -213,9 +216,16 @@ export function BrandIntake({
     );
   }
 
+  useEffect(() => {
+    if (reviewAfterScan || phase !== 'review' || !identity) return;
+    void create();
+  }, [create, identity, phase, reviewAfterScan]);
+
   if (!identity) return null;
   const ai = identity.aiProfile;
   const assets = identity.assets ?? [];
+
+  if (!reviewAfterScan) return null;
 
   return (
     <div>
