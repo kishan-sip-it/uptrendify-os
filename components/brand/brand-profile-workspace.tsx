@@ -199,7 +199,7 @@ export function BrandProfileWorkspace({
           </div>
         </BrandSection>
 
-        <BrandSection title="Brand Rules" hint="Optional human-authored constraints. Add as many as your team needs; these are passed into strategy and content generation as authoritative guidance.">
+        <BrandSection title="Custom Brand Rules" hint="Optional human-authored constraints. Add as many as your team needs; these are passed into strategy and content generation as authoritative guidance.">
           <EditableBrandRules
             rules={identity.brandRules}
             onSave={(next) => save({ brandRules: { customRules: next } })}
