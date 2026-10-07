@@ -1235,6 +1235,12 @@ html[data-theme="light"] .chip {
   color: #756f63;
 }
 
+html[data-theme="light"] .chip-toggle-active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-card));
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+  color: var(--text);
+}
+
 html[data-theme="light"] .content-filter-input,
 html[data-theme="light"] .content-filter-select,
 html[data-theme="light"] .content-form input,
