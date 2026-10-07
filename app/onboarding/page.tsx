@@ -104,8 +104,7 @@ export default function OnboardingPage() {
           setDraft(next);
           setWorkspaceRole(String(body?.role || 'OWNER'));
           const storedStep = Number(body?.progress?.current_step ?? 0);
-          // Legacy onboarding had a dedicated Brand Rules step. Map that old
-          // step and the old Review/Research indices onto the new five-step flow
+          // Map older onboarding progress indices onto the current five-step flow
           // without making a user repeat completed setup.
           const nextStep = storedStep >= 3 ? Math.min(3, storedStep - 1) : storedStep;
           setStep(Math.min(STEPS.length - 1, Math.max(0, nextStep)));
