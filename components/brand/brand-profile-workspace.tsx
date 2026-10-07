@@ -191,6 +191,13 @@ export function BrandProfileWorkspace({
           </div>
         </BrandSection>
 
+        <BrandSection title="Custom Brand Rules" hint="Optional human-authored constraints. Add as many as your team needs; these are passed into strategy and content generation as authoritative guidance.">
+          <EditableBrandRules
+            rules={identity.brandRules}
+            onSave={(next) => save({ brandRules: { customRules: next } })}
+          />
+        </BrandSection>
+
         <BrandSection title="Brand Essentials" hint="The core identity and positioning context.">
           <div className="brand-fields">
             <BrandField label="Differentiators"><EditableTags label="Differentiators" values={ai?.differentiators ?? []} placeholder="Add a differentiator" onSave={(next) => saveAiProfile({ differentiators: next })} /></BrandField>
@@ -244,13 +251,6 @@ export function BrandProfileWorkspace({
             <BrandField label="Pain points"><EditableTags label="Pain points" values={ai?.painPoints ?? []} placeholder="Add a pain point" onSave={(next) => saveAiProfile({ painPoints: next })} /></BrandField>
             <BrandField label="Use cases"><EditableTags label="Use cases" values={ai?.useCases ?? []} placeholder="Add a use case" onSave={(next) => saveAiProfile({ useCases: next })} /></BrandField>
           </div>
-        </BrandSection>
-
-        <BrandSection title="Custom Brand Rules" hint="Optional human-authored constraints. Add as many as your team needs; these are passed into strategy and content generation as authoritative guidance.">
-          <EditableBrandRules
-            rules={identity.brandRules}
-            onSave={(next) => save({ brandRules: { customRules: next } })}
-          />
         </BrandSection>
 
         <BrandSection title="Working signals" hint="Website-derived language can be refined here before it becomes active working context.">
