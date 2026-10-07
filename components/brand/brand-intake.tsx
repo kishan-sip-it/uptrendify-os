@@ -66,6 +66,7 @@ export function BrandIntake({
   const [name, setName] = useState(initialBrandName);
   const [identity, setIdentity] = useState<IntakeIdentity | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
+  const [scanElapsed, setScanElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const reviewAfterScan = showReview !== false;
 
@@ -80,7 +81,12 @@ export function BrandIntake({
     setError(null);
     setPhase('scanning');
     setStepIndex(0);
-    const ticker = window.setInterval(() => setStepIndex((current) => Math.min(current + 1, STEPS.length - 1)), 1100);
+    setScanElapsed(0);
+    const startedAt = Date.now();
+    const ticker = window.setInterval(() => {
+      setStepIndex((current) => (current + 1) % STEPS.length);
+      setScanElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1100);
 
     try {
       const response = await fetch(`/api/brands/website-identity?url=${encodeURIComponent(value)}`, { cache: 'no-store' });
@@ -211,12 +217,16 @@ export function BrandIntake({
       <div role="status" aria-live="polite">
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 11 }}>
           {STEPS.map((step, index) => (
-            <li key={step} style={{ display: 'flex', alignItems: 'center', gap: 10, color: index <= stepIndex ? 'var(--text)' : 'var(--text-subtle)' }}>
+            <li key={step} style={{ display: 'flex', alignItems: 'center', gap: 10, color: index === stepIndex ? 'var(--text)' : 'var(--text-subtle)' }}>
               {index < stepIndex ? <span style={{ color: 'var(--status-success)' }}>✓</span> : index === stepIndex ? <LoaderCircle size={15} className="spin" style={{ color: 'var(--accent)' }} /> : <span style={{ width: 15, height: 15, borderRadius: 999, border: '1px solid var(--border-strong)' }} />}
               <span style={{ fontSize: 14 }}>{step}</span>
             </li>
           ))}
         </ul>
+        <div className="brand-section-hint" style={{ marginTop: 16 }}>
+          Analysing the public site, key pages, styles and messaging. This is a real scan rather than a loading animation; larger sites can take a little longer.
+          <span style={{ display: 'block', marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>Elapsed: {scanElapsed}s</span>
+        </div>
       </div>
     );
   }
