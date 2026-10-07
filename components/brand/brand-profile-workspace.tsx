@@ -40,11 +40,6 @@ export function BrandProfileWorkspace({
   const axisRows = VOICE_AXES.filter((axis) => axes[axis.key] !== undefined);
   const ai = identity.aiProfile;
 
-  const saveAiProfile = useCallback((patch: Partial<NonNullable<BrandIdentity['aiProfile']>>) => {
-    const current = ai ?? EMPTY_AI_PROFILE;
-    return saveVisualIdentity({ aiProfile: { ...current, ...patch } });
-  }, [ai, saveVisualIdentity]);
-
   const saveVisualIdentity = useCallback((next: Record<string, unknown>) => save({
     visualIdentity: {
       logoUrl: identity.logoUrl,
@@ -64,6 +59,11 @@ export function BrandProfileWorkspace({
       ...next,
     },
   }), [save, identity]);
+
+  const saveAiProfile = useCallback((patch: Partial<NonNullable<BrandIdentity['aiProfile']>>) => {
+    const current = ai ?? EMPTY_AI_PROFILE;
+    return saveVisualIdentity({ aiProfile: { ...current, ...patch } });
+  }, [ai, saveVisualIdentity]);
 
   const saveVoice = useCallback((voice: BrandIdentity['voice']) => saveVisualIdentity({ voice }), [saveVisualIdentity]);
   const savePalette = useCallback((palette: { hex: string; role: string }[]) => {
