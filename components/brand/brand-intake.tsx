@@ -283,14 +283,6 @@ export function BrandIntake({
           </div>
         </BrandSection>
 
-        <BrandSection title="Guidelines" hint="Working rules derived from repeated language and explicit calls-to-action. They remain editable after import.">
-          <div className="brand-fields">
-            <BrandField label="Use / preferred language">{tags(ai?.terminology, 'No recurring terminology detected')}</BrandField>
-            <BrandField label="Messaging rules">{tags([...(ai?.recurringClaims ?? []), ...(ai?.messagingThemes ?? [])], 'No explicit messaging rules detected')}</BrandField>
-            <BrandField label="Positioning themes">{tags(ai?.positioningThemes)}</BrandField>
-          </div>
-        </BrandSection>
-
         <BrandSection title="Visual Identity" hint="Declared colours and typography, including external stylesheets rather than only inline HTML.">
           <div className="brand-fields">
             <BrandField label="Logo">
