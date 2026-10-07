@@ -137,7 +137,8 @@ export function BrandProfileWorkspace({
           <div className="brand-fields">
             <BrandField label="What they do" icon={<BookOpen size={14} />}><EditableTextField value={identity.description} placeholder="Describe the business." multiline onSave={(next) => save({ description: normaliseClearedText(next) })} /></BrandField>
             <BrandField label="Industry" icon={<Target size={14} />}><EditableTextField value={identity.industry} placeholder="Industry" onSave={(next) => save({ industry: normaliseClearedText(next) })} /></BrandField>
-            <BrandField label="Positioning" icon={<Target size={14} />}>{identity.valueProposition ? <EditableTextField value={identity.valueProposition} placeholder="Why this brand wins" multiline onSave={(next) => save({ positioning: { valueProposition: normaliseClearedText(next) } })} /> : <NotDetected label="Not detected from this website" />}</BrandField>
+            <BrandField label="Positioning" icon={<Target size={14} />}><EditableTextField value={identity.valueProposition} placeholder="Why this brand wins" multiline onSave={(next) => save({ positioning: { valueProposition: normaliseClearedText(next) } })} /></BrandField>
+            <BrandField label="Logo URL"><EditableTextField value={identity.logoUrl} placeholder="https://example.com/logo.svg" onSave={(next) => saveVisualIdentity({ logoUrl: normaliseClearedText(next) })} /></BrandField>
             <BrandField label="Differentiators"><EditableTags label="Differentiators" values={ai?.differentiators ?? []} placeholder="Add a differentiator" onSave={(next) => saveAiProfile({ differentiators: next })} /></BrandField>
             <BrandField label="Business model"><EditableTextField value={ai?.businessModel ?? null} placeholder="How the business makes money or delivers value" onSave={(next) => saveAiProfile({ businessModel: normaliseClearedText(next) })} /></BrandField>
             <BrandField label="Primary market"><EditableTextField value={ai?.primaryMarket ?? null} placeholder="Primary market" onSave={(next) => saveAiProfile({ primaryMarket: normaliseClearedText(next) })} /></BrandField>
@@ -160,7 +161,13 @@ export function BrandProfileWorkspace({
             <BrandField label="Primary color" icon={<Palette size={14} />}><EditablePrimaryColor value={identity.primaryColor} onSave={savePrimaryColor} /></BrandField>
             <BrandField label="Brand palette" icon={<Palette size={14} />}><EditableColorPalette palette={identity.palette.map((c) => ({ hex: c.hex, role: c.role }))} onSave={savePalette} /></BrandField>
             <BrandField label="Fonts" icon={<Type size={14} />}>
-              {identity.fonts.length ? <div><div className="brand-tags">{identity.fonts.map((font) => <span key={font.family} className="brand-tag">{font.family}<span className="brand-swatch-role">{font.source}</span></span>)}</div><div style={{ marginTop: 10, display: 'grid', gap: 8 }}><div><span className="brand-persona-fact-label">Heading font</span><EditableTextField value={identity.headingFont} placeholder="Not detected" onSave={(next) => saveVisualIdentity({ headingFont: normaliseClearedText(next) })} /></div><div><span className="brand-persona-fact-label">Body font</span><EditableTextField value={identity.bodyFont} placeholder="Not detected" onSave={(next) => saveVisualIdentity({ bodyFont: normaliseClearedText(next) })} /></div></div></div> : <NotDetected label="No font declarations found on this website" />}
+              <div>
+                {identity.fonts.length ? <div className="brand-tags">{identity.fonts.map((font) => <span key={font.family} className="brand-tag">{font.family}<span className="brand-swatch-role">{font.source}</span></span>)}</div> : <NotDetected label="No font declarations found on this website" />}
+                <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                  <div><span className="brand-persona-fact-label">Heading font</span><EditableTextField value={identity.headingFont} placeholder="e.g. Inter" onSave={(next) => saveVisualIdentity({ headingFont: normaliseClearedText(next) })} /></div>
+                  <div><span className="brand-persona-fact-label">Body font</span><EditableTextField value={identity.bodyFont} placeholder="e.g. Inter" onSave={(next) => saveVisualIdentity({ bodyFont: normaliseClearedText(next) })} /></div>
+                </div>
+              </div>
             </BrandField>
           </div>
         </BrandSection>
