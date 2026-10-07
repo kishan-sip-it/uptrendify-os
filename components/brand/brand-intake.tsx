@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Globe2, LoaderCircle, RefreshCw, Sparkles } from 'lucide-react';
 import type { ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { toVisualIdentity } from '@/lib/brand/identity-mapping';
@@ -68,6 +68,7 @@ export function BrandIntake({
   const [stepIndex, setStepIndex] = useState(0);
   const [scanElapsed, setScanElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const createInFlightRef = useRef(false);
   const reviewAfterScan = showReview !== false;
 
   const scan = useCallback(async () => {
@@ -107,7 +108,8 @@ export function BrandIntake({
   }, [website]);
 
   const create = useCallback(async () => {
-    if (!identity) return;
+    if (!identity || createInFlightRef.current) return;
+    createInFlightRef.current = true;
     setPhase('saving');
     setError(null);
     try {
