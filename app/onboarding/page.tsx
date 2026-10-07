@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { GuidedTour } from '@/components/tours/GuidedTour';
-import { BrandWebsiteSuggestions } from '@/components/brand/website-suggestions';
+import { BrandIntake } from '@/components/brand/brand-intake';
 import { completedStepsWith, mergeOnboardingDraft } from '@/lib/onboarding/state';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { normalizeTimezone } from '@/lib/timezone';
@@ -46,9 +46,9 @@ const EMPTY_DRAFT: Draft = {
 };
 
 const STEPS = [
+  { key: 'brand', label: 'Website', title: 'Start with your website', body: 'Enter the public website. UpTrendifyOS will analyze it and import the resulting Brand IQ instead of asking you to repeat the same information manually.' },
   { key: 'workspace', label: 'Workspace', title: 'How will you use UpTrendifyOS?', body: 'Choose the workspace model that matches how your team works.' },
   { key: 'profile', label: 'Profile', title: 'Set up your workspace', body: 'A few details help personalize your workspace and scheduling.' },
-  { key: 'brand', label: 'Brand', title: 'Add the brand you want to grow', body: 'This is the business identity UpTrendifyOS will research and help you market.' },
   { key: 'rules', label: 'Brand rules', title: 'Give AI the rules it must respect', body: 'Human-entered brand guidance is authoritative. AI intelligence can build on it, not silently replace it.' },
   { key: 'review', label: 'Review', title: 'Review your setup', body: 'Check the basics once before the workflow starts.' },
   { key: 'research', label: 'Start research', title: 'You are ready to begin', body: 'UpTrendifyOS will research the public website, build Brand Intelligence, and bring you to the next step.' },
@@ -197,8 +197,7 @@ export default function OnboardingPage() {
       }
     }, 350);
 
-    return () => {
-      if (websiteColorTimerRef.current) {
+    return () => {      if (websiteColorTimerRef.current) {
         window.clearTimeout(websiteColorTimerRef.current);
         websiteColorTimerRef.current = null;
       }
@@ -355,18 +354,14 @@ export default function OnboardingPage() {
     setError('');
     try {
       if (step === 0) {
-        if (draft.workspaceName.trim().length < 2) throw new Error('Give your workspace a name.');
-        await saveProgress(1, true);
+        return;
       } else if (step === 1) {
-        if (!draft.firstName.trim()) throw new Error('Enter your first name.');
-        await saveWorkspaceAndProfile();
+        if (draft.workspaceName.trim().length < 2) throw new Error('Give your workspace a name.');
         await saveProgress(2, true);
       } else if (step === 2) {
-        if (draft.brandName.trim().length < 2) throw new Error('Enter a brand name.');
-        if (!/^https?:\/\//i.test(draft.websiteUrl.trim())) throw new Error('Use a complete website URL starting with https:// or http://.');
-        let brandId = draft.brandId;
-        if (!brandId) brandId = await saveBrand();
-        await saveProgress(3, true, false, { ...draft, brandId });
+        if (!draft.firstName.trim()) throw new Error('Enter your first name.');
+        await saveWorkspaceAndProfile();
+        await saveProgress(3, true);
       } else if (step === 3) {
         await saveRules();
         await saveProgress(4, true);
@@ -397,8 +392,7 @@ export default function OnboardingPage() {
     setError('');
     try {
       await saveRules();
-      await saveProgress(5, true, true);
-      const research = await fetch('/api/brands/' + draft.brandId + '/research', {
+      await saveProgress(5, true, true);      const research = await fetch('/api/brands/' + draft.brandId + '/research', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({}),
@@ -442,80 +436,54 @@ export default function OnboardingPage() {
 
         <section className="card onboarding-card">
           {step === 0 && (
-            <div className="choice-grid" id="onboarding-workspace">
-              <button type="button" className={'choice-card ' + (draft.workspaceType === 'AGENCY' ? 'selected' : '')} onClick={() => update('workspaceType', 'AGENCY')}>
-                <span className="choice-kicker">Agency</span><strong>Manage multiple brands</strong><span>Use one workspace for teams, clients, research, strategy, content and campaigns.</span>
-              </button>
-              <button type="button" className={'choice-card ' + (draft.workspaceType === 'BUSINESS' ? 'selected' : '')} onClick={() => update('workspaceType', 'BUSINESS')}>
-                <span className="choice-kicker">Business</span><strong>Grow your own brand</strong><span>Use a workspace primarily for your own company and brand.</span>
-              </button>
-              <label className="span-2">Workspace name<input value={draft.workspaceName} onChange={(e) => update('workspaceName', e.target.value)} placeholder={draft.workspaceType === 'AGENCY' ? 'e.g. Northstar Marketing' : 'e.g. Aurora Labs'} autoFocus /></label>
+            <div id="onboarding-brand">
+              <BrandIntake
+                initialWebsite={draft.websiteUrl}
+                initialBrandName={draft.brandName}
+                startResearch={false}
+                onCreated={(brandId, details) => {
+                  const nextDraft = { ...draft, brandId, brandName: details?.brandName || draft.brandName, websiteUrl: details?.websiteUrl || draft.websiteUrl };
+                  setDraft(nextDraft);
+                  setError('');
+                  void saveProgress(1, true, false, nextDraft)
+                    .then(() => setStep(1))
+                    .catch((error) => setError(error instanceof Error ? error.message : 'Could not save your onboarding progress'));
+                }}
+              />
             </div>
           )}
 
           {step === 1 && (
-            <>
-            <div className="onboarding-role-context">
-              <div className="onboarding-role-icon"><Users size={16} /></div>
-              <div>
-                <div className="eyebrow">{ROLE_CONTEXT[workspaceRole]?.title ?? 'Workspace role'}</div>
-                <strong>{ROLE_CONTEXT[workspaceRole]?.body ?? 'Your permissions and next actions are tailored to your workspace role.'}</strong>
-                <span>{ROLE_CONTEXT[workspaceRole]?.action ?? 'Permissions remain server-enforced.'}</span>
+            <div id="onboarding-workspace">
+              <div className="choice-grid">
+                <button type="button" className={'choice-card ' + (draft.workspaceType === 'AGENCY' ? 'selected' : '')} onClick={() => update('workspaceType', 'AGENCY')}>
+                  <span className="choice-kicker">Agency</span><strong>Manage multiple brands</strong><span>Use one workspace for teams, clients, research, strategy, content and campaigns.</span>
+                </button>
+                <button type="button" className={'choice-card ' + (draft.workspaceType === 'BUSINESS' ? 'selected' : '')} onClick={() => update('workspaceType', 'BUSINESS')}>
+                  <span className="choice-kicker">Business</span><strong>Grow your own brand</strong><span>Use a workspace primarily for your own company and brand.</span>
+                </button>
+                <label className="span-2">Workspace name<input value={draft.workspaceName} onChange={(e) => update('workspaceName', e.target.value)} placeholder={draft.workspaceType === 'AGENCY' ? 'e.g. Northstar Marketing' : 'e.g. Aurora Labs'} autoFocus /></label>
               </div>
             </div>
-            <div className="onboarding-grid">
-              <label>First name<input value={draft.firstName} onChange={(e) => update('firstName', e.target.value)} autoFocus /></label>
-              <label>Last name<input value={draft.lastName} onChange={(e) => update('lastName', e.target.value)} /></label>
-              <label>Team size<input value={draft.teamSize} onChange={(e) => update('teamSize', e.target.value)} placeholder="e.g. 5" /></label>
-              <label>Timezone<select value={draft.timezone} onChange={(e) => update('timezone', e.target.value)}>{TIMEZONES.map((zone) => <option key={zone}>{zone}</option>)}</select><small className="field-help">Used for campaign dates, publishing schedules and reporting day boundaries.</small></label>
-            </div>
-            </>
           )}
 
           {step === 2 && (
-            <div className="onboarding-grid">
-              <label className="brand-field">
-              <span>Brand name</span>
-              <div className="brand-suggestion-wrap">
-                <input className="brand-input" value={draft.brandName} onChange={(e) => update('brandName', e.target.value)} placeholder="e.g. AURORA Labs" autoFocus autoComplete="organization" />
-                <BrandWebsiteSuggestions query={draft.brandName} onSelect={(name, url) => { update('brandName', name); update('websiteUrl', url); }} />
-              </div>
-              <small>Suggestions are optional. You can enter the website manually below.</small>
-            </label>
-              <label>Website<input value={draft.websiteUrl} onChange={(e) => update('websiteUrl', e.target.value)} placeholder="https://example.com" /></label>
-              <label>Industry<input value={draft.industry} onChange={(e) => update('industry', e.target.value)} placeholder="e.g. SaaS" /></label>
-              <label>Primary audience<textarea value={draft.primaryAudience} onChange={(e) => update('primaryAudience', e.target.value)} rows={4} placeholder="Who should this brand reach?" /></label>
-              <label className="span-2">What does the brand do?<textarea value={draft.description} onChange={(e) => update('description', e.target.value)} rows={4} placeholder="Describe the business in your own words." /></label>
-              <div className="onboarding-brand-snapshot span-2" aria-live="polite">
-                <div className="onboarding-brand-snapshot-head">
-                  <div className="onboarding-brand-snapshot-title"><Globe2 size={15} /> Brand snapshot</div>
-                  {draft.websiteUrl ? <a href={draft.websiteUrl} target="_blank" rel="noreferrer" className="field-note"><ExternalLink size={12} /> Preview site</a> : null}
-                </div>
-                {draft.websiteUrl ? (
-                  <div className="onboarding-brand-snapshot-body">
-                    <div className="onboarding-brand-favicon">
-                      <img
-                        src={`https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(draft.websiteUrl.replace(/^https?:\/\//i, '').split('/')[0])}`}
-                        alt=""
-                        width={32}
-                        height={32}
-                      />
-                    </div>
-                    <div>
-                      <strong>{draft.brandName || 'Your brand'}</strong>
-                      <span>{draft.websiteUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '')}</span>
-                    </div>
-                    <div className="onboarding-brand-ready"><Check size={13} /> Ready for research</div>
-                  </div>
-                ) : (
-                  <div className="field-note">Add the public website to see the research starting point.</div>
-                )}
-                <div className="onboarding-brand-snapshot-note">
-                  Research will read the public footprint, keep source URLs, and turn what it can verify into Brand Brain suggestions. Nothing becomes authoritative until a human reviews it.
+            <>
+              <div className="onboarding-role-context">
+                <div className="onboarding-role-icon"><Users size={16} /></div>
+                <div>
+                  <div className="eyebrow">{ROLE_CONTEXT[workspaceRole]?.title ?? 'Workspace role'}</div>
+                  <strong>{ROLE_CONTEXT[workspaceRole]?.body ?? 'Your permissions and next actions are tailored to your workspace role.'}</strong>
+                  <span>{ROLE_CONTEXT[workspaceRole]?.action ?? 'Permissions remain server-enforced.'}</span>
                 </div>
               </div>
-              <p className="field-note">Brand name, website and rules stay editable later from the brand workspace.</p>
-            </div>
+              <div className="onboarding-grid">
+                <label>First name<input value={draft.firstName} onChange={(e) => update('firstName', e.target.value)} autoFocus /></label>
+                <label>Last name<input value={draft.lastName} onChange={(e) => update('lastName', e.target.value)} /></label>
+                <label>Team size<input value={draft.teamSize} onChange={(e) => update('teamSize', e.target.value)} placeholder="e.g. 5" /></label>
+                <label>Timezone<select value={draft.timezone} onChange={(e) => update('timezone', e.target.value)}>{TIMEZONES.map((zone) => <option key={zone}>{zone}</option>)}</select><small className="field-help">Used for campaign dates, publishing schedules and reporting day boundaries.</small></label>
+              </div>
+            </>
           )}
 
           {step === 3 && (
@@ -558,7 +526,8 @@ export default function OnboardingPage() {
               <button type="button" className="badge" onClick={() => void switchAccount()} disabled={saving || researching} style={{ border: 0, cursor: saving || researching ? 'not-allowed' : 'pointer' }} aria-label="Sign out and use a different account"><LogOut size={15} /> Use different account</button>
             </div>
             <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
-              {step < 5 ? <button type="button" className="badge auth-submit" onClick={next} disabled={saving || researching}>{saving ? <><LoaderCircle size={15} className="spin" /> Saving…</> : <>Save & continue <ArrowRight size={15} /></>}</button> : <button type="button" className="badge auth-submit" onClick={finishAndResearch} disabled={researching}>{researching ? <><LoaderCircle size={15} className="spin" /> Starting research…</> : <>Finish setup & start research <Rocket size={15} /></>}</button>}
+              {step > 0 && step < 5 ? <button type="button" className="badge auth-submit" onClick={next} disabled={saving || researching}>{saving ? <><LoaderCircle size={15} className="spin" /> Saving…</> : <>Save & continue <ArrowRight size={15} /></>}</button> : null}
+              {step === 5 ? <button type="button" className="badge auth-submit" onClick={finishAndResearch} disabled={researching}>{researching ? <><LoaderCircle size={15} className="spin" /> Starting research…</> : <>Finish setup & start research <Rocket size={15} /></>}</button> : null}
             </div>
           </div>
           {resumable && <p className="field-note"><Check size={13} /> Your progress is saved. You can close the browser and resume here.</p>}
@@ -567,7 +536,7 @@ export default function OnboardingPage() {
       <GuidedTour
         stageKey="onboarding"
         steps={[
-          { target: '#onboarding-workspace', title: 'Choose how you will use UpTrendifyOS', body: 'Agency workspaces can manage multiple brands. Business workspaces are designed primarily around your own brand.' },
+          { target: '#onboarding-brand', title: 'Start with your website', body: 'Enter the public website and let the existing Brand IQ analysis extract the brand context instead of manually repeating it.' },
           { target: '#onboarding-stepper', title: 'Your setup is resumable', body: 'Each step is saved. You can go back, refresh, or close the browser without losing the information you entered.' },
           { target: '#onboarding-actions', title: 'Save and continue when you are ready', body: 'The final action explicitly starts Research. You will see the research status after setup finishes.' },
         ]}

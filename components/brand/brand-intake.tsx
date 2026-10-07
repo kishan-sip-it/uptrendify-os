@@ -52,10 +52,12 @@ export function BrandIntake({
   onCreated,
   initialWebsite = '',
   initialBrandName = '',
+  startResearch = true,
 }: {
-  onCreated: (brandId: string) => void;
+  onCreated: (brandId: string, details?: { brandName: string; websiteUrl: string }) => void;
   initialWebsite?: string;
   initialBrandName?: string;
+  startResearch?: boolean;
 }) {
   const [phase, setPhase] = useState<Phase>('input');
   const [website, setWebsite] = useState(initialWebsite);
@@ -160,16 +162,18 @@ export function BrandIntake({
       const patched = await patchResponse.json().catch(() => null);
       if (!patchResponse.ok) throw new Error(patched?.error || 'Brand was created, but the imported Brand IQ could not be saved.');
 
-      const researchResponse = await fetch(`/api/brands/${brandId}/research`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      if (!researchResponse.ok && researchResponse.status !== 409) {
-        const researchBody = await researchResponse.json().catch(() => null);
-        throw new Error(researchBody?.error || 'Brand created and imported, but research could not be started.');
+      if (startResearch) {
+        const researchResponse = await fetch(`/api/brands/${brandId}/research`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        if (!researchResponse.ok && researchResponse.status !== 409) {
+          const researchBody = await researchResponse.json().catch(() => null);
+          throw new Error(researchBody?.error || 'Brand created and imported, but research could not be started.');
+        }
       }
-      onCreated(brandId);
+      onCreated(brandId, { brandName: resolvedName, websiteUrl: resolvedUrl });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create the brand.');
       setPhase('error');
@@ -177,8 +181,7 @@ export function BrandIntake({
   }, [identity, name, website, onCreated]);
 
   if (phase === 'input' || phase === 'error') {
-    return (
-      <div>
+    return (      <div>
         <label className="brand-field" style={{ display: 'block', borderTop: 0, paddingTop: 0 }}>
           <span style={{ display: 'block', marginBottom: 8, color: 'var(--text)', fontWeight: 650 }}>Start with the brand website</span>
           <span style={{ display: 'block', marginBottom: 10, color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>
@@ -314,7 +317,7 @@ export function BrandIntake({
 
         {error ? <p role="alert" className="brand-section-hint" style={{ marginTop: 12, color: 'var(--status-danger)' }}>{error}</p> : null}
         <div style={{ display: 'flex', gap: 8, marginTop: 18, flexWrap: 'wrap' }}>
-          <button type="button" className="brand-btn brand-btn-primary" onClick={() => void create()} disabled={phase === 'saving'}>{phase === 'saving' ? <LoaderCircle size={14} className="spin" /> : <ArrowRight size={14} />}{phase === 'saving' ? 'Creating brand…' : 'Create brand and start research'}</button>
+          <button type="button" className="brand-btn brand-btn-primary" onClick={() => void create()} disabled={phase === 'saving'}>{phase === 'saving' ? <LoaderCircle size={14} className="spin" /> : <ArrowRight size={14} />}{phase === 'saving' ? 'Creating brand…' : 'Create brand'}</button>
           <button type="button" className="brand-btn" onClick={() => { setPhase('input'); setIdentity(null); setError(null); }} disabled={phase === 'saving'}><RefreshCw size={14} /> Scan a different site</button>
         </div>
       </BrandPanel>
