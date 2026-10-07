@@ -421,6 +421,120 @@ export function EditableBrandRules({
 
 /* -------------------------------------------------------------------------- */
 
+export function EditablePersonas({
+  personas,
+  onSave,
+}: {
+  personas: { name: string; description?: string | null }[];
+  onSave: (next: { name: string; description?: string | null }[]) => Promise<boolean>;
+}) {
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => {
+    setEditingIndex(null);
+    setAdding(false);
+    setName('');
+    setDescription('');
+    setError(null);
+  };
+
+  const startAdd = () => {
+    setEditingIndex(null);
+    setAdding(true);
+    setName('');
+    setDescription('');
+    setError(null);
+  };
+
+  const startEdit = (index: number) => {
+    const persona = personas[index];
+    if (!persona) return;
+    setEditingIndex(index);
+    setAdding(false);
+    setName(persona.name);
+    setDescription(persona.description ?? '');
+    setError(null);
+  };
+
+  const commit = async () => {
+    const nextName = name.trim();
+    if (!nextName) {
+      setError('Give the persona a name.');
+      return;
+    }
+    const nextPersona = { name: nextName, description: description.trim() || null };
+    const next = adding
+      ? [...personas, nextPersona]
+      : personas.map((persona, index) => index === editingIndex ? nextPersona : persona);
+
+    setPending(true);
+    setError(null);
+    const ok = await onSave(next);
+    setPending(false);
+    if (ok) reset();
+    else setError('Could not save the persona. Your change was not applied.');
+  };
+
+  const remove = async (index: number) => {
+    setPending(true);
+    setError(null);
+    const ok = await onSave(personas.filter((_, currentIndex) => currentIndex !== index));
+    setPending(false);
+    if (!ok) setError('Could not remove the persona.');
+  };
+
+  return (
+    <div>
+      {personas.length ? (
+        <div className="brand-persona-grid">
+          {personas.map((persona, index) => (
+            <div key={persona.name + ':' + index} className="brand-persona">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'start' }}>
+                <h4 className="brand-persona-name">{persona.name}</h4>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" className="brand-tag-add" onClick={() => startEdit(index)} disabled={pending}>Edit</button>
+                  <button type="button" className="brand-tag-remove" onClick={() => void remove(index)} disabled={pending} aria-label={'Remove ' + persona.name}><X size={12} /></button>
+                </div>
+              </div>
+              {persona.description ? <p className="brand-persona-desc">{persona.description}</p> : <NotDetected label="No description yet" />}
+            </div>
+          ))}
+        </div>
+      ) : <NotDetected label="No distinct personas detected from this website" />}
+
+      {adding || editingIndex !== null ? (
+        <div className="brand-edit" style={{ marginTop: 10 }}>
+          <label>
+            <span className="brand-persona-fact-label">Persona name</span>
+            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Operations leader" disabled={pending} autoFocus />
+          </label>
+          <label>
+            <span className="brand-persona-fact-label">Persona description</span>
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What they need, care about or are trying to achieve." rows={3} disabled={pending} />
+          </label>
+          <div className="brand-edit-actions">
+            <button type="button" className="brand-btn" onClick={reset} disabled={pending}>Cancel</button>
+            <button type="button" className="brand-btn brand-btn-primary" onClick={() => void commit()} disabled={pending}><Check size={13} /> {pending ? 'Saving…' : editingIndex !== null ? 'Save persona' : 'Add persona'}</button>
+          </div>
+          {error ? <p className="brand-section-hint" style={{ color: 'var(--status-danger)' }}>{error}</p> : null}
+        </div>
+      ) : (
+        <button type="button" className="brand-tag-add" style={{ marginTop: 10 }} onClick={startAdd}>
+          <Plus size={12} /> Add persona
+        </button>
+      )}
+      {!adding && editingIndex === null && error ? <p className="brand-section-hint" style={{ marginTop: 7, color: 'var(--status-danger)' }}>{error}</p> : null}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
 export function EditableColorPalette({
   palette,
   onSave,
