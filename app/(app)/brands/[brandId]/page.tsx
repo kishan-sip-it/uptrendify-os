@@ -32,7 +32,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
   const supabase = await createSupabaseServerClient();
   const { data: brand, error: brandError } = await supabase
     .from('brands')
-    .select('id,name,website_url,industry,created_at,description,primary_color,secondary_colors,visual_identity,positioning,messaging,audience_details')
+    .select('id,name,website_url,industry,created_at,description,primary_color,secondary_colors,brand_rules,visual_identity,positioning,messaging,audience_details')
     .eq('id', brandId)
     .eq('organization_id', auth.context.organizationId)
     .maybeSingle();
@@ -72,6 +72,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
         name: brand.name,
         description: brand.description,
         industry: brand.industry,
+        brand_rules: brand.brand_rules,
         primary_color: brand.primary_color,
         secondary_colors: brand.secondary_colors,
         visual_identity: brand.visual_identity,
