@@ -25,6 +25,7 @@ type IntakeIdentity = ExtractedIdentity & {
     positioningThemes: string[];
     callsToAction: string[];
     productCategories: string[];
+    industry: string | null;
     businessModel: string | null;
     primaryMarket: string | null;
     geography: string | null;
@@ -140,7 +141,7 @@ export function BrandIntake({
           description: identity.description ?? null,
           primaryColor: identity.primaryColor,
           secondaryColors: identity.secondaryColors,
-          industry: null,
+          industry: identity.aiProfile?.industry ?? null,
           targetAudience: identity.aiProfile?.audience ?? null,
           positioning: {
             valueProposition: identity.aiProfile?.valueProposition ?? null,
