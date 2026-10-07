@@ -23,7 +23,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
 
   const { brandId } = await params;
   const query = await searchParams;
-  const view: BrandView = query.view === 'brain' || query.view === 'strategy' ? query.view : query.view === 'overview' ? 'overview' : 'profile';
+  const view: BrandView = query.view === 'brain' || query.view === 'strategy' ? query.view : query.view === 'profile' ? 'profile' : 'overview';
 
   const supabase = await createSupabaseServerClient();
   const { data: brand } = await supabase
