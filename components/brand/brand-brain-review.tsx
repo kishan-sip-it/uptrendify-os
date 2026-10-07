@@ -708,7 +708,7 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
                 </div>;
               })()}
             </>
-          ) : <EmptyState title="No suggestions in this view" description="Change the review filter to inspect another part of the Brand Brain." />}
+          ) : null}
           {hasStrategyGateApproval ? (
             <div className="panel-status panel-status-success" style={{ marginTop: 16 }}>
               <div className="section-title" style={{ flexWrap: 'wrap', gap: 12 }}>
