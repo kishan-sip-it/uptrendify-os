@@ -219,17 +219,27 @@ export function BrandIntake({
   if (phase === 'scanning') {
     return (
       <div role="status" aria-live="polite">
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 11 }}>
-          {STEPS.map((step, index) => (
-            <li key={step} style={{ display: 'flex', alignItems: 'center', gap: 10, color: index === stepIndex ? 'var(--text)' : 'var(--text-subtle)' }}>
-              {index < stepIndex ? <span style={{ color: 'var(--status-success)' }}>✓</span> : index === stepIndex ? <LoaderCircle size={15} className="spin" style={{ color: 'var(--accent)' }} /> : <span style={{ width: 15, height: 15, borderRadius: 999, border: '1px solid var(--border-strong)' }} />}
-              <span style={{ fontSize: 14 }}>{step}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="brand-section-hint" style={{ marginTop: 16 }}>
-          Analysing the public site, key pages, styles and messaging. This is a real scan rather than a loading animation; larger sites can take a little longer.
-          <span style={{ display: 'block', marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>Elapsed: {scanElapsed}s</span>
+        <div className="brand-scan-status">
+          <div className="brand-scan-status-head">
+            <div>
+              <span className="eyebrow">Live website analysis</span>
+              <strong>Building your brand profile</strong>
+            </div>
+            <span className="brand-scan-elapsed">{scanElapsed}s</span>
+          </div>
+          <div className="brand-scan-progress" aria-hidden="true"><span /></div>
+          <p className="brand-section-hint" style={{ marginTop: 10 }}>
+            We fetch the public site, inspect relevant same-domain pages and external stylesheets, extract the visual identity, then build structured Brand IQ. The stages below describe the work being performed; they are not fake completion percentages.
+          </p>
+          <ul className="brand-scan-steps" aria-label="Website analysis stages">
+            {STEPS.map((step, index) => (
+              <li key={step} className={index === stepIndex ? 'active' : ''}>
+                <span className="brand-scan-step-index">{String(index + 1).padStart(2, '0')}</span>
+                <span>{step}</span>
+                {index === stepIndex ? <LoaderCircle size={14} className="spin" aria-hidden="true" /> : null}
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     );
