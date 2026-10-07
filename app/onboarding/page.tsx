@@ -441,6 +441,7 @@ export default function OnboardingPage() {
                 initialWebsite={draft.websiteUrl}
                 initialBrandName={draft.brandName}
                 startResearch={false}
+                showReview={false}
                 onCreated={(brandId, details) => {
                   const nextDraft = { ...draft, brandId, brandName: details?.brandName || draft.brandName, websiteUrl: details?.websiteUrl || draft.websiteUrl };
                   setDraft(nextDraft);
