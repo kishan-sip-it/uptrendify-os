@@ -3,6 +3,7 @@
 import { startTransition, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Plus, RefreshCw, X } from 'lucide-react';
+import type { CustomBrandRule } from '@/lib/brand/identity-mapping';
 
 /**
  * Client-side editing for imported Brand Identity values.
@@ -207,6 +208,213 @@ export function EditableTags({
           {localError}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/* --------------------------------------------------------------------------
+
+export function EditablePrimaryColor({
+  value,
+  onSave,
+}: {
+  value: string | null;
+  onSave: (next: string) => Promise<boolean>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? '#000000');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editing && !pending) setDraft(value ?? '#000000');
+  }, [value, editing, pending]);
+
+  const commit = async () => {
+    const next = draft.trim().toLowerCase();
+    if (!/^#[0-9a-f]{6}$/.test(next)) {
+      setError('Enter a valid 6-digit hex colour.');
+      return;
+    }
+    setPending(true);
+    setError(null);
+    const ok = await onSave(next);
+    setPending(false);
+    if (ok) {
+      setEditing(false);
+      setDraft(next);
+    } else {
+      setError('Could not save the primary colour. Your change was not applied.');
+    }
+  };
+
+  if (!editing) {
+    return (
+      <div>
+        {value ? (
+          <div className="brand-swatch" style={{ width: 'fit-content' }}>
+            <span className="brand-swatch-dot" style={{ ['--swatch' as string]: value }} />
+            <span style={{ textTransform: 'uppercase', fontFamily: 'ui-monospace, monospace' }}>{value}</span>
+            <span className="brand-swatch-role">primary</span>
+          </div>
+        ) : <span className="brand-not-detected">No primary colour saved</span>}
+        <button type="button" className="brand-tag-add" style={{ marginTop: 8 }} onClick={() => setEditing(true)}>
+          <Plus size={12} /> {value ? 'Edit primary colour' : 'Set primary colour'}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="brand-edit">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <input
+          type="color"
+          value={draft}
+          onChange={(event) => { setDraft(event.target.value); setError(null); }}
+          aria-label="Primary brand colour picker"
+          disabled={pending}
+          style={{ width: 44, height: 38, padding: 3, cursor: pending ? 'not-allowed' : 'pointer' }}
+        />
+        <input
+          value={draft}
+          onChange={(event) => { setDraft(event.target.value); setError(null); }}
+          placeholder="#B0352F"
+          aria-label="Primary brand colour hex"
+          disabled={pending}
+          style={{ flex: '0 1 170px', minWidth: 0, fontFamily: 'ui-monospace, monospace' }}
+        />
+      </div>
+      <div className="brand-edit-actions">
+        <button type="button" className="brand-btn" onClick={() => { setEditing(false); setDraft(value ?? '#000000'); setError(null); }} disabled={pending}>Cancel</button>
+        <button type="button" className="brand-btn brand-btn-primary" onClick={() => void commit()} disabled={pending}><Check size={13} /> {pending ? 'Saving…' : 'Save colour'}</button>
+      </div>
+      {error ? <p className="brand-section-hint" style={{ color: 'var(--status-danger)' }}>{error}</p> : null}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+export function EditableBrandRules({
+  rules,
+  onSave,
+}: {
+  rules: CustomBrandRule[];
+  onSave: (next: CustomBrandRule[]) => Promise<boolean>;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => {
+    setAdding(false);
+    setEditingId(null);
+    setTitle('');
+    setDescription('');
+    setError(null);
+  };
+
+  const beginAdd = () => {
+    setAdding(true);
+    setEditingId(null);
+    setTitle('');
+    setDescription('');
+    setError(null);
+  };
+
+  const beginEdit = (rule: CustomBrandRule) => {
+    setAdding(false);
+    setEditingId(rule.id);
+    setTitle(rule.title);
+    setDescription(rule.description);
+    setError(null);
+  };
+
+  const commit = async () => {
+    const nextTitle = title.trim();
+    const nextDescription = description.trim();
+    if (!nextTitle) {
+      setError('Give this rule a short name.');
+      return;
+    }
+    if (!nextDescription) {
+      setError('Describe what the rule means for generated work.');
+      return;
+    }
+
+    const nextRule: CustomBrandRule = {
+      id: editingId ?? crypto.randomUUID(),
+      title: nextTitle,
+      description: nextDescription,
+    };
+    const nextRules = editingId
+      ? rules.map((rule) => rule.id === editingId ? nextRule : rule)
+      : [...rules, nextRule];
+
+    setPending(true);
+    setError(null);
+    const ok = await onSave(nextRules);
+    setPending(false);
+    if (ok) reset();
+    else setError('Could not save this brand rule. Your change was not applied.');
+  };
+
+  const remove = async (id: string) => {
+    setPending(true);
+    setError(null);
+    const ok = await onSave(rules.filter((rule) => rule.id !== id));
+    setPending(false);
+    if (!ok) setError('Could not remove this brand rule.');
+    else if (editingId === id) reset();
+  };
+
+  return (
+    <div>
+      {rules.length > 0 ? (
+        <div style={{ display: 'grid', gap: 9 }}>
+          {rules.map((rule) => (
+            <div key={rule.id} className="brand-persona" style={{ padding: '12px 14px', gridTemplateColumns: 'minmax(0,1fr) auto' }}>
+              <div>
+                <strong style={{ display: 'block', color: 'var(--text-strong)', fontSize: 13 }}>{rule.title}</strong>
+                <p className="brand-persona-desc" style={{ marginTop: 4 }}>{rule.description}</p>
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'start' }}>
+                <button type="button" className="brand-tag-add" onClick={() => beginEdit(rule)} disabled={pending}>Edit</button>
+                <button type="button" className="brand-tag-remove" onClick={() => void remove(rule.id)} disabled={pending} aria-label={'Remove ' + rule.title}><X size={12} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="brand-not-detected">No custom rules yet. Add only the constraints your team wants AI to follow.</div>
+      )}
+
+      {adding || editingId ? (
+        <div className="brand-edit" style={{ marginTop: 10 }}>
+          <label>
+            <span className="brand-persona-fact-label">Rule name</span>
+            <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Claims must be evidence-backed" disabled={pending} autoFocus />
+          </label>
+          <label>
+            <span className="brand-persona-fact-label">Rule description</span>
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe exactly how this rule should affect strategy, campaigns and content." rows={3} disabled={pending} />
+          </label>
+          <div className="brand-edit-actions">
+            <button type="button" className="brand-btn" onClick={reset} disabled={pending}>Cancel</button>
+            <button type="button" className="brand-btn brand-btn-primary" onClick={() => void commit()} disabled={pending}><Check size={13} /> {pending ? 'Saving…' : editingId ? 'Save rule' : 'Add rule'}</button>
+          </div>
+          {error ? <p className="brand-section-hint" style={{ color: 'var(--status-danger)' }}>{error}</p> : null}
+        </div>
+      ) : (
+        <button type="button" className="brand-tag-add" style={{ marginTop: 10 }} onClick={beginAdd}>
+          <Plus size={12} /> Add brand rule
+        </button>
+      )}
+      {!adding && !editingId && error ? <p className="brand-section-hint" style={{ marginTop: 7, color: 'var(--status-danger)' }}>{error}</p> : null}
     </div>
   );
 }
