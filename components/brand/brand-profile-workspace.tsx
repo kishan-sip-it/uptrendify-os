@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from 'react';
 import { BookOpen, Image as ImageIcon, Megaphone, Palette, Quote, Sparkles, Target, Type, Users } from 'lucide-react';
 import { BrandField, BrandIdentityRow, BrandPanel, BrandSection, NotDetected, brandInitials } from './brand-profile-primitives';
-import { EditableBrandRules, EditableColorPalette, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
+import { EditableBrandRules, EditableColorPalette, EditablePersonas, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
 import type { BrandIdentity } from '@/lib/brand/identity-mapping';
 import { TONE_OPTIONS, VOICE_AXES, describeVoice, voiceAxisValues } from '@/lib/brand/voice';
 
@@ -67,7 +67,7 @@ export function BrandProfileWorkspace({
 
   const saveVoice = useCallback((voice: BrandIdentity['voice']) => saveVisualIdentity({ voice }), [saveVisualIdentity]);
   const savePalette = useCallback((palette: { hex: string; role: string }[]) => {
-    const primary = palette.find((c) => c.role === 'primary')?.hex ?? palette[0]?.hex ?? null;
+    const primary = palette.find((c) => c.role === 'primary')?.hex ?? identity.primaryColor ?? palette[0]?.hex ?? null;
     return save({
       primaryColor: primary,
       secondaryColors: palette.filter((c) => c.hex !== primary).map((c) => c.hex),
@@ -75,6 +75,34 @@ export function BrandProfileWorkspace({
         logoUrl: identity.logoUrl,
         faviconUrl: identity.faviconUrl,
         palette,
+        fonts: identity.fonts,
+        headingFont: identity.headingFont,
+        bodyFont: identity.bodyFont,
+        voice: identity.voice,
+        socialProfiles: identity.socialProfiles,
+        assets: identity.assets,
+        aiProfile: identity.aiProfile,
+        crawl: identity.crawl,
+        inspected: identity.inspected,
+        warnings: identity.warnings,
+        detectedAt: identity.detectedAt,
+      },
+    });
+  }, [save, identity]);
+
+  const savePrimaryColor = useCallback((primaryColor: string) => {
+    const currentPrimary = identity.primaryColor;
+    const nextPalette = identity.palette.some((color) => color.role === 'primary')
+      ? identity.palette.map((color) => color.role === 'primary' ? { ...color, hex: primaryColor } : color)
+      : [{ hex: primaryColor, role: 'primary', occurrences: 0, sources: ['user'] }, ...identity.palette.filter((color) => color.hex !== primaryColor)];
+    const nextSecondary = identity.secondaryColors?.filter((color) => color !== currentPrimary && color !== primaryColor) ?? [];
+    return save({
+      primaryColor,
+      secondaryColors: nextSecondary,
+      visualIdentity: {
+        logoUrl: identity.logoUrl,
+        faviconUrl: identity.faviconUrl,
+        palette: nextPalette,
         fonts: identity.fonts,
         headingFont: identity.headingFont,
         bodyFont: identity.bodyFont,
