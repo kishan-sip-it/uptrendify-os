@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Check, Plus, RefreshCw, X } from 'lucide-react';
 
 /**
@@ -22,6 +23,7 @@ export function useBrandIdentityEditor(brandId: string) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const router = useRouter();
 
   const save = useCallback(
     async (patch: BrandPatch) => {
@@ -41,6 +43,7 @@ export function useBrandIdentityEditor(brandId: string) {
           throw new Error(body?.error || 'Could not save this change.');
         }
         setSavedAt(Date.now());
+        router.refresh();
         return true;
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not save this change.');
@@ -50,7 +53,7 @@ export function useBrandIdentityEditor(brandId: string) {
         setSaving(false);
       }
     },
-    [brandId],
+    [brandId, router],
   );
 
   return { save, saving, error, savedAt };
