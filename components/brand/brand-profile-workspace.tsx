@@ -5,6 +5,7 @@ import { BookOpen, Image as ImageIcon, Megaphone, Palette, Quote, Sparkles, Targ
 import { BrandField, BrandIdentityRow, BrandPanel, BrandSection, NotDetected, brandInitials } from './brand-profile-primitives';
 import { EditableBrandRules, EditableColorPalette, EditablePersonas, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
 import type { BrandIdentity } from '@/lib/brand/identity-mapping';
+import { readableTextOn } from '@/lib/brand/visual-extraction';
 import { TONE_OPTIONS, VOICE_AXES, describeVoice, voiceAxisValues } from '@/lib/brand/voice';
 
 const EMPTY_AI_PROFILE: NonNullable<BrandIdentity['aiProfile']> = {
@@ -39,6 +40,10 @@ export function BrandProfileWorkspace({
   const axes = useMemo(() => voiceAxisValues(identity.voice), [identity.voice]);
   const axisRows = VOICE_AXES.filter((axis) => axes[axis.key] !== undefined);
   const ai = identity.aiProfile;
+  const previewPrimary = /^#[0-9a-f]{6}$/i.test(identity.primaryColor ?? '')
+    ? identity.primaryColor!
+    : identity.palette[0]?.hex ?? '#2563eb';
+  const previewText = readableTextOn(previewPrimary);
 
   const saveVisualIdentity = useCallback((next: Record<string, unknown>) => save({
     visualIdentity: {
@@ -216,8 +221,29 @@ export function BrandProfileWorkspace({
           {identity.socialProfiles.length ? <div className="brand-tags">{identity.socialProfiles.map((profile) => <a key={profile.platform} href={profile.url} target="_blank" rel="noreferrer" className="brand-tag" style={{ textDecoration: 'none' }}>{profile.platform}</a>)}</div> : <NotDetected label="No social profiles detected" />}
         </BrandSection>
 
-        <BrandSection title="Live Preview" hint="A real preview using the imported brand context, not placeholder content.">
-          <div className="brand-voice-summary" style={{ background: 'color-mix(in srgb, var(--brand-primary) 12%, var(--surface))' }}><strong>{identity.name}</strong>{ai?.valueProposition ? ` — ${ai.valueProposition}` : identity.description ? ` — ${identity.description}` : ''}{(ai?.tone?.length || identity.voice.tone.length) ? <span style={{ display: 'block', marginTop: 6, opacity: .78 }}>Voice: {(identity.voice.tone.length ? identity.voice.tone : ai?.tone ?? []).join(' · ')}</span> : null}</div></BrandSection>
+        <BrandSection title="Live Preview" hint="This preview updates from the active brand context, so you can see the effect of your edits before strategy, campaigns and content use them.">
+          <div className="brand-live-preview" style={{ '--preview-primary': previewPrimary, '--preview-primary-text': previewText } as React.CSSProperties}>
+            <div className="brand-live-preview-top">
+              <div className="brand-live-preview-mark">
+                {identity.logoUrl ? <img src={identity.logoUrl} alt="" /> : <span>{brandInitials(identity.name)}</span>}
+              </div>
+              <div className="brand-live-preview-name">
+                <strong>{identity.name || 'Your brand'}</strong>
+                {websiteUrl ? <span>{websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span> : null}
+              </div>
+            </div>
+            <div className="brand-live-preview-body">
+              <span className="brand-live-preview-kicker">{ai?.tone?.[0] ?? identity.voice.tone[0] ?? 'Brand voice'}</span>
+              <h4>{ai?.valueProposition || identity.description || 'Your brand message will appear here.'}</h4>
+              <p>{identity.description || 'Edit the imported description to make this preview match how you want the brand presented.'}</p>
+              <button type="button" className="brand-live-preview-cta" style={{ background: previewPrimary, color: previewText }} disabled>Primary brand colour</button>
+            </div>
+            <div className="brand-live-preview-footer">
+              <span>Active brand context</span>
+              <div className="brand-live-preview-swatches">{identity.palette.slice(0, 4).map((color) => <span key={color.hex} title={color.hex} style={{ background: color.hex }} />)}</div>
+            </div>
+          </div>
+        </BrandSection>
 
         <BrandSection title="Import provenance" hint="Exactly what the scanner inspected.">
           <div className="brand-fields">
