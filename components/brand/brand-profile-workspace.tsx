@@ -3,9 +3,15 @@
 import { useCallback, useMemo } from 'react';
 import { BookOpen, Image as ImageIcon, Megaphone, Palette, Quote, Sparkles, Target, Type, Users } from 'lucide-react';
 import { BrandField, BrandIdentityRow, BrandPanel, BrandSection, NotDetected, brandInitials } from './brand-profile-primitives';
-import { EditableColorPalette, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
+import { EditableBrandRules, EditableColorPalette, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
 import type { BrandIdentity } from '@/lib/brand/identity-mapping';
 import { TONE_OPTIONS, VOICE_AXES, describeVoice, voiceAxisValues } from '@/lib/brand/voice';
+
+const EMPTY_AI_PROFILE: NonNullable<BrandIdentity['aiProfile']> = {
+  products: [], services: [], audience: null, personas: [], customerTypes: [], painPoints: [], useCases: [],
+  tone: [], terminology: [], recurringClaims: [], messagingThemes: [], valueProposition: null, differentiators: [],
+  positioningThemes: [], callsToAction: [], productCategories: [], businessModel: null, primaryMarket: null, geography: null, evidence: [],
+};
 
 const tags = (values: string[], empty = 'Not detected from this website') =>
   values.length ? <div className="brand-tags">{values.map((value) => <span key={value} className="brand-tag">{value}</span>)}</div> : <NotDetected label={empty} />;
@@ -33,6 +39,11 @@ export function BrandProfileWorkspace({
   const axes = useMemo(() => voiceAxisValues(identity.voice), [identity.voice]);
   const axisRows = VOICE_AXES.filter((axis) => axes[axis.key] !== undefined);
   const ai = identity.aiProfile;
+
+  const saveAiProfile = useCallback((patch: Partial<NonNullable<BrandIdentity['aiProfile']>>) => {
+    const current = ai ?? EMPTY_AI_PROFILE;
+    return saveVisualIdentity({ aiProfile: { ...current, ...patch } });
+  }, [ai, saveVisualIdentity]);
 
   const saveVisualIdentity = useCallback((next: Record<string, unknown>) => save({
     visualIdentity: {
