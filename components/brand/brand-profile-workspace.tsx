@@ -138,25 +138,27 @@ export function BrandProfileWorkspace({
             <BrandField label="What they do" icon={<BookOpen size={14} />}><EditableTextField value={identity.description} placeholder="Describe the business." multiline onSave={(next) => save({ description: normaliseClearedText(next) })} /></BrandField>
             <BrandField label="Industry" icon={<Target size={14} />}><EditableTextField value={identity.industry} placeholder="Industry" onSave={(next) => save({ industry: normaliseClearedText(next) })} /></BrandField>
             <BrandField label="Positioning" icon={<Target size={14} />}>{identity.valueProposition ? <EditableTextField value={identity.valueProposition} placeholder="Why this brand wins" multiline onSave={(next) => save({ positioning: { valueProposition: normaliseClearedText(next) } })} /> : <NotDetected label="Not detected from this website" />}</BrandField>
-            <BrandField label="Differentiators">{tags(ai?.differentiators ?? [])}</BrandField>
-            <BrandField label="Business model"><span>{ai?.businessModel || <NotDetected label="Not detected from this website" />}</span></BrandField>
-            <BrandField label="Market / geography"><span>{[ai?.primaryMarket, ai?.geography].filter(Boolean).join(' · ') || <NotDetected label="Not detected from this website" />}</span></BrandField>
+            <BrandField label="Differentiators"><EditableTags label="Differentiators" values={ai?.differentiators ?? []} placeholder="Add a differentiator" onSave={(next) => saveAiProfile({ differentiators: next })} /></BrandField>
+            <BrandField label="Business model"><EditableTextField value={ai?.businessModel ?? null} placeholder="How the business makes money or delivers value" onSave={(next) => saveAiProfile({ businessModel: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="Primary market"><EditableTextField value={ai?.primaryMarket ?? null} placeholder="Primary market" onSave={(next) => saveAiProfile({ primaryMarket: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="Geography"><EditableTextField value={ai?.geography ?? null} placeholder="Geography" onSave={(next) => saveAiProfile({ geography: normaliseClearedText(next) })} /></BrandField>
           </div>
         </BrandSection>
 
         <BrandSection title="Products & Services" hint="The products, services and offers the site actually describes.">
           <div className="brand-fields">
-            <BrandField label="Products">{tags(ai?.products ?? [])}</BrandField>
-            <BrandField label="Services">{tags(ai?.services ?? [])}</BrandField>
-            <BrandField label="Categories">{tags(ai?.productCategories ?? [])}</BrandField>
-            <BrandField label="Calls to action">{tags(ai?.callsToAction ?? [])}</BrandField>
-            <BrandField label="Use cases">{tags(ai?.useCases ?? [])}</BrandField>
+            <BrandField label="Products"><EditableTags label="Products" values={ai?.products ?? []} placeholder="Add a product" onSave={(next) => saveAiProfile({ products: next })} /></BrandField>
+            <BrandField label="Services"><EditableTags label="Services" values={ai?.services ?? []} placeholder="Add a service" onSave={(next) => saveAiProfile({ services: next })} /></BrandField>
+            <BrandField label="Categories"><EditableTags label="Categories" values={ai?.productCategories ?? []} placeholder="Add a category" onSave={(next) => saveAiProfile({ productCategories: next })} /></BrandField>
+            <BrandField label="Calls to action"><EditableTags label="Calls to action" values={ai?.callsToAction ?? []} placeholder="Add a CTA" onSave={(next) => saveAiProfile({ callsToAction: next })} /></BrandField>
+            <BrandField label="Use cases"><EditableTags label="Use cases" values={ai?.useCases ?? []} placeholder="Add a use case" onSave={(next) => saveAiProfile({ useCases: next })} /></BrandField>
           </div>
         </BrandSection>
 
         <BrandSection title="Colors" hint="Actual declared palette, including external stylesheets, theme metadata and inline styles.">
           <div className="brand-fields">
-            <BrandField label="Brand Colors" icon={<Palette size={14} />}><EditableColorPalette palette={identity.palette.map((c) => ({ hex: c.hex, role: c.role }))} onSave={savePalette} /></BrandField>
+            <BrandField label="Primary color" icon={<Palette size={14} />}><EditablePrimaryColor value={identity.primaryColor} onSave={savePrimaryColor} /></BrandField>
+            <BrandField label="Brand palette" icon={<Palette size={14} />}><EditableColorPalette palette={identity.palette.map((c) => ({ hex: c.hex, role: c.role }))} onSave={savePalette} /></BrandField>
             <BrandField label="Fonts" icon={<Type size={14} />}>
               {identity.fonts.length ? <div><div className="brand-tags">{identity.fonts.map((font) => <span key={font.family} className="brand-tag">{font.family}<span className="brand-swatch-role">{font.source}</span></span>)}</div><div style={{ marginTop: 10, display: 'grid', gap: 8 }}><div><span className="brand-persona-fact-label">Heading font</span><EditableTextField value={identity.headingFont} placeholder="Not detected" onSave={(next) => saveVisualIdentity({ headingFont: normaliseClearedText(next) })} /></div><div><span className="brand-persona-fact-label">Body font</span><EditableTextField value={identity.bodyFont} placeholder="Not detected" onSave={(next) => saveVisualIdentity({ bodyFont: normaliseClearedText(next) })} /></div></div></div> : <NotDetected label="No font declarations found on this website" />}
             </BrandField>
@@ -168,9 +170,9 @@ export function BrandProfileWorkspace({
             <BrandField label="Tone" icon={<Megaphone size={14} />}><EditableTags label="Tone" values={identity.voice.tone.length ? identity.voice.tone : (ai?.tone ?? [])} placeholder="Add a tone" max={3} primaryFirst suggestions={[...TONE_OPTIONS]} onSave={(next) => saveVoice({ ...identity.voice, tone: next })} /></BrandField>
             <BrandField label="Personality" icon={<Sparkles size={14} />}><EditableTags label="Personality" values={identity.voice.personality} placeholder="Add a descriptive word" suggestions={['Confident', 'Technical', 'Empowering', 'Friendly', 'Warm', 'Bold']} onSave={(next) => saveVoice({ ...identity.voice, personality: next })} /></BrandField>
             <BrandField label="Style Notes" icon={<Quote size={14} />}><EditableTextField value={identity.voice.styleNotes} placeholder="e.g. Use short sentences. Address the reader directly." multiline emptyLabel="No style notes yet" onSave={(next) => saveVoice({ ...identity.voice, styleNotes: normaliseClearedText(next) })} /></BrandField>
-            <BrandField label="Common wording" icon={<Quote size={14} />}>{tags(ai?.terminology ?? identity.terminology)}</BrandField>
-            <BrandField label="Recurring claims">{tags(ai?.recurringClaims ?? [])}</BrandField>
-            <BrandField label="Messaging themes">{tags(ai?.messagingThemes ?? [])}</BrandField>
+            <BrandField label="Common wording" icon={<Quote size={14} />}><EditableTags label="Common wording" values={ai?.terminology ?? identity.terminology} placeholder="Add preferred terminology" onSave={(next) => saveAiProfile({ terminology: next })} /></BrandField>
+            <BrandField label="Recurring claims"><EditableTags label="Recurring claims" values={ai?.recurringClaims ?? []} placeholder="Add a recurring claim" onSave={(next) => saveAiProfile({ recurringClaims: next })} /></BrandField>
+            <BrandField label="Messaging themes"><EditableTags label="Messaging themes" values={ai?.messagingThemes ?? []} placeholder="Add a messaging theme" onSave={(next) => saveAiProfile({ messagingThemes: next })} /></BrandField>
           </div>
           {voiceSummary || axisRows.length ? <div style={{ marginTop: 14, display: 'grid', gap: 14 }}>{voiceSummary ? <div className="brand-voice-summary">Your brand voice is: {voiceSummary}</div> : null}{axisRows.length ? <div className="brand-voice-axes">{axisRows.map((axis) => { const value = axes[axis.key] ?? 0; return <div key={axis.key} className="brand-axis"><span>{axis.left}</span><div className="brand-axis-track" role="img" aria-label={`${axis.left} to ${axis.right}: ${Math.round(value * 100)} percent toward ${axis.right}`}><span className="brand-axis-fill" style={{ width: `${value * 100}%` }} /><span className="brand-axis-knob" style={{ left: `${value * 100}%` }} /></div><span className="brand-axis-end">{axis.right}</span></div>; })}</div> : null}</div> : null}
         </BrandSection>
@@ -178,19 +180,24 @@ export function BrandProfileWorkspace({
         <BrandSection title="Audience" hint="Target audience, segments, needs and use cases.">
           <div className="brand-fields">
             <BrandField label="Target audience" icon={<Users size={14} />}><EditableTextField value={identity.audienceSummary} placeholder="Who should this brand reach?" multiline onSave={(next) => save({ audienceDetails: { summary: normaliseClearedText(next) } })} /></BrandField>
-            <BrandField label="Customer types">{tags(ai?.customerTypes ?? [])}</BrandField>
-            <BrandField label="Personas" icon={<Users size={14} />}>{identity.personas.length ? <div className="brand-persona-grid">{identity.personas.map((persona) => <div key={persona.name} className="brand-persona"><h4 className="brand-persona-name">{persona.name}</h4>{persona.description ? <p className="brand-persona-desc">{persona.description}</p> : null}</div>)}</div> : <NotDetected label="No distinct personas detected from this website" />}</BrandField>
-            <BrandField label="Pain points">{tags(ai?.painPoints ?? [])}</BrandField>
-            <BrandField label="Use cases">{tags(ai?.useCases ?? [])}</BrandField>
+            <BrandField label="Customer types"><EditableTags label="Customer types" values={ai?.customerTypes ?? []} placeholder="Add a customer type" onSave={(next) => saveAiProfile({ customerTypes: next })} /></BrandField>
+            <BrandField label="Personas" icon={<Users size={14} />}><EditablePersonas personas={ai?.personas ?? []} onSave={(next) => saveAiProfile({ personas: next })} /></BrandField>
+            <BrandField label="Pain points"><EditableTags label="Pain points" values={ai?.painPoints ?? []} placeholder="Add a pain point" onSave={(next) => saveAiProfile({ painPoints: next })} /></BrandField>
+            <BrandField label="Use cases"><EditableTags label="Use cases" values={ai?.useCases ?? []} placeholder="Add a use case" onSave={(next) => saveAiProfile({ useCases: next })} /></BrandField>
           </div>
         </BrandSection>
 
-        <BrandSection title="Guidelines" hint="The reusable rules and language signals that keep generated content on-brand.">
+        <BrandSection title="Brand Rules" hint="Optional human-authored constraints. Add as many as your team needs; these are passed into strategy and content generation as authoritative guidance.">
+          <EditableBrandRules
+            rules={identity.brandRules}
+            onSave={(next) => save({ brandRules: { customRules: next } })}
+          />
+        </BrandSection>
+
+        <BrandSection title="Working signals" hint="Website-derived language can be refined here before it becomes active working context.">
           <div className="brand-fields">
-            <BrandField label="Preferred terminology">{tags(ai?.terminology ?? [])}</BrandField>
-            <BrandField label="Positioning themes">{tags(ai?.positioningThemes ?? [])}</BrandField>
-            <BrandField label="Messaging rules">{tags([...(ai?.recurringClaims ?? []), ...(ai?.messagingThemes ?? [])])}</BrandField>
-            <BrandField label="Calls to action">{tags(ai?.callsToAction ?? [])}</BrandField>
+            <BrandField label="Positioning themes"><EditableTags label="Positioning themes" values={ai?.positioningThemes ?? []} placeholder="Add a positioning theme" onSave={(next) => saveAiProfile({ positioningThemes: next })} /></BrandField>
+            <BrandField label="Calls to action"><EditableTags label="Calls to action" values={ai?.callsToAction ?? []} placeholder="Add a CTA" onSave={(next) => saveAiProfile({ callsToAction: next })} /></BrandField>
           </div>
         </BrandSection>
 
