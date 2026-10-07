@@ -380,10 +380,10 @@ export default function OnboardingPage() {
             </>
           )}
 
-          {step === 4 && (
+          {step === 3 && (
             <div className="review-grid">
               {reviewItems.map(([label, value]) => <div className="review-item" key={label}><span>{label}</span><strong>{value}</strong></div>)}
-              <div className="review-note"><strong>These rules are human-authored.</strong><span>Research adds evidence separately. Brand Brain suggestions still require human approval before strategy can use them as authoritative facts.</span></div>
+              <div className="review-note"><strong>Your website analysis is already imported.</strong><span>Brand identity, audience, messaging and visual signals are available in the Brand Profile, where you can edit them before they become active working context.</span></div>
               <div className="review-note onboarding-role-review"><ShieldCheck size={15} /><span><strong>{ROLE_CONTEXT[workspaceRole]?.title ?? 'Your workspace role'}</strong> — {ROLE_CONTEXT[workspaceRole]?.body ?? 'Your available actions follow your server-side workspace permissions.'}</span></div>
             </div>
           )}
