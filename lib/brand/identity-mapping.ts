@@ -252,11 +252,15 @@ export function readIdentity(row: BrandIdentityRow) {
     inspected: visual.inspected,
     warnings: visual.warnings,
     detectedAt: visual.detectedAt,
-    valueProposition: ai?.valueProposition ?? (typeof positioning.valueProposition === 'string' ? positioning.valueProposition : null),
+    valueProposition: Object.prototype.hasOwnProperty.call(positioning, 'valueProposition')
+      ? asNullableString(positioning.valueProposition)
+      : ai?.valueProposition ?? null,
     messagingSummary: typeof messaging.brandMessaging === 'string' ? messaging.brandMessaging : null,
     toneOfVoice: ai?.tone.length ? ai.tone : asStringArray(messaging.toneOfVoice),
     terminology: ai?.terminology.length ? ai.terminology : asStringArray(messaging.terminology),
-    audienceSummary: ai?.audience ?? (typeof audience.summary === 'string' ? audience.summary : null),
+    audienceSummary: Object.prototype.hasOwnProperty.call(audience, 'summary')
+      ? asNullableString(audience.summary)
+      : ai?.audience ?? null,
     personas: ai?.personas.length ? ai.personas : Array.isArray(audience.personas)
       ? (audience.personas as unknown[]).filter((p): p is { name: string; description?: string } => Boolean(p) && typeof p === 'object' && typeof (p as { name?: unknown }).name === 'string')
       : [],
