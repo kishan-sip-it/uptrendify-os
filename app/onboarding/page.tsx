@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, ExternalLink, Globe2, LoaderCircle, LogOut, Rocket, ShieldCheck, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, LoaderCircle, LogOut, Rocket, ShieldCheck, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ErrorState, LoadingState } from '@/components/ui/feedback';
 import { AuthLayout } from '@/components/auth/auth-layout';
@@ -24,32 +24,18 @@ type Draft = {
   description: string;
   industry: string;
   primaryAudience: string;
-  secondaryAudience: string;
-  offer: string;
-  valueProposition: string;
-  differentiators: string;
-  coreMessage: string;
-  messagingPillars: string;
-  tone: string;
-  primaryColor: string;
-  wordsToUse: string;
-  wordsToAvoid: string;
-  restrictions: string;
 };
 
 const EMPTY_DRAFT: Draft = {
   workspaceType: 'AGENCY', workspaceName: '', timezone: 'UTC', firstName: '', lastName: '',
   teamSize: '', brandId: null, brandName: '', websiteUrl: '', description: '', industry: '',
-  primaryAudience: '', secondaryAudience: '', offer: '', valueProposition: '', differentiators: '',
-  coreMessage: '', messagingPillars: '', tone: '', primaryColor: '#6ee7c7',
-  wordsToUse: '', wordsToAvoid: '', restrictions: '',
+  primaryAudience: '',
 };
 
 const STEPS = [
   { key: 'brand', label: 'Website', title: 'Start with your website', body: 'Enter the public website. UpTrendifyOS will analyze it and import the resulting Brand IQ instead of asking you to repeat the same information manually.' },
   { key: 'workspace', label: 'Workspace', title: 'How will you use UpTrendifyOS?', body: 'Choose the workspace model that matches how your team works.' },
   { key: 'profile', label: 'Profile', title: 'Set up your workspace', body: 'A few details help personalize your workspace and scheduling.' },
-  { key: 'rules', label: 'Brand rules', title: 'Give AI the rules it must respect', body: 'Human-entered brand guidance is authoritative. AI intelligence can build on it, not silently replace it.' },
   { key: 'review', label: 'Review', title: 'Review your setup', body: 'Check the basics once before the workflow starts.' },
   { key: 'research', label: 'Start research', title: 'You are ready to begin', body: 'UpTrendifyOS will research the public website, build Brand Intelligence, and bring you to the next step.' },
 ] as const;
@@ -78,10 +64,6 @@ export default function OnboardingPage() {
   const [workspaceRole, setWorkspaceRole] = useState<string>('OWNER');
   const autosaveTimerRef = useRef<number | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const websiteColorTimerRef = useRef<number | null>(null);
-  const websiteColorControllerRef = useRef<AbortController | null>(null);
-  const previousWebsiteRef = useRef('');
-  const primaryColorSourceRef = useRef<'default' | 'website' | 'manual'>('default');
 
   const current = STEPS[step];
   const progressPercent = Math.round((step / (STEPS.length - 1)) * 100);
@@ -120,10 +102,13 @@ export default function OnboardingPage() {
 
           if (cancelled) return;
           setDraft(next);
-          primaryColorSourceRef.current =
-            next.primaryColor && next.primaryColor !== EMPTY_DRAFT.primaryColor ? 'manual' : 'default';
           setWorkspaceRole(String(body?.role || 'OWNER'));
-          setStep(Math.min(5, Math.max(0, Number(body?.progress?.current_step ?? 0))));
+          const storedStep = Number(body?.progress?.current_step ?? 0);
+          // Legacy onboarding had a dedicated Brand Rules step. Map that old
+          // step and the old Review/Research indices onto the new five-step flow
+          // without making a user repeat completed setup.
+          const nextStep = storedStep >= 3 ? Math.min(3, storedStep - 1) : storedStep;
+          setStep(Math.min(STEPS.length - 1, Math.max(0, nextStep)));
           setResumable(Boolean(body?.progress));
           setLoading(false);
           setError('');
@@ -157,53 +142,6 @@ export default function OnboardingPage() {
     setDraft((currentDraft) => ({ ...currentDraft, [key]: value }));
     setError('');
   };
-
-  useEffect(() => {
-    if (loading) return;
-
-    const clean = draft.websiteUrl.trim();
-    if (clean === previousWebsiteRef.current) return;
-    previousWebsiteRef.current = clean;
-
-    if (!/^https?:\/\//i.test(clean)) return;
-    if (primaryColorSourceRef.current === 'manual') return;
-
-    primaryColorSourceRef.current = 'default';
-
-    if (websiteColorTimerRef.current) {
-      window.clearTimeout(websiteColorTimerRef.current);
-    }
-    websiteColorControllerRef.current?.abort();
-
-    websiteColorTimerRef.current = window.setTimeout(async () => {
-      const controller = new AbortController();
-      websiteColorControllerRef.current = controller;
-
-      try {
-        const response = await fetch('/api/website-preview?url=' + encodeURIComponent(clean), {
-          cache: 'no-store',
-          signal: controller.signal,
-        });
-        const body = await response.json().catch(() => null);
-        if (controller.signal.aborted) return;
-
-        const detected = typeof body?.primaryColor === 'string' ? body.primaryColor : null;
-        if (detected && primaryColorSourceRef.current === 'default') {
-          primaryColorSourceRef.current = 'website';
-          setDraft((currentDraft) => ({ ...currentDraft, primaryColor: detected }));
-        }
-      } catch {
-        // Website preview is an enhancement; the onboarding color picker remains usable.
-      }
-    }, 350);
-
-    return () => {      if (websiteColorTimerRef.current) {
-        window.clearTimeout(websiteColorTimerRef.current);
-        websiteColorTimerRef.current = null;
-      }
-      websiteColorControllerRef.current?.abort();
-    };
-  }, [draft.websiteUrl, loading]);
 
   useEffect(() => {
     if (loading || saving) return;
@@ -309,47 +247,7 @@ export default function OnboardingPage() {
     if (!profile.ok) throw new Error(profileBody?.error || 'Could not save your profile');
   }
 
-  async function saveBrand(): Promise<string> {
-    const response = await fetch('/api/brands', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        clientName: draft.workspaceName.trim() || draft.brandName.trim(),
-        brandName: draft.brandName.trim(),
-        websiteUrl: draft.websiteUrl.trim(),
-        industry: draft.industry.trim() || undefined,
-        targetAudience: draft.primaryAudience.trim() || undefined,
-      }),
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(body?.error || 'Could not create your brand');
-    const brandId = String(body.brand.id);
-    setDraft((currentDraft) => ({ ...currentDraft, brandId }));
-    return brandId;
-  }
-
-  async function saveRules() {
-    if (!draft.brandId) throw new Error('Create the brand before saving its rules');
-    const response = await fetch('/api/brands/' + draft.brandId, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        description: draft.description.trim() || null,
-        industry: draft.industry.trim() || null,
-        targetAudience: draft.primaryAudience.trim() || null,
-        audienceDetails: { secondaryAudience: draft.secondaryAudience.trim() || null },
-        offerDetails: { coreOffer: draft.offer.trim() || null },
-        positioning: { valueProposition: draft.valueProposition.trim() || null, differentiators: draft.differentiators.split('\n').map((v) => v.trim()).filter(Boolean) },
-        messaging: { coreMessage: draft.coreMessage.trim() || null, pillars: draft.messagingPillars.split('\n').map((v) => v.trim()).filter(Boolean), tone: draft.tone.trim() || null, wordsToUse: draft.wordsToUse.split('\n').map((v) => v.trim()).filter(Boolean), wordsToAvoid: draft.wordsToAvoid.split('\n').map((v) => v.trim()).filter(Boolean), restrictions: draft.restrictions.trim() || null },
-        primaryColor: draft.primaryColor || null,
-        visualIdentity: { primaryColor: draft.primaryColor || null },
-      }),
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(body?.error || 'Could not save brand rules');
-  }
-
-  async function next() {
+ async function next() {
     setSaving(true);
     setError('');
     try {
@@ -363,12 +261,9 @@ export default function OnboardingPage() {
         await saveWorkspaceAndProfile();
         await saveProgress(3, true);
       } else if (step === 3) {
-        await saveRules();
         await saveProgress(4, true);
-      } else if (step === 4) {
-        await saveProgress(5, true);
       }
-      if (step < 5) setStep((value) => Math.min(5, value + 1));
+      if (step < STEPS.length - 1) setStep((value) => Math.min(STEPS.length - 1, value + 1));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not continue');
     } finally {
@@ -387,12 +282,11 @@ export default function OnboardingPage() {
   }
 
   async function finishAndResearch() {
-    if (!draft.brandId) { setError('Your brand has not been created yet. Go back to the Brand step.'); return; }
+    if (!draft.brandId) { setError('Your brand has not been created yet. Go back to the Website step.'); return; }
     setResearching(true);
     setError('');
     try {
-      await saveRules();
-      await saveProgress(5, true, true);      const research = await fetch('/api/brands/' + draft.brandId + '/research', {
+      await saveProgress(4, true, true);      const research = await fetch('/api/brands/' + draft.brandId + '/research', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({}),
@@ -413,8 +307,7 @@ export default function OnboardingPage() {
     ['Workspace type', draft.workspaceType === 'AGENCY' ? 'Agency' : 'Business'],
     ['Brand', draft.brandName || 'Not set'],
     ['Website', draft.websiteUrl || 'Not set'],
-    ['Audience', draft.primaryAudience || 'Not set'],
-    ['Primary color', draft.primaryColor || 'Not set'],
+    ['Audience', draft.primaryAudience || 'Imported from website analysis'],
     ['Timezone', draft.timezone || 'Not set'],
   ], [draft]);
 
@@ -487,22 +380,6 @@ export default function OnboardingPage() {
             </>
           )}
 
-          {step === 3 && (
-            <div className="onboarding-grid">
-              <label>Secondary audience<textarea value={draft.secondaryAudience} onChange={(e) => update('secondaryAudience', e.target.value)} rows={3} /></label>
-              <label>Core offer<textarea value={draft.offer} onChange={(e) => update('offer', e.target.value)} rows={3} /></label>
-              <label>Value proposition<textarea value={draft.valueProposition} onChange={(e) => update('valueProposition', e.target.value)} rows={3} /></label>
-              <label>Differentiators<textarea value={draft.differentiators} onChange={(e) => update('differentiators', e.target.value)} rows={3} placeholder="One per line" /></label>
-              <label>Core message<textarea value={draft.coreMessage} onChange={(e) => update('coreMessage', e.target.value)} rows={3} /></label>
-              <label>Messaging pillars<textarea value={draft.messagingPillars} onChange={(e) => update('messagingPillars', e.target.value)} rows={3} placeholder="One per line" /></label>
-              <label>Tone / communication style<input value={draft.tone} onChange={(e) => update('tone', e.target.value)} placeholder="e.g. direct, optimistic, expert" /></label>
-              <label>Primary brand color<input type="color" value={draft.primaryColor} onChange={(e) => update('primaryColor', e.target.value)} /></label>
-              <label>Words to use<textarea value={draft.wordsToUse} onChange={(e) => update('wordsToUse', e.target.value)} rows={3} placeholder="One per line" /></label>
-              <label>Words to avoid<textarea value={draft.wordsToAvoid} onChange={(e) => update('wordsToAvoid', e.target.value)} rows={3} placeholder="One per line" /></label>
-              <label className="span-2">Restrictions / claims to avoid<textarea value={draft.restrictions} onChange={(e) => update('restrictions', e.target.value)} rows={4} /></label>
-            </div>
-          )}
-
           {step === 4 && (
             <div className="review-grid">
               {reviewItems.map(([label, value]) => <div className="review-item" key={label}><span>{label}</span><strong>{value}</strong></div>)}
@@ -511,7 +388,7 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {step === 5 && (
+          {step === 4 && (
             <div className="finish-card">
               <div className="finish-icon"><Rocket size={24} /></div>
               <div><div className="eyebrow">Next: Research</div><h2>Start with evidence, not guesses.</h2><p className="subtitle">Finish setup queues research immediately. The research workspace will show progress while the website is crawled and analyzed.</p></div>
@@ -527,8 +404,8 @@ export default function OnboardingPage() {
               <button type="button" className="badge" onClick={() => void switchAccount()} disabled={saving || researching} style={{ border: 0, cursor: saving || researching ? 'not-allowed' : 'pointer' }} aria-label="Sign out and use a different account"><LogOut size={15} /> Use different account</button>
             </div>
             <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
-              {step > 0 && step < 5 ? <button type="button" className="badge auth-submit" onClick={next} disabled={saving || researching}>{saving ? <><LoaderCircle size={15} className="spin" /> Saving…</> : <>Save & continue <ArrowRight size={15} /></>}</button> : null}
-              {step === 5 ? <button type="button" className="badge auth-submit" onClick={finishAndResearch} disabled={researching}>{researching ? <><LoaderCircle size={15} className="spin" /> Starting research…</> : <>Finish setup & start research <Rocket size={15} /></>}</button> : null}
+              {step > 0 && step < STEPS.length - 1 ? <button type="button" className="badge auth-submit" onClick={next} disabled={saving || researching}>{saving ? <><LoaderCircle size={15} className="spin" /> Saving…</> : <>Save & continue <ArrowRight size={15} /></>}</button> : null}
+              {step === STEPS.length - 1 ? <button type="button" className="badge auth-submit" onClick={finishAndResearch} disabled={researching}>{researching ? <><LoaderCircle size={15} className="spin" /> Starting research…</> : <>Finish setup & start research <Rocket size={15} /></>}</button> : null}
             </div>
           </div>
           {resumable && <p className="field-note"><Check size={13} /> Your progress is saved. You can close the browser and resume here.</p>}
