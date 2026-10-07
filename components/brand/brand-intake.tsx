@@ -183,6 +183,11 @@ export function BrandIntake({
     }
   }, [identity, name, website, onCreated, startResearch]);
 
+  useEffect(() => {
+    if (reviewAfterScan || phase !== 'review' || !identity) return;
+    void create();
+  }, [create, identity, phase, reviewAfterScan]);
+
   if (phase === 'input' || phase === 'error') {
     return (      <div>
         <label className="brand-field" style={{ display: 'block', borderTop: 0, paddingTop: 0 }}>
@@ -200,11 +205,6 @@ export function BrandIntake({
       </div>
     );
   }
-
-  useEffect(() => {
-    if (reviewAfterScan || phase !== 'review' || !identity) return;
-    void create();
-  }, [create, identity, phase, reviewAfterScan]);
 
   if (phase === 'scanning') {
     return (
