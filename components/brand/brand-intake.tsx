@@ -123,7 +123,7 @@ export function BrandIntake({
           brandName: resolvedName,
           websiteUrl: resolvedUrl,
           description: identity.description ?? undefined,
-          industry: identity.aiProfile?.businessModel ?? undefined,
+          industry: identity.aiProfile?.industry ?? undefined,
           targetAudience: identity.aiProfile?.audience ?? undefined,
         }),
       });
@@ -270,7 +270,7 @@ export function BrandIntake({
         <BrandSection title="Brand Essentials" hint="The core identity and positioning context.">
           <div className="brand-fields">
             <BrandField label="What they do"><span>{identity.description || <NotDetected label="Not detected from this website" />}</span></BrandField>
-            <BrandField label="Industry"><span>{identity.aiProfile?.productCategories?.join(', ') || <NotDetected label="Not detected from this website" />}</span></BrandField>
+            <BrandField label="Industry"><span>{identity.aiProfile?.industry || <NotDetected label="Not detected from this website" />}</span></BrandField>
             <BrandField label="Business model"><span>{ai?.businessModel || <NotDetected label="Not detected from this website" />}</span></BrandField>
             <BrandField label="Primary market / geography"><span>{[ai?.primaryMarket, ai?.geography].filter(Boolean).join(' · ') || <NotDetected label="Not detected from this website" />}</span></BrandField>
             <BrandField label="Positioning"><span>{ai?.valueProposition || <NotDetected label="Not detected from this website" />}</span></BrandField>
