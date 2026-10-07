@@ -257,6 +257,7 @@ export function readIdentity(row: BrandIdentityRow) {
     brandRules: customBrandRules,
     industry: row.industry,
     primaryColor: primary ?? palette.find((c) => c.role === 'primary')?.hex ?? null,
+    secondaryColors: secondary,
     palette,
     fonts: visual.fonts,
     headingFont: visual.headingFont,
