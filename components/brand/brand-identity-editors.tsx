@@ -1,24 +1,42 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { startTransition, useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Check, Plus, RefreshCw, X } from 'lucide-react';
 
 /**
  * Client-side editing for imported Brand Identity values.
  *
  * Contract:
- * - Every write goes through the existing PUT /api/brands/:id route, so tenant
+ * - Every write goes through the existing PATCH /api/brands/:id route, so tenant
  *   isolation, RLS and RBAC are enforced server-side exactly as before. This
  *   component never talks to Supabase directly.
  * - Save is explicit; there is no optimistic update, because a failed write
  *   must not leave the workspace showing a value the database rejected.
+ * - The saved value is read back from the server, never from the draft or from
+ *   the stale `identity` prop. The brand workspace is a Server Component, so
+ *   the prop only changes when the route is re-rendered; without a refresh the
+ *   old value stayed on screen and looked like the edit had reverted.
  * - The full palette / tone list is preserved on save; we only ever send
  *   complete arrays, never a partial patch that could drop human edits.
  */
 
 export type BrandPatch = Record<string, unknown>;
 
+/**
+ * A cleared field must persist as an empty value, not as a pair of quotes that
+ * later render as content. Callers pass the raw draft; this normalises it so
+ * an intentional clear writes `null` (the same shape the website import
+ * already uses) instead of a stale string.
+ */
+export function normaliseClearedText(next: string | null | undefined): string | null {
+  if (next === null || next === undefined) return null;
+  const trimmed = next.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
 export function useBrandIdentityEditor(brandId: string) {
+  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -40,6 +58,11 @@ export function useBrandIdentityEditor(brandId: string) {
           const body = await response.json().catch(() => null);
           throw new Error(body?.error || 'Could not save this change.');
         }
+
+        // Re-render the Server Component so the authoritative value from the
+        // database becomes the source of truth for the fields below. The card
+        // already reports "Saved", so this runs without blanking the screen.
+        startTransition(() => router.refresh());
         setSavedAt(Date.now());
         return true;
       } catch (err) {
@@ -50,7 +73,7 @@ export function useBrandIdentityEditor(brandId: string) {
         setSaving(false);
       }
     },
-    [brandId],
+    [brandId, router],
   );
 
   return { save, saving, error, savedAt };
@@ -304,16 +327,26 @@ export function EditableTextField({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!editing) setDraft(value ?? '');
-  }, [value, editing]);
+    // Never repaint a saved draft from the prop: after save + router.refresh()
+    // the server prop is authoritative, but until that refresh lands the prop
+    // can still hold the pre-save value. Editing state is the user's intent and
+    // must win over stale props.
+    if (!editing && !pending) setDraft(value ?? '');
+  }, [value, editing, pending]);
 
   const commit = async () => {
     setPending(true);
     setError(null);
-    const ok = await onSave(draft.trim());
+    // A cleared draft is an intentional clear: send null so the field is
+    // actually emptied on the server instead of reverting to stale data.
+    const ok = await onSave(normaliseClearedText(draft) ?? '');
     setPending(false);
-    if (ok) setEditing(false);
-    else setError('Could not save. Your change was not applied.');
+    if (ok) {
+      setEditing(false);
+      setDraft(normaliseClearedText(draft) ?? '');
+    } else {
+      setError('Could not save. Your change was not applied.');
+    }
   };
 
   if (!editing) {

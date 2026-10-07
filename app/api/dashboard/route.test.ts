@@ -34,7 +34,7 @@ const SAMPLE_DATA: DashboardData = {
   recentStrategies: [],
   topPendingBrand: { id: 'brand-1', name: 'Aurora', count: 6 },
   nextActions: [
-    { id: 'review-suggestions', kind: 'review', title: '6 suggestions to review', description: 'Aurora has 6 pending fields.', href: '/brands/brand-1#intelligence', cta: 'Review inbox' },
+    { id: 'review-suggestions', kind: 'review', title: '6 suggestions to review', description: 'Aurora has 6 pending fields.', href: '/brands/brand-1?view=brain', cta: 'Review inbox' },
   ],
 };
 

@@ -137,6 +137,11 @@ html[data-theme="light"] .onboarding-step-number {
   border-color: var(--line);
 }
 
+/* The rule above flattens every chip to one surface. A selected channel toggle
+   must stay visibly chosen. Its authority lives in globals.css (a single rule
+   with high specificity and !important covering both themes), so nothing is
+   re-declared here - keeping one source of truth for the selected state. */
+
 html[data-theme="light"] input,
 html[data-theme="light"] textarea,
 html[data-theme="light"] select,

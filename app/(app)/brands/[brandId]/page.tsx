@@ -21,7 +21,13 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
 
   const { brandId } = await params;
   const query = await searchParams;
-  const view: BrandView = query.view === 'brain' || query.view === 'strategy' ? query.view : query.view === 'overview' ? 'overview' : 'profile';
+  // Overview is the default workspace surface. Profile is reached only when the
+  // user explicitly selects the Profile destination (or arrives from the brand
+  // onboarding flow), so an unknown/absent ?view never silently forces a
+  // different workspace context.
+  const view: BrandView = query.view === 'brain' || query.view === 'strategy' || query.view === 'profile'
+    ? query.view
+    : 'overview';
 
   const supabase = await createSupabaseServerClient();
   const { data: brand, error: brandError } = await supabase

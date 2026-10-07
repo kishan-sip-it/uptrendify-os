@@ -28,7 +28,9 @@ export function BrandWorkspaceNav({ brandId, current }: BrandWorkspaceNavProps) 
         ? 'brain'
         : queryView === 'strategy'
           ? 'strategy'
-          : 'overview';
+          : queryView === 'profile'
+            ? 'profile'
+            : 'overview';
   const active = current ?? inferred;
 
   return (

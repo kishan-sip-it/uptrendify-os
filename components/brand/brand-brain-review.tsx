@@ -528,6 +528,18 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
   useEffect(() => { setSectionIndex((current) => Math.min(current, Math.max(0, grouped.size - 1))); }, [grouped]);
 
   const canManage = role === 'manage';
+  // "No suggestions for the selected suggestion filter" is a different state
+  // from "nothing needs review", so the empty state has to branch on both the
+  // active filter and whether the research run returned anything at all.
+  const emptyView = tab === 'review'
+    ? {
+        title: 'Nothing needs review right now',
+        description: 'All current suggestions have already been approved, edited, dismissed, or marked as not found. Open Approved or All to see the stored findings.',
+      }
+    : {
+        title: 'No suggestions in this view',
+        description: 'Try another suggestion filter to see the findings returned by the research run.',
+      };
   const tabs = [
     { key: 'review' as const, label: `Needs review`, count: counts.pending },
     { key: 'approved' as const, label: 'Approved', count: counts.approved + counts.edited },
@@ -645,21 +657,15 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
 
           {grouped.size === 0 ? (
             <EmptyState
-              title={tab === 'review' ? 'Nothing needs review right now' : 'No suggestions in this view'}
-              description={
-                tab === 'review'
-                  ? 'All current suggestions have already been approved, edited, dismissed, or marked as not found. Open Approved or All to see the stored findings.'
-                  : 'Try another suggestion filter to see the findings returned by the research run.'
-              }
+              title={emptyView.title}
+              description={emptyView.description}
               action={tab === 'review' && counts.approved + counts.edited > 0 ? (
                 <button type="button" className="badge" onClick={() => { tabTouchedRef.current = true; setTab('approved'); }}>
                   View approved suggestions
                 </button>
               ) : undefined}
             />
-          ) : null}
-
-          {grouped.size > 0 ? (
+          ) : (
             <>
               <div className="brain-topic-nav" aria-label="Brand intelligence topics">
                 {Array.from(grouped.entries()).map(([sectionLabel], index) => (
@@ -708,7 +714,7 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
                 </div>;
               })()}
             </>
-          ) : <EmptyState title="No suggestions in this view" description="Change the review filter to inspect another part of the Brand Brain." />}
+          )}
           {hasStrategyGateApproval ? (
             <div className="panel-status panel-status-success" style={{ marginTop: 16 }}>
               <div className="section-title" style={{ flexWrap: 'wrap', gap: 12 }}>
@@ -719,7 +725,7 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
                     {counts.approved + counts.edited} approved or edited findings are ready. Continue directly to the Strategy workspace.
                   </p>
                 </div>
-                <a className="badge auth-submit" href="#strategy" style={{ textDecoration: 'none' }}>
+                <a className="badge auth-submit" href={`/brands/${brandId}?view=strategy`} style={{ textDecoration: 'none' }}>
                   Continue to Strategy →
                 </a>
               </div>

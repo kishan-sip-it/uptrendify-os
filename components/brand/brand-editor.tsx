@@ -127,6 +127,10 @@ export function BrandEditor({ brandId }: { brandId: string }) {
       if (!r.ok) throw new Error(b?.error || 'Could not update brand');
       setBrand(b.brand);
       setSaved(true);
+      // The brand header and the profile workspace are rendered by the Server
+      // Component, so the freshly persisted row must be re-read from the server
+      // instead of leaving the pre-save values on screen.
+      router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not update brand');
     } finally {

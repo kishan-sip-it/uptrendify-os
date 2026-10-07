@@ -153,9 +153,9 @@ export async function GET(request: Request) {
     const nextHref = currentKey === 'research'
       ? '/brands/' + brandId
       : currentKey === 'brand_brain'
-        ? '/brands/' + brandId + '#intelligence'
+        ? '/brands/' + brandId + '?view=brain'
         : currentKey === 'strategy'
-          ? '/brands/' + brandId + '#strategy'
+          ? '/brands/' + brandId + '?view=strategy'
           : currentKey === 'content'
             ? '/brands/' + brandId + '/content'
             : currentKey === 'campaigns'

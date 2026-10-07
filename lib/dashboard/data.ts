@@ -255,7 +255,7 @@ export function buildNextActions(input: NextActionInput): NextAction[] {
       kind: 'review',
       title: `${counts.pendingSuggestions} suggestion${counts.pendingSuggestions === 1 ? '' : 's'} to review`,
       description: `${label} has ${topPendingBrand.count} pending intelligence field${topPendingBrand.count === 1 ? '' : 's'} — nothing becomes a fact until you approve it.`,
-      href: `/brands/${topPendingBrand.id}#intelligence`,
+      href: `/brands/${topPendingBrand.id}?view=brain`,
       cta: 'Review inbox',
     });
   }

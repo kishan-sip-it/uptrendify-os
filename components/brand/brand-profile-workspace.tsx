@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from 'react';
 import { BookOpen, Image as ImageIcon, Megaphone, Palette, Quote, Sparkles, Target, Type, Users } from 'lucide-react';
 import { BrandField, BrandIdentityRow, BrandPanel, BrandSection, NotDetected, brandInitials } from './brand-profile-primitives';
-import { EditableColorPalette, EditableTags, EditableTextField, useBrandIdentityEditor } from './brand-identity-editors';
+import { EditableColorPalette, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
 import type { BrandIdentity } from '@/lib/brand/identity-mapping';
 import { TONE_OPTIONS, VOICE_AXES, describeVoice, voiceAxisValues } from '@/lib/brand/voice';
 
@@ -96,9 +96,9 @@ export function BrandProfileWorkspace({
       <BrandPanel icon={<BookOpen size={17} />} title="Brand Guidelines" subtitle="The complete working profile used by strategy and content.">
         <BrandSection title="Brand Essentials" hint="The core identity and positioning context.">
           <div className="brand-fields">
-            <BrandField label="What they do" icon={<BookOpen size={14} />}><EditableTextField value={identity.description} placeholder="Describe the business." multiline onSave={(next) => save({ description: next || null })} /></BrandField>
-            <BrandField label="Industry" icon={<Target size={14} />}><EditableTextField value={identity.industry} placeholder="Industry" onSave={(next) => save({ industry: next || null })} /></BrandField>
-            <BrandField label="Positioning" icon={<Target size={14} />}>{identity.valueProposition ? <EditableTextField value={identity.valueProposition} placeholder="Why this brand wins" multiline onSave={(next) => save({ positioning: { valueProposition: next } })} /> : <NotDetected label="Not detected from this website" />}</BrandField>
+            <BrandField label="What they do" icon={<BookOpen size={14} />}><EditableTextField value={identity.description} placeholder="Describe the business." multiline onSave={(next) => save({ description: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="Industry" icon={<Target size={14} />}><EditableTextField value={identity.industry} placeholder="Industry" onSave={(next) => save({ industry: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="Positioning" icon={<Target size={14} />}>{identity.valueProposition ? <EditableTextField value={identity.valueProposition} placeholder="Why this brand wins" multiline onSave={(next) => save({ positioning: { valueProposition: normaliseClearedText(next) } })} /> : <NotDetected label="Not detected from this website" />}</BrandField>
             <BrandField label="Differentiators">{tags(ai?.differentiators ?? [])}</BrandField>
             <BrandField label="Business model"><span>{ai?.businessModel || <NotDetected label="Not detected from this website" />}</span></BrandField>
             <BrandField label="Market / geography"><span>{[ai?.primaryMarket, ai?.geography].filter(Boolean).join(' · ') || <NotDetected label="Not detected from this website" />}</span></BrandField>
@@ -119,7 +119,7 @@ export function BrandProfileWorkspace({
           <div className="brand-fields">
             <BrandField label="Brand Colors" icon={<Palette size={14} />}><EditableColorPalette palette={identity.palette.map((c) => ({ hex: c.hex, role: c.role }))} onSave={savePalette} /></BrandField>
             <BrandField label="Fonts" icon={<Type size={14} />}>
-              {identity.fonts.length ? <div><div className="brand-tags">{identity.fonts.map((font) => <span key={font.family} className="brand-tag">{font.family}<span className="brand-swatch-role">{font.source}</span></span>)}</div><div style={{ marginTop: 10, display: 'grid', gap: 8 }}><div><span className="brand-persona-fact-label">Heading font</span><EditableTextField value={identity.headingFont} placeholder="Not detected" onSave={(next) => saveVisualIdentity({ headingFont: next || null })} /></div><div><span className="brand-persona-fact-label">Body font</span><EditableTextField value={identity.bodyFont} placeholder="Not detected" onSave={(next) => saveVisualIdentity({ bodyFont: next || null })} /></div></div></div> : <NotDetected label="No font declarations found on this website" />}
+              {identity.fonts.length ? <div><div className="brand-tags">{identity.fonts.map((font) => <span key={font.family} className="brand-tag">{font.family}<span className="brand-swatch-role">{font.source}</span></span>)}</div><div style={{ marginTop: 10, display: 'grid', gap: 8 }}><div><span className="brand-persona-fact-label">Heading font</span><EditableTextField value={identity.headingFont} placeholder="Not detected" onSave={(next) => saveVisualIdentity({ headingFont: normaliseClearedText(next) })} /></div><div><span className="brand-persona-fact-label">Body font</span><EditableTextField value={identity.bodyFont} placeholder="Not detected" onSave={(next) => saveVisualIdentity({ bodyFont: normaliseClearedText(next) })} /></div></div></div> : <NotDetected label="No font declarations found on this website" />}
             </BrandField>
           </div>
         </BrandSection>
@@ -128,7 +128,7 @@ export function BrandProfileWorkspace({
           <div className="brand-fields">
             <BrandField label="Tone" icon={<Megaphone size={14} />}><EditableTags label="Tone" values={identity.voice.tone.length ? identity.voice.tone : (ai?.tone ?? [])} placeholder="Add a tone" max={3} primaryFirst suggestions={[...TONE_OPTIONS]} onSave={(next) => saveVoice({ ...identity.voice, tone: next })} /></BrandField>
             <BrandField label="Personality" icon={<Sparkles size={14} />}><EditableTags label="Personality" values={identity.voice.personality} placeholder="Add a descriptive word" suggestions={['Confident', 'Technical', 'Empowering', 'Friendly', 'Warm', 'Bold']} onSave={(next) => saveVoice({ ...identity.voice, personality: next })} /></BrandField>
-            <BrandField label="Style Notes" icon={<Quote size={14} />}><EditableTextField value={identity.voice.styleNotes} placeholder="e.g. Use short sentences. Address the reader directly." multiline emptyLabel="No style notes yet" onSave={(next) => saveVoice({ ...identity.voice, styleNotes: next || null })} /></BrandField>
+            <BrandField label="Style Notes" icon={<Quote size={14} />}><EditableTextField value={identity.voice.styleNotes} placeholder="e.g. Use short sentences. Address the reader directly." multiline emptyLabel="No style notes yet" onSave={(next) => saveVoice({ ...identity.voice, styleNotes: normaliseClearedText(next) })} /></BrandField>
             <BrandField label="Common wording" icon={<Quote size={14} />}>{tags(ai?.terminology ?? identity.terminology)}</BrandField>
             <BrandField label="Recurring claims">{tags(ai?.recurringClaims ?? [])}</BrandField>
             <BrandField label="Messaging themes">{tags(ai?.messagingThemes ?? [])}</BrandField>
@@ -138,7 +138,7 @@ export function BrandProfileWorkspace({
 
         <BrandSection title="Audience" hint="Target audience, segments, needs and use cases.">
           <div className="brand-fields">
-            <BrandField label="Target audience" icon={<Users size={14} />}><EditableTextField value={identity.audienceSummary} placeholder="Who should this brand reach?" multiline onSave={(next) => save({ audienceDetails: { summary: next } })} /></BrandField>
+            <BrandField label="Target audience" icon={<Users size={14} />}><EditableTextField value={identity.audienceSummary} placeholder="Who should this brand reach?" multiline onSave={(next) => save({ audienceDetails: { summary: normaliseClearedText(next) } })} /></BrandField>
             <BrandField label="Customer types">{tags(ai?.customerTypes ?? [])}</BrandField>
             <BrandField label="Personas" icon={<Users size={14} />}>{identity.personas.length ? <div className="brand-persona-grid">{identity.personas.map((persona) => <div key={persona.name} className="brand-persona"><h4 className="brand-persona-name">{persona.name}</h4>{persona.description ? <p className="brand-persona-desc">{persona.description}</p> : null}</div>)}</div> : <NotDetected label="No distinct personas detected from this website" />}</BrandField>
             <BrandField label="Pain points">{tags(ai?.painPoints ?? [])}</BrandField>

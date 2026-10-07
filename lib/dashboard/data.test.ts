@@ -251,7 +251,7 @@ describe('loadDashboardData', () => {
     });
 
     expect(actions.map((action) => action.id)).toEqual(['review-suggestions', 'active-run', 'failed-run']);
-    expect(actions[0].href).toBe('/brands/brand-a#intelligence');
+    expect(actions[0].href).toBe('/brands/brand-a?view=brain');
     expect(actions[0].cta).toBe('Review inbox');
   });
 

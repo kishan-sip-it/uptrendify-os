@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveStrategyView, type LatestStrategy } from './brand-strategy';
+import { LIVE_STATUSES, resolveStrategyView, type LatestStrategy } from './brand-strategy';
 
 type LatestFixture = Partial<Omit<LatestStrategy, 'output'>> & { output?: unknown };
 
@@ -90,5 +90,23 @@ describe('resolveStrategyView', () => {
     const view = resolveStrategyView(latest({ status: 'CANCELLED' }));
     expect(view.kind).toBe('unknown');
     expect(view.kind).not.toBe('content');
+  });
+
+  it('exposes exactly one live status surface while generating', () => {
+    // The header card used to render its own "generating" block with a second
+    // progress bar, duplicating the dedicated live view. The live view is the
+    // single intended status surface for QUEUED and RUNNING.
+    for (const status of ['QUEUED', 'RUNNING']) {
+      const row = latest({ status });
+      const view = resolveStrategyView(row);
+
+      expect(view.kind).toBe('live');
+      // No other branch may claim the same render slot.
+      expect(view.kind).not.toBe('content');
+      expect(view.kind).not.toBe('missing');
+      expect(view.kind).not.toBe('failed');
+      expect(view.kind).not.toBe('unknown');
+      expect(LIVE_STATUSES.has(row.status)).toBe(true);
+    }
   });
 });

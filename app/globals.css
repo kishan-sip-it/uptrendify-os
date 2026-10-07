@@ -554,9 +554,63 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 
 /* Campaign management */
 .chip-row { display:flex; flex-wrap:wrap; gap:6px; }
-.chip-toggle { cursor:pointer; border:1px solid var(--line); }
-.chip-toggle:hover { border-color: rgba(139,124,255,.45); color: var(--text); }
-.chip-toggle-active { border-color: rgba(139,124,255,.55); background: rgba(139,124,255,.12); color: var(--text); }
+.chip-toggle { cursor:pointer; border:1px solid var(--line); background: var(--panel-2); color: var(--muted); transition: border-color .16s ease, background .16s ease, box-shadow .16s ease, color .16s ease; }
+.chip-toggle:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent-2) 55%, var(--line)); color: var(--text); background: color-mix(in srgb, var(--accent-2) 10%, var(--panel-2)); }
+.chip-toggle:focus-visible { outline:2px solid var(--focus, var(--accent-2)); outline-offset:2px; }
+/* One unambiguous selected state: a solid accent fill, an accent border and a
+   soft outer glow, so the chosen channel is obvious at a glance.
+
+   Four separate late stylesheets re-declare `.chip` / `.chip-toggle`
+   (ui-foundation.css loads last, after cool-light-theme.css). Because those
+   rules have equal-or-higher specificity and some carry `!important`, a
+   selected-state rule that only sets background/border/color loses the
+   `font-weight` and `box-shadow` it declares. The selected state must therefore
+   re-assert EVERY visual channel it owns, with high specificity, in one place.
+
+   The fill mixes the deep `--accent` token (not the pale `--accent-2` tint,
+   which reached ~1.3:1 and read as unselected). `--surface-hover` is used as
+   the mix base rather than the very light `--panel-2`/`--surface-muted` so the
+   selected chip clears the 3:1 WCAG non-text contrast bar against an unselected
+   chip in BOTH themes.
+
+   Foreground uses `--text-inverse`, the semantic "text on an accent fill" token
+   (white in the light theme, near-black in dark). `--accent-contrast` must NOT
+   be used here: design-system.css sets it to #07110f for light mode, which is
+   unreadable on the light theme's blue accent.
+
+   The light theme mixes toward `--text` (a deep ink) rather than a light gray
+   surface: mixing with `--surface-hover` *lightened* the blue to rgb(61,116,237)
+   and pushed white text down to 4.27:1, below the 4.5:1 text bar. Deepening the
+   fill to ~rgb(42,92,205) lifts white text to ~5.5:1 while the fill keeps
+   ~3.9:1 against an unselected chip (non-text bar is 3:1). Dark theme keeps a
+   direct accent mix since its `--text-inverse` is near-black on a light blue. */
+.chip.chip-toggle.chip-toggle-active,
+.chip.chip-toggle.chip-toggle-active:hover:not(:disabled) {
+  border-color: var(--accent) !important;
+  background: color-mix(in srgb, var(--accent) 88%, var(--surface-hover)) !important;
+  color: var(--text-inverse) !important;
+  font-weight: var(--weight-semibold, 600) !important;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 38%, transparent),
+    0 0 12px color-mix(in srgb, var(--accent) 42%, transparent) !important;
+}
+html[data-theme="light"] .chip.chip-toggle.chip-toggle-active,
+html[data-theme="light"] .chip.chip-toggle.chip-toggle-active:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 84%, var(--text)) !important;
+}
+/* The late cool-light-theme `!important` rule flattens every .chip background,
+   which swallowed the hover fill (border colour was the only hover cue left).
+   Re-assert the hover surface for unselected toggles only, so hover, focus,
+   selected and disabled each stay independently legible. */
+html[data-theme="light"] .chip.chip-toggle:not(.chip-toggle-active):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-2) 16%, var(--surface-hover)) !important;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line)) !important;
+  color: var(--text) !important;
+}
+/* Disabled stays distinguishable but clearly inert; the selected+disabled pair
+   keeps its accent identity without pretending to be interactive. */
+.chip-toggle:disabled { cursor:not-allowed; opacity:.55; }
+.chip-toggle-active:disabled { opacity:.85; }
 .detail-list { display:grid; gap:12px; margin:0; }
 .detail-list .detail-row { display:flex; align-items:flex-start; gap:12px; }
 .detail-list dt { width:120px; flex-shrink:0; color:var(--muted); font-size:13px; margin:0; }
