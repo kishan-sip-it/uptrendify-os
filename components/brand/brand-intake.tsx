@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ArrowRight, Globe2, LoaderCircle, RefreshCw, Sparkles } from 'lucide-react';
 import type { ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { toVisualIdentity } from '@/lib/brand/identity-mapping';
