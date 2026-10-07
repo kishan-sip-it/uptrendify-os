@@ -250,7 +250,7 @@ export async function GET(request: Request) {
 
     let identity = extractBrandIdentity(outcome.html, outcome.finalUrl);
     const stylesheetUrls = externalStylesheetUrls(outcome.html, outcome.finalUrl);
-    const cssBlocks = (await Promise.all(stylesheetUrls.map(fetchCss))).filter(Boolean);
+    const cssBlocks = cssResults.filter(Boolean);
     identity = mergeExternalCss(identity, cssBlocks);
 
     const pageCandidates = prioritizedLinks(outcome.html, outcome.finalUrl);
@@ -260,11 +260,17 @@ export async function GET(request: Request) {
     const homepage = pageText(outcome.html);
     evidencePages.push({ url: outcome.finalUrl, ...homepage });
 
-    const extraPages = await Promise.all(pageCandidates.map(async (url) => {
-      const page = await fetchHtml(new URL(url), 1);
-      if (!page.ok) return null;
-      return { url: page.finalUrl, ...pageText(page.html) };
-    }));
+    // CSS and same-domain evidence are independent once the homepage is known.
+    // Fetch them concurrently so a slow stylesheet does not add its full latency
+    // on top of the page crawl before AI enrichment can begin.
+    const [cssResults, extraPages] = await Promise.all([
+      Promise.all(stylesheetUrls.map(fetchCss)),
+      Promise.all(pageCandidates.map(async (url) => {
+        const page = await fetchHtml(new URL(url), 1);
+        if (!page.ok) return null;
+        return { url: page.finalUrl, ...pageText(page.html) };
+      })),
+    ]);
     for (const page of extraPages) if (page?.text) evidencePages.push(page);
 
     const assets = (() => {
