@@ -217,27 +217,36 @@ export function BrandIntake({
     );
   }
 
-  if (phase === 'scanning') {
+  if (phase === 'scanning' || (phase === 'saving' && !reviewAfterScan)) {
+    const isImporting = phase === 'saving' && !reviewAfterScan;
     return (
       <div role="status" aria-live="polite">
         <div className="brand-scan-status">
           <div className="brand-scan-status-head">
             <div>
-              <span className="eyebrow">Live website analysis</span>
-              <strong>Building your brand profile</strong>
+              <span className="eyebrow">{isImporting ? 'Website analysis complete' : 'Live website analysis'}</span>
+              <strong>{isImporting ? 'Importing your Brand IQ' : 'Building your brand profile'}</strong>
             </div>
             <span className="brand-scan-elapsed">{scanElapsed}s</span>
           </div>
           <div className="brand-scan-progress" aria-hidden="true"><span /></div>
           <p className="brand-section-hint" style={{ marginTop: 10 }}>
-            We fetch the public site, inspect relevant same-domain pages and external stylesheets, extract the visual identity, then build structured Brand IQ. The stages below describe the work being performed; they are not fake completion percentages.
+            {isImporting
+              ? 'The website analysis finished successfully. We are saving the extracted identity to your brand workspace before moving to the next step.'
+              : 'We fetch the public site, inspect relevant same-domain pages and external stylesheets, extract the visual identity, then build structured Brand IQ. The stages below describe the work being performed; they are not fake completion percentages.'}
           </p>
           <ul className="brand-scan-steps" aria-label="Website analysis stages">
             {STEPS.map((step, index) => (
-              <li key={step} className={index === stepIndex ? 'active' : ''}>
+              <li key={step} className={isImporting || index === stepIndex ? 'active' : ''}>
                 <span className="brand-scan-step-index">{String(index + 1).padStart(2, '0')}</span>
                 <span>{step}</span>
-                {index === stepIndex ? <LoaderCircle size={14} className="spin" aria-hidden="true" /> : null}
+                {isImporting
+                  ? index < STEPS.length - 1
+                    ? <span aria-hidden="true">✓</span>
+                    : <LoaderCircle size={14} className="spin" aria-hidden="true" />
+                  : index === stepIndex
+                    ? <LoaderCircle size={14} className="spin" aria-hidden="true" />
+                    : null}
               </li>
             ))}
           </ul>
