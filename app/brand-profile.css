@@ -26,6 +26,9 @@
 
 .brand-profile-main {
   min-width: 0;
+  /* Let Brand Profile respond to its actual column width, not only the viewport.
+     This keeps the editor stable at browser zoom levels and beside the workflow checklist. */
+  container: brand-profile-main / inline-size;
 }
 
 .brand-profile-preview-column {
@@ -1054,8 +1057,9 @@
   top: 8px;
   z-index: 12;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  overflow-x: auto;
+  overflow: visible;
   padding: 8px;
   margin: -2px 0 12px;
   border: 1px solid var(--line);
@@ -1091,6 +1095,38 @@
 }
 .brand-profile-tabpanel {
   min-width: 0;
+}
+
+
+/* The editor can become narrower than the viewport when the contextual checklist
+   is present or when the browser is zoomed. Switch to a compact, non-colliding
+   definition-row layout based on the actual Brand Profile column width. */
+@container brand-profile-main (max-width: 560px) {
+  .brand-profile-subtabs {
+    gap: 4px;
+    padding: 7px;
+  }
+
+  .brand-profile-subtab {
+    flex: 1 1 auto;
+    min-width: max-content;
+    padding-inline: 9px;
+  }
+
+  .brand-field {
+    grid-template-columns: minmax(112px, 0.34fr) minmax(0, 0.66fr);
+    gap: 12px;
+  }
+
+  .brand-logo-editor {
+    grid-template-columns: 80px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .brand-logo-editor-preview {
+    width: 80px;
+    height: 80px;
+  }
 }
 
 .brand-profile-brand-hero {
