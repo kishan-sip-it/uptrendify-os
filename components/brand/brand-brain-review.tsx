@@ -677,7 +677,7 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
                     <div><div className="eyebrow">Topic {sectionIndex + 1} of {grouped.size}</div><h3 style={{ margin: '4px 0 0' }}>{sectionLabel}</h3></div>
                     {canManage && tab === 'review' ? <button type="button" className="badge text-button" onClick={() => batch('dismiss_all', items.map((item) => item.field))} disabled={busyKey !== null} style={{ border: 0, background: 'transparent', color: 'var(--muted)', cursor: 'pointer', padding: '4px 8px', fontSize: 12 }}><X size={12}/> Dismiss pending</button> : null}
                   </div>
-                  <div className="grid" style={{ gap: 12 }}>
+                  <div id={`brain-topic-items-${sectionIndex}`} className="grid brain-topic-items" style={{ gap: 12 }}>
                     {(expandedSections[sectionLabel] ? items : items.slice(0, 5)).map((suggestion) => (
                       <SuggestionCard
                         key={suggestion.id}
@@ -694,11 +694,13 @@ export function BrandBrainReview({ brandId, brandName }: { brandId: string; bran
                   {items.length > 5 ? (
                     <button
                       type="button"
-                      className="badge"
+                      className="badge brain-topic-see-more"
                       onClick={() => setExpandedSections((current) => ({ ...current, [sectionLabel]: !current[sectionLabel] }))}
+                      aria-expanded={Boolean(expandedSections[sectionLabel])}
+                      aria-controls={`brain-topic-items-${sectionIndex}`}
                       style={{ border: 0, cursor: 'pointer', marginTop: 12 }}
                     >
-                      {expandedSections[sectionLabel] ? 'Show less' : `See more · ${items.length - 5} more in this topic`}
+                      {expandedSections[sectionLabel] ? 'Show fewer findings' : `See all ${items.length} findings`}
                     </button>
                   ) : null}
                   <div className="brain-topic-actions">
