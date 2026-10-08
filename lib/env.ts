@@ -45,7 +45,7 @@ export const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: optionalString('SUPABASE_SERVICE_ROLE_KEY'),
   SUPABASE_SECRET_KEY: optionalString('SUPABASE_SECRET_KEY'),
   GROQ_API_KEY: optionalString('GROQ_API_KEY'),
-  GROQ_MODEL: stringWithDefault('GROQ_MODEL', 'openai/gpt-oss-20b'),
+  GROQ_MODEL: stringWithDefault('GROQ_MODEL', 'openai/gpt-oss-120b'),
   OPENAI_API_KEY: optionalString('OPENAI_API_KEY'),
   OPENAI_MODEL: stringWithDefault('OPENAI_MODEL', 'gpt-4o-mini'),
   ANTHROPIC_API_KEY: optionalString('ANTHROPIC_API_KEY'),
