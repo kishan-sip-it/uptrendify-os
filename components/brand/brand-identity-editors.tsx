@@ -14,10 +14,9 @@ import { NotDetected } from './brand-profile-primitives';
  *   component never talks to Supabase directly.
  * - Save is explicit; there is no optimistic update, because a failed write
  *   must not leave the workspace showing a value the database rejected.
- * - The saved value is read back from the server, never from the draft or from
- *   the stale `identity` prop. The brand workspace is a Server Component, so
- *   the prop only changes when the route is re-rendered; without a refresh the
- *   old value stayed on screen and looked like the edit had reverted.
+ * - The saved value is read back from the server response and handed back
+ *   to the Brand Profile workspace immediately, so the UI can update without
+ *   triggering a full route refresh after every edit.
  * - The full palette / tone list is preserved on save; we only ever send
  *   complete arrays, never a partial patch that could drop human edits.
  */
