@@ -273,7 +273,6 @@ export async function analyzeResearchEvidence(
   let provider: AiProvider | null = deps.provider !== undefined ? deps.provider : createDefaultRegistry().default();
   const providerId = provider?.id;
   if (!provider) {
-    obs.error('No configured AI provider for brand intelligence', { organizationId, brandId, researchRunId });
     const message = providerConfigurationMessage();
     obs.error('No configured AI provider for brand intelligence', { organizationId, brandId, researchRunId, selectedProvider: env().DEFAULT_AI_PROVIDER });
     await failTask('PROVIDER_UNCONFIGURED', message);
