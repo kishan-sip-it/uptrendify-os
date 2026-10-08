@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Check, Plus, RefreshCw, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, LoaderCircle, Plus, RefreshCw, Upload, X } from 'lucide-react';
 import type { CustomBrandRule } from '@/lib/brand/identity-mapping';
 import { NotDetected } from './brand-profile-primitives';
 
@@ -34,6 +34,82 @@ export function normaliseClearedText(next: string | null | undefined): string | 
   const trimmed = next.trim();
   return trimmed === '' ? null : trimmed;
 }
+
+export function EditableLogo({
+  brandId,
+  value,
+  brandName,
+  onUploaded,
+  onRemove,
+}: {
+  brandId: string;
+  value: string | null;
+  brandName: string | null;
+  onUploaded: (brand: unknown) => void;
+  onRemove: () => Promise<boolean>;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const upload = async (file: File) => {
+    setPending(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set('file', file);
+      const response = await fetch(`/api/brands/${brandId}/logo`, { method: 'POST', body: form });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || 'Could not upload the logo.');
+      onUploaded(body?.brand);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not upload the logo.');
+    } finally {
+      setPending(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="brand-logo-editor">
+      <div className="brand-logo-editor-preview">
+        {value ? (
+          <img src={value} alt={brandName ? `${brandName} logo` : 'Brand logo'} />
+        ) : (
+          <span>{brandName ? brandName.slice(0, 2).toUpperCase() : 'BR'}</span>
+        )}
+      </div>
+      <div className="brand-logo-editor-copy">
+        <strong>{value ? 'Custom logo' : 'No custom logo yet'}</strong>
+        <span>Upload PNG, JPG, WEBP or SVG. Maximum 2 MB.</span>
+        <div className="brand-edit-actions">
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void upload(file);
+            }}
+          />
+          <button type="button" className="brand-btn brand-btn-primary" onClick={() => inputRef.current?.click()} disabled={pending}>
+            {pending ? <LoaderCircle size={13} className="spin" /> : <Upload size={13} />}
+            {pending ? 'Uploading…' : value ? 'Replace logo' : 'Upload logo'}
+          </button>
+          {value ? (
+            <button type="button" className="brand-btn" onClick={() => void onRemove()} disabled={pending}>
+              Remove
+            </button>
+          ) : null}
+        </div>
+        {error ? <p className="brand-section-hint" style={{ color: 'var(--status-danger)' }}>{error}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 
 export function useBrandIdentityEditor(
   brandId: string,
