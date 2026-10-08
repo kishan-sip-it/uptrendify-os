@@ -197,9 +197,9 @@ export async function runStrategyGeneration(input: StrategyPipelineInput, deps: 
     const message = error instanceof Error ? error.message : String(error);
     const classified = classifyProviderFailure(error);
     const code = isStrategyValidationError(error) ? 'VALIDATION_ERROR' : classified.code;
-    obs.error('Strategy generation failed', { strategyId, brandId, organizationId, provider: providerId, model, error: message });
+    obs.error('Strategy generation failed', { strategyId, brandId, organizationId, provider: provider.id, model, error: message });
     await fail(code, message);
-    return { status: 'FAILED', aiTaskId, version, provider: providerId, model, errorCode: code, errorMessage: message };
+    return { status: 'FAILED', aiTaskId, version, provider: provider.id, model, errorCode: code, errorMessage: message };
   }
 }
 
