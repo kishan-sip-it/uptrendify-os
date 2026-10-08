@@ -290,7 +290,8 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     : '';
 
   const candidates: Array<{ url: string; score: number }> = [];
-  let favicon: { url: string; score: number } | null = null;
+  let faviconUrl: string | null = null;
+  let faviconScore = -1;
 
   $('img, source').each((_i, el) => {
     const node = $(el);
@@ -317,8 +318,11 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
       candidates.push({ url: resolved, score });
 
       if (FAVICON_HINT.test(resolved)) {
-        const faviconScore = sameSiteUrl(base, resolved) ? 20 : 0;
-        if (!favicon || faviconScore > favicon.score) favicon = { url: resolved, score: faviconScore };
+        const score = sameSiteUrl(base, resolved) ? 20 : 0;
+        if (!faviconUrl || score > faviconScore) {
+          faviconUrl = resolved;
+          faviconScore = score;
+        }
       }
     }
   });
@@ -338,14 +342,18 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const rel = (node.attr('rel') ?? '').toLowerCase();
     const href = absoluteUrl(node.attr('href'), base);
     if (!href || !sameSiteUrl(base, href)) return;
-    if (!favicon && (rel.includes('icon') || rel.includes('apple-touch'))) {
-      favicon = { url: href, score: rel.includes('apple-touch') ? 24 : 18 };
+    if (rel.includes('icon') || rel.includes('apple-touch')) {
+      const score = rel.includes('apple-touch') ? 24 : 18;
+      if (!faviconUrl || score > faviconScore) {
+        faviconUrl = href;
+        faviconScore = score;
+      }
     }
     if (rel.includes('mask-icon')) candidates.push({ url: href, score: 26 });
   });
 
   candidates.sort((a, b) => b.score - a.score);
-  return { logo: candidates[0]?.url ?? null, favicon: favicon?.url ?? null };
+  return { logo: candidates[0]?.url ?? null, favicon: faviconUrl };
 }
 
 function detectSocials($: cheerio.CheerioAPI, base: string | null): { platform: string; url: string }[] {
