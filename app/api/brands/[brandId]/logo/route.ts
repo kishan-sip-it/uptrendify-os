@@ -22,7 +22,12 @@ function extensionFor(type: string): string {
 function signatureMatches(type: string, bytes: Uint8Array): boolean {
   const magic = MAGIC[type];
   if (!magic || bytes.length < magic.length) return false;
-  return magic.every((value, index) => bytes[index] === value);
+  if (!magic.every((value, index) => bytes[index] === value)) return false;
+  if (type === 'image/webp') {
+    return bytes.length >= 12 &&
+      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+  }
+  return true;
 }
 
 function normaliseVisual(value: unknown): Record<string, unknown> {
