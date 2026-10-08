@@ -12,6 +12,110 @@ export const RESEARCH_TERMINAL_STATUSES = ['COMPLETED', 'PARTIAL', 'FAILED', 'CA
 export const RESEARCH_ACTIVE_STATUSES = ['QUEUED', 'RUNNING'] as const;
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const HIGH_SIGNAL_PATHS = [
+  /(^|\\/)about(?:-us)?(?:\\/|$)/i,
+  /(^|\\/)mission(?:s)?(?:\\/|$)/i,
+  /(^|\\/)science(?:\\/|$)/i,
+  /(^|\\/)research(?:\\/|$)/i,
+  /(^|\\/)technology(?:\\/|$)/i,
+  /(^|\\/)products?(?:\\/|$)/i,
+  /(^|\\/)services?(?:\\/|$)/i,
+  /(^|\\/)solutions?(?:\\/|$)/i,
+  /(^|\\/)programs?(?:\\/|$)/i,
+  /(^|\\/)features?(?:\\/|$)/i,
+  /(^|\\/)use-cases?(?:\\/|$)/i,
+  /(^|\\/)customers?(?:\\/|$)/i,
+  /(^|\\/)industr(?:y|ies)(?:\\/|$)/i,
+  /(^|\\/)learn(?:ing)?(?:-resources)?(?:\\/|$)/i,
+  /(^|\\/)education(?:\\/|$)/i,
+  /(^|\\/)pricing(?:\\/|$)/i,
+  /(^|\\/)solutions?\\//i,
+];
+
+const LOW_SIGNAL_PATHS = [
+  /(^|\\/)news(?:\\/|$)/i,
+  /(^|\\/)press(?:-releases?)?(?:\\/|$)/i,
+  /(^|\\/)blog(?:s)?(?:\\/|$)/i,
+  /(^|\\/)podcasts?(?:\\/|$)/i,
+  /(^|\\/)social(?:-media)?(?:\\/|$)/i,
+  /(^|\\/)events?(?:\\/|$)/i,
+  /(^|\\/)multimedia(?:\\/|$)/i,
+  /(^|\\/)newsletter(?:s)?(?:\\/|$)/i,
+  /(^|\\/)media(?:\\/|$)/i,
+  /(^|\\/)contact(?:-us)?(?:\\/|$)/i,
+];
+
+export function researchPagePriority(root: string, rawUrl: string): number {
+  try {
+    const rootUrl = new URL(root);
+    const url = new URL(rawUrl);
+    const path = url.pathname.replace(/\\/$/, '') || '/';
+    const host = url.hostname.toLowerCase().replace(/^www\\./, '');
+    const rootHost = rootUrl.hostname.toLowerCase().replace(/^www\\./, '');
+
+    let score = 0;
+    if (host === rootHost) score += 12;
+    else score += 8; // trusted same-site subdomains can carry major product/science content
+
+    if (path === '/') score += 100;
+    if (HIGH_SIGNAL_PATHS.some((pattern) => pattern.test(path))) score += 70;
+    if (LOW_SIGNAL_PATHS.some((pattern) => pattern.test(path))) score -= 50;
+
+    const segments = path.split('/').filter(Boolean);
+    score -= Math.min(segments.length, 5) * 3;
+    if (/\\.(?:pdf|zip|png|jpe?g|gif|svg|webp|xml)$/i.test(path)) score -= 100;
+
+    return score;
+  } catch {
+    return -100;
+  }
+}
+
+async function discoverSitemapUrls(root: string): Promise<string[]> {
+  const rootUrl = new URL(root);
+  const candidates = [
+    new URL('/sitemap.xml', rootUrl).toString(),
+    new URL('/sitemap_index.xml', rootUrl).toString(),
+  ];
+  const discovered: string[] = [];
+  const timeoutMs = Math.min(env().RESEARCH_TIMEOUT_MS, 5_000);
+
+  for (const sitemap of candidates) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetchPublicHttp(sitemap, {
+        signal: controller.signal,
+        redirect: 'follow',
+        headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'application/xml,text/xml,text/plain' },
+      });
+      if (!response.ok) continue;
+      const body = (await response.text()).slice(0, 2_000_000);
+      const locs = [...body.matchAll(/<loc>\\s*([^<]+)\\s*<\\/loc>/gi)]
+        .map((match) => match[1]?.trim())
+        .filter((value): value is string => Boolean(value));
+
+      for (const raw of locs) {
+        try {
+          const normalized = normalizeUrl(raw);
+          if (isResearchCandidate(root, normalized)) discovered.push(normalized);
+        } catch {
+          continue;
+        }
+      }
+      if (discovered.length > 0) break;
+    } catch {
+      continue;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return [...new Set(discovered)]
+    .sort((a, b) => researchPagePriority(root, b) - researchPagePriority(root, a))
+    .slice(0, 80);
+}
+
 
 async function fetchRenderedFallback(target: string): Promise<{ text: string; title: string | null } | null> {
   const key = env().JINA_API_KEY;
@@ -152,8 +256,15 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
     throw error;
   }
 
-  const queue = [root];
+  const queue: Array<{ url: string; priority: number }> = [{ url: root, priority: 1000 }];
   const seen = new Set<string>();
+  const sitemapCandidates = await discoverSitemapUrls(root);
+  for (const candidate of sitemapCandidates) {
+    if (!seen.has(candidate) && queue.length < e.MAX_RESEARCH_PAGES * 5) {
+      queue.push({ url: candidate, priority: researchPagePriority(root, candidate) });
+    }
+  }
+
   const crawlBudget = Math.min(e.RESEARCH_TOTAL_BUDGET_MS, e.RESEARCH_TIMEOUT_MS * (e.MAX_RESEARCH_PAGES + 1));
   const start = Date.now();
   let pagesProcessed = 0;
@@ -167,7 +278,10 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
     while (queue.length && pagesProcessed < e.MAX_RESEARCH_PAGES) {
       if (Date.now() - start > crawlBudget) { partial = true; break; }
 
-      const target = normalizeUrl(queue.shift()!);
+      queue.sort((a, b) => b.priority - a.priority);
+      const nextItem = queue.shift();
+      if (!nextItem) break;
+      const target = normalizeUrl(nextItem.url);
       if (!isResearchCandidate(root, target)) continue;
       if (seen.has(target)) continue;
       seen.add(target);
@@ -202,7 +316,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
             const redirected = normalizeUrl(new URL(location, target).toString());
             if (isResearchCandidate(root, redirected)) {
               await assertResolvablePublicHost(new URL(redirected).hostname);
-              queue.unshift(redirected);
+              queue.push({ url: redirected, priority: researchPagePriority(root, redirected) + 5 });
             } else if (isLowSignalResearchPath(redirected)) {
               partial = true;
               recordRunFailure('AUTH_REQUIRED', 'The public website redirects research to a login or account page.');
@@ -307,7 +421,9 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         for (const next of extracted.links) {
           try {
             const candidate = normalizeUrl(next);
-            if (isResearchCandidate(root, candidate) && !seen.has(candidate) && queue.length + seen.size < e.MAX_RESEARCH_PAGES * 3) queue.push(candidate);
+            if (isResearchCandidate(root, candidate) && !seen.has(candidate) && queue.length + seen.size < e.MAX_RESEARCH_PAGES * 5) {
+              queue.push({ url: candidate, priority: researchPagePriority(root, candidate) });
+            }
           } catch {
             continue;
           }
