@@ -2,7 +2,7 @@
 html, body {
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 *, *::before, *::after {
@@ -73,6 +73,16 @@ button, a, input, textarea, select {
 .chip-toggle[aria-pressed="true"]:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 88%, var(--text-strong)) !important;
   transform: translateY(-1px);
+}
+
+.shell > .sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .brand-workspace-nav-scroll {
