@@ -143,14 +143,14 @@ describe('extractBrandIntelligence', () => {
 
   it('prefers organization-level pages over high-volume news pages when fitting evidence', async () => {
     const evidence = [
-      { url: 'https://nasa.gov/', title: 'NASA', text: 'NASA organization overview and mission.' },
-      { url: 'https://nasa.gov/news/', title: 'NASA News', text: 'News updates.' },
-      { url: 'https://nasa.gov/about/', title: 'About NASA', text: 'NASA is the United States government agency responsible for science and exploration.' },
-      { url: 'https://nasa.gov/blogs/', title: 'NASA Blogs', text: 'Blog posts.' },
-      { url: 'https://science.nasa.gov/', title: 'NASA Science', text: 'NASA science and research programs.' },
-      { url: 'https://nasa.gov/events/', title: 'Events', text: 'Upcoming events.' },
-      { url: 'https://nasa.gov/missions/', title: 'Missions', text: 'NASA missions and exploration programs.' },
-      { url: 'https://nasa.gov/social-media/', title: 'Social Media', text: 'Official social accounts.' },
+      { url: 'https://nasa.gov/', title: 'NASA', text: 'NASA organization overview and mission. '.repeat(20) },
+      { url: 'https://nasa.gov/news/', title: 'NASA News', text: 'News updates. '.repeat(20) },
+      { url: 'https://nasa.gov/about/', title: 'About NASA', text: 'NASA is the United States government agency responsible for science and exploration. '.repeat(20) },
+      { url: 'https://nasa.gov/blogs/', title: 'NASA Blogs', text: 'Blog posts. '.repeat(20) },
+      { url: 'https://science.nasa.gov/', title: 'NASA Science', text: 'NASA science and research programs. '.repeat(20) },
+      { url: 'https://nasa.gov/events/', title: 'Events', text: 'Upcoming events. '.repeat(20) },
+      { url: 'https://nasa.gov/missions/', title: 'Missions', text: 'NASA missions and exploration programs. '.repeat(20) },
+      { url: 'https://nasa.gov/social-media/', title: 'Social Media', text: 'Official social accounts. '.repeat(20) },
     ];
     const provider = fakeProvider([VALID_INTELLIGENCE], 'openai/gpt-oss-20b');
     await extractBrandIntelligence(provider as any, evidence);
