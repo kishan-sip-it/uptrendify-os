@@ -81,7 +81,7 @@ export function EditableLogo({
       </div>
       <div className="brand-logo-editor-copy">
         <strong>{value ? 'Custom logo' : 'No custom logo yet'}</strong>
-        <span>Upload PNG, JPG, WEBP or SVG. Maximum 2 MB.</span>
+        <span>Upload PNG, JPG or WEBP. Maximum 2 MB.</span>
         <div className="brand-edit-actions">
           <input
             ref={inputRef}
