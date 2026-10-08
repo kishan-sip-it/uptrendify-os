@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createDefaultRegistry } from '@/lib/ai/registry';
+import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { withTransientRetry } from '@/lib/ai/retry';
 import { classifyProviderFailure } from '@/lib/ai/classify';
 import type { AiProvider } from '@/lib/ai/types';
@@ -27,12 +27,52 @@ export async function runContentGeneration(input: ContentPipelineInput, deps: Co
   if (!gate.ok || !snapshot.strategy) { await recordFailure(supabase, { contentId, organizationId, code: gate.code ?? 'CONTENT_GATE_BLOCKED', message: gate.message }); return { status: 'FAILED', errorCode: gate.code ?? 'CONTENT_GATE_BLOCKED', errorMessage: gate.message }; }
   const strategy = snapshot.strategy; const strategyIds = strategySet.map((entry) => entry.id);
   const aiTaskInsert = await supabase.from('ai_tasks').insert({ organization_id: organizationId, brand_id: brandId, content_item_id: contentId, strategy_id: strategy.id, task_type: CONTENT_TASK_TYPE, status: 'RUNNING', idempotency_key: `content:${contentId}:${Date.now()}`, input_metadata: { intentType: intent.type, intentChannel: intent.channel, campaignId, strategyIds, facts: snapshot.facts.length, insights: snapshot.insights.length, evidenceClaims: snapshot.evidenceClaims.length, researchRunId: snapshot.researchRunId }, started_at: new Date().toISOString(), ...(createdBy ? { created_by: createdBy } : {}) }).select('id').single(); if (aiTaskInsert.error) throw aiTaskInsert.error;
-  const aiTaskId = aiTaskInsert.data.id; const fail = (code: string, message: string, provider?: string, model?: string) => recordFailure(supabase, { aiTaskId, contentId, organizationId, code, message, provider, model }); let provider: AiProvider | null = deps.provider !== undefined ? deps.provider : createDefaultRegistry().default(); const providerId = provider?.id;
-  if (!provider) { await fail('PROVIDER_UNCONFIGURED', 'No AI provider is configured.'); return { status: 'FAILED', aiTaskId, errorCode: 'PROVIDER_UNCONFIGURED', errorMessage: 'No AI provider is configured.' }; }
-  const model = provider.defaultModel; const providerUpdate = await supabase.from('ai_tasks').update({ provider: providerId, model }).eq('id', aiTaskId); if (providerUpdate.error) throw providerUpdate.error;
+  const aiTaskId = aiTaskInsert.data.id;
+  const fail = (code: string, message: string, provider?: string, model?: string) => recordFailure(supabase, { aiTaskId, contentId, organizationId, code, message, provider, model });
+  const registry = deps.provider === undefined ? createDefaultRegistry() : null;
+  const providers = deps.provider !== undefined
+    ? (deps.provider ? [deps.provider] : [])
+    : (registry?.configuredInOrder() ?? []);
+
+  if (providers.length === 0) {
+    await fail('PROVIDER_UNCONFIGURED', 'No AI provider is configured.');
+    return { status: 'FAILED', aiTaskId, errorCode: 'PROVIDER_UNCONFIGURED', errorMessage: 'No AI provider is configured.' };
+  }
+
+  let provider = providers[0]!;
+  let model = provider.defaultModel;
+  const providerUpdate = await supabase.from('ai_tasks').update({ provider: provider.id, model }).eq('id', aiTaskId);
+  if (providerUpdate.error) throw providerUpdate.error;
+
   const prompt = buildContentPrompt(toContentBrainContext(snapshot), strategy, intent, strategySet); const startedAt = Date.now();
   try {
-    const extraction = await withTransientRetry(() => extractContent(provider, prompt, intent, { promptForRepair: buildContentRepairPrompt }), { label: 'content generation', providerId }); const result = extraction.result as ContentGeneration; const providerModel = extraction.model; const nextVersion = await loadNextVersion(supabase, { organizationId, contentId });
+    const extractionRun = await runWithProviderFailover(
+      providers,
+      async (candidate) => {
+        provider = candidate;
+        model = candidate.defaultModel;
+        const providerUpdate = await supabase.from('ai_tasks').update({ provider: candidate.id, model: candidate.defaultModel }).eq('id', aiTaskId);
+        if (providerUpdate.error) throw providerUpdate.error;
+        return withTransientRetry(
+          () => extractContent(candidate, prompt, intent, { promptForRepair: buildContentRepairPrompt }),
+          { label: 'content generation', providerId: candidate.id },
+        );
+      },
+      async (failed, next, error) => {
+        obs.warn('Failing over content generation to next AI provider', {
+          contentId,
+          brandId,
+          organizationId,
+          failedProvider: failed.id,
+          nextProvider: next.id,
+          error: error instanceof Error ? error.message.slice(0, 300) : String(error),
+        });
+      },
+    );
+    provider = extractionRun.provider;
+    model = extractionRun.provider.defaultModel;
+    const extraction = extractionRun.result;
+    const result = extraction.result as ContentGeneration; const providerModel = extraction.model; const nextVersion = await loadNextVersion(supabase, { organizationId, contentId });
     const versionRow = { organization_id: organizationId, content_item_id: contentId, version: nextVersion, body: result.body, headline: result.headline, cta: result.cta ?? null, strategy_id: strategy.id, provider: providerId, model: providerModel, author_user_id: createdBy ?? null, rationale: result.rationale ?? null, brand_fact_references: result.brand_fact_references ?? [], strategy_references: result.strategy_references ?? [], metadata: { formatted: true, content_type: intent.type, channel: intent.channel, campaignId, strategyIds, primaryStrategyId: strategy.id, intent: { objective: intent.objective ?? null, audience: intent.audience ?? null, context: intent.context ?? null, tone: intent.tone ?? null, ctaDirection: intent.cta ?? null, instructions: intent.instructions ?? null } } };
     let persisted: { id: string; version: number } | null = null; for (let attempt = 0; attempt < 3 && !persisted; attempt += 1) { persisted = await insertVersion(supabase, versionRow); if (!persisted) versionRow.version = await loadNextVersion(supabase, { organizationId, contentId }); } if (!persisted) throw new Error('Could not persist content version after retries');
     const itemUpdate = await supabase.from('content_items').update({ current_version_id: persisted.id, updated_at: new Date().toISOString() }).eq('id', contentId).eq('organization_id', organizationId); if (itemUpdate.error) throw itemUpdate.error;
