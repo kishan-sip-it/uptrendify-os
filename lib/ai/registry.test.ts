@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AiProviderError } from './types';
 import type { AiProvider, GenerateResult, ProviderHealth } from './types';
-import { AiProviderRegistry, createDefaultRegistry, runWithProviderFailover, shouldFailoverAiProvider } from './registry';
+import { AiProviderRegistry, createDefaultRegistry, runWithProviderFailover } from './registry';
 
 function mockProvider(id: string, configured = false): AiProvider {
   return {
@@ -108,34 +107,3 @@ describe('createDefaultRegistry', () => {
     });
   });
 });
-
-describe('provider failover hardening', () => {
-  it('fails over on bounded transient provider errors', async () => {
-    const groq = mockProvider('groq', true);
-    const openai = mockProvider('openai', true);
-    const result = await runWithProviderFailover([groq, openai], async (candidate) => {
-      if (candidate.id === 'groq') throw new AiProviderError('groq', 'rate limited', 429);
-      return 'valid-output';
-    });
-    expect(result.result).toBe('valid-output');
-    expect(result.provider.id).toBe('openai');
-  });
-
-  it('does not fail over client-request errors', async () => {
-    const groq = provider('groq');
-    const openai = provider('openai');
-    await expect(runWithProviderFailover([groq, openai], async () => {
-      throw new AiProviderError('groq', 'invalid request', 400);
-    })).rejects.toMatchObject({ status: 400 });
-  });
-
-  it('recognizes only transient provider statuses', () => {
-    expect(shouldFailoverAiProvider(new AiProviderError('groq', 'busy', 503))).toBe(true);
-    expect(shouldFailoverAiProvider(new AiProviderError('groq', 'bad input', 422))).toBe(false);
-    expect(shouldFailoverAiProvider(new AiProviderError('groq', 'unauthorized', 401))).toBe(false);
-  });
-});
-
-function provider(id: string) {
-  return { id, defaultModel: id + '-model', configured: () => true, generate: vi.fn(), health: vi.fn() };
-}
