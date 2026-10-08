@@ -3,10 +3,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BookOpen, Image as ImageIcon, Megaphone, Palette, Quote, Sparkles, Target, Type, Users } from 'lucide-react';
 import { BrandField, BrandIdentityRow, BrandPanel, BrandSection, NotDetected, brandInitials } from './brand-profile-primitives';
-import { EditableBrandRules, EditableColorPalette, EditablePersonas, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
+import { EditableBrandRules, EditableColorPalette, EditableLogo, EditablePersonas, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
 import { readIdentity, type BrandIdentity, type BrandIdentityRow as BrandIdentityDbRow } from '@/lib/brand/identity-mapping';
 import { readableTextOn } from '@/lib/brand/visual-extraction';
 import { TONE_OPTIONS, VOICE_AXES, describeVoice, voiceAxisValues } from '@/lib/brand/voice';
+
+type ProfileTab = 'identity' | 'visuals' | 'voice' | 'audience' | 'offer' | 'rules' | 'assets' | 'evidence';
+
+const PROFILE_TABS: Array<{ id: ProfileTab; label: string }> = [
+  { id: 'identity', label: 'Identity' },
+  { id: 'visuals', label: 'Visuals' },
+  { id: 'voice', label: 'Voice' },
+  { id: 'audience', label: 'Audience' },
+  { id: 'offer', label: 'Offer' },
+  { id: 'rules', label: 'Rules' },
+  { id: 'assets', label: 'Assets' },
+  { id: 'evidence', label: 'Evidence' },
+];
 
 const EMPTY_AI_PROFILE: NonNullable<BrandIdentity['aiProfile']> = {
   industry: null, products: [], services: [], audience: null, personas: [], customerTypes: [], painPoints: [], useCases: [],
@@ -186,6 +199,7 @@ export function BrandProfileWorkspace({
 }) {
   const [identity, setIdentity] = useState<BrandIdentity>(initialIdentity);
   const [activeWebsiteUrl, setActiveWebsiteUrl] = useState<string | null>(websiteUrl);
+  const [activeProfileTab, setActiveProfileTab] = useState<ProfileTab>('identity');
   const onSaved = useCallback((brand: unknown) => {
     if (!brand || typeof brand !== 'object') return;
     const nextBrand = brand as BrandIdentityDbRow & { website_url?: unknown };
@@ -295,11 +309,164 @@ export function BrandProfileWorkspace({
         subtitle={identity.detectedAt ? 'Imported from the website. Human edits are authoritative and become the active brand context.' : 'Brand identity for this workspace.'}
         actions={onRescan ? <button type="button" className="brand-btn" onClick={onRescan} disabled={rescanState === 'running' || saving}><Sparkles size={13} /> {rescanState === 'running' ? 'Scanning…' : 'Re-scan website'}</button> : null}
       >
-        <div className="brand-strip" aria-hidden="true" />
-        <BrandIdentityRow name={identity.name} websiteUrl={activeWebsiteUrl} logoUrl={identity.logoUrl} initials={brandInitials(identity.name)} />
-        {savedAt && !error ? <p className="brand-section-hint" style={{ color: 'var(--status-success)' }}>Saved. Your change is now the active brand context.</p> : null}
-        {error ? <p className="brand-section-hint" style={{ color: 'var(--status-danger)' }}>{error}</p> : null}
-      </BrandPanel>
+        <div
+          className="brand-profile-brand-hero"
+          style={{
+            '--brand-hero-primary': identity.primaryColor ?? identity.palette[0]?.hex ?? 'var(--accent)',
+            '--brand-hero-secondary': identity.palette.find((color) => color.role === 'secondary')?.hex ?? identity.secondaryColors?.[0] ?? 'var(--accent-2)',
+          } as React.CSSProperties}
+        >
+          <div className="brand-profile-brand-hero-glow" aria-hidden="true" />
+          <BrandIdentityRow name={identit      <BrandPanel icon={<BookOpen size={17} />} title="Brand Guidelines" subtitle="The complete working profile used by strategy and content.">
+        <div className="brand-profile-subtabs" role="tablist" aria-label="Brand profile sections">
+          {PROFILE_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeProfileTab === tab.id}
+              className={activeProfileTab === tab.id ? 'brand-profile-subtab is-active' : 'brand-profile-subtab'}
+              onClick={() => setActiveProfileTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="brand-profile-tab-content">
+        {activeProfileTab === 'identity' ? (
+        <BrandSection title="Identity" hint="Website analysis is the starting point. Edit the imported values here before they become the active brand context.">
+          <div className="brand-fields">
+            <BrandField label="Brand name"><EditableTextField value={identity.name} placeholder="Brand name" onSave={(next) => save({ name: normaliseClearedText(next) ?? 'Untitled brand' })} /></BrandField>
+            <BrandField label="Website"><EditableTextField value={activeWebsiteUrl} placeholder="https://example.com" onSave={(next) => save({ websiteUrl: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="What they do" icon={<BookOpen size={14} />}><EditableTextField value={identity.description} placeholder="Describe the business." multiline onSave={(next) => save({ description: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="Industry" icon={<Target size={14} />}><EditableTextField value={identity.industry} placeholder="Industry" onSave={(next) => save({ industry: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="Target audience" icon={<Users size={14} />}><EditableTextField value={identity.audienceSummary} placeholder="Who should this brand reach?" multiline onSave={(next) => save({ targetAudience: normaliseClearedText(next), audienceDetails: { summary: normaliseClearedText(next) } })} /></BrandField>
+            <BrandField label="Positioning" icon={<Target size={14} />}><EditableTextField value={identity.valueProposition} placeholder="Why this brand wins" multiline onSave={(next) => save({ positioning: { valueProposition: normaliseClearedText(next) } })} /></BrandField>
+            <BrandField label="Primary color" icon={<Palette size={14} />}><EditablePrimaryColor value={identity.primaryColor} onSave={savePrimaryColor} /></BrandField>
+          </div>
+        </BrandSection>
+        ) : null}
+
+        {activeProfileTab === 'rules' ? (
+        <BrandSection title="Custom Brand Rules" hint="Optional human-authored constraints. Add as many as your team needs; these are passed into strategy and content generation as authoritative guidance.">
+          <EditableBrandRules
+            rules={identity.brandRules}
+            onSave={(next) => save({ brandRules: { customRules: next } })}
+          />
+        </BrandSection>
+        ) : null}
+
+        {activeProfileTab === 'offer' ? (
+        <BrandSection title="Brand Essentials" hint="The core identity and positioning context.">
+          <div className="brand-fields">
+            <BrandField label="Differentiators"><EditableTags label="Differentiators" values={ai?.differentiators ?? []} placeholder="Add a differentiator" onSave={(next) => saveAiProfile({ differentiators: next })} /></BrandField>
+            <BrandField label="Business model"><EditableTextField value={ai?.businessModel ?? null} placeholder="How the business makes money or delivers value" onSave={(next) => saveAiProfile({ businessModel: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="Primary market"><EditableTextField value={ai?.primaryMarket ?? null} placeholder="Primary market" onSave={(next) => saveAiProfile({ primaryMarket: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="Geography"><EditableTextField value={ai?.geography ?? null} placeholder="Geography" onSave={(next) => saveAiProfile({ geography: normaliseClearedText(next) })} /></BrandField>
+          </div>
+        </BrandSection>
+        ) : null}
+
+        {activeProfileTab === 'offer' ? (
+        <BrandSection title="Products & Services" hint="The products, services and offers the site actually describes.">
+          <div className="brand-fields">
+            <BrandField label="Products"><EditableTags label="Products" values={ai?.products ?? []} placeholder="Add a product" onSave={(next) => saveAiProfile({ products: next })} /></BrandField>
+            <BrandField label="Services"><EditableTags label="Services" values={ai?.services ?? []} placeholder="Add a service" onSave={(next) => saveAiProfile({ services: next })} /></BrandField>
+            <BrandField label="Categories"><EditableTags label="Categories" values={ai?.productCategories ?? []} placeholder="Add a category" onSave={(next) => saveAiProfile({ productCategories: next })} /></BrandField>
+            <BrandField label="Calls to action"><EditableTags label="Calls to action" values={ai?.callsToAction ?? []} placeholder="Add a CTA" onSave={(next) => saveAiProfile({ callsToAction: next })} /></BrandField>
+            <BrandField label="Use cases"><EditableTags label="Use cases" values={ai?.useCases ?? []} placeholder="Add a use case" onSave={(next) => saveAiProfile({ useCases: next })} /></BrandField>
+          </div>
+        </BrandSection>
+        ) : null}
+
+        {activeProfileTab === 'visuals' ? (
+        <>
+        <BrandSection title="Colors" hint="Actual declared palette, including external stylesheets, theme metadata and inline styles.">
+          <div className="brand-fields">
+            <BrandField label="Logo">
+              <EditableLogo
+                brandId={brandId}
+                value={identity.logoUrl}
+                brandName={identity.name}
+                onUploaded={onSaved}
+                onRemove={() => saveVisualIdentity({ logoUrl: null })}
+              />
+              <div style={{ marginTop: 10 }}>
+                <EditableTextField value={identity.logoUrl} placeholder="https://example.com/logo.svg" onSave={(next) => saveVisualIdentity({ logoUrl: normaliseClearedText(next) })} />
+              </div>
+            </BrandField>
+            <BrandField label="Brand palette" icon={<Palette size={14} />}><EditableColorPalette palette={identity.palette.map((c) => ({ hex: c.hex, role: c.role }))} onSave={savePalette} /></BrandField>
+            <BrandField label="Fonts" icon={<Type size={14} />}>
+              <div>
+                {identity.fonts.length ? <div className="brand-tags">{identity.fonts.map((font) => <span key={font.family} className="brand-tag">{font.family}<span className="brand-swatch-role">{font.source}</span></span>)}</div> : <NotDetected label="No font declarations found on this website" />}
+                <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                  <div><span className="brand-persona-fact-label">Heading font</span><EditableTextField value={identity.headingFont} placeholder="e.g. Inter" onSave={(next) => saveVisualIdentity({ headingFont: normaliseClearedText(next) })} /></div>
+                  <div><span className="brand-persona-fact-label">Body font</span><EditableTextField value={identity.bodyFont} placeholder="e.g. Inter" onSave={(next) => saveVisualIdentity({ bodyFont: normaliseClearedText(next) })} /></div>
+                </div>
+              </div>
+            </BrandField>
+          </div>
+        </BrandSection>
+        ) : null}
+
+        {activeProfileTab === 'voice' ? (
+        <BrandSection title="Voice & Tone" hint="The verbal identity extracted from the site's own copy, then made editable.">
+          <div className="brand-fields">
+            <BrandField label="Tone" icon={<Megaphone size={14} />}><EditableTags label="Tone" values={identity.voice.tone.length ? identity.voice.tone : (ai?.tone ?? [])} placeholder="Add a tone" max={3} primaryFirst suggestions={[...TONE_OPTIONS]} onSave={(next) => saveVoice({ ...identity.voice, tone: next })} /></BrandField>
+            <BrandField label="Personality" icon={<Sparkles size={14} />}><EditableTags label="Personality" values={identity.voice.personality} placeholder="Add a descriptive word" suggestions={['Confident', 'Technical', 'Empowering', 'Friendly', 'Warm', 'Bold']} onSave={(next) => saveVoice({ ...identity.voice, personality: next })} /></BrandField>
+            <BrandField label="Style Notes" icon={<Quote size={14} />}><EditableTextField value={identity.voice.styleNotes} placeholder="e.g. Use short sentences. Address the reader directly." multiline emptyLabel="No style notes yet" onSave={(next) => saveVoice({ ...identity.voice, styleNotes: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="Common wording" icon={<Quote size={14} />}><EditableTags label="Common wording" values={ai?.terminology ?? identity.terminology} placeholder="Add preferred terminology" onSave={(next) => saveAiProfile({ terminology: next })} /></BrandField>
+            <BrandField label="Recurring claims"><EditableTags label="Recurring claims" values={ai?.recurringClaims ?? []} placeholder="Add a recurring claim" onSave={(next) => saveAiProfile({ recurringClaims: next })} /></BrandField>
+            <BrandField label="Messaging themes"><EditableTags label="Messaging themes" values={ai?.messagingThemes ?? []} placeholder="Add a messaging theme" onSave={(next) => saveAiProfile({ messagingThemes: next })} /></BrandField>
+          </div>
+          {voiceSummary || axisRows.length ? <div style={{ marginTop: 14, display: 'grid', gap: 14 }}>{voiceSummary ? <div className="brand-voice-summary">Your brand voice is: {voiceSummary}</div> : null}{axisRows.length ? <div className="brand-voice-axes">{axisRows.map((axis) => { const value = axes[axis.key] ?? 0; return <div key={axis.key} className="brand-axis"><span>{axis.left}</span><div className="brand-axis-track" role="img" aria-label={`${axis.left} to ${axis.right}: ${Math.round(value * 100)} percent toward ${axis.right}`}><span className="brand-axis-fill" style={{ width: `${value * 100}%` }} /><span className="brand-axis-knob" style={{ left: `${value * 100}%` }} /></div><span className="brand-axis-end">{axis.right}</span></div>; })}</div> : null}</div> : null}
+        </BrandSection>
+        ) : null}
+
+        {activeProfileTab === 'audience' ? (
+        <BrandSection title="Audience" hint="Target audience, segments, needs and use cases.">
+          <div className="brand-fields">
+            <BrandField label="Customer types"><EditableTags label="Customer types" values={ai?.customerTypes ?? []} placeholder="Add a customer type" onSave={(next) => saveAiProfile({ customerTypes: next })} /></BrandField>
+            <BrandField label="Personas" icon={<Users size={14} />}><EditablePersonas personas={ai?.personas ?? []} onSave={(next) => saveAiProfile({ personas: next })} /></BrandField>
+            <BrandField label="Pain points"><EditableTags label="Pain points" values={ai?.painPoints ?? []} placeholder="Add a pain point" onSave={(next) => saveAiProfile({ painPoints: next })} /></BrandField>
+            <BrandField label="Use cases"><EditableTags label="Use cases" values={ai?.useCases ?? []} placeholder="Add a use case" onSave={(next) => saveAiProfile({ useCases: next })} /></BrandField>
+          </div>
+        </BrandSection>
+        ) : null}
+
+        {activeProfileTab === 'offer' ? (
+        <BrandSection title="Working signals" hint="Website-derived language can be refined here before it becomes active working context.">
+          <div className="brand-fields">
+            <BrandField label="Positioning themes"><EditableTags label="Positioning themes" values={ai?.positioningThemes ?? []} placeholder="Add a positioning theme" onSave={(next) => saveAiProfile({ positioningThemes: next })} /></BrandField>
+            <BrandField label="Calls to action"><EditableTags label="Calls to action" values={ai?.callsToAction ?? []} placeholder="Add a CTA" onSave={(next) => saveAiProfile({ callsToAction: next })} /></BrandField>
+          </div>
+        </BrandSection>
+        ) : null}
+
+        {activeProfileTab === 'assets' ? (
+        <BrandSection title="Assets" hint="Public visual assets discovered from the website.">
+          {identity.assets.length ? <div className="brand-persona-grid">{identity.assets.map((asset) => <a key={asset.url} href={asset.url} target="_blank" rel="noreferrer" className="brand-persona" style={{ textDecoration: 'none' }}><div style={{ height: 110, display: 'grid', placeItems: 'center', overflow: 'hidden', borderRadius: 10, background: 'var(--surface-muted)' }}><img src={asset.url} alt={asset.label ?? ''} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /></div><span className="brand-persona-desc" style={{ display: 'block', marginTop: 7, overflowWrap: 'anywhere' }}>{asset.label || 'Website asset'}</span></a>)}</div> : <NotDetected label="No public image assets detected" />}
+        </BrandSection>
+        ) : null}
+
+        {activeProfileTab === 'assets' ? (
+        <BrandSection title="Social & Brand Links" hint="Public profile links discovered on the site.">
+          {identity.socialProfiles.length ? <div className="brand-tags">{identity.socialProfiles.map((profile) => <a key={profile.platform} href={profile.url} target="_blank" rel="noreferrer" className="brand-tag" style={{ textDecoration: 'none' }}>{profile.platform}</a>)}</div> : <NotDetected label="No social profiles detected" />}
+        </BrandSection>
+        ) : null}
+
+        {activeProfileTab === 'evidence' ? (
+        <BrandSection title="Import provenance" hint="Exactly what the scanner inspected.">
+          <div className="brand-fields">
+            <BrandField label="Pages scanned"><span>{identity.crawl?.pageCount ?? 1}</span></BrandField>
+            <BrandField label="External stylesheets"><span>{identity.crawl?.stylesheetCount ?? 0}</span></BrandField>
+            <BrandField label="Evidence used">{tags(identity.inspected)}</BrandField>
+            {identity.warnings.length ? <BrandField label="Warnings"><ul style={{ margin: 0, paddingLeft: 18 }}>{identity.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></BrandField> : null}
+          </div>
+        </BrandSection>
+        ) : null}
+
 
       <BrandPanel icon={<BookOpen size={17} />} title="Brand Guidelines" subtitle="The complete working profile used by strategy and content.">
         <BrandSection title="Identity" hint="Website analysis is the starting point. Edit the imported values here before they become the active brand context.">
