@@ -88,6 +88,30 @@ async function fetchCss(url: string): Promise<string> {
   }
 }
 
+
+async function fetchRenderedFallback(target: string): Promise<{ text: string; title: string | null } | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.min(env().RESEARCH_TIMEOUT_MS * 2, 20_000));
+  try {
+    const response = await fetch('https://r.jina.ai/' + target, {
+      signal: controller.signal,
+      headers: {
+        accept: 'text/plain',
+        ...(env().JINA_API_KEY ? { authorization: 'Bearer ' + env().JINA_API_KEY } : {}),
+      },
+    });
+    if (!response.ok) return null;
+    const text = (await response.text()).trim();
+    if (text.length < 180) return null;
+    const title = text.split('\n').map((line) => line.trim()).find((line) => line.startsWith('# '))?.slice(2).trim() || null;
+    return { text: text.slice(0, 50_000), title };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function absoluteUrl(value: string | undefined, base: string): string | null {
   if (!value || value.startsWith('data:') || value.startsWith('javascript:')) return null;
   try {
@@ -274,21 +298,42 @@ export async function GET(request: Request) {
     await assertResolvablePublicHost(root.hostname);
 
     const outcome = await fetchHtml(root);
+    let renderedFallbackText: string | null = null;
+    let renderedFallbackTitle: string | null = null;
+
     if (!outcome.ok) {
-      return NextResponse.json({ error: outcome.reason, identity: null }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+      const rendered = await fetchRenderedFallback(raw);
+      if (!rendered) {
+        return NextResponse.json({ error: outcome.reason, identity: null }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+      }
+      renderedFallbackText = rendered.text;
+      renderedFallbackTitle = rendered.title;
     }
 
-    let identity = extractBrandIdentity(outcome.html, outcome.finalUrl);
-    const stylesheetUrls = externalStylesheetUrls(outcome.html, outcome.finalUrl);
+    let identity = outcome.ok
+      ? extractBrandIdentity(outcome.html, outcome.finalUrl)
+      : extractBrandIdentity(
+          '<html><head>' +
+            (renderedFallbackTitle ? '<title>' + renderedFallbackTitle.replace(/[<>]/g, '') + '</title>' : '') +
+            '</head><body><p>' +
+            renderedFallbackText!.replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+            '</p></body></html>',
+          raw,
+        );
+    const baseHtml = outcome.ok ? outcome.html : '';
+    const baseUrl = outcome.ok ? outcome.finalUrl : raw;
+    const stylesheetUrls = outcome.ok ? externalStylesheetUrls(baseHtml, baseUrl) : [];
     const cssBlocks = (await Promise.all(stylesheetUrls.map(fetchCss))).filter(Boolean);
     identity = mergeExternalCss(identity, cssBlocks);
 
-    const pageCandidates = prioritizedLinks(outcome.html, outcome.finalUrl);
+    const pageCandidates = outcome.ok ? prioritizedLinks(baseHtml, baseUrl) : [];
     const pageUrls = [outcome.finalUrl, ...pageCandidates];
     const evidencePages: Array<{ url: string; title: string | null; text: string }> = [];
 
-    const homepage = pageText(outcome.html);
-    evidencePages.push({ url: outcome.finalUrl, ...homepage });
+    const homepage = outcome.ok
+      ? pageText(outcome.html)
+      : { title: renderedFallbackTitle, text: renderedFallbackText ?? '' };
+    evidencePages.push({ url: baseUrl, ...homepage });
 
     const extraPages = await Promise.all(pageCandidates.map(async (url) => {
       const page = await fetchHtml(new URL(url), 1);
