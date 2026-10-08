@@ -391,13 +391,14 @@ export async function GET(request: Request) {
     for (const page of extraPages) if (page?.text) evidencePages.push(page);
 
     const assets = (() => {
-      const $ = cheerio.load(outcome.html);
+      if (!outcome.ok) return [];
+      const $ = cheerio.load(baseHtml);
       const found = new Map<string, { url: string; type: string; label: string | null }>();
       $('img[src],source[src],video[poster]').each((_i, el) => {
         const node = $(el);
         const candidate = node.attr('src') ?? node.attr('poster');
-        const url = absoluteUrl(candidate, outcome.finalUrl);
-        if (!url || !sameSite(outcome.finalUrl, url) || found.has(url)) return;
+        const url = absoluteUrl(candidate, baseUrl);
+        if (!url || !sameSite(baseUrl, url) || found.has(url)) return;
         found.set(url, { url, type: 'image', label: node.attr('alt') ?? null });
       });
       return [...found.values()].slice(0, 18);
