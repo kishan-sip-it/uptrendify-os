@@ -13,56 +13,51 @@ export const RESEARCH_ACTIVE_STATUSES = ['QUEUED', 'RUNNING'] as const;
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const HIGH_SIGNAL_PATHS = [
-  /(^|\\/)about(?:-us)?(?:\\/|$)/i,
-  /(^|\\/)mission(?:s)?(?:\\/|$)/i,
-  /(^|\\/)science(?:\\/|$)/i,
-  /(^|\\/)research(?:\\/|$)/i,
-  /(^|\\/)technology(?:\\/|$)/i,
-  /(^|\\/)products?(?:\\/|$)/i,
-  /(^|\\/)services?(?:\\/|$)/i,
-  /(^|\\/)solutions?(?:\\/|$)/i,
-  /(^|\\/)programs?(?:\\/|$)/i,
-  /(^|\\/)features?(?:\\/|$)/i,
-  /(^|\\/)use-cases?(?:\\/|$)/i,
-  /(^|\\/)customers?(?:\\/|$)/i,
-  /(^|\\/)industr(?:y|ies)(?:\\/|$)/i,
-  /(^|\\/)learn(?:ing)?(?:-resources)?(?:\\/|$)/i,
-  /(^|\\/)education(?:\\/|$)/i,
-  /(^|\\/)pricing(?:\\/|$)/i,
-  /(^|\\/)solutions?\\//i,
+  /(^|\/)about(?:-us)?(?:\/|$)/i,
+  /(^|\/)mission(?:s)?(?:\/|$)/i,
+  /(^|\/)science(?:\/|$)/i,
+  /(^|\/)research(?:\/|$)/i,
+  /(^|\/)technology(?:\/|$)/i,
+  /(^|\/)products?(?:\/|$)/i,
+  /(^|\/)services?(?:\/|$)/i,
+  /(^|\/)solutions?(?:\/|$)/i,
+  /(^|\/)programs?(?:\/|$)/i,
+  /(^|\/)features?(?:\/|$)/i,
+  /(^|\/)use-cases?(?:\/|$)/i,
+  /(^|\/)customers?(?:\/|$)/i,
+  /(^|\/)industr(?:y|ies)(?:\/|$)/i,
+  /(^|\/)learn(?:ing)?(?:-resources)?(?:\/|$)/i,
+  /(^|\/)education(?:\/|$)/i,
+  /(^|\/)pricing(?:\/|$)/i,
+  /(^|\/)company(?:\/|$)/i,
 ];
 
 const LOW_SIGNAL_PATHS = [
-  /(^|\\/)news(?:\\/|$)/i,
-  /(^|\\/)press(?:-releases?)?(?:\\/|$)/i,
-  /(^|\\/)blog(?:s)?(?:\\/|$)/i,
-  /(^|\\/)podcasts?(?:\\/|$)/i,
-  /(^|\\/)social(?:-media)?(?:\\/|$)/i,
-  /(^|\\/)events?(?:\\/|$)/i,
-  /(^|\\/)multimedia(?:\\/|$)/i,
-  /(^|\\/)newsletter(?:s)?(?:\\/|$)/i,
-  /(^|\\/)media(?:\\/|$)/i,
-  /(^|\\/)contact(?:-us)?(?:\\/|$)/i,
+  /(^|\/)news(?:\/|$)/i,
+  /(^|\/)press(?:-releases?)?(?:\/|$)/i,
+  /(^|\/)blog(?:s)?(?:\/|$)/i,
+  /(^|\/)podcasts?(?:\/|$)/i,
+  /(^|\/)social(?:-media)?(?:\/|$)/i,
+  /(^|\/)events?(?:\/|$)/i,
+  /(^|\/)multimedia(?:\/|$)/i,
+  /(^|\/)newsletter(?:s)?(?:\/|$)/i,
+  /(^|\/)media(?:\/|$)/i,
+  /(^|\/)contact(?:-us)?(?:\/|$)/i,
 ];
 
 export function researchPagePriority(root: string, rawUrl: string): number {
   try {
     const rootUrl = new URL(root);
     const url = new URL(rawUrl);
-    const path = url.pathname.replace(/\\/$/, '') || '/';
-    const host = url.hostname.toLowerCase().replace(/^www\\./, '');
-    const rootHost = rootUrl.hostname.toLowerCase().replace(/^www\\./, '');
+    const path = url.pathname.replace(/\/$/, '') || '/';
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    const rootHost = rootUrl.hostname.toLowerCase().replace(/^www\./, '');
 
-    let score = 0;
-    if (host === rootHost) score += 12;
-    else score += 8; // trusted same-site subdomains can carry major product/science content
-
+    let score = host === rootHost ? 12 : 8;
     if (path === '/') score += 100;
     if (HIGH_SIGNAL_PATHS.some((pattern) => pattern.test(path))) score += 70;
     if (LOW_SIGNAL_PATHS.some((pattern) => pattern.test(path))) score -= 50;
-
-    const segments = path.split('/').filter(Boolean);
-    score -= Math.min(segments.length, 5) * 3;
+    score -= Math.min(path.split('/').filter(Boolean).length, 5) * 3;
     if (/\\.(?:pdf|zip|png|jpe?g|gif|svg|webp|xml)$/i.test(path)) score -= 100;
 
     return score;
@@ -91,14 +86,14 @@ async function discoverSitemapUrls(root: string): Promise<string[]> {
       });
       if (!response.ok) continue;
       const body = (await response.text()).slice(0, 2_000_000);
-      const locs = [...body.matchAll(/<loc>\\s*([^<]+)\\s*<\\/loc>/gi)]
+      const locs = [...body.matchAll(/<loc>\s*([^<]+)\s*<\/loc>/gi)]
         .map((match) => match[1]?.trim())
         .filter((value): value is string => Boolean(value));
 
       for (const raw of locs) {
         try {
           const normalized = normalizeUrl(raw);
-          if (isResearchCandidate(root, normalized) && !/\\.(?:xml|txt)$/i.test(new URL(normalized).pathname)) {
+          if (isResearchCandidate(root, normalized) && !/\.(?:xml|txt)$/i.test(new URL(normalized).pathname)) {
             discovered.push(normalized);
           }
         } catch {
