@@ -390,9 +390,14 @@ export function BrandProfileWorkspace({
       </BrandPanel>
       </div>
       <aside className="brand-profile-preview-column" aria-label="Live brand preview">
-        <BrandPanel icon={<Sparkles size={17} />} title="Live preview" subtitle="A compact expression of the active brand identity.">
-          <BrandLivePreview identity={identity} websiteUrl={websiteUrl} ai={ai} />
-        </BrandPanel>
+        <div className="brand-profile-preview-head">
+          <div>
+            <span className="brand-profile-preview-eyebrow">Brand experience</span>
+            <h2>Live brand preview</h2>
+            <p>See the active identity as a visual system, not a list of fields.</p>
+          </div>
+        </div>
+        <BrandLivePreview identity={identity} websiteUrl={websiteUrl} ai={ai} />
       </aside>
     </div>
   );
