@@ -285,20 +285,17 @@ export async function analyzeResearchEvidence(
   let provider: AiProvider = providers[0]!;
   let model = provider.defaultModel;
   const startedAt = Date.now();
-
   try {
     const extractionRun = await runWithProviderFailover(
       providers,
       async (candidate) => {
         provider = candidate;
         model = candidate.defaultModel;
-
         const providerUpdate = await supabase.from('ai_tasks').update({
           provider: candidate.id,
           model: candidate.defaultModel,
         }).eq('id', aiTaskId);
         if (providerUpdate.error) throw providerUpdate.error;
-
         return extractWithRetry(candidate, evidence);
       },
       async (failed, next, error) => {
@@ -312,11 +309,65 @@ export async function analyzeResearchEvidence(
         });
       },
     );
-
     provider = extractionRun.provider;
     model = extractionRun.provider.defaultModel;
     const extraction = extractionRun.result;
     const { result } = extraction;
+
+    const drafts = deriveAllSuggestionDrafts(result, bundle.sources, bundle.sourceIndex);
+    const counts = await persistSuggestionDrafts(supabase, { organizationId, brandId, researchRunId }, drafts);
+
+    const insightsWritten = await persistInsights(
+      supabase,
+      mapIntelligenceToInsights(result, bundle.sourceIndex, organizationId, brandId, researchRunId),
+      brandId,
+      organizationId,
+    );
+
+    const found = drafts.filter((draft) => draft.found).length;
+    const notFound = drafts.length - found;
+    const suggestionsWritten = counts.created + counts.updated;
+
+    const outputMetadata = {
+      suggestionsCreated: counts.created,
+      suggestionsUpdated: counts.updated,
+      suggestionsSkippedHumanOwned: counts.untouched,
+      found,
+      notFound,
+      insights: insightsWritten,
+      evidenceClaims: result.evidence.length,
+      evidenceSources: evidence.length,
+      researchRunId,
+    };
+
+    const aiTaskUpdate = await supabase.from('ai_tasks').update({
+      status: 'SUCCEEDED',
+      provider: providerId,
+      model: extraction.model,
+      output_metadata: outputMetadata,
+      latency_ms: Date.now() - startedAt,
+      input_tokens: extraction.usage?.inputTokens,
+      output_tokens: extraction.usage?.outputTokens,
+      finished_at: new Date().toISOString(),
+    }).eq('id', aiTaskId);
+    if (aiTaskUpdate.error) throw aiTaskUpdate.error;
+
+    obs.info('Brand intelligence generated', {
+      researchRunId, brandId, organizationId,
+      provider: provider.id, model: extraction.model,
+      suggestions: suggestionsWritten, found, notFound,
+    });
+
+    return {
+      status: 'SUCCEEDED',
+      aiTaskId,
+      provider: providerId,
+      model: extraction.model,
+      suggestionsWritten,
+      suggestionsFound: found,
+      suggestionsNotFound: notFound,
+      insightsWritten,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const classified = classifyProviderFailure(error);
@@ -324,12 +375,12 @@ export async function analyzeResearchEvidence(
     obs.error('Brand intelligence analysis failed', {
       researchRunId,
       brandId,
-      provider: providerId,
+      provider: provider.id,
       model,
       code,
       error: message,
     });
     await failTask(code, message);
-    return { status: 'FAILED', aiTaskId, provider: providerId, model, errorCode: code, errorMessage: message };
+    return { status: 'FAILED', aiTaskId, provider: provider.id, model, errorCode: code, errorMessage: message };
   }
 }
