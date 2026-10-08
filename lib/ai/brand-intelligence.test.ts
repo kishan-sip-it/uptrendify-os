@@ -155,10 +155,14 @@ describe('extractBrandIntelligence', () => {
     const provider = fakeProvider([VALID_INTELLIGENCE], 'openai/gpt-oss-20b');
     await extractBrandIntelligence(provider as any, evidence);
     const prompt = provider.__calls[0].prompt;
-    expect(prompt.indexOf('https://nasa.gov/about/')).toBeGreaterThan(-1);
-    expect(prompt.indexOf('https://science.nasa.gov/')).toBeGreaterThan(-1);
-    expect(prompt.indexOf('https://nasa.gov/missions/')).toBeGreaterThan(-1);
-    expect(prompt.indexOf('https://nasa.gov/news/')).toBe(-1);
+    const aboutIndex = prompt.indexOf('https://nasa.gov/about/');
+    const scienceIndex = prompt.indexOf('https://science.nasa.gov/');
+    const missionsIndex = prompt.indexOf('https://nasa.gov/missions/');
+    const newsIndex = prompt.indexOf('https://nasa.gov/news/');
+    expect(aboutIndex).toBeGreaterThan(-1);
+    expect(scienceIndex).toBeGreaterThan(-1);
+    expect(missionsIndex).toBeGreaterThan(-1);
+    expect(newsIndex).toBeGreaterThan(missionsIndex);
   });
 
   it.each(['allam-2-7b', 'openai/gpt-oss-20b'])('budgets %s requests to a bounded extraction size', async (model) => {
