@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { startTransition, useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Check, Plus, RefreshCw, X } from 'lucide-react';
 import type { CustomBrandRule } from '@/lib/brand/identity-mapping';
 import { NotDetected } from './brand-profile-primitives';
@@ -14,9 +15,10 @@ import { NotDetected } from './brand-profile-primitives';
  *   component never talks to Supabase directly.
  * - Save is explicit; there is no optimistic update, because a failed write
  *   must not leave the workspace showing a value the database rejected.
- * - The saved value is read back from the server response and handed back
- *   to the Brand Profile workspace immediately, so the UI can update without
- *   triggering a full route refresh after every edit.
+ * - The saved value is read back from the server, never from the draft or from
+ *   the stale `identity` prop. The brand workspace is a Server Component, so
+ *   the prop only changes when the route is re-rendered; without a refresh the
+ *   old value stayed on screen and looked like the edit had reverted.
  * - The full palette / tone list is preserved on save; we only ever send
  *   complete arrays, never a partial patch that could drop human edits.
  */
@@ -35,10 +37,8 @@ export function normaliseClearedText(next: string | null | undefined): string | 
   return trimmed === '' ? null : trimmed;
 }
 
-export function useBrandIdentityEditor(
-  brandId: string,
-  onSaved?: (brand: unknown) => void,
-) {
+export function useBrandIdentityEditor(brandId: string) {
+  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -61,8 +61,10 @@ export function useBrandIdentityEditor(
           throw new Error(body?.error || 'Could not save this change.');
         }
 
-        const body = await response.json().catch(() => null);
-        if (body?.brand && onSaved) onSaved(body.brand);
+        // Re-render the Server Component so the authoritative value from the
+        // database becomes the source of truth for the fields below. The card
+        // already reports "Saved", so this runs without blanking the screen.
+        startTransition(() => router.refresh());
         setSavedAt(Date.now());
         return true;
       } catch (err) {
@@ -73,7 +75,7 @@ export function useBrandIdentityEditor(
         setSaving(false);
       }
     },
-    [brandId, onSaved],
+    [brandId, router],
   );
 
   return { save, saving, error, savedAt };

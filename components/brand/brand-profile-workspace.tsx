@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { BookOpen, Image as ImageIcon, Megaphone, Palette, Quote, Sparkles, Target, Type, Users } from 'lucide-react';
 import { BrandField, BrandIdentityRow, BrandPanel, BrandSection, NotDetected, brandInitials } from './brand-profile-primitives';
 import { EditableBrandRules, EditableColorPalette, EditablePersonas, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
-import { readIdentity, type BrandIdentity, type BrandIdentityRow as BrandIdentityDbRow } from '@/lib/brand/identity-mapping';
+import type { BrandIdentity } from '@/lib/brand/identity-mapping';
 import { readableTextOn } from '@/lib/brand/visual-extraction';
 import { TONE_OPTIONS, VOICE_AXES, describeVoice, voiceAxisValues } from '@/lib/brand/voice';
 
@@ -174,7 +174,7 @@ function BrandLivePreview({
 export function BrandProfileWorkspace({
   brandId,
   websiteUrl,
-  identity: initialIdentity,
+  identity,
   onRescan,
   rescanState,
 }: {
@@ -184,20 +184,7 @@ export function BrandProfileWorkspace({
   onRescan?: () => void;
   rescanState?: 'idle' | 'running' | 'error';
 }) {
-  const [identity, setIdentity] = useState<BrandIdentity>(initialIdentity);
-  const [activeWebsiteUrl, setActiveWebsiteUrl] = useState<string | null>(websiteUrl);
-  const onSaved = useCallback((brand: unknown) => {
-    if (!brand || typeof brand !== 'object') return;
-    const nextBrand = brand as BrandIdentityDbRow & { website_url?: unknown };
-    setIdentity(readIdentity(nextBrand));
-    setActiveWebsiteUrl(typeof nextBrand.website_url === 'string' ? nextBrand.website_url : null);
-  }, []);
-  const { save, saving, error, savedAt } = useBrandIdentityEditor(brandId, onSaved);
-
-  useEffect(() => {
-    setIdentity(initialIdentity);
-    setActiveWebsiteUrl(websiteUrl);
-  }, [initialIdentity, websiteUrl]);
+  const { save, saving, error, savedAt } = useBrandIdentityEditor(brandId);
   const paletteVars = useMemo(() => ({
     '--brand-primary': identity.primaryColor ?? identity.palette[0]?.hex ?? 'var(--accent)',
     '--brand-secondary': identity.palette.find((c) => c.role === 'secondary')?.hex ?? identity.primaryColor ?? 'var(--accent-2)',
@@ -296,7 +283,7 @@ export function BrandProfileWorkspace({
         actions={onRescan ? <button type="button" className="brand-btn" onClick={onRescan} disabled={rescanState === 'running' || saving}><Sparkles size={13} /> {rescanState === 'running' ? 'Scanning…' : 'Re-scan website'}</button> : null}
       >
         <div className="brand-strip" aria-hidden="true" />
-        <BrandIdentityRow name={identity.name} websiteUrl={activeWebsiteUrl} logoUrl={identity.logoUrl} initials={brandInitials(identity.name)} />
+        <BrandIdentityRow name={identity.name} websiteUrl={websiteUrl} logoUrl={identity.logoUrl} initials={brandInitials(identity.name)} />
         {savedAt && !error ? <p className="brand-section-hint" style={{ color: 'var(--status-success)' }}>Saved. Your change is now the active brand context.</p> : null}
         {error ? <p className="brand-section-hint" style={{ color: 'var(--status-danger)' }}>{error}</p> : null}
       </BrandPanel>
@@ -305,7 +292,7 @@ export function BrandProfileWorkspace({
         <BrandSection title="Identity" hint="Website analysis is the starting point. Edit the imported values here before they become the active brand context.">
           <div className="brand-fields">
             <BrandField label="Brand name"><EditableTextField value={identity.name} placeholder="Brand name" onSave={(next) => save({ name: normaliseClearedText(next) ?? 'Untitled brand' })} /></BrandField>
-            <BrandField label="Website"><EditableTextField value={activeWebsiteUrl} placeholder="https://example.com" onSave={(next) => save({ websiteUrl: normaliseClearedText(next) })} /></BrandField>
+            <BrandField label="Website"><EditableTextField value={websiteUrl} placeholder="https://example.com" onSave={(next) => save({ websiteUrl: normaliseClearedText(next) })} /></BrandField>
             <BrandField label="What they do" icon={<BookOpen size={14} />}><EditableTextField value={identity.description} placeholder="Describe the business." multiline onSave={(next) => save({ description: normaliseClearedText(next) })} /></BrandField>
             <BrandField label="Industry" icon={<Target size={14} />}><EditableTextField value={identity.industry} placeholder="Industry" onSave={(next) => save({ industry: normaliseClearedText(next) })} /></BrandField>
             <BrandField label="Target audience" icon={<Users size={14} />}><EditableTextField value={identity.audienceSummary} placeholder="Who should this brand reach?" multiline onSave={(next) => save({ targetAudience: normaliseClearedText(next), audienceDetails: { summary: normaliseClearedText(next) } })} /></BrandField>
@@ -410,7 +397,7 @@ export function BrandProfileWorkspace({
             <p>See the active identity as a visual system, not a list of fields.</p>
           </div>
         </div>
-        <BrandLivePreview identity={identity} websiteUrl={activeWebsiteUrl} ai={ai} />
+        <BrandLivePreview identity={identity} websiteUrl={websiteUrl} ai={ai} />
       </aside>
     </div>
   );

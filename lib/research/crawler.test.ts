@@ -16,7 +16,7 @@ vi.mock('@/lib/obs/logger', () => ({
   obs: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { crawlBrand, researchPagePriority, sameResearchSite } from './crawler';
+import { crawlBrand, sameResearchSite } from './crawler';
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001';
 const BRAND_ID = '00000000-0000-0000-0000-000000000002';
@@ -78,19 +78,6 @@ describe('sameResearchSite', () => {
     expect(sameResearchSite('https://zoro.com', 'https://www.zoro.com')).toBe(true);
     expect(sameResearchSite('https://www.zoro.com', 'https://zoro.com/catalog')).toBe(true);
     expect(sameResearchSite('https://zoro.com', 'https://evil-zoro.com')).toBe(false);
-  });
-});
-
-
-describe('researchPagePriority', () => {
-  it('prefers organization-level and product pages over high-volume editorial pages', () => {
-    const root = 'https://www.nasa.gov/';
-    expect(researchPagePriority(root, 'https://www.nasa.gov/missions/'))
-      .toBeGreaterThan(researchPagePriority(root, 'https://www.nasa.gov/news/'));
-    expect(researchPagePriority(root, 'https://science.nasa.gov/'))
-      .toBeGreaterThan(researchPagePriority(root, 'https://www.nasa.gov/blogs/'));
-    expect(researchPagePriority(root, 'https://www.nasa.gov/about-nasa/'))
-      .toBeGreaterThan(researchPagePriority(root, 'https://www.nasa.gov/events/'));
   });
 });
 

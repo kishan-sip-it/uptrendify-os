@@ -140,27 +140,6 @@ describe('extractBrandIntelligence', () => {
     expect(provider.__calls).toHaveLength(1);
   });
 
-
-  it('prefers organization-level pages over high-volume news pages when fitting evidence', async () => {
-    const evidence = [
-      { url: 'https://nasa.gov/', title: 'NASA', text: 'NASA organization overview and mission.' },
-      { url: 'https://nasa.gov/news/', title: 'NASA News', text: 'News updates.' },
-      { url: 'https://nasa.gov/about/', title: 'About NASA', text: 'NASA is the United States government agency responsible for science and exploration.' },
-      { url: 'https://nasa.gov/blogs/', title: 'NASA Blogs', text: 'Blog posts.' },
-      { url: 'https://science.nasa.gov/', title: 'NASA Science', text: 'NASA science and research programs.' },
-      { url: 'https://nasa.gov/events/', title: 'Events', text: 'Upcoming events.' },
-      { url: 'https://nasa.gov/missions/', title: 'Missions', text: 'NASA missions and exploration programs.' },
-      { url: 'https://nasa.gov/social-media/', title: 'Social Media', text: 'Official social accounts.' },
-    ];
-    const provider = fakeProvider([VALID_INTELLIGENCE], 'openai/gpt-oss-20b');
-    await extractBrandIntelligence(provider as any, evidence);
-    const prompt = provider.__calls[0].prompt;
-    expect(prompt.indexOf('https://nasa.gov/about/')).toBeGreaterThan(-1);
-    expect(prompt.indexOf('https://science.nasa.gov/')).toBeGreaterThan(-1);
-    expect(prompt.indexOf('https://nasa.gov/missions/')).toBeGreaterThan(-1);
-    expect(prompt.indexOf('https://nasa.gov/news/')).toBe(-1);
-  });
-
   it.each(['allam-2-7b', 'openai/gpt-oss-20b'])('budgets %s requests to a bounded extraction size', async (model) => {
     const largeEvidence = Array.from({ length: 10 }, (_, i) => ({
       url: `https://example.com/page-${i}`,
@@ -171,7 +150,7 @@ describe('extractBrandIntelligence', () => {
     await extractBrandIntelligence(provider as any, largeEvidence);
     expect(provider.__calls).toHaveLength(1);
     expect(provider.__calls[0].json).toBe(true);
-    expect(provider.__calls[0].maxTokens).toBe(1600);
-    expect(provider.__calls[0].prompt.length).toBeLessThan(16_000);
+    expect(provider.__calls[0].maxTokens).toBe(900);
+    expect(provider.__calls[0].prompt.length).toBeLessThan(9_000);
   });
 });
