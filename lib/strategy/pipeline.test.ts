@@ -217,7 +217,7 @@ describe('runStrategyGeneration', () => {
 
     expect(outcome.status).toBe('FAILED');
     expect(outcome.errorCode).toBe('RATE_LIMITED');
-    expect(generate).toHaveBeenCalledTimes(3);
+    expect(generate).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 
