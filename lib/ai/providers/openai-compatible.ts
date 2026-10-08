@@ -12,13 +12,21 @@ export function createOpenAiCompatibleProvider(
     if (!apiKey) throw new AiProviderError(id, `${id} API key is not configured`, 503);
 
     const send = async (model: string, maxTokens = input.maxTokens): Promise<GenerateResult> => {
+      const useBrowserSearch = input.webSearch === true;
+      if (useBrowserSearch && input.json) {
+        throw new AiProviderError(id, 'Web search cannot be combined with structured JSON output', 400);
+      }
+      if (useBrowserSearch && (id !== 'groq' || !/^openai\/gpt-oss-(?:20b|120b)$/.test(model))) {
+        throw new AiProviderError(id, 'This provider/model does not support browser search', 503);
+      }
+
       const body = {
         model,
         messages: [
           ...(input.system ? [{ role: 'system', content: input.system }] : []),
           { role: 'user', content: input.prompt },
         ],
-        ...(input.json ? { response_format: { type: 'json_object' } } : {}),
+        ...(!useBrowserSearch && input.json ? { response_format: { type: 'json_object' } } : {}),
         ...(maxTokens
           ? model.startsWith('openai/gpt-oss-')
             ? { max_completion_tokens: maxTokens }
@@ -27,6 +35,13 @@ export function createOpenAiCompatibleProvider(
         ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
         ...(model.startsWith('openai/gpt-oss-')
           ? { include_reasoning: false, reasoning_effort: 'low' }
+          : {}),
+        ...(useBrowserSearch
+          ? {
+              citation_options: 'enabled',
+              tool_choice: 'required',
+              tools: [{ type: 'browser_search' }],
+            }
           : {}),
       };
 
