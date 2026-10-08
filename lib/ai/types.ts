@@ -5,6 +5,8 @@ export interface GenerateInput {
   json?: boolean;
   maxTokens?: number;
   temperature?: number;
+  /** Enable Groq's server-side browser search for a plain-text research pass. */
+  webSearch?: boolean;
 }
 
 export interface Usage {
