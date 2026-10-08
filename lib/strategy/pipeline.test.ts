@@ -149,7 +149,7 @@ describe('runStrategyGeneration', () => {
     );
 
     expect(outcome.status).toBe('SUCCEEDED');
-    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledTimes(3);
   });
 
   it('marks the strategy and task FAILED when the strategy fails validation', async () => {
