@@ -29,6 +29,13 @@ export class AiProviderRegistry {
     return this.list().filter((provider) => provider.configured());
   }
 
+  configuredInOrder(): AiProvider[] {
+    const configured = this.configured();
+    const preferred = this.providers.get(this.defaultId);
+    if (!preferred?.configured()) return configured;
+    return [preferred, ...configured.filter((provider) => provider.id !== preferred.id)];
+  }
+
   ids(): string[] {
     return this.list().map((provider) => provider.id);
   }
