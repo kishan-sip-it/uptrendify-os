@@ -225,11 +225,11 @@ export function buildEvidenceContext(sources: EvidenceFragment[]): EvidenceFragm
     if (out.length > 0 && total + cut.length > EVIDENCE_MAX_TOTAL_CHARS) {
       const room = EVIDENCE_MAX_TOTAL_CHARS - total;
       if (room < 200) break;
-      out.push({ url: source.url, title: source.title ?? null, text: cut.slice(0, room) });
+      out.push({ url: source.url, title: source.title ?? null, text: cut.slice(0, room), sourceType: source.sourceType });
       total += room;
       break;
     }
-    out.push({ url: source.url, title: source.title ?? null, text: cut });
+    out.push({ url: source.url, title: source.title ?? null, text: cut, sourceType: source.sourceType });
     total += cut.length;
   }
   return out;
