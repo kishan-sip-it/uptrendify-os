@@ -41,9 +41,6 @@ export async function runContentGeneration(input: ContentPipelineInput, deps: Co
 
   let provider = providers[0]!;
   let model = provider.defaultModel;
-  const providerUpdate = await supabase.from('ai_tasks').update({ provider: provider.id, model }).eq('id', aiTaskId);
-  if (providerUpdate.error) throw providerUpdate.error;
-
   const prompt = buildContentPrompt(toContentBrainContext(snapshot), strategy, intent, strategySet); const startedAt = Date.now();
   try {
     const extractionRun = await runWithProviderFailover(
