@@ -5,6 +5,7 @@ import { chunkTextBounded } from './chunk';
 import { analyzeResearchEvidence } from './brain';
 import { translateResearchError } from './errors';
 import { obs } from '@/lib/obs/logger';
+import { augmentResearchWithWebSearch } from './web-research';
 
 export const MAX_CHUNKS_PER_SOURCE = 25;
 export const CHUNK_MAX_CHARS = 2000;
@@ -82,7 +83,33 @@ export async function runResearchPipeline(input: ResearchPipelineInput): Promise
   const { supabase, organizationId, brandId, websiteUrl, researchRunId } = input;
   const crawl = await crawlBrand(supabase, { organizationId, brandId, websiteUrl, researchRunId });
 
-  if (crawl.pagesProcessed === 0) {
+  // Add a bounded, provider-backed public-web pass after the first-party crawl.
+  // This is additive: the site's own evidence remains authoritative, while
+  // external pages improve competition, SEO and market context. If web search
+  // fails, the first-party research path continues untouched.
+  const web = await augmentResearchWithWebSearch(supabase, {
+    organizationId,
+    brandId,
+    researchRunId,
+    rootUrl: websiteUrl,
+  });
+  if (web.warning) {
+    obs.warn('Web research augmentation unavailable', {
+      researchRunId,
+      brandId,
+      warning: web.warning.slice(0, 500),
+    });
+  } else if (web.sourcesAdded > 0) {
+    obs.info('Web research augmentation completed', {
+      researchRunId,
+      brandId,
+      sourcesAdded: web.sourcesAdded,
+      provider: web.provider,
+      model: web.model,
+    });
+  }
+
+  if (crawl.pagesProcessed === 0 && web.sourcesAdded === 0) {
     await finalizeResearchRun(supabase, {
       organizationId,
       researchRunId,
@@ -90,7 +117,7 @@ export async function runResearchPipeline(input: ResearchPipelineInput): Promise
       pagesProcessed: 0,
       pagesDiscovered: crawl.pagesDiscovered,
       errorCode: crawl.errorCode ?? 'NO_PAGES_PROCESSED',
-      errorMessage: crawl.errorMessage ?? 'No pages could be processed during this research run.',
+      errorMessage: crawl.errorMessage ?? web.warning ?? 'No pages could be processed during this research run.',
     });
 
     return {
@@ -101,7 +128,9 @@ export async function runResearchPipeline(input: ResearchPipelineInput): Promise
     };
   }
 
-  await persistSourceChunks(supabase, { organizationId, brandId, researchRunId, pages: crawl.processedPages });
+  if (crawl.processedPages.length > 0) {
+    await persistSourceChunks(supabase, { organizationId, brandId, researchRunId, pages: crawl.processedPages });
+  }
   const brain = await analyzeResearchEvidence(supabase, { organizationId, brandId, researchRunId });
 
   if (brain.status === 'FAILED' || brain.status === 'SKIPPED') {
