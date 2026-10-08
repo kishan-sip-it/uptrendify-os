@@ -64,7 +64,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ bran
     for (const extension of ['png', 'jpg', 'webp']) {
       const path = prefix + extension;
       const signed = await admin.storage.from(BUCKET).createSignedUrl(path, 300);
-      if (!signed.error && signed.data?.signedUrl) return NextResponse.redirect(signed.data.signedUrl, 302);
+      if (!signed.error && signed.data?.signedUrl) {
+        const response = NextResponse.redirect(signed.data.signedUrl, 302);
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        return response;
+      }
     }
     return NextResponse.json({ error: 'Custom logo file is unavailable.' }, { status: 404 });
   } catch (error) {
