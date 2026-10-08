@@ -8,6 +8,10 @@ import { obs } from '@/lib/obs/logger';
 
 const paramsSchema = z.object({ brandId: z.string().uuid(), contentId: z.string().uuid() });
 
+// The generation route is capped at 120s. Keep the detail view from polling a
+// dead RUNNING task forever after that execution window has elapsed.
+const STALE_GENERATION_MS = 150_000;
+
 const updateSchema = contentItemInputSchema.partial().extend({
   body: z.string().trim().max(CONTENT_BODY_MAX).optional(),
   clientId: z.string().uuid().nullish(),
@@ -116,16 +120,51 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
       createdAt: review.created_at,
     }));
 
-    const generation = generationResult.data ? {
-      id: generationResult.data.id,
-      status: generationResult.data.status,
-      errorCode: generationResult.data.error_code ?? null,
-      errorMessage: generationResult.data.error_message ?? null,
-      provider: generationResult.data.provider ?? null,
-      model: generationResult.data.model ?? null,
-      startedAt: generationResult.data.started_at ?? null,
-      finishedAt: generationResult.data.finished_at ?? null,
-      outputMetadata: generationResult.data.output_metadata ?? {},
+    let latestGeneration = generationResult.data;
+
+    if (latestGeneration?.status === 'RUNNING' && latestGeneration.started_at) {
+      const startedAt = new Date(latestGeneration.started_at).getTime();
+      if (startedAt > 0 && Date.now() - startedAt > STALE_GENERATION_MS) {
+        const finishedAt = new Date().toISOString();
+        const staleUpdate = await supabase
+          .from('ai_tasks')
+          .update({
+            status: 'FAILED',
+            error_code: 'STALE_EXECUTION',
+            error_message: 'The previous generation exceeded the execution safety window and was safely released. Start a new generation to try again.',
+            finished_at: finishedAt,
+          })
+          .eq('id', latestGeneration.id)
+          .eq('organization_id', auth.context.organizationId)
+          .eq('status', 'RUNNING')
+          .select('id,status,error_code,error_message,provider,model,started_at,finished_at,output_metadata')
+          .maybeSingle();
+
+        if (staleUpdate.error) throw staleUpdate.error;
+        latestGeneration = staleUpdate.data ?? {
+          ...latestGeneration,
+          status: 'FAILED',
+          error_code: 'STALE_EXECUTION',
+          error_message: 'The previous generation exceeded the execution safety window and was safely released. Start a new generation to try again.',
+          finished_at: finishedAt,
+        };
+        obs.warn('Recovered stale content generation task from detail read', {
+          contentId,
+          aiTaskId: latestGeneration.id,
+        });
+      }
+    }
+
+    const generation = latestGeneration ? {
+      id: latestGeneration.id,
+      status: latestGeneration.status,
+      errorCode: latestGeneration.error_code ?? null,
+      errorMessage: latestGeneration.error_message ?? null,
+      provider: latestGeneration.provider ?? null,
+      model: latestGeneration.model ?? null,
+      startedAt: latestGeneration.started_at ?? null,
+      finishedAt: latestGeneration.finished_at ?? null,
+      outputMetadata: latestGeneration.output_metadata ?? {},
     } : null;
 
     return NextResponse.json(
