@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createDefaultRegistry } from '@/lib/ai/registry';
+import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { env } from '@/lib/env';
 import type { AiProvider } from '@/lib/ai/types';
 import {
@@ -270,81 +270,53 @@ export async function analyzeResearchEvidence(
     }).eq('id', aiTaskId);
   };
 
-  let provider: AiProvider | null = deps.provider !== undefined ? deps.provider : createDefaultRegistry().default();
-  const providerId = provider?.id;
-  if (!provider) {
+  const registry = deps.provider === undefined ? createDefaultRegistry() : null;
+  const providers = deps.provider !== undefined
+    ? (deps.provider ? [deps.provider] : [])
+    : (registry?.configuredInOrder() ?? []);
+
+  if (providers.length === 0) {
     const message = providerConfigurationMessage();
     obs.error('No configured AI provider for brand intelligence', { organizationId, brandId, researchRunId, selectedProvider: env().DEFAULT_AI_PROVIDER });
     await failTask('PROVIDER_UNCONFIGURED', message);
     return { status: 'FAILED', aiTaskId, errorCode: 'PROVIDER_UNCONFIGURED', errorMessage: message };
   }
 
-  const model = provider.defaultModel;
-  const providerUpdate = await supabase.from('ai_tasks').update({
-    provider: providerId,
-    model,
-  }).eq('id', aiTaskId);
-  if (providerUpdate.error) throw providerUpdate.error;
-
+  let provider: AiProvider = providers[0]!;
+  let model = provider.defaultModel;
   const startedAt = Date.now();
+
   try {
-    const extraction = await extractWithRetry(provider, evidence);
-    const { result } = extraction;
+    const extractionRun = await runWithProviderFailover(
+      providers,
+      async (candidate) => {
+        provider = candidate;
+        model = candidate.defaultModel;
 
-    const drafts = deriveAllSuggestionDrafts(result, bundle.sources, bundle.sourceIndex);
-    const counts = await persistSuggestionDrafts(supabase, { organizationId, brandId, researchRunId }, drafts);
+        const providerUpdate = await supabase.from('ai_tasks').update({
+          provider: candidate.id,
+          model: candidate.defaultModel,
+        }).eq('id', aiTaskId);
+        if (providerUpdate.error) throw providerUpdate.error;
 
-    const insightsWritten = await persistInsights(
-      supabase,
-      mapIntelligenceToInsights(result, bundle.sourceIndex, organizationId, brandId, researchRunId),
-      brandId,
-      organizationId,
+        return extractWithRetry(candidate, evidence);
+      },
+      async (failed, next, error) => {
+        obs.warn('Failing over brand intelligence to next AI provider', {
+          researchRunId,
+          brandId,
+          organizationId,
+          failedProvider: failed.id,
+          nextProvider: next.id,
+          error: error instanceof Error ? error.message.slice(0, 300) : String(error),
+        });
+      },
     );
 
-    const found = drafts.filter((draft) => draft.found).length;
-    const notFound = drafts.length - found;
-    const suggestionsWritten = counts.created + counts.updated;
-
-    const outputMetadata = {
-      suggestionsCreated: counts.created,
-      suggestionsUpdated: counts.updated,
-      suggestionsSkippedHumanOwned: counts.untouched,
-      found,
-      notFound,
-      insights: insightsWritten,
-      evidenceClaims: result.evidence.length,
-      evidenceSources: evidence.length,
-      researchRunId,
-    };
-
-    const aiTaskUpdate = await supabase.from('ai_tasks').update({
-      status: 'SUCCEEDED',
-      provider: providerId,
-      model: extraction.model,
-      output_metadata: outputMetadata,
-      latency_ms: Date.now() - startedAt,
-      input_tokens: extraction.usage?.inputTokens,
-      output_tokens: extraction.usage?.outputTokens,
-      finished_at: new Date().toISOString(),
-    }).eq('id', aiTaskId);
-    if (aiTaskUpdate.error) throw aiTaskUpdate.error;
-
-    obs.info('Brand intelligence generated', {
-      researchRunId, brandId, organizationId,
-      provider: providerId, model: extraction.model,
-      suggestions: suggestionsWritten, found, notFound,
-    });
-
-    return {
-      status: 'SUCCEEDED',
-      aiTaskId,
-      provider: providerId,
-      model: extraction.model,
-      suggestionsWritten,
-      suggestionsFound: found,
-      suggestionsNotFound: notFound,
-      insightsWritten,
-    };
+    provider = extractionRun.provider;
+    model = extractionRun.provider.defaultModel;
+    const extraction = extractionRun.result;
+    const { result } = extraction;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const classified = classifyProviderFailure(error);
