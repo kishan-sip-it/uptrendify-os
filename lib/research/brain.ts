@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createDefaultRegistry } from '@/lib/ai/registry';
+import { env } from '@/lib/env';
 import type { AiProvider } from '@/lib/ai/types';
 import {
   buildEvidenceContext,
@@ -19,6 +20,17 @@ export const INSIGHT_ORIGIN = 'brand-intelligence';
 export const AI_INFERRED_FACT_CONFIDENCE = 0.95;
 
 const SECTION_KEYS = ['identity', 'audience', 'positioning', 'offer', 'messaging', 'seo', 'competition'] as const;
+
+function providerConfigurationMessage(): string {
+  const provider = env().DEFAULT_AI_PROVIDER;
+  const keyByProvider = {
+    groq: 'GROQ_API_KEY',
+    openai: 'OPENAI_API_KEY',
+    anthropic: 'ANTHROPIC_API_KEY',
+    gemini: 'GEMINI_API_KEY',
+  } as const;
+  return `No AI provider is configured. DEFAULT_AI_PROVIDER=${provider} requires ${keyByProvider[provider]}. Add that provider key to .env.local (or select another configured provider) and re-run research.`;
+}
 
 export type BrainOutcome = {
   status: 'SUCCEEDED' | 'FAILED' | 'SKIPPED';
@@ -262,8 +274,10 @@ export async function analyzeResearchEvidence(
   const providerId = provider?.id;
   if (!provider) {
     obs.error('No configured AI provider for brand intelligence', { organizationId, brandId, researchRunId });
-    await failTask('PROVIDER_UNCONFIGURED', 'No AI provider is configured.');
-    return { status: 'FAILED', aiTaskId, errorCode: 'PROVIDER_UNCONFIGURED', errorMessage: 'No AI provider is configured.' };
+    const message = providerConfigurationMessage();
+    obs.error('No configured AI provider for brand intelligence', { organizationId, brandId, researchRunId, selectedProvider: env().DEFAULT_AI_PROVIDER });
+    await failTask('PROVIDER_UNCONFIGURED', message);
+    return { status: 'FAILED', aiTaskId, errorCode: 'PROVIDER_UNCONFIGURED', errorMessage: message };
   }
 
   const model = provider.defaultModel;
