@@ -30,7 +30,7 @@ export async function postJson(
     const retryAfterMs = retryAfterSeconds && /^\d+(?:\.\d+)?$/.test(retryAfterSeconds)
       ? Math.ceil(Number(retryAfterSeconds) * 1000)
       : undefined;
-    throw new AiProviderError(provider, `Provider returned ${response.status}: ${detail}`, response.status, retryAfterMs);
+    throw new AiProviderError(provider, `Provider returned ${response.status}: ${detail}`, response.status, effectiveRetryAfterMs);
   }
   return data;
 }
