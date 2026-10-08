@@ -1,7 +1,6 @@
 'use client';
 
-import { startTransition, useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState } from 'react';
 import { Check, Plus, RefreshCw, X } from 'lucide-react';
 import type { CustomBrandRule } from '@/lib/brand/identity-mapping';
 import { NotDetected } from './brand-profile-primitives';
@@ -37,8 +36,10 @@ export function normaliseClearedText(next: string | null | undefined): string | 
   return trimmed === '' ? null : trimmed;
 }
 
-export function useBrandIdentityEditor(brandId: string) {
-  const router = useRouter();
+export function useBrandIdentityEditor(
+  brandId: string,
+  onSaved?: (brand: unknown) => void,
+) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -61,10 +62,8 @@ export function useBrandIdentityEditor(brandId: string) {
           throw new Error(body?.error || 'Could not save this change.');
         }
 
-        // Re-render the Server Component so the authoritative value from the
-        // database becomes the source of truth for the fields below. The card
-        // already reports "Saved", so this runs without blanking the screen.
-        startTransition(() => router.refresh());
+        const body = await response.json().catch(() => null);
+        if (body?.brand && onSaved) onSaved(body.brand);
         setSavedAt(Date.now());
         return true;
       } catch (err) {
@@ -75,7 +74,7 @@ export function useBrandIdentityEditor(brandId: string) {
         setSaving(false);
       }
     },
-    [brandId, router],
+    [brandId, onSaved],
   );
 
   return { save, saving, error, savedAt };
