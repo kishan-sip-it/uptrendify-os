@@ -30,6 +30,7 @@ export function createOpenAiCompatibleProvider(
     };
 
     const data = await postJson(`${baseUrl}/chat/completions`, {
+      provider: id,
       headers: { authorization: `Bearer ${apiKey}` },
       body,
     });
