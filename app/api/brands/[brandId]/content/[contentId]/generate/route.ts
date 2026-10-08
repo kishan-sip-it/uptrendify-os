@@ -35,6 +35,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     if (running.error) throw running.error;
     if (running.data) {
       const startedAt = running.data.started_at ? new Date(running.data.started_at).getTime() : 0;
+      const stale = startedAt > 0 && Date.now() - startedAt > STALE_CONTENT_GENERATION_MS;
       const orphaned = stale;
       if (orphaned) {
         await supabase.from('ai_tasks').update({ status: 'FAILED', error_code: 'STALE_EXECUTION', error_message: 'The previous generation exceeded the execution safety window and was safely released for a new attempt.', finished_at: new Date().toISOString() }).eq('id', running.data.id).eq('status', 'RUNNING');
