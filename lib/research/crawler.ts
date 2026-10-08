@@ -98,7 +98,9 @@ async function discoverSitemapUrls(root: string): Promise<string[]> {
       for (const raw of locs) {
         try {
           const normalized = normalizeUrl(raw);
-          if (isResearchCandidate(root, normalized)) discovered.push(normalized);
+          if (isResearchCandidate(root, normalized) && !/\\.(?:xml|txt)$/i.test(new URL(normalized).pathname)) {
+            discovered.push(normalized);
+          }
         } catch {
           continue;
         }
@@ -258,15 +260,9 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
 
   const queue: Array<{ url: string; priority: number }> = [{ url: root, priority: 1000 }];
   const seen = new Set<string>();
-  const sitemapCandidates = await discoverSitemapUrls(root);
-  for (const candidate of sitemapCandidates) {
-    if (!seen.has(candidate) && queue.length < e.MAX_RESEARCH_PAGES * 5) {
-      queue.push({ url: candidate, priority: researchPagePriority(root, candidate) });
-    }
-  }
-
   const crawlBudget = Math.min(e.RESEARCH_TOTAL_BUDGET_MS, e.RESEARCH_TIMEOUT_MS * (e.MAX_RESEARCH_PAGES + 1));
   const start = Date.now();
+  let sitemapLoaded = false;
   let pagesProcessed = 0;
   let pagesDiscovered = 0;
   let partial = false;
@@ -426,6 +422,24 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
             }
           } catch {
             continue;
+          }
+        }
+
+        if (target === root && !sitemapLoaded && Date.now() - start < crawlBudget) {
+          sitemapLoaded = true;
+          try {
+            const sitemapCandidates = await discoverSitemapUrls(root);
+            for (const candidate of sitemapCandidates) {
+              if (!seen.has(candidate) && queue.length < e.MAX_RESEARCH_PAGES * 5) {
+                queue.push({ url: candidate, priority: researchPagePriority(root, candidate) });
+              }
+            }
+          } catch (error) {
+            obs.debug('Sitemap discovery unavailable; continuing with navigational links', {
+              researchRunId,
+              brandId,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
         }
       } catch (error) {
