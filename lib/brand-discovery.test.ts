@@ -130,7 +130,7 @@ describe('discoverBrandWebsites', () => {
   it('recognizes a direct public website query without relying on search-engine results', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === 'https://8.8.8.8') {
+      if (url.startsWith('https://8.8.8.8')) {
         return htmlResponse('<html><head><title>Direct Website</title></head><body>Official site</body></html>');
       }
       return htmlResponse('', 404);
