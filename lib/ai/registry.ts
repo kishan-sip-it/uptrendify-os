@@ -56,6 +56,29 @@ export function shouldFailoverAiProvider(error: unknown): boolean {
   return false;
 }
 
+export async function runWithProviderFailover<T>(
+  providers: AiProvider[],
+  run: (provider: AiProvider) => Promise<T>,
+  onFailover?: (failed: AiProvider, next: AiProvider, error: unknown) => Promise<void> | void,
+): Promise<{ result: T; provider: AiProvider }> {
+  let lastError: unknown = null;
+
+  for (let index = 0; index < providers.length; index += 1) {
+    const provider = providers[index]!;
+    try {
+      const result = await run(provider);
+      return { result, provider };
+    } catch (error) {
+      lastError = error;
+      const next = providers[index + 1];
+      if (!next || !shouldFailoverAiProvider(error)) throw error;
+      await onFailover?.(provider, next, error);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('No configured AI provider completed the request.');
+}
+
 export function createDefaultRegistry(): AiProviderRegistry {
   const e = env();
   return new AiProviderRegistry(e.DEFAULT_AI_PROVIDER, [
