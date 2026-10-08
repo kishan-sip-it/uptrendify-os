@@ -153,9 +153,8 @@ function shouldUseRenderedFallback(
 
   // A JS application shell can contain hundreds of characters of navigation,
   // framework markers and accessibility text while still carrying almost no
-  // trustworthy page content. Treat that as "thin" and give the rendered
-  // reader a chance instead of falsely declaring the page successfully read.
-  const normalizedText = extractedText.replace(/\\s+/g, ' ').trim();
+  // trustworthy page content. Treat that as thin and use the rendered reader.
+  const normalizedText = extractedText.replace(/\s+/g, ' ').trim();
   const hasMeaningfulStructure = extractedHeadings.length >= 1 && normalizedText.length >= 700;
   if (hasMeaningfulStructure) return false;
 
@@ -175,10 +174,10 @@ function extractRenderedLinks(text: string, baseUrl: string): string[] {
     }
   };
 
-  for (const match of text.matchAll(/\\[[^\\]]+\\]\\((https?:\\/\\/[^)\\s]+|\\/[^)\\s]+)\\)/g)) {
+  for (const match of text.matchAll(/\]\((https?:\/\/[^)\s]+|\/[^)\s]+)\)/g)) {
     if (match[1]) add(match[1]);
   }
-  for (const match of text.matchAll(/https?:\\/\\/[^\\s<>"')]+/g)) {
+  for (const match of text.matchAll(/https?:\/\/[^\s<>"')]+/g)) {
     if (match[0]) add(match[0].replace(/[.,;:!?]+$/, ''));
   }
 
