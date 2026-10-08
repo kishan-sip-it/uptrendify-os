@@ -24,11 +24,25 @@ const DEFAULT_EXTRACTION_LIMITS: ExtractionLimits = {
 // is much lower than its model context window.
 function extractionLimitsForModel(model: string): ExtractionLimits {
   const normalized = model.toLowerCase();
-  if (normalized === 'allam-2-7b' || normalized.startsWith('openai/gpt-oss-')) {
+  if (normalized === 'allam-2-7b') {
     return {
       maxEvidenceChars: 9_000,
       maxSources: 7,
-      maxTokens: 1_600,
+      maxTokens: 1_200,
+    };
+  }
+  if (normalized === 'openai/gpt-oss-120b') {
+    return {
+      maxEvidenceChars: 14_000,
+      maxSources: 8,
+      maxTokens: 1_500,
+    };
+  }
+  if (normalized === 'openai/gpt-oss-20b') {
+    return {
+      maxEvidenceChars: 9_000,
+      maxSources: 7,
+      maxTokens: 1_200,
     };
   }
   return DEFAULT_EXTRACTION_LIMITS;
