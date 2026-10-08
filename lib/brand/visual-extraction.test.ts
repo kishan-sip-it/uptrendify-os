@@ -143,6 +143,35 @@ describe('extractBrandIdentity hardening', () => {
     expect(identity.logoUrl).not.toContain('stripe.com');
   });
 
+
+  it('does not let social-preview imagery outrank a semantic first-party logo', () => {
+    const html = `
+      <html>
+        <head>
+          <meta property="og:image" content="/social/hero-share.png" />
+          <script type="application/ld+json">${JSON.stringify({ '@type': 'Organization', name: 'Supabase', logo: '/img/supabase-logo.svg' })}</script>
+        </head>
+        <body>
+          <header><a href="/"><img src="/img/supabase-logo.svg" alt="Supabase logo" width="180" height="36" /></a></header>
+          <main><img src="/images/stripe-partner-logo.svg" alt="Stripe partner logo" width="320" height="120" /></main>
+        </body>
+      </html>`;
+    const identity = extractBrandIdentity(html, 'https://supabase.com/');
+    expect(identity.logoUrl).toBe('https://supabase.com/img/supabase-logo.svg');
+  });
+
+  it('penalizes obvious partner and social-preview imagery', () => {
+    const html = `
+      <html><head><style>:root { --brand-primary: #3ecf8e; }</style></head>
+      <body>
+        <header><img src="/img/logo.svg" alt="Brand logo" width="180" height="40" /></header>
+        <img src="/img/stripe-partner-logo.svg" alt="Stripe partner logo" width="600" height="220" />
+        <meta property="og:image" content="/social/share.png" />
+      </body></html>`;
+    const identity = extractBrandIdentity(html, 'https://example.com/');
+    expect(identity.logoUrl).toBe('https://example.com/img/logo.svg');
+  });
+
   it('prefers semantic CSS brand colours over incidental component colours', () => {
     const html = `
       <html>

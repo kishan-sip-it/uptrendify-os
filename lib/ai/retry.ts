@@ -3,6 +3,7 @@ import { obs } from '@/lib/obs/logger';
 
 export const DEFAULT_MAX_ATTEMPTS = 3;
 export const DEFAULT_RETRY_BASE_DELAY_MS = 300;
+export const MAX_RETRY_DELAY_MS = 5_000;
 
 export const TRANSIENT_PROVIDER_ERROR_PATTERNS = [
   'fetch failed',
@@ -55,10 +56,15 @@ export async function withTransientRetry<T>(run: () => Promise<T>, options: Retr
         error: error instanceof Error ? error.message.slice(0, 300) : String(error),
       });
       const retryAfterMs = error instanceof AiProviderError ? error.retryAfterMs : undefined;
-      const delayMs = Math.min(
-        30_000,
-        Math.max(baseDelayMs * 2 ** (attempt - 1), retryAfterMs ?? 0),
-      );
+      const requestedDelayMs = Math.max(baseDelayMs * 2 ** (attempt - 1), retryAfterMs ?? 0);
+      const delayMs = Math.min(MAX_RETRY_DELAY_MS, requestedDelayMs);
+      if (requestedDelayMs > MAX_RETRY_DELAY_MS) {
+        obs.warn(`Capping transient provider retry delay to preserve failover budget`, {
+          provider: options.providerId,
+          requestedDelayMs,
+          delayMs,
+        });
+      }
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }

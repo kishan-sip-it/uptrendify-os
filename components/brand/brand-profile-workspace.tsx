@@ -247,6 +247,14 @@ export function BrandProfileWorkspace({
     },
   }), [save, identity]);
 
+  const removeCustomLogo = useCallback(async () => {
+    const response = await fetch(`/api/brands/${brandId}/logo`, { method: 'DELETE' });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) return false;
+    if (body?.brand) onSaved(body.brand);
+    return true;
+  }, [brandId, onSaved]);
+
   const saveAiProfile = useCallback((patch: Partial<NonNullable<BrandIdentity['aiProfile']>>) => {
     const current = ai ?? EMPTY_AI_PROFILE;
     return saveVisualIdentity({ aiProfile: { ...current, ...patch } });
@@ -376,7 +384,7 @@ export function BrandProfileWorkspace({
                       value={identity.logoUrl}
                       brandName={identity.name}
                       onUploaded={onSaved}
-                      onRemove={() => saveVisualIdentity({ logoUrl: null })}
+                      onRemove={removeCustomLogo}
                     />
                     <div style={{ marginTop: 10 }}>
                       <span className="brand-persona-fact-label">Or use a public logo URL</span>

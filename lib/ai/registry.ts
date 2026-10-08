@@ -2,7 +2,6 @@ import { env } from '@/lib/env';
 import type { AiProvider, ProviderHealth } from './types';
 import { createGroqProvider, createOpenAiProvider } from './providers/openai-compatible';
 import { createAnthropicProvider } from './providers/anthropic';
-import { createGeminiProvider } from './providers/gemini';
 
 export class AiProviderRegistry {
   private providers = new Map<string, AiProvider>();
@@ -41,9 +40,6 @@ export class AiProviderRegistry {
   }
 
   default(): AiProvider | null {
-    // Never silently switch providers. The configured primary provider is
-    // intentional, especially for quota/cost control. An unconfigured primary
-    // must fail explicitly instead of unexpectedly consuming another provider.
     const preferred = this.providers.get(this.defaultId);
     return preferred?.configured() ? preferred : null;
   }
@@ -88,10 +84,14 @@ export async function runWithProviderFailover<T>(
 
 export function createDefaultRegistry(): AiProviderRegistry {
   const e = env();
+
+  // Gemini is intentionally excluded from the production registry. It remains
+  // available only as showcase/sample code elsewhere in the repository. A
+  // configured GEMINI_API_KEY must never silently turn Gemini into a production
+  // failover target.
   return new AiProviderRegistry(e.DEFAULT_AI_PROVIDER, [
     createGroqProvider(e.GROQ_API_KEY ?? null, e.GROQ_MODEL),
     createOpenAiProvider(e.OPENAI_API_KEY ?? null, e.OPENAI_MODEL),
     createAnthropicProvider(e.ANTHROPIC_API_KEY ?? null, e.ANTHROPIC_MODEL),
-    createGeminiProvider(e.GEMINI_API_KEY ?? null, e.GEMINI_MODEL),
   ]);
 }

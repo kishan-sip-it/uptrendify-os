@@ -26,11 +26,18 @@ export async function postJson(
 
   if (!response.ok) {
     const detail = data?.error?.message ?? data?.error ?? raw.slice(0, 200);
-    const retryAfterSeconds = response.headers.get('retry-after');
-    const retryAfterMs = retryAfterSeconds && /^\d+(?:\.\d+)?$/.test(retryAfterSeconds)
-      ? Math.ceil(Number(retryAfterSeconds) * 1000)
+    const retryAfterHeader = response.headers.get('retry-after');
+    const retryAfterMs = retryAfterHeader && /^\d+(?:\.\d+)?$/.test(retryAfterHeader)
+      ? Math.ceil(Number(retryAfterHeader) * 1000)
       : undefined;
-    throw new AiProviderError(provider, `Provider returned ${response.status}: ${detail}`, response.status, retryAfterMs);
+    const retryAfterText = typeof detail === 'string'
+      ? detail.match(/(?:try again|retry)(?: in)?\s+(\d+(?:\.\d+)?)\s*(ms|s|sec|secs|seconds)?/i)
+      : null;
+    const retryAfterFromBodyMs = retryAfterText
+      ? Number(retryAfterText[1]) * (retryAfterText[2]?.toLowerCase() === 'ms' ? 1 : 1000)
+      : undefined;
+    const effectiveRetryAfterMs = retryAfterMs ?? retryAfterFromBodyMs;
+    throw new AiProviderError(provider, `Provider returned ${response.status}: ${detail}`, response.status, effectiveRetryAfterMs);
   }
   return data;
 }

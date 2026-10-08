@@ -193,28 +193,65 @@ function collectColors(cssText: string, source: string, sink: Map<string, { coun
   }
 }
 
+function collectSemanticUiColors(html: string, $: cheerio.CheerioAPI, sink: Map<string, { count: number; sources: Set<string> }>): void {
+  const add = (raw: string | undefined, weight: number, source: string) => {
+    const hex = parseCssColor(raw);
+    if (!hex) return;
+    const entry = sink.get(hex) ?? { count: 0, sources: new Set<string>() };
+    entry.count += weight;
+    entry.sources.add(source);
+    sink.set(hex, entry);
+  };
+
+  $('header a, nav a, header button, nav button, [role="banner"] a, [role="banner"] button').each((_i, el) => {
+    const style = $(el).attr('style') ?? '';
+    for (const match of style.matchAll(/(?:color|background(?:-color)?)\s*:\s*([^;}]+)/gi)) add(match[1], 4, 'header-ui');
+    const classes = [$(el).attr('class'), $(el).attr('id')].filter(Boolean).join(' ');
+    if (/(primary|brand|cta|button)/i.test(classes)) {
+      for (const match of style.matchAll(/(?:color|background(?:-color)?)\s*:\s*([^;}]+)/gi)) add(match[1], 3, 'primary-control');
+    }
+  });
+
+  $('button, [role="button"], a').each((_i, el) => {
+    const classes = [$(el).attr('class'), $(el).attr('id')].filter(Boolean).join(' ');
+    if (!/(primary|brand|cta|accent|button|link)/i.test(classes)) return;
+    const style = $(el).attr('style') ?? '';
+    for (const match of style.matchAll(/(?:color|background(?:-color)?)\s*:\s*([^;}]+)/gi)) add(match[1], 2, 'primary-control');
+  });
+
+  void html;
+}
+
 export function rankPalette(sink: Map<string, { count: number; sources: Set<string> }>, limit = 8): ExtractedColor[] {
   const scored = Array.from(sink.entries()).map(([hex, entry]) => {
     const saturation = saturationOf(hex);
     const luminance = relativeLuminance(hex);
-    // Repetition is the strongest signal; saturation separates brand from grey.
-    const semanticBoost = entry.sources.has('meta-theme-color') ? 1.9 : entry.sources.has('semantic-css') ? 1.8 : 1;
-    const sourceDiversity = 1 + Math.min(entry.sources.size, 4) * 0.08;
-    const prominence = round(Math.log2(1 + entry.count) * (0.45 + saturation) * semanticBoost * sourceDiversity);
+    const sources = Array.from(entry.sources);
+    const semantic = sources.some((source) => source === 'semantic-css' || source === 'meta-theme-color');
+    const uiSignal = sources.some((source) => source === 'header-ui' || source === 'nav-ui' || source === 'primary-control' || source === 'link-accent');
+    const neutralPenalty = isNeutral(hex) ? 0.18 : 1;
+    const deliberateBoost = semantic ? 3.5 : uiSignal ? 2.5 : 1;
+    const sourceDiversity = 1 + Math.min(sources.length, 5) * 0.06;
+    const prominence = round(
+      Math.log2(1 + entry.count) *
+      (0.35 + saturation) *
+      deliberateBoost *
+      sourceDiversity *
+      neutralPenalty *
+      (luminance > 0.985 || luminance < 0.015 ? 0.25 : 1),
+    );
     return {
       hex,
       occurrences: entry.count,
       saturation,
       prominence,
       role: 'neutral' as const,
-      sources: Array.from(entry.sources),
-      _luminance: luminance,
+      sources,
     };
   });
 
   const chromatic = scored.filter((c) => !isNeutral(c.hex)).sort((a, b) => b.prominence - a.prominence);
   const neutral = scored.filter((c) => isNeutral(c.hex)).sort((a, b) => b.prominence - a.prominence);
-
   const ordered = [...chromatic, ...neutral].slice(0, limit);
   const chromaticCount = chromatic.length;
 
@@ -225,8 +262,7 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
       else if (index < chromaticCount) role = 'secondary';
       else role = 'accent';
     }
-    const { _luminance, ...rest } = color;
-    return { ...rest, role };
+    return { ...color, role };
   });
 }
 
@@ -289,77 +325,108 @@ function sameSiteUrl(base: string | null, candidate: string): boolean {
 }
 
 function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string | null; favicon: string | null } {
-  const baseHostToken = base
-    ? (() => {
-        try {
-          return new URL(base).hostname.replace(/^www\./, '').split('.')[0]?.toLowerCase() ?? '';
-        } catch {
-          return '';
-        }
-      })()
-    : '';
-
+  const rootHost = base ? (() => { try { return new URL(base).hostname.toLowerCase().replace(/^www\./, ''); } catch { return ''; } })() : '';
+  const rootToken = rootHost.split('.')[0] ?? '';
   const candidates: Array<{ url: string; score: number }> = [];
   let faviconUrl: string | null = null;
   let faviconScore = -1;
 
-  $('img, source').each((_i, el) => {
+  const addCandidate = (url: string | null, score: number) => {
+    if (!url || !sameSiteUrl(base, url)) return;
+    candidates.push({ url, score });
+  };
+
+  $('img, picture img, picture source').each((_i, el) => {
     const node = $(el);
-    const srcCandidates = [
-      node.attr('src') ?? '',
-      node.attr('data-src') ?? '',
-      node.attr('data-lazy-src') ?? '',
-      node.attr('srcset')?.split(',')[0]?.trim().split(' ')[0] ?? '',
-    ];
-    const alt = [node.attr('alt') ?? '', node.attr('aria-label') ?? '', node.attr('title') ?? ''].join(' ');
-    const parentContext = $(el).parents('header,nav,[role="banner"]').first().text().slice(0, 300);
-    for (const candidate of srcCandidates) {
-      if (!candidate) continue;
-      const resolved = absoluteUrl(candidate, base);
-      if (!resolved || !sameSiteUrl(base, resolved)) continue;
+    const url = absoluteUrl(
+      node.attr('src') ?? node.attr('data-src') ?? node.attr('data-lazy-src') ?? node.attr('srcset')?.split(',')[0]?.trim().split(' ')[0],
+      base,
+    );
+    if (!url) return;
 
-      let score = 0;
-      if (LOGO_HINT.test(resolved)) score += 45;
-      if (LOGO_HINT.test(alt)) score += 42;
-      if (baseHostToken && new URL(resolved).hostname.toLowerCase().includes(baseHostToken)) score += 12;
-      if (/(header|nav|brand|masthead)/i.test(parentContext)) score += 10;
-      if (/wordmark|brandmark/i.test(resolved + ' ' + alt)) score += 12;
+    const alt = [node.attr('alt'), node.attr('aria-label'), node.attr('title')].filter(Boolean).join(' ');
+    const classes = [node.attr('class'), node.attr('id')].filter(Boolean).join(' ');
+    const parent = $(el).closest('a,header,nav,[role="banner"]').first();
+    const parentText = parent.text().replace(/\s+/g, ' ').trim().slice(0, 180);
+    const href = parent.is('a') ? absoluteUrl(parent.attr('href'), base) : null;
+    const path = (() => { try { return new URL(url).pathname.toLowerCase(); } catch { return ''; } })();
 
-      candidates.push({ url: resolved, score });
+    let score = 0;
+    if (LOGO_HINT.test(path)) score += 55;
+    if (LOGO_HINT.test(alt)) score += 50;
+    if (/(brand|wordmark|masthead)/i.test(classes)) score += 28;
+    if (/(header|nav|banner)/i.test(classes)) score += 18;
+    if (parent.is('header') || parent.is('nav') || parent.is('[role="banner"]')) score += 22;
+    if (href && (href === base || (rootHost && new URL(href).hostname.toLowerCase().replace(/^www\./, '') === rootHost))) score += 25;
+    if (rootToken && path.includes(rootToken)) score += 8;
+    if (/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail)/i.test(path + ' ' + alt + ' ' + parentText)) score -= 60;
+    if (/(^|\s)(logo|wordmark)(\s|$)/i.test(alt)) score += 15;
 
-      if (FAVICON_HINT.test(resolved)) {
-        const score = sameSiteUrl(base, resolved) ? 20 : 0;
-        if (!faviconUrl || score > faviconScore) {
-          faviconUrl = resolved;
-          faviconScore = score;
-        }
+    // Dimensions and placement are useful semantic evidence when markup is sparse.
+    const width = Number(node.attr('width') ?? 0);
+    const height = Number(node.attr('height') ?? 0);
+    if (width > 0 && height > 0) {
+      const ratio = width / height;
+      if (width <= 900 && height <= 400 && ratio >= 1.2 && ratio <= 8) score += 12;
+      if (width <= 300 && height <= 300) score += 5;
+      if (width >= 1000 || height >= 800) score -= 25;
+    }
+
+    addCandidate(url, score);
+  });
+
+  // SVG logos often appear inline rather than as <img>.
+  $('svg').each((_i, el) => {
+    const node = $(el);
+    const text = [node.attr('aria-label'), node.attr('role'), node.attr('class'), node.attr('id')].filter(Boolean).join(' ');
+    const parent = node.closest('a,header,nav,[role="banner"]').first();
+    const href = parent.is('a') ? absoluteUrl(parent.attr('href'), base) : null;
+    let score = 0;
+    if (LOGO_HINT.test(text)) score += 75;
+    if (parent.is('header') || parent.is('nav') || parent.is('[role="banner"]')) score += 30;
+    if (href && rootHost) score += 15;
+    // Inline SVG has no stable URL, so it is evidence but cannot become logoUrl.
+    void score;
+  });
+
+  // JSON-LD organization/logo is stronger than social-preview metadata.
+  $('script[type="application/ld+json"]').each((_i, el) => {
+    try {
+      const parsed = JSON.parse($(el).text());
+      const nodes = Array.isArray(parsed) ? parsed : [parsed];
+      for (const node of nodes) {
+        if (!node || typeof node !== 'object') continue;
+        const type = Array.isArray(node['@type']) ? node['@type'].join(' ') : String(node['@type'] ?? '');
+        if (!/(Organization|Corporation|Brand|WebSite)/i.test(type)) continue;
+        const logo = typeof node.logo === 'string' ? node.logo : node.logo?.url;
+        addCandidate(absoluteUrl(logo, base), 80);
       }
+    } catch {
+      // Invalid JSON-LD is ignored rather than breaking deterministic extraction.
     }
   });
 
-  const metaCandidates = [
-    $('meta[property="og:image"]').first().attr('content'),
-    $('meta[name="twitter:image"]').first().attr('content'),
-  ];
-  for (const raw of metaCandidates) {
-    const resolved = absoluteUrl(raw, base);
-    if (!resolved || !sameSiteUrl(base, resolved)) continue;
-    candidates.push({ url: resolved, score: 18 });
-  }
+  // OpenGraph/Twitter images are social-preview evidence only and must not
+  // outrank an actual first-party logo candidate.
+  const og = absoluteUrl($('meta[property="og:image"]').first().attr('content'), base);
+  const twitter = absoluteUrl($('meta[name="twitter:image"]').first().attr('content'), base);
+  addCandidate(og, 5);
+  addCandidate(twitter, 4);
 
   $('link[rel]').each((_i, el) => {
     const node = $(el);
     const rel = (node.attr('rel') ?? '').toLowerCase();
     const href = absoluteUrl(node.attr('href'), base);
     if (!href || !sameSiteUrl(base, href)) return;
-    if (rel.includes('icon') || rel.includes('apple-touch')) {
-      const score = rel.includes('apple-touch') ? 24 : 18;
-      if (!faviconUrl || score > faviconScore) {
-        faviconUrl = href;
-        faviconScore = score;
-      }
+    if (rel.includes('apple-touch-icon')) {
+      const score = 32;
+      if (!faviconUrl || score > faviconScore) { faviconUrl = href; faviconScore = score; }
+    } else if (rel.split(/\s+/).some((value) => value === 'icon' || value === 'shortcut')) {
+      const score = 26;
+      if (!faviconUrl || score > faviconScore) { faviconUrl = href; faviconScore = score; }
+    } else if (rel.includes('mask-icon')) {
+      addCandidate(href, 28);
     }
-    if (rel.includes('mask-icon')) candidates.push({ url: href, score: 26 });
   });
 
   candidates.sort((a, b) => b.score - a.score);
@@ -423,6 +490,8 @@ export function extractBrandIdentity(html: string, finalUrl: string | null): Ext
     }
   });
   if (inlineStyleElements > 0) inspected.push(`${inlineStyleElements} inline style attribute(s)`);
+
+  collectSemanticUiColors(html, $, sink);
 
   const themeColorHex = normalizeHex($('meta[name="theme-color"]').first().attr('content'));
   if (themeColorHex) {
