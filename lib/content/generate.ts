@@ -2,6 +2,7 @@ import type { AiProvider, GenerateResult } from '@/lib/ai/types';
 import { AiProviderError } from '@/lib/ai/types';
 import {
   CONTENT_GEN_MAX_TOKENS,
+  contentGenerationMaxTokens,
   ContentValidationError,
   isContentValidationError,
   parseContentGeneration,
@@ -35,7 +36,7 @@ export async function extractContent(
     system:
       'You are an expert B2B marketing copywriter who works exclusively from approved brand intelligence and an approved strategy. You return strict JSON only.',
     json: true,
-    maxTokens: CONTENT_GEN_MAX_TOKENS,
+    maxTokens: contentGenerationMaxTokens(intent.type),
     temperature: 0.5,
   };
 
