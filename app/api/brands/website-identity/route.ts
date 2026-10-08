@@ -327,7 +327,7 @@ export async function GET(request: Request) {
     identity = mergeExternalCss(identity, cssBlocks);
 
     const pageCandidates = outcome.ok ? prioritizedLinks(baseHtml, baseUrl) : [];
-    const pageUrls = [outcome.finalUrl, ...pageCandidates];
+    const pageUrls = [baseUrl, ...pageCandidates];
     const evidencePages: Array<{ url: string; title: string | null; text: string }> = [];
 
     const homepage = outcome.ok
