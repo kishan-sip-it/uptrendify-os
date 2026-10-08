@@ -3,7 +3,7 @@ import { obs } from '@/lib/obs/logger';
 
 export const DEFAULT_MAX_ATTEMPTS = 3;
 export const DEFAULT_RETRY_BASE_DELAY_MS = 300;
-export const MAX_RETRY_DELAY_MS = 5_000;
+export const MAX_RETRY_DELAY_MS = 35_000;
 
 export const TRANSIENT_PROVIDER_ERROR_PATTERNS = [
   'fetch failed',
