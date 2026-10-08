@@ -182,6 +182,35 @@ describe('POST /api/brands/[brandId]/content/[contentId]/generate', () => {
     expect(mocks.scheduleContentExecution).not.toHaveBeenCalled();
   });
 
+  it('releases a stale RUNNING task even when a provider was already selected', async () => {
+    const [brands, item] = snapshotQueues();
+    const client = makeClient([
+      brands,
+      item,
+      ['ai_tasks', {
+        data: {
+          id: 'task-stale',
+          status: 'RUNNING',
+          started_at: new Date(Date.now() - 180_000).toISOString(),
+          provider: 'groq',
+          model: 'openai/gpt-oss-20b',
+        },
+        error: null,
+      }],
+      ['ai_tasks', { data: null, error: null }],
+    ]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+    mocks.loadContentSnapshot.mockResolvedValue({ suggestionRows: [] });
+    mocks.evaluateContentGate.mockReturnValue(OPEN_GATE);
+
+    const res = await POST(new NextRequest('http://localhost/api/generate', { method: 'POST', body: '{}' }), {
+      params: Promise.resolve({ brandId: BRAND_ID, contentId: CONTENT_ID }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.scheduleContentExecution).toHaveBeenCalledTimes(1);
+  });
+
   it('replays content generation for the replay organization', async () => {
     const client = makeClient([
       ...snapshotQueues(),
