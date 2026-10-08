@@ -135,15 +135,15 @@ describe('discoverBrandWebsites', () => {
   it('recognizes a direct public website query without relying on search-engine results', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.startsWith('https://8.8.8.8')) {
+      if (url.startsWith('https://nasa.gov')) {
         return htmlResponse('<html><head><title>Direct Website</title></head><body>Official site</body></html>');
       }
       return htmlResponse('', 404);
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const candidates = await discoverBrandWebsites('8.8.8.8');
-    expect(candidates[0]?.url).toBe('https://8.8.8.8');
+    const candidates = await discoverBrandWebsites('nasa.gov');
+    expect(candidates[0]?.url).toBe('https://nasa.gov');
     expect(candidates[0]?.title).toBe('Direct Website');
   });
 });
