@@ -1,7 +1,7 @@
 import { AiProviderError } from './types';
 import { obs } from '@/lib/obs/logger';
 
-export const DEFAULT_MAX_ATTEMPTS = 2;
+export const DEFAULT_MAX_ATTEMPTS = 3;
 export const DEFAULT_RETRY_BASE_DELAY_MS = 300;
 export const MAX_RETRY_DELAY_MS = 5_000;
 
