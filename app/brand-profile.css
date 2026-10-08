@@ -1012,6 +1012,23 @@
 }
 
 @media (max-width: 720px) {
+  .brand-profile-preview-head {
+    margin-inline: 0;
+  }
+
+  .brand-live-preview-stage {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .brand-live-preview-copy {
+    min-height: 320px;
+  }
+
+  .brand-live-preview-art {
+    min-height: 190px;
+  }
+
   .brand-panel-head,
   .brand-panel-body {
     padding-inline: 15px;
