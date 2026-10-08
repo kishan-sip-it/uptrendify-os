@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { BookOpen, Image as ImageIcon, Megaphone, Palette, Quote, Sparkles, Target, Type, Users } from 'lucide-react';
 import { BrandField, BrandIdentityRow, BrandPanel, BrandSection, NotDetected, brandInitials } from './brand-profile-primitives';
 import { EditableBrandRules, EditableColorPalette, EditablePersonas, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
@@ -26,31 +26,146 @@ function BrandLivePreview({
   websiteUrl: string | null;
   ai: NonNullable<BrandIdentity['aiProfile']> | null;
 }) {
+  const [logoFailed, setLogoFailed] = useState(false);
   const primary = /^#[0-9a-f]{6}$/i.test(identity.primaryColor ?? '')
     ? identity.primaryColor!
     : identity.palette[0]?.hex ?? '#2563eb';
-  const text = readableTextOn(primary);
+  const secondary = identity.palette.find((color) => color.role === 'secondary')?.hex
+    ?? identity.palette.find((color) => color.hex !== primary)?.hex
+    ?? primary;
+  const accent = identity.palette.find((color) => color.role === 'accent')?.hex
+    ?? identity.palette.find((color) => color.hex !== primary && color.hex !== secondary)?.hex
+    ?? secondary;
+  const textOnPrimary = readableTextOn(primary);
+  const domain = websiteUrl
+    ? (() => {
+        try {
+          return new URL(websiteUrl).hostname.replace(/^www\./, '');
+        } catch {
+          return websiteUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+        }
+      })()
+    : null;
+  const headline = ai?.valueProposition || identity.description || identity.name || 'Your brand';
+  const supportingCopy = ai?.valueProposition && identity.description && ai.valueProposition !== identity.description
+    ? identity.description
+    : null;
+  const primaryCta = ai?.callsToAction?.[0] || (websiteUrl ? 'Visit website' : null);
+  const visualAsset = identity.assets.find((asset) => asset.type.toLowerCase() === 'image' && asset.url !== identity.logoUrl);
+  const headingFont = identity.headingFont || identity.fonts[0]?.family;
+  const bodyFont = identity.bodyFont || identity.fonts[1]?.family || identity.fonts[0]?.family;
+  const tone = identity.voice.tone[0] || ai?.tone?.[0];
+  const personality = identity.voice.personality[0];
 
   return (
-    <div className="brand-live-preview" style={{ '--preview-primary': primary, '--preview-primary-text': text } as React.CSSProperties}>
-      <div className="brand-live-preview-top">
-        <div className="brand-live-preview-mark">
-          {identity.logoUrl ? <img src={identity.logoUrl} alt="" /> : <span>{brandInitials(identity.name)}</span>}
+    <div
+      className="brand-live-preview"
+      style={{
+        '--preview-primary': primary,
+        '--preview-primary-text': textOnPrimary,
+        '--preview-secondary': secondary,
+        '--preview-accent': accent,
+        '--preview-heading-font': headingFont ? '"' + headingFont + '", var(--font-display, system-ui, sans-serif)' : 'var(--font-display, system-ui, sans-serif)',
+        '--preview-body-font': bodyFont ? '"' + bodyFont + '", var(--font-body, system-ui, sans-serif)' : 'var(--font-body, system-ui, sans-serif)',
+      } as React.CSSProperties}
+    >
+      <div className="brand-live-preview-chrome">
+        <div className="brand-live-preview-brand">
+          <div className="brand-live-preview-mark">
+            {identity.logoUrl && !logoFailed ? (
+              // Remote asset from the analysed site. Fall back to a deterministic monogram if it fails.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={identity.logoUrl} alt="" onError={() => setLogoFailed(true)} />
+            ) : (
+              <span aria-hidden="true">{brandInitials(identity.name)}</span>
+            )}
+          </div>
+          <div className="brand-live-preview-name">
+            <strong>{identity.name || 'Your brand'}</strong>
+            {domain ? <span>{domain}</span> : null}
+          </div>
         </div>
-        <div className="brand-live-preview-name">
-          <strong>{identity.name || 'Your brand'}</strong>
-          {websiteUrl ? <span>{websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span> : null}
+        {websiteUrl ? (
+          <a className="brand-live-preview-site" href={websiteUrl} target="_blank" rel="noreferrer noopener" aria-label={'Open ' + (domain || 'website')}>
+            {domain || 'Website'} <span aria-hidden="true">↗</span>
+          </a>
+        ) : null}
+      </div>
+
+      <div className="brand-live-preview-stage">
+        <div className="brand-live-preview-copy">
+          {tone || personality ? (
+            <div className="brand-live-preview-signals" aria-label="Brand voice">
+              {tone ? <span>{tone}</span> : null}
+              {personality && personality !== tone ? <span>{personality}</span> : null}
+            </div>
+          ) : null}
+          <h3 style={{ fontFamily: 'var(--preview-heading-font)' }}>{headline}</h3>
+          {supportingCopy ? <p style={{ fontFamily: 'var(--preview-body-font)' }}>{supportingCopy}</p> : null}
+
+          {primaryCta || websiteUrl ? (
+            <div className="brand-live-preview-actions">
+              {websiteUrl && primaryCta ? (
+                <a
+                  className="brand-live-preview-primary"
+                  href={websiteUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  style={{ background: primary, color: textOnPrimary }}
+                >
+                  {primaryCta}
+                  <span aria-hidden="true">↗</span>
+                </a>
+              ) : null}
+              {identity.industry ? <span className="brand-live-preview-context">{identity.industry}</span> : null}
+            </div>
+          ) : identity.industry ? (
+            <span className="brand-live-preview-context">{identity.industry}</span>
+          ) : null}
+        </div>
+
+        <div
+          className="brand-live-preview-art"
+          aria-hidden={visualAsset ? undefined : true}
+          style={{
+            '--preview-art-primary': primary,
+            '--preview-art-secondary': secondary,
+            '--preview-art-accent': accent,
+          } as React.CSSProperties}
+        >
+          {visualAsset ? (
+            // Existing website asset only; a failed asset is visually suppressed while the palette motif remains.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={visualAsset.url}
+              alt=""
+              onError={(event) => {
+                event.currentTarget.style.display = 'none';
+              }}
+            />
+          ) : null}
+          <span className="brand-live-preview-orb brand-live-preview-orb-one" />
+          <span className="brand-live-preview-orb brand-live-preview-orb-two" />
+          <span className="brand-live-preview-orb brand-live-preview-orb-three" />
+          <span className="brand-live-preview-grid" />
         </div>
       </div>
-      <div className="brand-live-preview-body">
-        <span className="brand-live-preview-kicker">{ai?.tone?.[0] ?? identity.voice.tone[0] ?? 'Brand voice'}</span>
-        <h4>{ai?.valueProposition || identity.description || 'Your brand message will appear here.'}</h4>
-        <p>{identity.description || 'Edit the imported description to make this preview match how you want the brand presented.'}</p>
-        <button type="button" className="brand-live-preview-cta" style={{ background: primary, color: text }} disabled>Primary brand colour</button>
-      </div>
-      <div className="brand-live-preview-footer">
-        <span>Active brand context</span>
-        <div className="brand-live-preview-swatches">{identity.palette.slice(0, 4).map((color) => <span key={color.hex} title={color.hex} style={{ background: color.hex }} />)}</div>
+
+      <div className="brand-live-preview-system">
+        <div>
+          <span className="brand-live-preview-system-label">Colour system</span>
+          <div className="brand-live-preview-colors" aria-label="Active brand palette">
+            {identity.palette.slice(0, 4).map((color) => (
+              <span key={color.hex} title={color.role + ': ' + color.hex} style={{ background: color.hex }} />
+            ))}
+            {!identity.palette.length ? <span className="brand-live-preview-color-fallback" /> : null}
+          </div>
+        </div>
+        <div className="brand-live-preview-type">
+          <span className="brand-live-preview-system-label">Typography</span>
+          <strong style={{ fontFamily: 'var(--preview-heading-font)' }}>{headingFont || 'Application type'}</strong>
+          {bodyFont && bodyFont !== headingFont ? <span style={{ fontFamily: 'var(--preview-body-font)' }}>{bodyFont}</span> : null}
+        </div>
       </div>
     </div>
   );
@@ -79,10 +194,6 @@ export function BrandProfileWorkspace({
   const axes = useMemo(() => voiceAxisValues(identity.voice), [identity.voice]);
   const axisRows = VOICE_AXES.filter((axis) => axes[axis.key] !== undefined);
   const ai = identity.aiProfile;
-  const previewPrimary = /^#[0-9a-f]{6}$/i.test(identity.primaryColor ?? '')
-    ? identity.primaryColor!
-    : identity.palette[0]?.hex ?? '#2563eb';
-  const previewText = readableTextOn(previewPrimary);
 
   const saveVisualIdentity = useCallback((next: Record<string, unknown>) => save({
     visualIdentity: {
@@ -279,11 +390,8 @@ export function BrandProfileWorkspace({
       </BrandPanel>
       </div>
       <aside className="brand-profile-preview-column" aria-label="Live brand preview">
-        <BrandPanel icon={<Sparkles size={17} />} title="Live preview" subtitle="See the active brand identity before it reaches strategy, campaigns and content.">
+        <BrandPanel icon={<Sparkles size={17} />} title="Live preview" subtitle="A compact expression of the active brand identity.">
           <BrandLivePreview identity={identity} websiteUrl={websiteUrl} ai={ai} />
-          <p className="brand-section-hint" style={{ margin: 0 }}>
-            Edit any field on the left and save it. The saved value becomes the active brand context.
-          </p>
         </BrandPanel>
       </aside>
     </div>
