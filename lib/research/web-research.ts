@@ -3,7 +3,7 @@ import type { AiProvider } from '@/lib/ai/types';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from './url-security';
 import { extractPage } from './extract';
-import { normalizeResearchUrl, isLowSignalResearchPath } from './url-policy';
+import { normalizeResearchUrl } from './url-policy';
 import { obs } from '@/lib/obs/logger';
 
 const MAX_SEARCH_URLS = 10;
@@ -40,7 +40,9 @@ function extractUrls(text: string, rootUrl: string): string[] {
       const url = assertPublicHttpUrl(raw);
       const normalized = normalizeResearchUrl(url.toString());
       if (SEARCH_URL_EXCLUSIONS.some((pattern) => pattern.test(normalized))) continue;
-      if (isLowSignalResearchPath(normalized)) continue;
+      // External research may legitimately be news, press, blogs or events;
+      // those paths are intentionally allowed here. The first-party crawler
+      // ranks them lower, but external market context should remain discoverable.
       if (normalized === normalizeResearchUrl(rootUrl)) continue;
       found.add(normalized);
     } catch {
