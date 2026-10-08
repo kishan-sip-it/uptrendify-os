@@ -171,15 +171,25 @@ export function readableTextOn(hex: string): '#0f172a' | '#ffffff' {
 const COLOR_TOKEN = /(#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\))/g;
 
 function collectColors(cssText: string, source: string, sink: Map<string, { count: number; sources: Set<string> }>): void {
-  // Strip comments so commented-out legacy colours are not counted.
   const cleaned = cssText.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const add = (hex: string, weight = 1, evidenceSource = source) => {
+    const entry = sink.get(hex) ?? { count: 0, sources: new Set<string>() };
+    entry.count += weight;
+    entry.sources.add(evidenceSource);
+    sink.set(hex, entry);
+  };
+
   for (const match of cleaned.matchAll(COLOR_TOKEN)) {
     const hex = parseCssColor(match[0]);
     if (!hex) continue;
-    const entry = sink.get(hex) ?? { count: 0, sources: new Set<string>() };
-    entry.count += 1;
-    entry.sources.add(source);
-    sink.set(hex, entry);
+    add(hex);
+  }
+
+  const semanticDecl = /--(?:brand|primary|secondary|accent|color-primary|color-secondary|brand-color)(?:-[a-z0-9-]+)?\s*:\s*([^;}]+)/gi;
+  for (const match of cleaned.matchAll(semanticDecl)) {
+    const hex = parseCssColor(match[1] ?? '');
+    if (!hex) continue;
+    add(hex, 6, 'semantic-css');
   }
 }
 
@@ -188,7 +198,7 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     const saturation = saturationOf(hex);
     const luminance = relativeLuminance(hex);
     // Repetition is the strongest signal; saturation separates brand from grey.
-    const semanticBoost = entry.sources.has('meta-theme-color') ? 1.75 : entry.sources.has('semantic-css') ? 1.45 : 1;
+    const semanticBoost = entry.sources.has('meta-theme-color') ? 1.9 : entry.sources.has('semantic-css') ? 1.8 : 1;
     const sourceDiversity = 1 + Math.min(entry.sources.size, 4) * 0.08;
     const prominence = round(Math.log2(1 + entry.count) * (0.45 + saturation) * semanticBoost * sourceDiversity);
     return {
