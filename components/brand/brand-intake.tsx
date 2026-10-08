@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Globe2, LoaderCircle, RefreshCw, Sparkles } from 'lucide-react';
 import type { ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { toVisualIdentity } from '@/lib/brand/identity-mapping';
@@ -25,6 +25,7 @@ type IntakeIdentity = ExtractedIdentity & {
     positioningThemes: string[];
     callsToAction: string[];
     productCategories: string[];
+    industry: string | null;
     businessModel: string | null;
     primaryMarket: string | null;
     geography: string | null;
@@ -52,17 +53,24 @@ export function BrandIntake({
   onCreated,
   initialWebsite = '',
   initialBrandName = '',
+  startResearch = true,
+  showReview = true,
 }: {
-  onCreated: (brandId: string) => void;
+  onCreated: (brandId: string, details?: { brandName: string; websiteUrl: string }) => void;
   initialWebsite?: string;
   initialBrandName?: string;
+  startResearch?: boolean;
+  showReview?: boolean;
 }) {
   const [phase, setPhase] = useState<Phase>('input');
   const [website, setWebsite] = useState(initialWebsite);
   const [name, setName] = useState(initialBrandName);
   const [identity, setIdentity] = useState<IntakeIdentity | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
+  const [scanElapsed, setScanElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const createInFlightRef = useRef(false);
+  const reviewAfterScan = showReview !== false;
 
   const scan = useCallback(async () => {
     const value = website.trim();
@@ -75,7 +83,12 @@ export function BrandIntake({
     setError(null);
     setPhase('scanning');
     setStepIndex(0);
-    const ticker = window.setInterval(() => setStepIndex((current) => Math.min(current + 1, STEPS.length - 1)), 1100);
+    setScanElapsed(0);
+    const startedAt = Date.now();
+    const ticker = window.setInterval(() => {
+      setStepIndex((current) => (current + 1) % STEPS.length);
+      setScanElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1100);
 
     try {
       const response = await fetch(`/api/brands/website-identity?url=${encodeURIComponent(value)}`, { cache: 'no-store' });
@@ -96,7 +109,8 @@ export function BrandIntake({
   }, [website]);
 
   const create = useCallback(async () => {
-    if (!identity) return;
+    if (!identity || createInFlightRef.current) return;
+    createInFlightRef.current = true;
     setPhase('saving');
     setError(null);
     try {
@@ -109,7 +123,7 @@ export function BrandIntake({
           brandName: resolvedName,
           websiteUrl: resolvedUrl,
           description: identity.description ?? undefined,
-          industry: identity.aiProfile?.businessModel ?? undefined,
+          industry: identity.aiProfile?.industry ?? undefined,
           targetAudience: identity.aiProfile?.audience ?? undefined,
         }),
       });
@@ -127,7 +141,7 @@ export function BrandIntake({
           description: identity.description ?? null,
           primaryColor: identity.primaryColor,
           secondaryColors: identity.secondaryColors,
-          industry: null,
+          industry: identity.aiProfile?.industry ?? null,
           targetAudience: identity.aiProfile?.audience ?? null,
           positioning: {
             valueProposition: identity.aiProfile?.valueProposition ?? null,
@@ -160,29 +174,37 @@ export function BrandIntake({
       const patched = await patchResponse.json().catch(() => null);
       if (!patchResponse.ok) throw new Error(patched?.error || 'Brand was created, but the imported Brand IQ could not be saved.');
 
-      const researchResponse = await fetch(`/api/brands/${brandId}/research`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      if (!researchResponse.ok && researchResponse.status !== 409) {
-        const researchBody = await researchResponse.json().catch(() => null);
-        throw new Error(researchBody?.error || 'Brand created and imported, but research could not be started.');
+      if (startResearch) {
+        const researchResponse = await fetch(`/api/brands/${brandId}/research`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        if (!researchResponse.ok && researchResponse.status !== 409) {
+          const researchBody = await researchResponse.json().catch(() => null);
+          throw new Error(researchBody?.error || 'Brand created and imported, but research could not be started.');
+        }
       }
-      onCreated(brandId);
+      onCreated(brandId, { brandName: resolvedName, websiteUrl: resolvedUrl });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create the brand.');
       setPhase('error');
+    } finally {
+      createInFlightRef.current = false;
     }
-  }, [identity, name, website, onCreated]);
+  }, [identity, name, website, onCreated, startResearch]);
+
+  useEffect(() => {
+    if (reviewAfterScan || phase !== 'review' || !identity) return;
+    void create();
+  }, [create, identity, phase, reviewAfterScan]);
 
   if (phase === 'input' || phase === 'error') {
-    return (
-      <div>
+    return (      <div>
         <label className="brand-field" style={{ display: 'block', borderTop: 0, paddingTop: 0 }}>
           <span style={{ display: 'block', marginBottom: 8, color: 'var(--text)', fontWeight: 650 }}>Start with the brand website</span>
           <span style={{ display: 'block', marginBottom: 10, color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>
-            We read the public site, its products and services, visual identity, audience and messaging. You review the imported Brand IQ before anything is saved.
+            We read the public site, its products, services, visual identity, audience and messaging. The existing Brand IQ pipeline uses those findings to create the brand without asking you to repeat them manually.
           </span>
           <div style={{ position: 'relative' }}>
             <Globe2 size={17} style={{ position: 'absolute', left: 13, top: 14, color: 'var(--text-subtle)', pointerEvents: 'none' }} />
@@ -195,17 +217,40 @@ export function BrandIntake({
     );
   }
 
-  if (phase === 'scanning') {
+  if (phase === 'scanning' || (phase === 'saving' && !reviewAfterScan)) {
+    const isImporting = phase === 'saving' && !reviewAfterScan;
     return (
       <div role="status" aria-live="polite">
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 11 }}>
-          {STEPS.map((step, index) => (
-            <li key={step} style={{ display: 'flex', alignItems: 'center', gap: 10, color: index <= stepIndex ? 'var(--text)' : 'var(--text-subtle)' }}>
-              {index < stepIndex ? <span style={{ color: 'var(--status-success)' }}>✓</span> : index === stepIndex ? <LoaderCircle size={15} className="spin" style={{ color: 'var(--accent)' }} /> : <span style={{ width: 15, height: 15, borderRadius: 999, border: '1px solid var(--border-strong)' }} />}
-              <span style={{ fontSize: 14 }}>{step}</span>
-            </li>
-          ))}
-        </ul>
+        <div className="brand-scan-status">
+          <div className="brand-scan-status-head">
+            <div>
+              <span className="eyebrow">{isImporting ? 'Website analysis complete' : 'Live website analysis'}</span>
+              <strong>{isImporting ? 'Importing your Brand IQ' : 'Building your brand profile'}</strong>
+            </div>
+            <span className="brand-scan-elapsed">{scanElapsed}s</span>
+          </div>
+          <div className="brand-scan-progress" aria-hidden="true"><span /></div>
+          <p className="brand-section-hint" style={{ marginTop: 10 }}>
+            {isImporting
+              ? 'The website analysis finished successfully. We are saving the extracted identity to your brand workspace before moving to the next step.'
+              : 'We fetch the public site, inspect relevant same-domain pages and external stylesheets, extract the visual identity, then build structured Brand IQ. The stages below describe the work being performed; they are not fake completion percentages.'}
+          </p>
+          <ul className="brand-scan-steps" aria-label="Website analysis stages">
+            {STEPS.map((step, index) => (
+              <li key={step} className={isImporting || index === stepIndex ? 'active' : ''}>
+                <span className="brand-scan-step-index">{String(index + 1).padStart(2, '0')}</span>
+                <span>{step}</span>
+                {isImporting
+                  ? index < STEPS.length - 1
+                    ? <span aria-hidden="true">✓</span>
+                    : <LoaderCircle size={14} className="spin" aria-hidden="true" />
+                  : index === stepIndex
+                    ? <LoaderCircle size={14} className="spin" aria-hidden="true" />
+                    : null}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     );
   }
@@ -213,6 +258,8 @@ export function BrandIntake({
   if (!identity) return null;
   const ai = identity.aiProfile;
   const assets = identity.assets ?? [];
+
+  if (!reviewAfterScan) return null;
 
   return (
     <div>
@@ -232,7 +279,7 @@ export function BrandIntake({
         <BrandSection title="Brand Essentials" hint="The core identity and positioning context.">
           <div className="brand-fields">
             <BrandField label="What they do"><span>{identity.description || <NotDetected label="Not detected from this website" />}</span></BrandField>
-            <BrandField label="Industry"><span>{identity.aiProfile?.productCategories?.join(', ') || <NotDetected label="Not detected from this website" />}</span></BrandField>
+            <BrandField label="Industry"><span>{identity.aiProfile?.industry || <NotDetected label="Not detected from this website" />}</span></BrandField>
             <BrandField label="Business model"><span>{ai?.businessModel || <NotDetected label="Not detected from this website" />}</span></BrandField>
             <BrandField label="Primary market / geography"><span>{[ai?.primaryMarket, ai?.geography].filter(Boolean).join(' · ') || <NotDetected label="Not detected from this website" />}</span></BrandField>
             <BrandField label="Positioning"><span>{ai?.valueProposition || <NotDetected label="Not detected from this website" />}</span></BrandField>
@@ -267,14 +314,6 @@ export function BrandIntake({
             <BrandField label="Terminology">{tags(ai?.terminology)}</BrandField>
             <BrandField label="Recurring claims">{tags(ai?.recurringClaims)}</BrandField>
             <BrandField label="Messaging themes">{tags(ai?.messagingThemes)}</BrandField>
-          </div>
-        </BrandSection>
-
-        <BrandSection title="Guidelines" hint="Working rules derived from repeated language and explicit calls-to-action. They remain editable after import.">
-          <div className="brand-fields">
-            <BrandField label="Use / preferred language">{tags(ai?.terminology, 'No recurring terminology detected')}</BrandField>
-            <BrandField label="Messaging rules">{tags([...(ai?.recurringClaims ?? []), ...(ai?.messagingThemes ?? [])], 'No explicit messaging rules detected')}</BrandField>
-            <BrandField label="Positioning themes">{tags(ai?.positioningThemes)}</BrandField>
           </div>
         </BrandSection>
 
@@ -314,7 +353,7 @@ export function BrandIntake({
 
         {error ? <p role="alert" className="brand-section-hint" style={{ marginTop: 12, color: 'var(--status-danger)' }}>{error}</p> : null}
         <div style={{ display: 'flex', gap: 8, marginTop: 18, flexWrap: 'wrap' }}>
-          <button type="button" className="brand-btn brand-btn-primary" onClick={() => void create()} disabled={phase === 'saving'}>{phase === 'saving' ? <LoaderCircle size={14} className="spin" /> : <ArrowRight size={14} />}{phase === 'saving' ? 'Creating brand…' : 'Create brand and start research'}</button>
+          <button type="button" className="brand-btn brand-btn-primary" onClick={() => void create()} disabled={phase === 'saving'}>{phase === 'saving' ? <LoaderCircle size={14} className="spin" /> : <ArrowRight size={14} />}{phase === 'saving' ? 'Creating brand…' : 'Create brand'}</button>
           <button type="button" className="brand-btn" onClick={() => { setPhase('input'); setIdentity(null); setError(null); }} disabled={phase === 'saving'}><RefreshCw size={14} /> Scan a different site</button>
         </div>
       </BrandPanel>

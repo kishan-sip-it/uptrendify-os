@@ -2,6 +2,7 @@ import type { ExtractedIdentity } from './visual-extraction';
 import { normaliseVoice, type BrandVoice } from './voice';
 
 export type BrandAsset = { url: string; type: string; label: string | null };
+export type CustomBrandRule = { id: string; title: string; description: string };
 export type BrandAiProfile = {
   products: string[];
   services: string[];
@@ -19,6 +20,7 @@ export type BrandAiProfile = {
   positioningThemes: string[];
   callsToAction: string[];
   productCategories: string[];
+  industry: string | null;
   businessModel: string | null;
   primaryMarket: string | null;
   geography: string | null;
@@ -79,6 +81,21 @@ function asStringObjectArray(value: unknown): { name: string; description?: stri
     .map((v) => ({ name: v.name as string, description: asNullableString(v.description) }));
 }
 
+function parseCustomBrandRules(value: unknown): CustomBrandRule[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  const source = value as Record<string, unknown>;
+  const raw = source.customRules;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((rule): rule is Record<string, unknown> => Boolean(rule) && typeof rule === 'object')
+    .map((rule, index) => ({
+      id: typeof rule.id === 'string' && rule.id.trim() ? rule.id : `rule-${index + 1}`,
+      title: typeof rule.title === 'string' ? rule.title.trim() : '',
+      description: typeof rule.description === 'string' ? rule.description.trim() : '',
+    }))
+    .filter((rule) => rule.title || rule.description);
+}
+
 export function parseVisualIdentity(raw: unknown): BrandVisualIdentity {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return EMPTY_VISUAL_IDENTITY;
   const source = raw as Record<string, unknown>;
@@ -134,6 +151,7 @@ export function parseVisualIdentity(raw: unknown): BrandVisualIdentity {
           positioningThemes: asStringArray(a.positioningThemes),
           callsToAction: asStringArray(a.callsToAction),
           productCategories: asStringArray(a.productCategories),
+          industry: asNullableString(a.industry),
           businessModel: asNullableString(a.businessModel),
           primaryMarket: asNullableString(a.primaryMarket),
           geography: asNullableString(a.geography),
@@ -210,6 +228,7 @@ export function toVisualIdentity(identity: ExtractedIdentity & {
 
 export type BrandIdentityRow = {
   name: string | null;
+  brand_rules?: unknown;
   description: string | null;
   industry: string | null;
   primary_color: string | null;
@@ -222,6 +241,7 @@ export type BrandIdentityRow = {
 
 export function readIdentity(row: BrandIdentityRow) {
   const visual = parseVisualIdentity(row.visual_identity);
+  const customBrandRules = parseCustomBrandRules(row.brand_rules);
   const positioning = (row.positioning ?? {}) as Record<string, unknown>;
   const messaging = (row.messaging ?? {}) as Record<string, unknown>;
   const audience = (row.audience_details ?? {}) as Record<string, unknown>;
@@ -236,8 +256,10 @@ export function readIdentity(row: BrandIdentityRow) {
   return {
     name: row.name,
     description: row.description,
+    brandRules: customBrandRules,
     industry: row.industry,
     primaryColor: primary ?? palette.find((c) => c.role === 'primary')?.hex ?? null,
+    secondaryColors: secondary,
     palette,
     fonts: visual.fonts,
     headingFont: visual.headingFont,
