@@ -184,6 +184,7 @@ export async function runStrategyGeneration(input: StrategyPipelineInput, deps: 
     provider = extractionRun.provider;
     model = extractionRun.provider.defaultModel;
     const extraction = extractionRun.result;
+    const providerId = extractionRun.provider.id;
     result = extraction.result; providerModel = extraction.model; usage = extraction.usage;
     const persistUpdate = await supabase.from('strategies').update({ status: 'SUCCEEDED', provider: providerId, model: providerModel, output: result, input_snapshot: { ...summarizeSnapshot(snapshot), contextChars: contextText.length }, finished_at: new Date().toISOString() }).eq('id', strategyId).eq('organization_id', organizationId);
     if (persistUpdate.error) throw persistUpdate.error;
