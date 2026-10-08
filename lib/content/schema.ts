@@ -60,6 +60,23 @@ export const CONTENT_STATUS_LABELS: Record<ContentStatus, string> = {
 };
 
 export const CONTENT_GEN_MAX_TOKENS = 3072;
+
+// Short-form content must stay comfortably inside the smallest supported
+// Groq TPM budget when a busy organization already has tokens in flight.
+// Long-form drafts keep the existing 3072-token ceiling.
+export function contentGenerationMaxTokens(type: ContentType): number {
+  switch (type) {
+    case 'video_script':
+    case 'social_post':
+    case 'ad_copy':
+    case 'email':
+      return 2048;
+    case 'cta_headlines':
+      return 1536;
+    default:
+      return CONTENT_GEN_MAX_TOKENS;
+  }
+}
 export const CONTENT_BODY_MAX = 20_000;
 export const CONTENT_HEADLINE_MAX = 200;
 export const CONTENT_RATIONALE_MAX = 3_000;
