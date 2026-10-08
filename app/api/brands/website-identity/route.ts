@@ -48,7 +48,18 @@ async function fetchHtml(root: URL, maxRedirects = 3): Promise<FetchOutcome> {
         continue;
       }
 
-      if (!response.ok) return { ok: false, reason: `The website responded with HTTP ${response.status}.`, finalUrl: target };
+      if (!response.ok) {
+        // Public sites can reject the server-side fetch while remaining readable
+        // through a browser-backed reader. Give that reader one bounded chance
+        // before reporting the site as unavailable.
+        if ([401, 403, 407, 408, 429, 451, 500, 502, 503, 504].includes(response.status)) {
+          const rendered = await fetchRenderedResearch(target);
+          if (rendered) {
+            return { ok: true, html: `<html><head><title>${rendered.title ?? ''}</title><meta name="description" content="${rendered.title ?? ''}"/></head><body><p>${rendered.text.replace(/</g, '&lt;')}</p></body></html>`, finalUrl: target };
+          }
+        }
+        return { ok: false, reason: `The website responded with HTTP ${response.status}.`, finalUrl: target };
+      }
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('html') && !contentType.includes('xhtml')) {
         return { ok: false, reason: 'That URL did not return an HTML page.', finalUrl: target };
@@ -56,6 +67,14 @@ async function fetchHtml(root: URL, maxRedirects = 3): Promise<FetchOutcome> {
       const bounded = await readBoundedBody(response, Math.min(env().MAX_RESEARCH_BYTES, 900_000));
       return { ok: true, html: bounded.content, finalUrl: target };
     } catch {
+      const rendered = await fetchRenderedResearch(target);
+      if (rendered) {
+        return {
+          ok: true,
+          html: `<html><head><title>${rendered.title ?? ''}</title><meta name="description" content="${rendered.title ?? ''}"/></head><body><p>${rendered.text.replace(/</g, '&lt;')}</p></body></html>`,
+          finalUrl: target,
+        };
+      }
       return { ok: false, reason: 'The website could not be reached.', finalUrl: finalUrl ?? target };
     } finally {
       clearTimeout(timeout);
@@ -119,6 +138,35 @@ function absoluteUrl(value: string | undefined, base: string): string | null {
     return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
   } catch {
     return null;
+  }
+}
+
+async function fetchRenderedResearch(url: string): Promise<{ title: string | null; text: string } | null> {
+  const key = env().JINA_API_KEY;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.min(env().RESEARCH_TIMEOUT_MS * 2, 20_000));
+  try {
+    const response = await fetch('https://r.jina.ai/' + url, {
+      signal: controller.signal,
+      headers: {
+        accept: 'text/plain',
+        ...(key ? { authorization: 'Bearer ' + key } : {}),
+      },
+    });
+    if (!response.ok) return null;
+    const text = (await response.text()).trim();
+    if (text.length < 180) return null;
+    const title = text
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.startsWith('# '))
+      ?.slice(2)
+      .trim() || null;
+    return { title, text: text.slice(0, 50_000) };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
