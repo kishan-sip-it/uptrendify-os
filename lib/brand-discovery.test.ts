@@ -126,4 +126,19 @@ describe('discoverBrandWebsites', () => {
     const candidates = await discoverBrandWebsites('Aurora Labs');
     expect(candidates.some((candidate) => candidate.url === 'https://auroralabs.com')).toBe(true);
   });
+
+  it('recognizes a direct public website query without relying on search-engine results', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === 'https://8.8.8.8') {
+        return htmlResponse('<html><head><title>Direct Website</title></head><body>Official site</body></html>');
+      }
+      return htmlResponse('', 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const candidates = await discoverBrandWebsites('8.8.8.8');
+    expect(candidates[0]?.url).toBe('https://8.8.8.8');
+    expect(candidates[0]?.title).toBe('Direct Website');
+  });
 });
