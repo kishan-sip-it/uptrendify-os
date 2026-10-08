@@ -19,3 +19,44 @@
   padding-bottom: 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
 }
+
+
+/* Keep each Brand Brain topic visually controlled as evidence grows. The topic-level
+   scroller preserves the individual suggestion cards and their normal interactions. */
+.brain-topic-items {
+  max-height: clamp(360px, 58vh, 680px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 5px 5px 2px;
+  scrollbar-gutter: stable;
+}
+
+.brain-topic-items::-webkit-scrollbar {
+  width: 8px;
+}
+
+.brain-topic-items::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-subtle) 28%, transparent);
+}
+
+.brain-topic-items::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.brain-topic-see-more {
+  justify-self: start;
+  font-weight: 700;
+}
+
+.suggestion-value {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.suggestion-evidence-list {
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
