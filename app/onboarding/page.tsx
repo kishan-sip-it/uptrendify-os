@@ -104,10 +104,20 @@ export default function OnboardingPage() {
           setDraft(next);
           setWorkspaceRole(String(body?.role || 'OWNER'));
           const storedStep = Number(body?.progress?.current_step ?? 0);
-          // Map older onboarding progress indices onto the current five-step flow
-          // without making a user repeat completed setup.
-          const nextStep = storedStep >= 3 ? Math.min(3, storedStep - 1) : storedStep;
-          setStep(Math.min(STEPS.length - 1, Math.max(0, nextStep)));
+          const storedDraft = body?.progress?.draft_data;
+          const legacyDraft =
+            Boolean(storedDraft) &&
+            typeof storedDraft === 'object' &&
+            ['secondaryAudience', 'offer', 'valueProposition', 'wordsToUse', 'wordsToAvoid', 'restrictions'].some(
+              (key) => key in (storedDraft as Record<string, unknown>),
+            );
+          const legacyStepMap = [1, 2, 0, 3, 3, 4] as const;
+          // Only translate progress rows that were written by the previous
+          // six-step onboarding flow. Fresh/current rows already use 0..4.
+          const resolvedStep = legacyDraft
+            ? legacyStepMap[Math.min(legacyStepMap.length - 1, Math.max(0, storedStep))] ?? 0
+            : storedStep;
+          setStep(Math.min(STEPS.length - 1, Math.max(0, resolvedStep)));
           setResumable(Boolean(body?.progress));
           setLoading(false);
           setError('');
