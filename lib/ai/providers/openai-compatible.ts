@@ -24,7 +24,6 @@ export function createOpenAiCompatibleProvider(
           : { max_tokens: input.maxTokens }
         : {}),
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
-      ...(id === 'groq' ? { service_tier: 'auto' } : {}),
       ...(model.startsWith('openai/gpt-oss-')
         ? { include_reasoning: false, reasoning_effort: 'low' }
         : {}),
