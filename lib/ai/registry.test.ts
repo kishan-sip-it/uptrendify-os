@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AiProviderError } from './types';
 import type { AiProvider, GenerateResult, ProviderHealth } from './types';
-import { AiProviderRegistry, createDefaultRegistry, runWithProviderFailover } from './registry';
+import { AiProviderRegistry, createDefaultRegistry, runWithProviderFailover, shouldFailoverAiProvider } from './registry';
 
 function mockProvider(id: string, configured = false): AiProvider {
   return {
@@ -110,8 +111,8 @@ describe('createDefaultRegistry', () => {
 
 describe('provider failover hardening', () => {
   it('fails over on bounded transient provider errors', async () => {
-    const groq = provider('groq');
-    const openai = provider('openai');
+    const groq = mockProvider('groq', true);
+    const openai = mockProvider('openai', true);
     const result = await runWithProviderFailover([groq, openai], async (candidate) => {
       if (candidate.id === 'groq') throw new AiProviderError('groq', 'rate limited', 429);
       return 'valid-output';
