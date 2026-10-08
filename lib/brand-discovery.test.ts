@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearBrandDiscoveryCache, discoverBrandWebsites } from './brand-discovery';
 
+vi.mock('./research/url-security', () => ({
+  assertPublicHttpUrl: (raw: string) => new URL(raw),
+  assertResolvablePublicHost: vi.fn(async () => undefined),
+}));
+
 function htmlResponse(body: string, status = 200): Response {
   return new Response(body, { status, headers: { 'content-type': 'text/html' } });
 }
