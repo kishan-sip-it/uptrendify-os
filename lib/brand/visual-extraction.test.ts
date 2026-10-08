@@ -128,6 +128,39 @@ describe('extractBrandIdentity', () => {
   });
 });
 
+describe('extractBrandIdentity hardening', () => {
+  it('ignores third-party logo images when a first-party wordmark exists', () => {
+    const html = `
+      <html>
+        <head><title>Supabase</title><meta property="og:site_name" content="Supabase" /></head>
+        <body>
+          <header><img src="https://stripe.com/img/stripe-logo.svg" alt="Stripe logo" /></header>
+          <nav><img src="/brand/supabase-wordmark.svg" alt="Supabase logo" /></nav>
+        </body>
+      </html>`;
+    const identity = extractBrandIdentity(html, 'https://supabase.com/');
+    expect(identity.logoUrl).toBe('https://supabase.com/brand/supabase-wordmark.svg');
+    expect(identity.logoUrl).not.toContain('stripe.com');
+  });
+
+  it('prefers semantic CSS brand colours over incidental component colours', () => {
+    const html = `
+      <html>
+        <head>
+          <style>
+            :root { --brand-primary: #3ecf8e; --primary-color: #3ecf8e; }
+            .toast { background: #ff2d7d; }
+            .button { background: #ff2d7d; }
+            .brand { color: #3ecf8e; }
+          </style>
+        </head>
+        <body></body>
+      </html>`;
+    const identity = extractBrandIdentity(html, 'https://supabase.com/');
+    expect(identity.primaryColor).toBe('#3ecf8e');
+  });
+});
+
 describe('extractBrandIdentity with no usable evidence', () => {
   const bare = extractBrandIdentity('<html><head></head><body><p>hi</p></body></html>', null);
 
