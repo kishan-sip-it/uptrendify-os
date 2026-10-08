@@ -108,29 +108,6 @@ async function fetchCss(url: string): Promise<string> {
 }
 
 
-async function fetchRenderedFallback(target: string): Promise<{ text: string; title: string | null } | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Math.min(env().RESEARCH_TIMEOUT_MS * 2, 20_000));
-  try {
-    const response = await fetch('https://r.jina.ai/' + target, {
-      signal: controller.signal,
-      headers: {
-        accept: 'text/plain',
-        ...(env().JINA_API_KEY ? { authorization: 'Bearer ' + env().JINA_API_KEY } : {}),
-      },
-    });
-    if (!response.ok) return null;
-    const text = (await response.text()).trim();
-    if (text.length < 180) return null;
-    const title = text.split('\n').map((line) => line.trim()).find((line) => line.startsWith('# '))?.slice(2).trim() || null;
-    return { text: text.slice(0, 50_000), title };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 function absoluteUrl(value: string | undefined, base: string): string | null {
   if (!value || value.startsWith('data:') || value.startsWith('javascript:')) return null;
   try {
@@ -350,7 +327,7 @@ export async function GET(request: Request) {
     let renderedFallbackTitle: string | null = null;
 
     if (!outcome.ok) {
-      const rendered = await fetchRenderedFallback(raw);
+      const rendered = await fetchRenderedResearch(raw);
       if (!rendered) {
         return NextResponse.json({ error: outcome.reason, identity: null }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
       }
