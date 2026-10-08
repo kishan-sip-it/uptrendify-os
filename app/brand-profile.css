@@ -1175,6 +1175,31 @@
   color: var(--text-muted);
   font-size: 11px;
 }
+
+.brand-logo-editor .brand-edit-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.brand-logo-editor .brand-btn {
+  flex: 0 0 auto;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .brand-logo-editor {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .brand-logo-editor-preview {
+    width: 76px;
+    height: 76px;
+  }
+}
+
 @media (max-width: 720px) {
   .brand-profile-subtabs {
     top: 4px;
