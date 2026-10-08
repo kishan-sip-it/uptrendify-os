@@ -412,10 +412,16 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
                 text: rendered.text,
               };
               for (const next of renderedLinks) {
-                if (isResearchCandidate(root, normalizeUrl(next)) && !seen.has(normalizeUrl(next)) && queue.length + seen.size < e.MAX_RESEARCH_PAGES * 5) {
-                  queue.push({ url: normalizeUrl(next), priority: researchPagePriority(root, normalizeUrl(next)) });
+                const normalizedNext = normalizeUrl(next);
+                if (isResearchCandidate(root, normalizedNext) && !seen.has(normalizedNext) && queue.length + seen.size < e.MAX_RESEARCH_PAGES * 5) {
+                  queue.push({ url: normalizedNext, priority: researchPagePriority(root, normalizedNext) });
                 }
               }
+              const progress = await supabase
+                .from('research_runs')
+                .update({ pages_processed: pagesProcessed, pages_discovered: seen.size })
+                .eq('id', researchRunId);
+              if (progress.error) obs.warn('Failed to persist rendered research progress', { researchRunId, error: progress.error.message });
               continue;
             }
           }
