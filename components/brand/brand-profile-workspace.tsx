@@ -29,14 +29,14 @@ function BrandLivePreview({
   const [logoFailed, setLogoFailed] = useState(false);
   const primary = /^#[0-9a-f]{6}$/i.test(identity.primaryColor ?? '')
     ? identity.primaryColor!
-    : identity.palette[0]?.hex ?? '#2563eb';
+    : identity.palette[0]?.hex ?? 'var(--accent)';
   const secondary = identity.palette.find((color) => color.role === 'secondary')?.hex
     ?? identity.palette.find((color) => color.hex !== primary)?.hex
     ?? primary;
   const accent = identity.palette.find((color) => color.role === 'accent')?.hex
     ?? identity.palette.find((color) => color.hex !== primary && color.hex !== secondary)?.hex
     ?? secondary;
-  const textOnPrimary = readableTextOn(primary);
+  const textOnPrimary = /^#[0-9a-f]{6}$/i.test(primary) ? readableTextOn(primary) : 'var(--accent-contrast)';
   const domain = websiteUrl
     ? (() => {
         try {
