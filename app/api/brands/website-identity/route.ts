@@ -109,12 +109,17 @@ function pageText(html: string): { title: string | null; text: string } {
 function prioritizedLinks(html: string, rootUrl: string): string[] {
   const $ = cheerio.load(html);
   const root = new URL(rootUrl);
-  const rootHost = root.hostname.replace(/^www\./, '');
+  const rootHost = root.hostname.replace(/^www\\./, '');
   const scored = new Map<string, number>();
-  const keywords = [
-    ['product', 10], ['service', 10], ['solution', 9], ['offer', 9], ['about', 8],
-    ['company', 7], ['who', 7], ['audience', 6], ['customer', 6], ['pricing', 5],
-    ['contact', 3], ['work', 3], ['portfolio', 3],
+  const highSignal = [
+    ['mission', 18], ['science', 18], ['research', 17], ['technology', 16], ['program', 15],
+    ['product', 15], ['service', 15], ['solution', 14], ['about', 14], ['company', 12],
+    ['audience', 11], ['customer', 11], ['industry', 10], ['education', 10], ['learning', 10],
+    ['offer', 9], ['pricing', 8], ['feature', 8], ['use-case', 8], ['who-we-are', 8],
+    ['team', 7], ['contact', 2], ['work', 4], ['portfolio', 4],
+  ] as const;
+  const lowSignal = [
+    'news', 'press', 'blog', 'podcast', 'event', 'media', 'social', 'newsletter',
   ] as const;
 
   $('a[href]').each((_i, el) => {
@@ -122,14 +127,29 @@ function prioritizedLinks(html: string, rootUrl: string): string[] {
     if (!href) return;
     let parsed: URL;
     try { parsed = new URL(href); } catch { return; }
-    if (parsed.hostname.replace(/^www\./, '') !== rootHost) return;
-    if (parsed.pathname === '/' || parsed.hash) return;
-    const path = `${parsed.pathname} ${$(el).text()}`.toLowerCase();
-    const score = keywords.reduce((sum, [keyword, weight]) => sum + (path.includes(keyword) ? weight : 0), 0);
-    if (score > 0) scored.set(parsed.toString(), Math.max(score, scored.get(parsed.toString()) ?? 0));
+    if (parsed.hostname.replace(/^www\\./, '') !== rootHost) return;
+    if (parsed.hash) return;
+
+    const pathText = parsed.pathname + ' ' + ($(el).text() || '');
+    const normalized = pathText.toLowerCase();
+    let score = parsed.pathname === '/' || parsed.pathname === '' ? 4 : 0;
+
+    for (const [keyword, weight] of highSignal) {
+      if (normalized.includes(keyword)) score += weight;
+    }
+    for (const keyword of lowSignal) {
+      if (normalized.includes(keyword)) score -= 10;
+    }
+
+    if (score > 0) {
+      scored.set(parsed.toString(), Math.max(score, scored.get(parsed.toString()) ?? 0));
+    }
   });
 
-  return [...scored.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([url]) => url);
+  return [...scored.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([url]) => url);
 }
 
 function externalStylesheetUrls(html: string, baseUrl: string): string[] {

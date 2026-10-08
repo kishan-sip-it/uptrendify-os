@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearBrandDiscoveryCache, discoverBrandWebsites } from './brand-discovery';
 
+vi.mock('./research/url-security', () => ({
+  assertPublicHttpUrl: (raw: string) => new URL(raw),
+  assertResolvablePublicHost: vi.fn(async () => undefined),
+}));
+
 function htmlResponse(body: string, status = 200): Response {
   return new Response(body, { status, headers: { 'content-type': 'text/html' } });
 }
@@ -125,5 +130,20 @@ describe('discoverBrandWebsites', () => {
     vi.stubGlobal('fetch', fetchMock);
     const candidates = await discoverBrandWebsites('Aurora Labs');
     expect(candidates.some((candidate) => candidate.url === 'https://auroralabs.com')).toBe(true);
+  });
+
+  it('recognizes a direct public website query without relying on search-engine results', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('https://nasa.gov')) {
+        return htmlResponse('<html><head><title>Direct Website</title></head><body>Official site</body></html>');
+      }
+      return htmlResponse('', 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const candidates = await discoverBrandWebsites('nasa.gov');
+    expect(candidates[0]?.url).toBe('https://nasa.gov');
+    expect(candidates[0]?.title).toBe('Direct Website');
   });
 });
