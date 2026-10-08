@@ -51,17 +51,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ bran
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
 
     const visual = normaliseVisual(brand.visual_identity);
-    const logoPath = typeof visual.logoPath === 'string' ? visual.logoPath : null;
-    if (!logoPath) return NextResponse.json({ error: 'No custom logo is uploaded.' }, { status: 404 });
-
-    const expectedPrefix = auth.context.organizationId + '/' + brandId + '/';
-    if (!logoPath.startsWith(expectedPrefix)) return NextResponse.json({ error: 'Invalid logo reference' }, { status: 404 });
+    const logoUrl = typeof visual.logoUrl === 'string' ? visual.logoUrl : null;
+    if (!logoUrl || !logoUrl.startsWith('/api/brands/')) return NextResponse.json({ error: 'No custom logo is uploaded.' }, { status: 404 });
 
     const admin = createSupabaseAdminClient();
-    const signed = await admin.storage.from(BUCKET).createSignedUrl(logoPath, 300);
-    if (signed.error || !signed.data?.signedUrl) throw signed.error ?? new Error('Could not sign logo URL');
-
-    return NextResponse.redirect(signed.data.signedUrl, 302);
+    const prefix = auth.context.organizationId + '/' + brandId + '/logo.';
+    for (const extension of ['png', 'jpg', 'webp']) {
+      const path = prefix + extension;
+      const signed = await admin.storage.from(BUCKET).createSignedUrl(path, 300);
+      if (!signed.error && signed.data?.signedUrl) return NextResponse.redirect(signed.data.signedUrl, 302);
+    }
+    return NextResponse.json({ error: 'Custom logo file is unavailable.' }, { status: 404 });
   } catch (error) {
     obs.error('Brand logo load failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Could not load the brand logo' }, { status: 500 });
@@ -88,6 +88,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
 
     const admin = createSupabaseAdminClient();
     const storagePath = `${auth.context.organizationId}/${brandId}/logo.${extensionFor(file.type)}`;
+    const oldPaths = ['png', 'jpg', 'webp'].map((extension) => `${auth.context.organizationId}/${brandId}/logo.${extension}`);
+    const removedOld = await admin.storage.from(BUCKET).remove(oldPaths);
+    if (removedOld.error) throw removedOld.error;
+
     const uploaded = await admin.storage.from(BUCKET).upload(storagePath, Buffer.from(bytes), {
       contentType: file.type,
       cacheControl: '3600',
@@ -96,8 +100,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     if (uploaded.error) throw uploaded.error;
 
     const currentVisual = normaliseVisual(brand.visual_identity);
-    const previousPath = typeof currentVisual.logoPath === 'string' ? currentVisual.logoPath : null;
-    const visualIdentity = { ...currentVisual, logoPath: storagePath, logoUrl: `/api/brands/${brandId}/logo` };
+    const visualIdentity = { ...currentVisual, logoUrl: `/api/brands/${brandId}/logo` };
 
     const updated = await supabase
       .from('brands')
@@ -107,10 +110,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       .select('id,name,slug,website_url,description,industry,market_country,target_audience,primary_color,secondary_colors,brand_rules,audience_details,offer_details,positioning,messaging,visual_identity,status')
       .single();
     if (updated.error) throw updated.error;
-
-    if (previousPath && previousPath !== storagePath) {
-      await admin.storage.from(BUCKET).remove([previousPath]);
-    }
 
     return NextResponse.json({ ok: true, logoUrl: visualIdentity.logoUrl, brand: updated.data });
   } catch (error) {
@@ -130,17 +129,15 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
 
     const visual = normaliseVisual(brand.visual_identity);
-    const logoPath = typeof visual.logoPath === 'string' ? visual.logoPath : null;
-    if (logoPath) {
-      const expectedPrefix = auth.context.organizationId + '/' + brandId + '/';
-      if (!logoPath.startsWith(expectedPrefix)) return NextResponse.json({ error: 'Invalid logo reference' }, { status: 400 });
+    const logoUrl = typeof visual.logoUrl === 'string' ? visual.logoUrl : null;
+    if (logoUrl?.startsWith(`/api/brands/${brandId}/logo`)) {
       const admin = createSupabaseAdminClient();
-      const removed = await admin.storage.from(BUCKET).remove([logoPath]);
+      const paths = ['png', 'jpg', 'webp'].map((extension) => `${auth.context.organizationId}/${brandId}/logo.${extension}`);
+      const removed = await admin.storage.from(BUCKET).remove(paths);
       if (removed.error) throw removed.error;
     }
 
     const nextVisual = { ...visual };
-    delete nextVisual.logoPath;
     delete nextVisual.logoUrl;
     const updated = await supabase
       .from('brands')
