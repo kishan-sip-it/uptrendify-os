@@ -143,11 +143,46 @@ async function fetchRenderedFallback(target: string): Promise<{ text: string; ti
   }
 }
 
-function shouldUseRenderedFallback(html: string, extractedText: string, extractedLinks: string[]): boolean {
-  if (extractedText.length >= 320) return false;
+function shouldUseRenderedFallback(
+  html: string,
+  extractedText: string,
+  extractedLinks: string[],
+  extractedHeadings: string[],
+): boolean {
   if (html.length < 400) return false;
-  return extractedLinks.length === 0 ||
-    /(__next|__nuxt|reactroot|vite|webpack|data-reactroot)/i.test(html);
+
+  // A JS application shell can contain hundreds of characters of navigation,
+  // framework markers and accessibility text while still carrying almost no
+  // trustworthy page content. Treat that as "thin" and give the rendered
+  // reader a chance instead of falsely declaring the page successfully read.
+  const normalizedText = extractedText.replace(/\\s+/g, ' ').trim();
+  const hasMeaningfulStructure = extractedHeadings.length >= 1 && normalizedText.length >= 700;
+  if (hasMeaningfulStructure) return false;
+
+  return normalizedText.length < 700 ||
+    extractedLinks.length === 0 ||
+    /(__next|__nuxt|reactroot|vite|webpack|data-reactroot|application shell)/i.test(html);
+}
+
+function extractRenderedLinks(text: string, baseUrl: string): string[] {
+  const found = new Set<string>();
+  const add = (raw: string) => {
+    try {
+      const url = new URL(raw, baseUrl);
+      if (url.protocol === 'http:' || url.protocol === 'https:') found.add(url.toString());
+    } catch {
+      // Ignore malformed reader links.
+    }
+  };
+
+  for (const match of text.matchAll(/\\[[^\\]]+\\]\\((https?:\\/\\/[^)\\s]+|\\/[^)\\s]+)\\)/g)) {
+    if (match[1]) add(match[1]);
+  }
+  for (const match of text.matchAll(/https?:\\/\\/[^\\s<>"')]+/g)) {
+    if (match[0]) add(match[0].replace(/[.,;:!?]+$/, ''));
+  }
+
+  return [...found].slice(0, 100);
 }
 
 export type ProcessedPage = {
@@ -258,6 +293,8 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
   const crawlBudget = Math.min(e.RESEARCH_TOTAL_BUDGET_MS, e.RESEARCH_TIMEOUT_MS * (e.MAX_RESEARCH_PAGES + 1));
   const start = Date.now();
   let sitemapLoaded = false;
+  let renderedFallbacksUsed = 0;
+  const MAX_RENDERED_FALLBACKS = 4;
   let pagesProcessed = 0;
   let pagesDiscovered = 0;
   let partial = false;
@@ -316,13 +353,79 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           continue;
         }
 
+        const directStatus = response.status;
+        const contentType = response.headers.get('content-type') || '';
+
         if (!response.ok) {
+          // Some production sites intentionally block generic server fetches
+          // with 403/429/5xx while remaining publicly readable in a browser.
+          // Give the browser-backed reader one bounded chance before declaring
+          // the source unavailable.
+          if (renderedFallbacksUsed < MAX_RENDERED_FALLBACKS && [401, 403, 407, 408, 429, 451, 500, 502, 503, 504].includes(response.status)) {
+            const rendered = await fetchRenderedFallback(target);
+            renderedFallbacksUsed += 1;
+            if (rendered) {
+              const renderedLinks = extractRenderedLinks(rendered.text, target);
+              partial = true;
+              processedPages.push({
+                id: '',
+                url: target,
+                canonicalUrl: target,
+                title: rendered.title,
+                text: rendered.text,
+              });
+              pagesDiscovered = seen.size;
+              pagesProcessed += 1;
+              // Persisting happens below through the normal source path, so the
+              // reader result remains auditable just like directly fetched HTML.
+              const contentHash = await crypto.subtle.digest(
+                'SHA-256',
+                new TextEncoder().encode(rendered.text),
+              ).then(buf => Buffer.from(buf).toString('hex'));
+              const source = await supabase.from('brand_sources').upsert({
+                organization_id: organizationId,
+                brand_id: brandId,
+                url: target,
+                canonical_url: target,
+                title: rendered.title,
+                content_type: 'text/plain',
+                status: 'ACTIVE',
+                http_status: directStatus,
+                retrieved_at: new Date().toISOString(),
+                content_hash: contentHash,
+                extracted_text: rendered.text,
+                metadata: { rendered_fallback: true },
+              }, { onConflict: 'brand_id,canonical_url' }).select('id').single();
+              if (source.error) throw source.error;
+              const link = await supabase.from('research_sources').upsert({
+                research_run_id: researchRunId,
+                organization_id: organizationId,
+                source_id: source.data.id,
+                status: 'PROCESSED',
+              }, { onConflict: 'research_run_id,source_id' });
+              if (link.error) throw link.error;
+              processedPages[processedPages.length - 1] = {
+                id: source.data.id,
+                url: target,
+                canonicalUrl: target,
+                title: rendered.title,
+                text: rendered.text,
+              };
+              for (const next of renderedLinks) {
+                if (isResearchCandidate(root, normalizeUrl(next)) && !seen.has(normalizeUrl(next)) && queue.length + seen.size < e.MAX_RESEARCH_PAGES * 5) {
+                  queue.push({ url: normalizeUrl(next), priority: researchPagePriority(root, normalizeUrl(next)) });
+                }
+              }
+              continue;
+            }
+          }
+
           partial = true;
           recordRunFailure(`HTTP_${response.status}`, `HTTP ${response.status}`);
           await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: `HTTP_${response.status}`, message: `HTTP ${response.status}`, httpStatus: response.status });
           continue;
         }
-        const contentType = response.headers.get('content-type') || '';
+
         if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
           partial = true;
           recordRunFailure('NOT_HTML', 'Not an HTML page');
@@ -364,13 +467,15 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           continue;
         }
 
-        if (shouldUseRenderedFallback(content, extracted.text, extracted.links)) {
+        if (renderedFallbacksUsed < MAX_RENDERED_FALLBACKS && shouldUseRenderedFallback(content, extracted.text, extracted.links, extracted.headings)) {
           const rendered = await fetchRenderedFallback(target);
+          renderedFallbacksUsed += 1;
           if (rendered && rendered.text.length > extracted.text.length) {
             extracted = {
               ...extracted,
               title: rendered.title ?? extracted.title,
               text: rendered.text,
+              links: [...new Set([...extracted.links, ...extractRenderedLinks(rendered.text, target)])],
             };
             obs.info('Used rendered research fallback', { researchRunId, brandId, url: target });
           }
