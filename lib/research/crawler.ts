@@ -58,7 +58,7 @@ export function researchPagePriority(root: string, rawUrl: string): number {
     if (HIGH_SIGNAL_PATHS.some((pattern) => pattern.test(path))) score += 70;
     if (LOW_SIGNAL_PATHS.some((pattern) => pattern.test(path))) score -= 50;
     score -= Math.min(path.split('/').filter(Boolean).length, 5) * 3;
-    if (/\\.(?:pdf|zip|png|jpe?g|gif|svg|webp|xml)$/i.test(path)) score -= 100;
+    if (/\.(?:pdf|zip|png|jpe?g|gif|svg|webp|xml)$/i.test(path)) score -= 100;
 
     return score;
   } catch {
