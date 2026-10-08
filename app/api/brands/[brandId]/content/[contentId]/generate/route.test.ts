@@ -197,7 +197,7 @@ describe('POST /api/brands/[brandId]/content/[contentId]/generate', () => {
         },
         error: null,
       }],
-      ['ai_tasks', { data: null, error: null }],
+      ['ai_tasks', { data: { id: 'task-stale' }, error: null }],
     ]);
     mocks.createSupabaseServerClient.mockResolvedValue(client);
     mocks.loadContentSnapshot.mockResolvedValue({ suggestionRows: [] });
