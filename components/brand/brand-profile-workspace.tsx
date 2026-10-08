@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BookOpen, Image as ImageIcon, Megaphone, Palette, Quote, Sparkles, Target, Type, Users } from 'lucide-react';
 import { BrandField, BrandIdentityRow, BrandPanel, BrandSection, NotDetected, brandInitials } from './brand-profile-primitives';
 import { EditableBrandRules, EditableColorPalette, EditablePersonas, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
-import type { BrandIdentity } from '@/lib/brand/identity-mapping';
+import { readIdentity, type BrandIdentity, type BrandIdentityRow } from '@/lib/brand/identity-mapping';
 import { readableTextOn } from '@/lib/brand/visual-extraction';
 import { TONE_OPTIONS, VOICE_AXES, describeVoice, voiceAxisValues } from '@/lib/brand/voice';
 
@@ -174,7 +174,7 @@ function BrandLivePreview({
 export function BrandProfileWorkspace({
   brandId,
   websiteUrl,
-  identity,
+  identity: initialIdentity,
   onRescan,
   rescanState,
 }: {
@@ -184,7 +184,16 @@ export function BrandProfileWorkspace({
   onRescan?: () => void;
   rescanState?: 'idle' | 'running' | 'error';
 }) {
-  const { save, saving, error, savedAt } = useBrandIdentityEditor(brandId);
+  const [identity, setIdentity] = useState<BrandIdentity>(initialIdentity);
+  const onSaved = useCallback((brand: unknown) => {
+    if (!brand || typeof brand !== 'object') return;
+    setIdentity(readIdentity(brand as BrandIdentityRow));
+  }, []);
+  const { save, saving, error, savedAt } = useBrandIdentityEditor(brandId, onSaved);
+
+  useEffect(() => {
+    setIdentity(initialIdentity);
+  }, [initialIdentity]);
   const paletteVars = useMemo(() => ({
     '--brand-primary': identity.primaryColor ?? identity.palette[0]?.hex ?? 'var(--accent)',
     '--brand-secondary': identity.palette.find((c) => c.role === 'secondary')?.hex ?? identity.primaryColor ?? 'var(--accent-2)',
