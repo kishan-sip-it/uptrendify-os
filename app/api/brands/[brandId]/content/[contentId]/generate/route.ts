@@ -11,6 +11,10 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 const paramsSchema = z.object({ brandId: z.string().uuid(), contentId: z.string().uuid() });
+
+// Vercel execution is capped at 120s for this route. A RUNNING task older than
+// that hard limit plus a small grace period cannot still be a valid live worker.
+export const STALE_CONTENT_GENERATION_MS = 150_000;
 const bodySchema = z.object({ idempotencyKey: z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9:_-]+$/).optional() }).strict();
 
 async function loadBrand(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, brandId: string, organizationId: string) {
@@ -31,10 +35,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     if (running.error) throw running.error;
     if (running.data) {
       const startedAt = running.data.started_at ? new Date(running.data.started_at).getTime() : 0;
-      const orphaned = !running.data.provider && startedAt > 0 && Date.now() - startedAt > 60_000;
+      const orphaned = stale;
       if (orphaned) {
-        await supabase.from('ai_tasks').update({ status: 'FAILED', error_code: 'ORPHANED_EXECUTION', error_message: 'The previous generation worker never started. It was safely released for a new attempt.', finished_at: new Date().toISOString() }).eq('id', running.data.id).eq('status', 'RUNNING');
-        obs.warn('Released orphaned content generation task', { contentId, aiTaskId: running.data.id });
+        await supabase.from('ai_tasks').update({ status: 'FAILED', error_code: 'STALE_EXECUTION', error_message: 'The previous generation exceeded the execution safety window and was safely released for a new attempt.', finished_at: new Date().toISOString() }).eq('id', running.data.id).eq('status', 'RUNNING');
+        obs.warn('Released stale content generation task', { contentId, aiTaskId: running.data.id });
       } else {
         return NextResponse.json({ error: 'A generation is already running for this content item', aiTaskId: running.data.id, status: 'RUNNING' }, { status: 409 });
       }
