@@ -50,7 +50,12 @@ export async function withTransientRetry<T>(run: () => Promise<T>, options: Retr
         attempt,
         error: error instanceof Error ? error.message.slice(0, 300) : String(error),
       });
-      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)));
+      const retryAfterMs = error instanceof AiProviderError ? error.retryAfterMs : undefined;
+      const delayMs = Math.min(
+        30_000,
+        Math.max(baseDelayMs * 2 ** (attempt - 1), retryAfterMs ?? 0),
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
   throw lastError;
