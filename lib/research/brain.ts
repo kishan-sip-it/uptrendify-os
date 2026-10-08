@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createDefaultRegistry } from '@/lib/ai/registry';
+import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { env } from '@/lib/env';
 import type { AiProvider } from '@/lib/ai/types';
 import {
@@ -270,25 +270,48 @@ export async function analyzeResearchEvidence(
     }).eq('id', aiTaskId);
   };
 
-  let provider: AiProvider | null = deps.provider !== undefined ? deps.provider : createDefaultRegistry().default();
-  const providerId = provider?.id;
-  if (!provider) {
+  const registry = deps.provider === undefined ? createDefaultRegistry() : null;
+  const providers = deps.provider !== undefined
+    ? (deps.provider ? [deps.provider] : [])
+    : (registry?.configuredInOrder() ?? []);
+
+  if (providers.length === 0) {
     const message = providerConfigurationMessage();
     obs.error('No configured AI provider for brand intelligence', { organizationId, brandId, researchRunId, selectedProvider: env().DEFAULT_AI_PROVIDER });
     await failTask('PROVIDER_UNCONFIGURED', message);
     return { status: 'FAILED', aiTaskId, errorCode: 'PROVIDER_UNCONFIGURED', errorMessage: message };
   }
 
-  const model = provider.defaultModel;
-  const providerUpdate = await supabase.from('ai_tasks').update({
-    provider: providerId,
-    model,
-  }).eq('id', aiTaskId);
-  if (providerUpdate.error) throw providerUpdate.error;
-
+  let provider: AiProvider = providers[0]!;
+  let model = provider.defaultModel;
   const startedAt = Date.now();
   try {
-    const extraction = await extractWithRetry(provider, evidence);
+    const extractionRun = await runWithProviderFailover(
+      providers,
+      async (candidate) => {
+        provider = candidate;
+        model = candidate.defaultModel;
+        const providerUpdate = await supabase.from('ai_tasks').update({
+          provider: candidate.id,
+          model: candidate.defaultModel,
+        }).eq('id', aiTaskId);
+        if (providerUpdate.error) throw providerUpdate.error;
+        return extractWithRetry(candidate, evidence);
+      },
+      async (failed, next, error) => {
+        obs.warn('Failing over brand intelligence to next AI provider', {
+          researchRunId,
+          brandId,
+          organizationId,
+          failedProvider: failed.id,
+          nextProvider: next.id,
+          error: error instanceof Error ? error.message.slice(0, 300) : String(error),
+        });
+      },
+    );
+    provider = extractionRun.provider;
+    model = extractionRun.provider.defaultModel;
+    const extraction = extractionRun.result;
     const { result } = extraction;
 
     const drafts = deriveAllSuggestionDrafts(result, bundle.sources, bundle.sourceIndex);
@@ -319,7 +342,7 @@ export async function analyzeResearchEvidence(
 
     const aiTaskUpdate = await supabase.from('ai_tasks').update({
       status: 'SUCCEEDED',
-      provider: providerId,
+      provider: provider.id,
       model: extraction.model,
       output_metadata: outputMetadata,
       latency_ms: Date.now() - startedAt,
@@ -331,14 +354,14 @@ export async function analyzeResearchEvidence(
 
     obs.info('Brand intelligence generated', {
       researchRunId, brandId, organizationId,
-      provider: providerId, model: extraction.model,
+      provider: provider.id, model: extraction.model,
       suggestions: suggestionsWritten, found, notFound,
     });
 
     return {
       status: 'SUCCEEDED',
       aiTaskId,
-      provider: providerId,
+      provider: provider.id,
       model: extraction.model,
       suggestionsWritten,
       suggestionsFound: found,
@@ -352,12 +375,12 @@ export async function analyzeResearchEvidence(
     obs.error('Brand intelligence analysis failed', {
       researchRunId,
       brandId,
-      provider: providerId,
+      provider: provider.id,
       model,
       code,
       error: message,
     });
     await failTask(code, message);
-    return { status: 'FAILED', aiTaskId, provider: providerId, model, errorCode: code, errorMessage: message };
+    return { status: 'FAILED', aiTaskId, provider: provider.id, model, errorCode: code, errorMessage: message };
   }
 }

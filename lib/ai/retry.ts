@@ -44,13 +44,22 @@ export async function withTransientRetry<T>(run: () => Promise<T>, options: Retr
       return await run();
     } catch (error) {
       lastError = error;
+      // Quota/rate-limit responses should fail over to the next configured
+      // provider immediately; waiting through the same provider's retry window
+      // just burns the generation time budget without improving the request.
+      if (error instanceof AiProviderError && error.status === 429) throw error;
       if (attempt === maxAttempts || !isTransientProviderError(error)) throw error;
       obs.info(`Retrying ${label} after transient provider error`, {
         provider: options.providerId,
         attempt,
         error: error instanceof Error ? error.message.slice(0, 300) : String(error),
       });
-      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)));
+      const retryAfterMs = error instanceof AiProviderError ? error.retryAfterMs : undefined;
+      const delayMs = Math.min(
+        30_000,
+        Math.max(baseDelayMs * 2 ** (attempt - 1), retryAfterMs ?? 0),
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
   throw lastError;

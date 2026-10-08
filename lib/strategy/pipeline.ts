@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createDefaultRegistry } from '@/lib/ai/registry';
+import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { withTransientRetry } from '@/lib/ai/retry';
 import { classifyProviderFailure } from '@/lib/ai/classify';
 import type { AiProvider } from '@/lib/ai/types';
@@ -141,19 +141,50 @@ export async function runStrategyGeneration(input: StrategyPipelineInput, deps: 
   } else aiTaskId = aiTaskInsert.data.id;
 
   const fail = (code: string, message: string) => failTask(supabase, { aiTaskId, strategyId, organizationId, code, message });
-  const provider = deps.provider !== undefined ? deps.provider : createDefaultRegistry().default();
-  const providerId = provider?.id;
-  if (!provider) { await fail('PROVIDER_UNCONFIGURED', 'No AI provider is configured.'); return { status: 'FAILED', aiTaskId, version, errorCode: 'PROVIDER_UNCONFIGURED', errorMessage: 'No AI provider is configured.' }; }
-  const model = provider.defaultModel;
-  const providerUpdate = await supabase.from('ai_tasks').update({ provider: providerId, model }).eq('id', aiTaskId);
-  if (providerUpdate.error) throw providerUpdate.error;
+  const registry = deps.provider === undefined ? createDefaultRegistry() : null;
+  const providers = deps.provider !== undefined
+    ? (deps.provider ? [deps.provider] : [])
+    : (registry?.configuredInOrder() ?? []);
+
+  if (providers.length === 0) {
+    await fail('PROVIDER_UNCONFIGURED', 'No AI provider is configured.');
+    return { status: 'FAILED', aiTaskId, version, errorCode: 'PROVIDER_UNCONFIGURED', errorMessage: 'No AI provider is configured.' };
+  }
+
+  let provider = providers[0]!;
+  let model = provider.defaultModel;
+
+
 
   let result: StrategyOutput;
   let providerModel: string;
   let usage: { inputTokens?: number; outputTokens?: number } | undefined;
   const startedAt = Date.now();
   try {
-    const extraction = await withTransientRetry(() => extractStrategy(provider, contextText), { label: 'strategy generation', providerId });
+    const extractionRun = await runWithProviderFailover(
+      providers,
+      async (candidate) => {
+        provider = candidate;
+        model = candidate.defaultModel;
+        const providerUpdate = await supabase.from('ai_tasks').update({ provider: candidate.id, model: candidate.defaultModel }).eq('id', aiTaskId);
+        if (providerUpdate.error) throw providerUpdate.error;
+        return withTransientRetry(() => extractStrategy(candidate, contextText), { label: 'strategy generation', providerId: candidate.id });
+      },
+      async (failed, next, error) => {
+        obs.warn('Failing over strategy generation to next AI provider', {
+          strategyId,
+          brandId,
+          organizationId,
+          failedProvider: failed.id,
+          nextProvider: next.id,
+          error: error instanceof Error ? error.message.slice(0, 300) : String(error),
+        });
+      },
+    );
+    provider = extractionRun.provider;
+    model = extractionRun.provider.defaultModel;
+    const extraction = extractionRun.result;
+    const providerId = extractionRun.provider.id;
     result = extraction.result; providerModel = extraction.model; usage = extraction.usage;
     const persistUpdate = await supabase.from('strategies').update({ status: 'SUCCEEDED', provider: providerId, model: providerModel, output: result, input_snapshot: { ...summarizeSnapshot(snapshot), contextChars: contextText.length }, finished_at: new Date().toISOString() }).eq('id', strategyId).eq('organization_id', organizationId);
     if (persistUpdate.error) throw persistUpdate.error;
@@ -166,9 +197,9 @@ export async function runStrategyGeneration(input: StrategyPipelineInput, deps: 
     const message = error instanceof Error ? error.message : String(error);
     const classified = classifyProviderFailure(error);
     const code = isStrategyValidationError(error) ? 'VALIDATION_ERROR' : classified.code;
-    obs.error('Strategy generation failed', { strategyId, brandId, organizationId, provider: providerId, model, error: message });
+    obs.error('Strategy generation failed', { strategyId, brandId, organizationId, provider: provider.id, model, error: message });
     await fail(code, message);
-    return { status: 'FAILED', aiTaskId, version, provider: providerId, model, errorCode: code, errorMessage: message };
+    return { status: 'FAILED', aiTaskId, version, provider: provider.id, model, errorCode: code, errorMessage: message };
   }
 }
 

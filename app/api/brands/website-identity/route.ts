@@ -4,7 +4,7 @@ import { requireOrgRole, CAN_VIEW_DASHBOARD } from '@/lib/auth/roles';
 import { env } from '@/lib/env';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from '@/lib/research/url-security';
 import { extractBrandIdentity, parseCssColor, rankPalette, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
-import { createDefaultRegistry } from '@/lib/ai/registry';
+import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { buildEvidenceContext, extractBrandIntelligence, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
 
 export const maxDuration = 45;
@@ -157,11 +157,11 @@ function externalStylesheetUrls(html: string, baseUrl: string): string[] {
   const urls = new Set<string>();
   $('link[rel="stylesheet"]').each((_i, el) => {
     const href = absoluteUrl($(el).attr('href'), baseUrl);
-    if (href) urls.add(href);
+    if (href && sameSite(baseUrl, href)) urls.add(href);
   });
   $('link[rel~="preload"][as="style"]').each((_i, el) => {
     const href = absoluteUrl($(el).attr('href'), baseUrl);
-    if (href) urls.add(href);
+    if (href && sameSite(baseUrl, href)) urls.add(href);
   });
   return [...urls].slice(0, 8);
 }
@@ -180,6 +180,16 @@ function mergeExternalCss(identity: ExtractedIdentity, cssBlocks: string[]): Ext
       const current = sink.get(hex) ?? { count: 0, sources: new Set<string>() };
       current.count += 1;
       current.sources.add('external-stylesheet');
+      sink.set(hex, current);
+    }
+
+    const semanticDecl = /--(?:brand|primary|secondary|accent|color-primary|color-secondary|brand-color)(?:-[a-z0-9-]+)?\\s*:\\s*([^;}]+)/gi;
+    for (const match of cleaned.matchAll(semanticDecl)) {
+      const hex = parseCssColor(match[1] ?? '');
+      if (!hex) continue;
+      const current = sink.get(hex) ?? { count: 0, sources: new Set<string>() };
+      current.count += 5;
+      current.sources.add('semantic-css');
       sink.set(hex, current);
     }
     for (const match of cleaned.matchAll(/font-family\s*:\s*([^;}]+)/gi)) {
@@ -294,7 +304,7 @@ export async function GET(request: Request) {
         const node = $(el);
         const candidate = node.attr('src') ?? node.attr('poster');
         const url = absoluteUrl(candidate, outcome.finalUrl);
-        if (!url || found.has(url)) return;
+        if (!url || !sameSite(outcome.finalUrl, url) || found.has(url)) return;
         found.set(url, { url, type: 'image', label: node.attr('alt') ?? null });
       });
       return [...found.values()].slice(0, 18);
@@ -303,19 +313,26 @@ export async function GET(request: Request) {
     let aiProfile: Record<string, unknown> | null = null;
     const aiWarnings: string[] = [];
     try {
-      const provider = createDefaultRegistry().default();
-      if (!provider) {
-        aiWarnings.push('AI enrichment is unavailable because no configured primary AI provider was found.');
+      const registry = createDefaultRegistry();
+      const providers = registry.configuredInOrder();
+      if (providers.length === 0) {
+        aiWarnings.push('AI enrichment is unavailable because no configured AI provider was found.');
       } else {
         const fragments: EvidenceFragment[] = evidencePages
           .filter((page) => page.text.trim())
           .map((page) => ({ url: page.url, title: page.title, text: page.text }));
         const evidence = buildEvidenceContext(fragments);
         if (evidence.length > 0) {
-          const extraction = await extractBrandIntelligence(provider, evidence);
-          aiProfile = buildAiProfile(extraction.result);
-          if (!identity.brandName && extraction.result.identity.brandName) identity.brandName = extraction.result.identity.brandName;
-          if (!identity.description && extraction.result.identity.companyDescription) identity.description = extraction.result.identity.companyDescription;
+          const extractionRun = await runWithProviderFailover(
+            providers,
+            (provider) => extractBrandIntelligence(provider, evidence),
+            (failed, next) => {
+              aiWarnings.push(`AI enrichment switched from ${failed.id} to ${next.id} after a transient provider limit or availability error.`);
+            },
+          );
+          aiProfile = buildAiProfile(extractionRun.result.result);
+          if (!identity.brandName && extractionRun.result.result.identity.brandName) identity.brandName = extractionRun.result.result.identity.brandName;
+          if (!identity.description && extractionRun.result.result.identity.companyDescription) identity.description = extractionRun.result.result.identity.companyDescription;
         }
       }
     } catch (error) {

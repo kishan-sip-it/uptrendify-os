@@ -2,7 +2,7 @@ import { AiProviderError } from './types';
 
 export async function postJson(
   url: string,
-  { headers = {}, body, timeoutMs = 30_000 }: { headers?: Record<string, string>; body: unknown; timeoutMs?: number },
+  { headers = {}, body, timeoutMs = 30_000, provider = 'http' }: { headers?: Record<string, string>; body: unknown; timeoutMs?: number; provider?: string },
 ): Promise<any> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -26,7 +26,11 @@ export async function postJson(
 
   if (!response.ok) {
     const detail = data?.error?.message ?? data?.error ?? raw.slice(0, 200);
-    throw new AiProviderError('http', `Provider returned ${response.status}: ${detail}`, response.status);
+    const retryAfterSeconds = response.headers.get('retry-after');
+    const retryAfterMs = retryAfterSeconds && /^\d+(?:\.\d+)?$/.test(retryAfterSeconds)
+      ? Math.ceil(Number(retryAfterSeconds) * 1000)
+      : undefined;
+    throw new AiProviderError(provider, `Provider returned ${response.status}: ${detail}`, response.status, retryAfterMs);
   }
   return data;
 }

@@ -36,11 +36,13 @@ export interface AiProvider {
 export class AiProviderError extends Error {
   readonly status: number;
   readonly provider: string;
+  readonly retryAfterMs?: number;
 
-  constructor(provider: string, message: string, status = 502) {
+  constructor(provider: string, message: string, status = 502, retryAfterMs?: number) {
     super(message);
     this.name = 'AiProviderError';
     this.provider = provider;
     this.status = status;
+    this.retryAfterMs = retryAfterMs;
   }
 }
