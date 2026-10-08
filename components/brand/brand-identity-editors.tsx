@@ -50,6 +50,7 @@ export function EditableLogo({
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [pending, setPending] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const upload = async (file: File) => {
@@ -61,6 +62,7 @@ export function EditableLogo({
       const response = await fetch(`/api/brands/${brandId}/logo`, { method: 'POST', body: form });
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || 'Could not upload the logo.');
+      setImageFailed(false);
       onUploaded(body?.brand);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not upload the logo.');
@@ -73,8 +75,12 @@ export function EditableLogo({
   return (
     <div className="brand-logo-editor">
       <div className="brand-logo-editor-preview">
-        {value ? (
-          <img src={value} alt={brandName ? `${brandName} logo` : 'Brand logo'} />
+        {value && !imageFailed ? (
+          <img
+            src={value}
+            alt={brandName ? `${brandName} logo` : 'Brand logo'}
+            onError={() => setImageFailed(true)}
+          />
         ) : (
           <span>{brandName ? brandName.slice(0, 2).toUpperCase() : 'BR'}</span>
         )}
