@@ -342,7 +342,7 @@ export async function analyzeResearchEvidence(
 
     const aiTaskUpdate = await supabase.from('ai_tasks').update({
       status: 'SUCCEEDED',
-      provider: providerId,
+      provider: provider.id,
       model: extraction.model,
       output_metadata: outputMetadata,
       latency_ms: Date.now() - startedAt,
@@ -361,7 +361,7 @@ export async function analyzeResearchEvidence(
     return {
       status: 'SUCCEEDED',
       aiTaskId,
-      provider: providerId,
+      provider: provider.id,
       model: extraction.model,
       suggestionsWritten,
       suggestionsFound: found,
