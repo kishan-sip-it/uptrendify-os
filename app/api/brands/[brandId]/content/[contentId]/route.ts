@@ -123,7 +123,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
     let latestGeneration = generationResult.data;
 
     if (latestGeneration?.status === 'RUNNING' && latestGeneration.started_at) {
-      const startedAt = new Date(latestGeneration.started_at).getTime();
+      const staleTask = latestGeneration;
+      const startedAt = new Date(staleTask.started_at).getTime();
       if (startedAt > 0 && Date.now() - startedAt > STALE_GENERATION_MS) {
         const finishedAt = new Date().toISOString();
         const staleUpdate = await supabase
@@ -134,15 +135,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
             error_message: 'The previous generation exceeded the execution safety window and was safely released. Start a new generation to try again.',
             finished_at: finishedAt,
           })
-          .eq('id', latestGeneration.id)
+          .eq('id', staleTask.id)
           .eq('organization_id', auth.context.organizationId)
           .eq('status', 'RUNNING')
-          .select('id,status,error_code,error_message,provider,model,started_at,finished_at,output_metadata')
+          .select('id,status,error_code,error_message,provider,model,started_at,finished_at,output_metadata,created_at')
           .maybeSingle();
 
         if (staleUpdate.error) throw staleUpdate.error;
         latestGeneration = staleUpdate.data ?? {
-          ...latestGeneration,
+          ...staleTask,
           status: 'FAILED',
           error_code: 'STALE_EXECUTION',
           error_message: 'The previous generation exceeded the execution safety window and was safely released. Start a new generation to try again.',
@@ -150,7 +151,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bra
         };
         obs.warn('Recovered stale content generation task from detail read', {
           contentId,
-          aiTaskId: latestGeneration.id,
+          aiTaskId: staleTask.id,
         });
       }
     }
