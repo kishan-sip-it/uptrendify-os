@@ -51,7 +51,7 @@ export const envSchema = z.object({
   ANTHROPIC_API_KEY: optionalString('ANTHROPIC_API_KEY'),
   ANTHROPIC_MODEL: stringWithDefault('ANTHROPIC_MODEL', 'claude-3-5-haiku-latest'),
   GEMINI_API_KEY: optionalString('GEMINI_API_KEY'),
-  GEMINI_MODEL: stringWithDefault('GEMINI_MODEL', 'gemini-3.7-flash'),
+  GEMINI_MODEL: stringWithDefault('GEMINI_MODEL', 'gemini-3.8-flash'),
   DEFAULT_AI_PROVIDER: z.preprocess(
     (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
     z.enum(['groq', 'openai', 'anthropic', 'gemini']).default('groq'),
