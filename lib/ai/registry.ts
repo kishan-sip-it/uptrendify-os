@@ -46,6 +46,16 @@ export class AiProviderRegistry {
   }
 }
 
+export function shouldFailoverAiProvider(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { status?: unknown; retryable?: unknown };
+  if (candidate.retryable === true) return true;
+  if (typeof candidate.status === 'number') {
+    return candidate.status === 0 || candidate.status === 429 || candidate.status === 502 || candidate.status === 503 || candidate.status === 504;
+  }
+  return false;
+}
+
 export function createDefaultRegistry(): AiProviderRegistry {
   const e = env();
   return new AiProviderRegistry(e.DEFAULT_AI_PROVIDER, [
