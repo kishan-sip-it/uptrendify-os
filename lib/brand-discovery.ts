@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio';
+import { assertPublicHttpUrl, assertResolvablePublicHost } from './research/url-security';
 
 export type BrandWebsiteCandidate = {
   title: string;
@@ -377,6 +378,40 @@ function likelyDomainCandidates(query: string): string[] {
   return Array.from(variants).slice(0, 24);
 }
 
+async function discoverDirectWebsite(query: string): Promise<BrandWebsiteCandidate[]> {
+  const cleaned = query.trim();
+  const candidateUrl = /^https?:\/\//i.test(cleaned)
+    ? cleaned
+    : /^(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:[/?#].*)?$/i.test(cleaned)
+      ? 'https://' + cleaned
+      : null;
+  if (!candidateUrl) return [];
+
+  try {
+    const safe = assertPublicHttpUrl(candidateUrl);
+    await assertResolvablePublicHost(safe.hostname);
+    const probe = await probeUrl(safe.toString(), 2200);
+    if (!probe.reachable) return [];
+
+    const html = probe.blocked ? '' : await fetchHtml(safe.toString(), 1800);
+    const host = safe.hostname;
+    const title = html ? candidateTitle(html, host) : host;
+    if (isLikelyParkedPage(title, html)) return [];
+
+    return [{
+      title,
+      url: safe.toString().replace(/\/$/, ''),
+      host,
+      iconUrl: 'https://www.google.com/s2/favicons?sz=128&domain=' + encodeURIComponent(host),
+      accessNote: probe.blocked
+        ? 'This site is reachable but blocks automated inspection. You can still select the public URL.'
+        : null,
+    }];
+  } catch {
+    return [];
+  }
+}
+
 async function discoverLikelyDomains(query: string): Promise<BrandWebsiteCandidate[]> {
   const urls = likelyDomainCandidates(query).slice(0, 12);
 
@@ -418,11 +453,12 @@ export async function discoverBrandWebsites(query: string): Promise<BrandWebsite
 
   const searchQuery = cleaned + ' official website';
 
-  const [bing, google, duckduckgo, likely] = await Promise.all([
+  const [bing, google, duckduckgo, likely, direct] = await Promise.all([
     searchBing(searchQuery, cleaned).catch(() => []),
     searchGoogle(searchQuery, cleaned).catch(() => []),
     searchDuckDuckGo(searchQuery, cleaned).catch(() => []),
     discoverLikelyDomains(cleaned).catch(() => []),
+    discoverDirectWebsite(cleaned).catch(() => []),
   ]);
 
   const ranked: RankedCandidate[] = [];
@@ -449,6 +485,14 @@ export async function discoverBrandWebsites(query: string): Promise<BrandWebsite
     ranked.push({
       ...candidate,
       score: scoreCandidate(candidate, cleaned, 0) + 55,
+      providers: new Set(),
+    });
+  }
+
+  for (const candidate of direct) {
+    ranked.push({
+      ...candidate,
+      score: scoreCandidate(candidate, cleaned, 0) + 180,
       providers: new Set(),
     });
   }
