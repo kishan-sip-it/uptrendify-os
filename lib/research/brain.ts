@@ -76,7 +76,7 @@ export async function extractWithRetry(
 }
 
 export type EvidenceBundle = {
-  sources: Array<{ id: string; url: string; canonicalUrl: string; title: string | null; text: string }>;
+  sources: Array<{ id: string; url: string; canonicalUrl: string; title: string | null; text: string; firstParty: boolean }>; 
   fragments: EvidenceFragment[];
   sourceIndex: Map<string, string>;
 };
@@ -97,11 +97,17 @@ export function bundleFromRows(rows: any[]): EvidenceBundle {
       canonicalUrl: (source.canonical_url ?? source.url) as string,
       title: (source.title ?? null) as string | null,
       text: (source.extracted_text ?? '') as string,
+      firstParty: !(Boolean(source.metadata?.research_external)),
     }));
 
   const fragments: EvidenceFragment[] = sources
     .filter((source) => source.text.trim() !== '')
-    .map((source) => ({ url: source.canonicalUrl || source.url, title: source.title, text: source.text }));
+    .map((source) => ({
+      url: source.canonicalUrl || source.url,
+      title: source.title,
+      text: source.text,
+      sourceType: source.firstParty ? 'first-party' : 'external-web',
+    }));
 
   return { sources, fragments, sourceIndex: sourceIndexFromSources(sources) };
 }
@@ -113,7 +119,7 @@ async function loadRunEvidence(
 ): Promise<EvidenceBundle> {
   const { data, error } = await supabase
     .from('research_sources')
-    .select('brand_sources!inner(id,url,canonical_url,title,extracted_text)')
+    .select('brand_sources!inner(id,url,canonical_url,title,extracted_text,metadata)')
     .eq('research_run_id', researchRunId)
     .eq('organization_id', organizationId)
     .order('created_at', { ascending: true });
