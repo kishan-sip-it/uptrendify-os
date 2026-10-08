@@ -188,7 +188,9 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     const saturation = saturationOf(hex);
     const luminance = relativeLuminance(hex);
     // Repetition is the strongest signal; saturation separates brand from grey.
-    const prominence = round(Math.log2(1 + entry.count) * (0.45 + saturation));
+    const semanticBoost = entry.sources.has('meta-theme-color') ? 1.75 : entry.sources.has('semantic-css') ? 1.45 : 1;
+    const sourceDiversity = 1 + Math.min(entry.sources.size, 4) * 0.08;
+    const prominence = round(Math.log2(1 + entry.count) * (0.45 + saturation) * semanticBoost * sourceDiversity);
     return {
       hex,
       occurrences: entry.count,
@@ -265,43 +267,85 @@ function detectFonts(html: string, cssText: string, $: cheerio.CheerioAPI): Extr
   return Array.from(found.values()).slice(0, 6);
 }
 
+function sameSiteUrl(base: string | null, candidate: string): boolean {
+  if (!base) return true;
+  try {
+    const rootHost = new URL(base).hostname.toLowerCase().replace(/^www\./, '');
+    const candidateHost = new URL(candidate).hostname.toLowerCase().replace(/^www\./, '');
+    return candidateHost === rootHost || candidateHost.endsWith('.' + rootHost);
+  } catch {
+    return false;
+  }
+}
+
 function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string | null; favicon: string | null } {
-  const ogImage = $('meta[property="og:image"]').first().attr('content');
-  const twitterImage = $('meta[name="twitter:image"]').first().attr('content');
+  const baseHostToken = base
+    ? (() => {
+        try {
+          return new URL(base).hostname.replace(/^www\./, '').split('.')[0]?.toLowerCase() ?? '';
+        } catch {
+          return '';
+        }
+      })()
+    : '';
 
-  let logo: string | null = null;
-  let favicon: string | null = null;
+  const candidates: Array<{ url: string; score: number }> = [];
+  let favicon: { url: string; score: number } | null = null;
 
-  $('img').each((_i, el) => {
-    if (logo) return;
+  $('img, source').each((_i, el) => {
     const node = $(el);
-    const src = node.attr('src') ?? '';
-    const candidates = [src, node.attr('data-src') ?? '', node.attr('data-lazy-src') ?? ''];
-    const alt = node.attr('alt') ?? '';
-    for (const candidate of candidates) {
+    const srcCandidates = [
+      node.attr('src') ?? '',
+      node.attr('data-src') ?? '',
+      node.attr('data-lazy-src') ?? '',
+      node.attr('srcset')?.split(',')[0]?.trim().split(' ')[0] ?? '',
+    ];
+    const alt = [node.attr('alt') ?? '', node.attr('aria-label') ?? '', node.attr('title') ?? ''].join(' ');
+    const parentContext = $(el).parents('header,nav,[role="banner"]').first().text().slice(0, 300);
+    for (const candidate of srcCandidates) {
       if (!candidate) continue;
       const resolved = absoluteUrl(candidate, base);
-      if (!resolved) continue;
-      if (LOGO_HINT.test(resolved) || LOGO_HINT.test(alt)) {
-        logo = resolved;
-        return;
+      if (!resolved || !sameSiteUrl(base, resolved)) continue;
+
+      let score = 0;
+      if (LOGO_HINT.test(resolved)) score += 45;
+      if (LOGO_HINT.test(alt)) score += 42;
+      if (baseHostToken && new URL(resolved).hostname.toLowerCase().includes(baseHostToken)) score += 12;
+      if (/(header|nav|brand|masthead)/i.test(parentContext)) score += 10;
+      if (/wordmark|brandmark/i.test(resolved + ' ' + alt)) score += 12;
+
+      candidates.push({ url: resolved, score });
+
+      if (FAVICON_HINT.test(resolved)) {
+        const faviconScore = sameSiteUrl(base, resolved) ? 20 : 0;
+        if (!favicon || faviconScore > favicon.score) favicon = { url: resolved, score: faviconScore };
       }
-      if (!favicon && FAVICON_HINT.test(resolved)) favicon = resolved;
     }
   });
 
-  if (!logo) logo = absoluteUrl(ogImage, base) ?? absoluteUrl(twitterImage, base);
+  const metaCandidates = [
+    $('meta[property="og:image"]').first().attr('content'),
+    $('meta[name="twitter:image"]').first().attr('content'),
+  ];
+  for (const raw of metaCandidates) {
+    const resolved = absoluteUrl(raw, base);
+    if (!resolved || !sameSiteUrl(base, resolved)) continue;
+    candidates.push({ url: resolved, score: 18 });
+  }
 
   $('link[rel]').each((_i, el) => {
     const node = $(el);
     const rel = (node.attr('rel') ?? '').toLowerCase();
     const href = absoluteUrl(node.attr('href'), base);
-    if (!href) return;
-    if (!favicon && (rel.includes('icon') || rel.includes('apple-touch'))) favicon = href;
-    if (!logo && rel.includes('mask-icon')) logo = href;
+    if (!href || !sameSiteUrl(base, href)) return;
+    if (!favicon && (rel.includes('icon') || rel.includes('apple-touch'))) {
+      favicon = { url: href, score: rel.includes('apple-touch') ? 24 : 18 };
+    }
+    if (rel.includes('mask-icon')) candidates.push({ url: href, score: 26 });
   });
 
-  return { logo, favicon };
+  candidates.sort((a, b) => b.score - a.score);
+  return { logo: candidates[0]?.url ?? null, favicon: favicon?.url ?? null };
 }
 
 function detectSocials($: cheerio.CheerioAPI, base: string | null): { platform: string; url: string }[] {
