@@ -38,8 +38,39 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       const stale = startedAt > 0 && Date.now() - startedAt > STALE_CONTENT_GENERATION_MS;
       const orphaned = stale;
       if (orphaned) {
-        await supabase.from('ai_tasks').update({ status: 'FAILED', error_code: 'STALE_EXECUTION', error_message: 'The previous generation exceeded the execution safety window and was safely released for a new attempt.', finished_at: new Date().toISOString() }).eq('id', running.data.id).eq('status', 'RUNNING');
-        obs.warn('Released stale content generation task', { contentId, aiTaskId: running.data.id });
+        const staleUpdate = await supabase
+          .from('ai_tasks')
+          .update({
+            status: 'FAILED',
+            error_code: 'STALE_EXECUTION',
+            error_message: 'The previous generation exceeded the execution safety window and was safely released for a new attempt.',
+            finished_at: new Date().toISOString(),
+          })
+          .eq('id', running.data.id)
+          .eq('organization_id', auth.context.organizationId)
+          .eq('status', 'RUNNING')
+          .select('id')
+          .maybeSingle();
+
+        if (staleUpdate.error) throw staleUpdate.error;
+        if (!staleUpdate.data) {
+          const stillRunning = await supabase
+            .from('ai_tasks')
+            .select('id,status')
+            .eq('id', running.data.id)
+            .eq('organization_id', auth.context.organizationId)
+            .eq('status', 'RUNNING')
+            .maybeSingle();
+          if (stillRunning.error) throw stillRunning.error;
+          if (stillRunning.data) {
+            return NextResponse.json(
+              { error: 'A generation is already running for this content item', aiTaskId: running.data.id, status: 'RUNNING' },
+              { status: 409 },
+            );
+          }
+        } else {
+          obs.warn('Released stale content generation task', { contentId, aiTaskId: running.data.id });
+        }
       } else {
         return NextResponse.json({ error: 'A generation is already running for this content item', aiTaskId: running.data.id, status: 'RUNNING' }, { status: 409 });
       }
