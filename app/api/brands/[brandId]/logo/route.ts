@@ -118,3 +118,42 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     return NextResponse.json({ error: 'Could not upload the brand logo' }, { status: 500 });
   }
 }
+
+
+export async function DELETE(_request: Request, { params }: { params: Promise<{ brandId: string }> }) {
+  try {
+    const { brandId } = await params;
+    const auth = await requireOrgRole(CAN_CREATE_BRANDS);
+    if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
+
+    const { supabase, brand } = await loadBrand(brandId, auth.context.organizationId);
+    if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+
+    const visual = normaliseVisual(brand.visual_identity);
+    const logoPath = typeof visual.logoPath === 'string' ? visual.logoPath : null;
+    if (logoPath) {
+      const expectedPrefix = auth.context.organizationId + '/' + brandId + '/';
+      if (!logoPath.startsWith(expectedPrefix)) return NextResponse.json({ error: 'Invalid logo reference' }, { status: 400 });
+      const admin = createSupabaseAdminClient();
+      const removed = await admin.storage.from(BUCKET).remove([logoPath]);
+      if (removed.error) throw removed.error;
+    }
+
+    const nextVisual = { ...visual };
+    delete nextVisual.logoPath;
+    delete nextVisual.logoUrl;
+    const updated = await supabase
+      .from('brands')
+      .update({ visual_identity: nextVisual, updated_at: new Date().toISOString() })
+      .eq('id', brandId)
+      .eq('organization_id', auth.context.organizationId)
+      .select('id,name,slug,website_url,description,industry,market_country,target_audience,primary_color,secondary_colors,brand_rules,audience_details,offer_details,positioning,messaging,visual_identity,status')
+      .single();
+    if (updated.error) throw updated.error;
+
+    return NextResponse.json({ ok: true, brand: updated.data });
+  } catch (error) {
+    obs.error('Brand logo removal failed', { error: error instanceof Error ? error.message : String(error) });
+    return NextResponse.json({ error: 'Could not remove the brand logo' }, { status: 500 });
+  }
+}
