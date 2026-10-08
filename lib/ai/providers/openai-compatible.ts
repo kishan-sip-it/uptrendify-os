@@ -10,44 +10,64 @@ export function createOpenAiCompatibleProvider(
 ): AiProvider {
   async function generate(input: GenerateInput): Promise<GenerateResult> {
     if (!apiKey) throw new AiProviderError(id, `${id} API key is not configured`, 503);
+
+    const send = async (model: string, maxTokens = input.maxTokens): Promise<GenerateResult> => {
+      const body = {
+        model,
+        messages: [
+          ...(input.system ? [{ role: 'system', content: input.system }] : []),
+          { role: 'user', content: input.prompt },
+        ],
+        ...(input.json ? { response_format: { type: 'json_object' } } : {}),
+        ...(maxTokens
+          ? model.startsWith('openai/gpt-oss-')
+            ? { max_completion_tokens: maxTokens }
+            : { max_tokens: maxTokens }
+          : {}),
+        ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+        ...(model.startsWith('openai/gpt-oss-')
+          ? { include_reasoning: false, reasoning_effort: 'low' }
+          : {}),
+      };
+
+      const data = await postJson(`${baseUrl}/chat/completions`, {
+        provider: id,
+        headers: { authorization: `Bearer ${apiKey}` },
+        body,
+      });
+
+      const choice = data?.choices?.[0];
+      if (!choice?.message?.content) {
+        throw new AiProviderError(id, `${id} returned no completion`, 502);
+      }
+
+      return {
+        text: String(choice.message.content).trim(),
+        model,
+        usage: {
+          inputTokens: data?.usage?.prompt_tokens,
+          outputTokens: data?.usage?.completion_tokens,
+        },
+      };
+    };
+
     const model = input.model ?? defaultModel;
-    const body = {
-      model,
-      messages: [
-        ...(input.system ? [{ role: 'system', content: input.system }] : []),
-        { role: 'user', content: input.prompt },
-      ],
-      ...(input.json ? { response_format: { type: 'json_object' } } : {}),
-      ...(input.maxTokens
-        ? model.startsWith('openai/gpt-oss-')
-          ? { max_completion_tokens: input.maxTokens }
-          : { max_tokens: input.maxTokens }
-        : {}),
-      ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
-      ...(model.startsWith('openai/gpt-oss-')
-        ? { include_reasoning: false, reasoning_effort: 'low' }
-        : {}),
-    };
-
-    const data = await postJson(`${baseUrl}/chat/completions`, {
-      provider: id,
-      headers: { authorization: `Bearer ${apiKey}` },
-      body,
-    });
-
-    const choice = data?.choices?.[0];
-    if (!choice?.message?.content) {
-      throw new AiProviderError(id, `${id} returned no completion`, 502);
+    try {
+      return await send(model);
+    } catch (error) {
+      // Keep GPT-OSS 120B as the quality-first default. When its Groq model
+      // bucket is rate-limited, a single bounded 20B fallback keeps the task
+      // truthful and usable without inventing another provider.
+      if (
+        id === 'groq' &&
+        model === 'openai/gpt-oss-120b' &&
+        error instanceof AiProviderError &&
+        error.status === 429
+      ) {
+        return send('openai/gpt-oss-20b', Math.min(input.maxTokens ?? 1200, 1200));
+      }
+      throw error;
     }
-
-    return {
-      text: String(choice.message.content).trim(),
-      model,
-      usage: {
-        inputTokens: data?.usage?.prompt_tokens,
-        outputTokens: data?.usage?.completion_tokens,
-      },
-    };
   }
 
   return {
