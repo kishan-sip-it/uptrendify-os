@@ -1,33 +1,38 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Moon, Sun } from 'lucide-react';
+import { Monitor, Moon, Sun } from 'lucide-react';
 
-export type ThemePreference = 'light' | 'dark';
+export type ThemePreference = 'light' | 'dark' | 'system';
 
 const OPTIONS = [
   ['light', 'Light', Sun],
   ['dark', 'Dark', Moon],
+  ['system', 'System', Monitor],
 ] as const;
 
 function readTheme(): ThemePreference {
   if (typeof document !== 'undefined') {
-    return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+    const current = document.documentElement.dataset.theme;
+    return current === 'dark' || current === 'system' ? current : 'light';
   }
   return 'light';
 }
 
-export function ThemeController() {
+export function ThemeController({ compact = false }: { compact?: boolean }) {
   const [theme, setTheme] = useState<ThemePreference>(readTheme);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('uptrendify-theme');
-    const initial: ThemePreference = stored === 'dark' ? 'dark' : 'light';
+    let stored: string | null = null;
+    try { stored = window.localStorage.getItem('uptrendify-theme'); } catch { /* Storage may be disabled. */ }
+    const initial: ThemePreference = stored === 'dark' || stored === 'system' ? stored : 'light';
 
     setTheme(initial);
     document.documentElement.dataset.theme = initial;
 
-    if (!stored || stored === 'system') {
+    // The preferences API remains light/dark-only. System is a local preference
+    // and is resolved by the existing CSS media-query theme rules.
+    if (!stored) {
       void fetch('/api/preferences', { cache: 'no-store' })
         .then(async (response) => {
           if (!response.ok) return;
@@ -36,7 +41,7 @@ export function ThemeController() {
           if (preference === 'light' || preference === 'dark') {
             setTheme(preference);
             document.documentElement.dataset.theme = preference;
-            window.localStorage.setItem('uptrendify-theme', preference);
+            try { window.localStorage.setItem('uptrendify-theme', preference); } catch { /* Keep the current session preference. */ }
           }
         })
         .catch(() => undefined);
@@ -46,7 +51,8 @@ export function ThemeController() {
   async function change(next: ThemePreference) {
     setTheme(next);
     document.documentElement.dataset.theme = next;
-    window.localStorage.setItem('uptrendify-theme', next);
+    try { window.localStorage.setItem('uptrendify-theme', next); } catch { /* Theme still applies for this session. */ }
+    if (next === 'system') return;
     await fetch('/api/preferences', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -55,7 +61,7 @@ export function ThemeController() {
   }
 
   return (
-    <div className="theme-control" aria-label="Theme preference">
+    <div className={'theme-control' + (compact ? ' theme-control-compact' : '')} role="group" aria-label="Theme preference">
       {OPTIONS.map(([key, label, Icon]) => (
         <button
           key={key}

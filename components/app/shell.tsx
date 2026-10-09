@@ -8,6 +8,7 @@ import {
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import HoldButton from '@/components/react-bits/HoldButton';
 import { GuidedTour } from '@/components/tours/GuidedTour';
+import { ThemeController } from '@/components/theme/theme-controller';
 
 export type ShellBrand = { id: string; name: string; website_url: string | null; status: string | null };
 export type ShellOrganization = { id: string; name: string; role: string };
@@ -501,6 +502,8 @@ export function AppShell({
               </button>
             ) : null}
             </div>
+
+          <ThemeController compact />
 
           <div className="user-menu">
             <SwitchMenu

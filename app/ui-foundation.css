@@ -146,6 +146,19 @@ html[data-theme='dark'] {
   --accent-2: #93c5fd;
 }
 
+@media (prefers-color-scheme: dark) {
+  html[data-theme='system'] {
+    --surface-inset: #070b12;
+    --surface-overlay: rgba(7, 11, 18, 0.96);
+    --surface-progress: #1c2a40;
+    --surface-skeleton: #172236;
+    --text-inverse: #07111f;
+    --text-neutral: var(--text-muted);
+    --focus: var(--accent);
+    --accent-2: #93c5fd;
+  }
+}
+
 /* --------------------------------------------------------------------------
    6. BASE TYPOGRAPHY
    Collapses the competing declarations. The previous body rule asked for

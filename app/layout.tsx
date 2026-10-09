@@ -59,7 +59,7 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const themeBoot = `(() => { try { const t = localStorage.getItem('uptrendify-theme'); document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light'; } catch { document.documentElement.dataset.theme = 'light'; } })()`;
+  const themeBoot = `(() => { try { const t = localStorage.getItem('uptrendify-theme'); document.documentElement.dataset.theme = t === 'dark' || t === 'system' ? t : 'light'; } catch { document.documentElement.dataset.theme = 'light'; } })()`;
   return (
     <html lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBoot }} /></head>

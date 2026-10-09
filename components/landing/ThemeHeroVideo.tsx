@@ -4,9 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Activity, ArrowDownRight, BrainCircuit, Globe2, Layers3, Sparkles, Workflow } from 'lucide-react';
 
 type ThemeName = 'light' | 'dark';
+type ThemePreference = ThemeName | 'system';
 
 function readTheme(): ThemeName {
-  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  const preference = document.documentElement.dataset.theme as ThemePreference | undefined;
+  if (preference === 'dark') return 'dark';
+  if (preference === 'system') return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return 'light';
 }
 
 export default function ThemeHeroVideo() {
@@ -26,13 +30,19 @@ export default function ThemeHeroVideo() {
     observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
 
     const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const updateMotion = () => setReducedMotion(motionQuery.matches);
+    const updateSystemTheme = () => {
+      if (root.dataset.theme === 'system') setTheme(readTheme());
+    };
     updateMotion();
     motionQuery.addEventListener('change', updateMotion);
+    systemThemeQuery.addEventListener('change', updateSystemTheme);
 
     return () => {
       observer.disconnect();
       motionQuery.removeEventListener('change', updateMotion);
+      systemThemeQuery.removeEventListener('change', updateSystemTheme);
     };
   }, []);
 
