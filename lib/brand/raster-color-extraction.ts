@@ -205,6 +205,7 @@ export function extractRasterPalette(input: Uint8Array, limit = 12): RasterColor
         const shift = 8 - bitDepth - (bitOffset % 8);
         const indexMask = (1 << bitDepth) - 1;
         const colorIndex = (byte >> shift) & indexMask;
+        if (!palette) continue;
         const paletteOffset = colorIndex * 3;
         if (paletteOffset + 2 >= palette.length) continue;
         red = palette[paletteOffset]!;
