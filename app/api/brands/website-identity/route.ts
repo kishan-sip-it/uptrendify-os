@@ -624,7 +624,10 @@ export async function GET(request: Request) {
 
     const cssBlocks = (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url)))).flat();
     const svgUrls = [...new Set([identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons])]
-      .filter((url): url is string => typeof url === 'string' && /\.svg(?:[?#]|$)/i.test(url))
+      .filter((url): url is string => {
+        if (typeof url !== 'string') return false;
+        return /\.svg(?:[?#]|$)/i.test(url);
+      })
       .slice(0, 3);
     const svgBlocks = (await Promise.all(svgUrls.map(fetchSvgAsset))).filter((asset): asset is string => Boolean(asset));
     identity = mergeExternalCss(identity, cssBlocks, svgBlocks, manifestVisuals.colors);
