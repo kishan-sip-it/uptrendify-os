@@ -243,7 +243,7 @@ function externalStylesheetUrls(html: string, baseUrl: string): string[] {
   $('link[rel~="preload"][as="style"]').each((_i, el) => add($(el).attr('href')));
   $('style').each((_i, el) => {
     const css = $(el).text();
-    for (const match of css.matchAll(/@import\\s+(?:url\\()?\\s*["']?([^"')\\s;]+)["']?\\s*\\)?/gi)) {
+    for (const match of css.matchAll(/@import\s+(?:url\()?\s*["']?([^"')\s;]+)["']?\s*\)?/gi)) {
       if (match[1]) add(match[1]);
     }
   });
