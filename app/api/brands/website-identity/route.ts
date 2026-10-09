@@ -155,16 +155,16 @@ function renderedResearchLinks(text: string, baseUrl: string): string[] {
       const candidate = assertPublicHttpUrl(new URL(raw, baseUrl).toString());
       if (!sameSite(baseUrl, candidate.toString())) return;
       candidate.hash = '';
-      if (/\\.(?:png|jpe?g|gif|svg|webp|pdf|zip|xml|css|js|mp4|webm)$/i.test(candidate.pathname)) return;
+      if (/\.(?:png|jpe?g|gif|svg|webp|pdf|zip|xml|css|js|mp4|webm)$/i.test(candidate.pathname)) return;
       found.add(candidate.toString());
     } catch {
       // Reader links are untrusted input; invalid/private/non-HTTP URLs are ignored.
     }
   };
-  for (const match of text.matchAll(/\\]\\((https?:\\/\\/[^)\\s]+|\\/[^)\\s]+)\\)/g)) {
+  for (const match of text.matchAll(/\]\((https?:\/\/[^)\s]+|\/[^)\s]+)\)/g)) {
     if (match[1]) add(match[1]);
   }
-  for (const match of text.matchAll(/https?:\\/\\/[^\\s<>"')]+/g)) {
+  for (const match of text.matchAll(/https?:\/\/[^\s<>"')]+/g)) {
     if (match[0]) add(match[0].replace(/[.,;:!?]+$/, ''));
   }
   return [...found].slice(0, 8);
