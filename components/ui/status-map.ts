@@ -35,6 +35,6 @@ function humanizeStatus(status: string): string {
 }
 
 export function getStatusMeta(status: string): StatusMeta {
-  const key = status.trim().toUpperCase().replace(/[\\s-]+/g, '_');
+  const key = status.trim().toUpperCase().replace(/[\s-]+/g, '_');
   return STATUS_META[key] ?? { label: humanizeStatus(status), tone: 'neutral' };
 }

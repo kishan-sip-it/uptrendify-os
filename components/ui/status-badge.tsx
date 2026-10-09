@@ -12,7 +12,7 @@ export function StatusBadge({
   className?: string;
 }) {
   const key = status.trim().toUpperCase().replace(/[\s-]+/g, '_');
-  const meta = STATUS_META[key] ?? { label: humanizeStatus(status), tone: 'neutral' as const };
+  const meta = getStatusMeta(status);
   const legacyTone = meta.tone === 'success' ? 'good'
     : meta.tone === 'warning' ? 'warn'
       : meta.tone === 'danger' ? 'danger'
