@@ -66,6 +66,27 @@ describe('buildEvidenceContext', () => {
     const many = Array.from({ length: 20 }, (_, i) => ({ url: `https://${i}.example/`, text: 'content' }));
     expect(buildEvidenceContext(many)).toHaveLength(10);
   });
+
+  it('reserves evidence slots for external web research without displacing first-party homepage evidence', () => {
+    const firstParty = Array.from({ length: 12 }, (_, i) => ({
+      url: `https://example.com/page-${i}`,
+      title: `First-party page ${i}`,
+      text: `First-party evidence ${i}`,
+      sourceType: 'first-party' as const,
+    }));
+    const external = [
+      { url: 'https://industry.example/market-report', title: 'Market report', text: 'External market evidence', sourceType: 'external-web' as const },
+      { url: 'https://competitor.example/alternatives', title: 'Alternatives', text: 'External competitor evidence', sourceType: 'external-web' as const },
+    ];
+
+    const context = buildEvidenceContext([...firstParty, ...external]);
+    expect(context).toHaveLength(10);
+    expect(context[0]?.url).toBe('https://example.com/page-0');
+    expect(context.filter((item) => item.sourceType === 'external-web').map((item) => item.url)).toEqual([
+      'https://industry.example/market-report',
+      'https://competitor.example/alternatives',
+    ]);
+  });
 });
 
 describe('buildBrandIntelligencePrompt', () => {
@@ -175,7 +196,7 @@ describe('extractBrandIntelligence', () => {
     await extractBrandIntelligence(provider as any, largeEvidence);
     expect(provider.__calls).toHaveLength(1);
     expect(provider.__calls[0].json).toBe(true);
-    expect(provider.__calls[0].maxTokens).toBe(1600);
+    expect(provider.__calls[0].maxTokens).toBe(1200);
     expect(provider.__calls[0].prompt.length).toBeLessThan(16_000);
   });
 });
