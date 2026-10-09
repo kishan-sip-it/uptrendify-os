@@ -579,7 +579,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--focus); box-shad
 .progress { background: color-mix(in srgb, var(--panel-2) 88%, var(--line)); }
 .skeleton { background: var(--panel-2); }
 html[data-theme="dark"] .card { box-shadow: 0 18px 60px rgba(0,0,0,.18); }
-html[data-theme="dark"] .main { max-width: 1500px; }
+/* Theme changes must not change the app content geometry. Keep .main width shared across light/dark. */
 html[data-theme="dark"] .current-location { color: var(--muted); }
 
 .theme-control { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; width: fit-content; background: var(--panel-2); }
