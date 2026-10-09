@@ -775,13 +775,16 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  padding: clamp(30px, 3vw, 48px);
+  padding: clamp(24px, 2.25vw, 36px);
 }
 
 .brand-live-preview-signals {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   gap: 5px;
+  max-height: 32px;
+  overflow: hidden;
   margin-bottom: 10px;
 }
 
@@ -804,14 +807,16 @@
   max-width: 100%;
   margin: 0;
   color: var(--text-strong);
-  font-size: clamp(28px, 2.55vw, 40px);
+  font-size: clamp(24px, 2.1vw, 34px);
   font-weight: 760;
   line-height: 1.08;
   letter-spacing: -.04em;
   overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 7;
+  -webkit-line-clamp: 6;
+  max-height: calc(1.08em * 6);
+  flex: 0 0 auto;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -821,8 +826,10 @@
   margin: 11px 0 0;
   color: var(--text-muted);
   font-size: clamp(12px, 1vw, 14px);
-  line-height: 1.65;
+  line-height: 1.55;
   overflow-wrap: anywhere;
+  max-height: calc(1.55em * 3);
+  flex: 0 0 auto;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -835,7 +842,8 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 22px;
+  flex: 0 0 auto;
+  margin-top: 16px;
 }
 
 .brand-live-preview-primary {
@@ -1074,42 +1082,50 @@
   position: sticky;
   top: 8px;
   z-index: 12;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  overflow: visible;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
   padding: 8px;
   margin: -2px 0 12px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-card) 94%, transparent);
+  background: color-mix(in srgb, var(--surface-card) 96%, transparent);
   backdrop-filter: blur(14px);
-  scrollbar-width: none;
 }
-.brand-profile-subtabs::-webkit-scrollbar { display: none; }
 
 .brand-profile-subtab {
-  flex: 0 0 auto;
-  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 5px;
+  border: 1px solid color-mix(in srgb, var(--line) 90%, var(--accent) 10%);
   border-radius: 10px;
-  min-height: 34px;
-  padding: 7px 11px;
-  background: transparent;
+  background: color-mix(in srgb, var(--surface-card) 90%, var(--surface-muted));
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background-color .16s ease, color .16s ease, border-color .16s ease, transform .16s ease;
+  transition: background-color .16s ease, color .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
 }
 .brand-profile-subtab:hover {
   color: var(--text-strong);
-  background: var(--surface-muted);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-card));
 }
 .brand-profile-subtab.is-active {
   color: var(--text-strong);
-  background: var(--surface-card);
-  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 7%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-card));
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 80%, transparent), 0 3px 10px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.brand-profile-subtab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .brand-profile-tabpanel {
   min-width: 0;
@@ -1121,14 +1137,14 @@
    definition-row layout based on the actual Brand Profile column width. */
 @container brand-profile-main (max-width: 560px) {
   .brand-profile-subtabs {
-    gap: 4px;
+    gap: 5px;
     padding: 7px;
   }
 
   .brand-profile-subtab {
-    flex: 1 1 auto;
-    min-width: max-content;
-    padding-inline: 9px;
+    min-width: 0;
+    padding-inline: 4px;
+    font-size: 10px;
   }
 
   .brand-field {
@@ -1145,6 +1161,15 @@
     width: 80px;
     height: 80px;
   }
+}
+
+
+@container brand-profile-main (max-width: 380px) {
+  .brand-profile-subtabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@container brand-profile-main (max-width: 300px) {
+  .brand-profile-subtabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .brand-profile-brand-hero {
