@@ -106,7 +106,7 @@ describe('semantic CSS palette ranking', () => {
       '.btn-primary { background-color: #3ecf8e; }',
       '.toast.error { background: #ff2d7d; }',
       '.partner-logo { border-color: #f97316; }',
-    ].join('\\n');
+    ].join('\n');
     const sink = new Map<string, { count: number; sources: Set<string> }>();
     collectColors(css, 'external-stylesheet', sink);
     const palette = rankPalette(sink, 8);
