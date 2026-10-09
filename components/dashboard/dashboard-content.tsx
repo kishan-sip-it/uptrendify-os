@@ -8,6 +8,7 @@ import type { LucideIcon } from 'lucide-react';
 import { EmptyState, ErrorState } from '@/components/ui/feedback';
 import { StatusBadge as SharedStatusBadge } from '@/components/ui/status-badge';
 import { Stat } from '@/components/ui/stat';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { DashboardData, NextAction, RecentBrand, ResearchActivity, StrategyActivity } from '@/lib/dashboard/data';
 
 const ACTION_ICONS: Record<NextAction['kind'], LucideIcon> = {
@@ -122,9 +123,6 @@ function useCountUp(target: number, duration = 900): number {
   return value;
 }
 
-function Skeleton({ height = 16, width = '100%', radius = 10 }: { height?: number; width?: number | string; radius?: number }) {
-  return <span className="skeleton" style={{ display: 'block', width, height, borderRadius: radius }} />;
-}
 
 function MetricCard({ label, value, Icon, hint, delay }: { label: string; value: number; Icon: LucideIcon; hint?: string; delay: number }) {
   const animated = useCountUp(value);
