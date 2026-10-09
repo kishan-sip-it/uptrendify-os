@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   collectColors,
+  collectJavaScriptDesignTokens,
   extractBrandIdentity,
   rankPalette,
   isNeutral,
@@ -115,6 +116,18 @@ describe('colour classification', () => {
   });
 });
 
+describe('JavaScript design-token extraction', () => {
+  it('extracts brand colours from CSS-in-JS and theme objects without treating unrelated literals as palette', () => {
+    const script = \`const theme = { colors: { primary: "#e11d48", accent: "oklch(62% 0.19 28)" }, analytics: { sample: "#00ff00" } };\`;
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    collectJavaScriptDesignTokens(script, sink);
+    expect([...sink.keys()]).toContain('#e11d48');
+    expect([...sink.keys()]).toContain(expect.stringMatching(/^#[0-9a-f]{6}$/));
+    expect(sink.get('#e11d48')?.sources).toContain('js-style-tokens');
+    expect(sink.has('#00ff00')).toBe(false);
+  });
+});
+
 describe('semantic CSS palette ranking', () => {
   it('prioritizes declared brand colors and real primary controls over incidental status colors', () => {
     const css = [
@@ -156,6 +169,12 @@ describe('extractBrandIdentity', () => {
 
   it('ignores colours inside CSS comments', () => {
     expect(identity.palette.map((c) => c.hex)).not.toContain('#00ff00');
+  });
+
+  it('parses modern theme-color metadata rather than requiring hexadecimal notation', () => {
+    const modernTheme = extractBrandIdentity('<html><head><meta name="theme-color" content="oklch(62% 0.19 28)" /></head><body><h1>Brand</h1></body></html>', 'https://example.com/');
+    expect(modernTheme.primaryColor).not.toBeNull();
+    expect(modernTheme.palette[0]?.sources).toContain('meta-theme-color');
   });
 
   it('detects fonts from the Google Fonts link', () => {
