@@ -122,7 +122,7 @@ describe('JavaScript design-token extraction', () => {
     const sink = new Map<string, { count: number; sources: Set<string> }>();
     collectJavaScriptDesignTokens(script, sink);
     expect([...sink.keys()]).toContain('#e11d48');
-    expect([...sink.keys()]).toContain(expect.stringMatching(/^#[0-9a-f]{6}$/));
+    expect([...sink.keys()].some((hex) => hex !== '#e11d48' && /^#[0-9a-f]{6}$/.test(hex))).toBe(true);
     expect(sink.get('#e11d48')?.sources).toContain('js-style-tokens');
     expect(sink.has('#00ff00')).toBe(false);
   });
