@@ -92,6 +92,34 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${[r, g, b].map((v) => clampByte(v).toString(16).padStart(2, '0')).join('')}`;
 }
 
+/**
+ * Flags public pages whose fetched HTML is only an application shell or
+ * navigation chrome. These pages need the rendered-reader fallback even when
+ * the server responds with HTTP 200.
+ */
+export function shouldUseRenderedWebsiteFallback(html: string): boolean {
+  const $ = cheerio.load(html);
+  const title = $('title').first().text().replace(/\\s+/g, ' ').trim();
+  const metaDescription = $('meta[name="description"],meta[property="og:description"]')
+    .first()
+    .attr('content')?.trim() ?? '';
+  $('script,style,noscript,svg,iframe,template').remove();
+
+  const bodyText = $('body').text().replace(/\\s+/g, ' ').trim();
+  const mainText = $('main,article,[role="main"]').text().replace(/\\s+/g, ' ').trim();
+  const headings = $('h1,h2,h3').toArray().filter((node) => $(node).text().replace(/\\s+/g, ' ').trim().length > 0);
+  const appShellMarker = /enable javascript|javascript is required|application is loading|loading application|please wait while we load/i;
+
+  if (bodyText.length < 650) return true;
+  if (mainText.length > 0 && mainText.length < 320 && bodyText.length < 1_500) return true;
+  if (headings.length === 0 && bodyText.length < 1_800 && metaDescription.length < 120) return true;
+  if (appShellMarker.test(bodyText) && bodyText.length < 5_000) return true;
+
+  // A concise brochure page can be legitimate when it has real structure and
+  // a meaningful title/description. Do not force a reader request for it.
+  return !title && !metaDescription && headings.length === 0 && bodyText.length < 1_400;
+}
+
 export function parseCssColor(raw: string | null | undefined): string | null {
   const value = (raw ?? '').trim().toLowerCase();
   if (!value || value === 'transparent' || value === 'currentcolor' || value === 'inherit') return null;
