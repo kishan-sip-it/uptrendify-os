@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { requireOrgRole, CAN_VIEW_DASHBOARD } from '@/lib/auth/roles';
 import { env } from '@/lib/env';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from '@/lib/research/url-security';
-import { extractBrandIdentity, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
+import { collectColors, extractBrandIdentity, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { buildEvidenceContext, extractBrandIntelligence, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
 
@@ -241,28 +241,9 @@ function mergeExternalCss(identity: ExtractedIdentity, cssBlocks: string[]): Ext
   if (cssBlocks.length === 0) return identity;
   const sink = new Map<string, { count: number; sources: Set<string> }>();
   const fonts = new Map(identity.fonts.map((font) => [font.family.toLowerCase(), font]));
-  const colorToken = /(#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\))/g;
-
   for (const css of cssBlocks) {
+    collectColors(css, 'external-stylesheet', sink);
     const cleaned = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
-    for (const match of cleaned.matchAll(colorToken)) {
-      const hex = parseCssColor(match[0]);
-      if (!hex) continue;
-      const current = sink.get(hex) ?? { count: 0, sources: new Set<string>() };
-      current.count += 1;
-      current.sources.add('external-stylesheet');
-      sink.set(hex, current);
-    }
-
-    const semanticDecl = /--(?:brand|primary|secondary|accent|color-primary|color-secondary|brand-color)(?:-[a-z0-9-]+)?\\s*:\\s*([^;}]+)/gi;
-    for (const match of cleaned.matchAll(semanticDecl)) {
-      const hex = parseCssColor(match[1] ?? '');
-      if (!hex) continue;
-      const current = sink.get(hex) ?? { count: 0, sources: new Set<string>() };
-      current.count += 5;
-      current.sources.add('semantic-css');
-      sink.set(hex, current);
-    }
     for (const match of cleaned.matchAll(/font-family\s*:\s*([^;}]+)/gi)) {
       const family = (match[1] ?? '').split(',')[0].replace(/["']/g, '').trim();
       if (family.length >= 2 && family.length <= 60 && !/^(inherit|initial|unset|sans-serif|serif|monospace)$/i.test(family)) {
