@@ -59,20 +59,25 @@ export const CONTENT_STATUS_LABELS: Record<ContentStatus, string> = {
   ARCHIVED: 'Archived',
 };
 
-export const CONTENT_GEN_MAX_TOKENS = 3072;
+export const CONTENT_GEN_MAX_TOKENS = 2048;
 
-// Short-form content must stay comfortably inside the smallest supported
-// Groq TPM budget when a busy organization already has tokens in flight.
-// Long-form drafts keep the existing 3072-token ceiling.
+// Reserve TPM headroom for prompt tokens and concurrent requests on the
+// configured Groq on-demand tier. Short assets stay concise; email and long
+// landing/blog drafts receive larger but still bounded output budgets.
 export function contentGenerationMaxTokens(type: ContentType): number {
   switch (type) {
     case 'video_script':
+      return 1536;
     case 'social_post':
     case 'ad_copy':
-    case 'email':
-      return 2048;
+      return 1024;
     case 'cta_headlines':
+      return 768;
+    case 'email':
+    case 'blog_outline':
       return 1536;
+    case 'blog_draft':
+    case 'landing_page':
     default:
       return CONTENT_GEN_MAX_TOKENS;
   }
