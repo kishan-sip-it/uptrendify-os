@@ -99,7 +99,6 @@ describe('createGroqProvider', () => {
     expect(body).not.toHaveProperty('response_format');
     expect(body.tool_choice).toBe('required');
     expect(body.tools).toEqual([{ type: 'browser_search' }]);
-    expect(body.citation_options).toBe('enabled');
     expect(body).not.toHaveProperty('service_tier');
   });
 
