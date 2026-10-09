@@ -9,6 +9,7 @@ import { EmptyState, ErrorState } from '@/components/ui/feedback';
 import { StatusBadge as SharedStatusBadge } from '@/components/ui/status-badge';
 import { Stat } from '@/components/ui/stat';
 import { Skeleton } from '@/components/ui/skeleton';
+import { RelativeTime } from '@/components/ui/relative-time';
 import type { DashboardData, NextAction, RecentBrand, ResearchActivity, StrategyActivity } from '@/lib/dashboard/data';
 
 const ACTION_ICONS: Record<NextAction['kind'], LucideIcon> = {
@@ -86,17 +87,6 @@ function dotColor(status: string): string {
   }
 }
 
-function timeAgo(iso: string): string {
-  const seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
-  if (seconds < 60) return 'just now';
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 function useCountUp(target: number, duration = 900): number {
   const [value, setValue] = useState(0);
@@ -165,7 +155,7 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
                 <SharedStatusBadge status={brand.status ?? 'ACTIVE'} showDot={isLive(brand.status ?? 'ACTIVE')} />
               </div>
               <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--muted)', fontSize: 13 }}>
-                <span>Onboarded {timeAgo(brand.created_at)}</span>
+                <span>Onboarded <RelativeTime date={brand.created_at} /></span>
                 <ArrowRight size={16} />
               </div>
             </a>
@@ -200,7 +190,7 @@ function ResearchActivityPanel({ activity }: { activity: ResearchActivity[] }) {
                 <span className={`status-dot${isLive(run.status) ? ' live' : ''}`} style={{ background: dotColor(run.status), marginTop: 4, flexShrink: 0 }} />
                 <div className="activity-body">
                   <div className="activity-title">{run.brand_name ?? 'Unknown brand'}</div>
-                  <div className="activity-meta">{labelFor(run.status)} · {timeAgo(run.created_at)}</div>
+                  <div className="activity-meta">{labelFor(run.status)} · <RelativeTime date={run.created_at} /></div>
                   {run.status === 'FAILED' && run.error_message ? <div className="activity-error">{run.error_message}</div> : null}
                 </div>
               </div>
