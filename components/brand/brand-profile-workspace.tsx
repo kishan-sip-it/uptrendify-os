@@ -10,15 +10,15 @@ import { TONE_OPTIONS, VOICE_AXES, describeVoice, voiceAxisValues } from '@/lib/
 
 type ProfileTab = 'identity' | 'visuals' | 'voice' | 'audience' | 'offer' | 'rules' | 'assets' | 'evidence';
 
-const PROFILE_TABS: Array<{ id: ProfileTab; label: string }> = [
-  { id: 'identity', label: 'Identity' },
-  { id: 'visuals', label: 'Visuals' },
-  { id: 'voice', label: 'Voice' },
-  { id: 'audience', label: 'Audience' },
-  { id: 'offer', label: 'Offer' },
-  { id: 'rules', label: 'Rules' },
-  { id: 'assets', label: 'Assets' },
-  { id: 'evidence', label: 'Evidence' },
+const PROFILE_TABS: Array<{ id: ProfileTab; label: string; icon: typeof Target }> = [
+  { id: 'identity', label: 'Identity', icon: Target },
+  { id: 'visuals', label: 'Visuals', icon: Palette },
+  { id: 'voice', label: 'Voice', icon: Quote },
+  { id: 'audience', label: 'Audience', icon: Users },
+  { id: 'offer', label: 'Offer', icon: Megaphone },
+  { id: 'rules', label: 'Rules', icon: BookOpen },
+  { id: 'assets', label: 'Assets', icon: ImageIcon },
+  { id: 'evidence', label: 'Evidence', icon: Sparkles },
 ];
 
 const EMPTY_AI_PROFILE: NonNullable<BrandIdentity['aiProfile']> = {
@@ -343,19 +343,24 @@ export function BrandProfileWorkspace({
 
         <BrandPanel icon={<BookOpen size={17} />} title="Brand Guidelines" subtitle="The complete working profile used by strategy and content.">
           <div className="brand-profile-subtabs" role="tablist" aria-label="Brand profile sections">
-            {PROFILE_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={activeProfileTab === tab.id}
-                aria-controls={'brand-profile-tabpanel-' + tab.id}
-                className={activeProfileTab === tab.id ? 'brand-profile-subtab is-active' : 'brand-profile-subtab'}
-                onClick={() => setActiveProfileTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
+            {PROFILE_TABS.map((tab) => {
+              const TabIcon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeProfileTab === tab.id}
+                  aria-controls={'brand-profile-tabpanel-' + tab.id}
+                  className={activeProfileTab === tab.id ? 'brand-profile-subtab is-active' : 'brand-profile-subtab'}
+                  onClick={() => setActiveProfileTab(tab.id)}
+                >
+                  <span className="brand-profile-subtab-icon" aria-hidden="true"><TabIcon size={14} strokeWidth={2.1} /></span>
+                  <span className="brand-profile-subtab-label">{tab.label}</span>
+                  <span className="brand-profile-subtab-state" aria-hidden="true" />
+                </button>
+              );
+            })}
           </div>
 
           {activeProfileTab === 'identity' ? (
