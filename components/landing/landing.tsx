@@ -54,12 +54,12 @@ const WORKFLOW: { icon: LucideIcon; label: string; note: string; tone: string }[
 ];
 
 const FEATURES: { icon: LucideIcon; title: string; description: string }[] = [
-  { icon: Globe2, title: 'Audit any public site', description: 'Read relevant public pages, extract evidence and keep the result reviewable instead of pretending a guess is a fact.' },
+  { icon: Globe2, title: 'Audit any public site', description: 'Research public pages and review the evidence behind each finding.' },
   { icon: FileCheck2, title: 'Human-in-the-loop review', description: 'Every brand-intelligence suggestion lands in a review inbox. Approve, edit, reject, or ask the AI to regenerate each field.' },
-  { icon: LockKeyhole, title: 'Strategies from approved truth', description: 'The strategy engine is gated: it only consumes facts you approved, so nothing made-up ever ships to a client.' },
+  { icon: LockKeyhole, title: 'Strategies from approved truth', description: 'Build strategies from brand findings your team has approved.' },
   { icon: Users, title: 'Agency + business workspaces', description: 'Agencies can manage multiple brands while a business can focus on its own brand — with roles, brand switchers and tenant isolation.' },
   { icon: BarChart3, title: 'Live run dashboard', description: 'Watch research jobs, approval pipelines and strategy versions stream in real time as your AI works.' },
-  { icon: Layers, title: 'One system, forever', description: 'Research, brand intelligence, strategy, content and campaigns — a single OS your whole team runs on.' },
+  { icon: Layers, title: 'One system, forever', description: 'Connect research, brand intelligence, strategy, content and campaigns in one workspace.' },
 ];
 
 const METRICS: { value: string; label: string }[] = [
@@ -192,7 +192,7 @@ function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
 
 function WorkflowDemo() {
   const [stepIndex, setStepIndex] = useState<StepState[]>(new Array(WORKFLOW.length).fill('pending'));
-  const [liveLog, setLiveLog] = useState<string>('Idle — start a research run');
+  const [liveLog, setLiveLog] = useState<string>('Workflow preview');
   const started = useRef(false);
 
   useEffect(() => {
@@ -200,11 +200,11 @@ function WorkflowDemo() {
     started.current = true;
     const timer = window.setTimeout(() => setStepIndex((prev) => prev.map(() => 'pending')), 500);
     const sequence: { index: number; log: string; wait: number; done?: boolean }[] = [
-      { index: 0, log: 'Discovering public pages…', wait: 400 },
-      { index: 1, log: 'Extracting product claims from the available pages', wait: 900, done: true },
-      { index: 2, log: 'Brand intelligence drafted · waiting for human review', wait: 1100, done: true },
-      { index: 3, log: 'Approved intelligence → strategy unlocked', wait: 900, done: true },
-      { index: 4, log: 'Roadmap drafted · waiting on client', wait: 600, done: true },
+      { index: 0, log: 'Collecting public-page evidence', wait: 400 },
+      { index: 1, log: 'Organizing evidence for review', wait: 900, done: true },
+      { index: 2, log: 'Brand insights ready for review', wait: 1100, done: true },
+      { index: 3, log: 'Approved insights inform strategy', wait: 900, done: true },
+      { index: 4, log: 'Content plan ready for review', wait: 600, done: true },
     ];
     const timeouts: number[] = [];
     sequence.forEach((entry, i) => {
@@ -232,7 +232,7 @@ function WorkflowDemo() {
         <span />
         <span />
         <span />
-        <span className="landing-terminal-title">uptrendify://brand/acme-scout/research</span>
+        <span className="landing-terminal-title">Workflow preview</span>
       </div>
       <div className="landing-terminal-body">
         <div className="landing-steps">
@@ -594,7 +594,7 @@ export function Landing() {
           <div className="landing-section-head">
             <div className="landing-eyebrow"><Bot size={13} /> How it works</div>
             <h2>From noisy website to client-approved strategy.</h2>
-            <p>A workflow your whole team can trust, because nobody clicks “approve” on a guess.</p>
+            <p>Keep review and approval connected to every stage of the workflow.</p>
           </div>
         </Reveal>
         <div className="landing-how">
@@ -605,7 +605,7 @@ export function Landing() {
             { icon: Target, title: '4 · Strategy', description: 'Once the Brand Brain gate is satisfied, generate a marketing plan grounded in the approved intelligence.' },
             { icon: Sparkles, title: '5 · Content Studio', description: 'Turn the strategy into actual content assets with versioning and the existing content workflow.' },
             { icon: Boxes, title: '6 · Campaigns', description: 'Group content around an objective, audience, channels, dates and budget.' },
-            { icon: CheckCircle2, title: '7 · Approval & Publishing', description: 'Approve the exact content version. Publishing remains honest: unconnected channels stay READY TO PUBLISH.' },
+            { icon: CheckCircle2, title: '7 · Approval & Publishing', description: 'Approve the exact content version. Connected channels can publish approved content; unconnected channels remain in draft.' },
           ].map((step, i) => {
             const Icon = step.icon;
             return (

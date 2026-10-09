@@ -33,10 +33,10 @@ function routeConfig(pathname: string, view: string | null): ChecklistConfig | n
   if (pathname === '/dashboard') {
     return {
       title: 'What to do next',
-      subtitle: 'The checklist changes with the working surface, so it tells you what to click next instead of repeating the whole lifecycle.',
+      subtitle: 'Next actions for this page.',
       tasks: [
         { id: 'dashboard-brands', title: 'Open Brands', detail: 'Choose the brand you want to work on.', matches: ['Brands'] },
-        { id: 'dashboard-brand', title: 'Open the brand workspace', detail: 'Start with Research before moving into Brand Brain.', matches: ['Open brand workspace'] },
+        { id: 'dashboard-brand', title: 'Open the brand workspace', detail: 'Run Research, then review Brand Brain.', matches: ['Open brand workspace'] },
       ],
     };
   }
@@ -44,10 +44,10 @@ function routeConfig(pathname: string, view: string | null): ChecklistConfig | n
   if (brandId && view === 'brain') {
     return {
       title: 'Brand Brain · next actions',
-      subtitle: 'Review the suggestions here. Do not skip the human approval gate.',
+      subtitle: 'Review and approve the brand findings.',
       tasks: [
         { id: 'brain-review', title: 'Review the current suggestions', detail: 'Inspect the evidence and edit anything that needs correction.' },
-        { id: 'brain-approve', title: 'Approve or edit the required findings', detail: 'Approved findings become authoritative brand rules for downstream generation.', matches: ['Approve', 'Save changes'] },
+        { id: 'brain-approve', title: 'Approve or edit the required findings', detail: 'Approved findings become the brand rules used by strategy and content.', matches: ['Approve', 'Save changes'] },
         { id: 'brain-strategy', title: 'Click “Continue to Strategy”', detail: 'After the required findings are approved, continue into the Strategy workspace.', matches: ['Continue to Strategy'] },
       ],
     };
@@ -56,7 +56,7 @@ function routeConfig(pathname: string, view: string | null): ChecklistConfig | n
   if (brandId && view === 'strategy') {
     return {
       title: 'Strategy · next actions',
-      subtitle: 'This checklist follows the strategy page, not the whole product lifecycle.',
+      subtitle: 'Next actions for strategy.',
       tasks: [
         { id: 'strategy-generate', title: 'Generate the strategy', detail: 'Use the approved Brand Brain context to create a strategy version.', matches: ['Generate Strategy', 'Generate strategy'] },
         { id: 'strategy-review', title: 'Review the generated strategy', detail: 'Check the objectives, positioning, channels and execution direction before using it.', matches: ['Approve', 'Save'] },
@@ -68,11 +68,11 @@ function routeConfig(pathname: string, view: string | null): ChecklistConfig | n
   if (brandId && pathname === `/brands/${brandId}`) {
     return {
       title: 'Brand workspace · next actions',
-      subtitle: 'Start here, then follow the page-specific guidance as the workflow advances.',
+      subtitle: 'Run Research, then review Brand Brain.',
       tasks: [
         { id: 'brand-research', title: 'Run Research', detail: 'Start the evidence collection for this brand.', matches: ['Run research', 'Start research'] },
         { id: 'brand-brain', title: 'Open Brand Brain', detail: 'When Research is ready, review the generated intelligence.', matches: ['Brand Brain'] },
-        { id: 'brand-strategy', title: 'Open Strategy after approval', detail: 'Do not generate strategy until the required Brand Brain findings are approved.', matches: ['Strategy'] },
+        { id: 'brand-strategy', title: 'Open Strategy after approval', detail: 'Approve the required Brand Brain findings before creating strategy.', matches: ['Strategy'] },
       ],
     };
   }
@@ -80,12 +80,12 @@ function routeConfig(pathname: string, view: string | null): ChecklistConfig | n
   if (brandId && pathname.endsWith('/campaigns/new')) {
     return {
       title: 'New campaign · next actions',
-      subtitle: 'Only campaign-specific inputs are needed here. Brand rules continue to ground downstream work.',
+      subtitle: 'Create a campaign from an approved strategy.',
       tasks: [
         { id: 'campaign-ground', title: 'Choose an approved strategy', detail: 'Select at least one approved strategy to ground the campaign.', matches: ['approved strategies'] },
-        { id: 'campaign-create', title: 'Create the campaign', detail: 'Leave optional fields blank when the approved brand rules already provide enough context.', matches: ['Create campaign'] },
+        { id: 'campaign-create', title: 'Create the campaign', detail: 'Add only the details the approved strategy does not cover.', matches: ['Create campaign'] },
         { id: 'campaign-plan', title: 'After creation, move it to Planned', detail: 'Open the new campaign, confirm its details, then move Draft → Planned when it is ready for content creation.', locked: true },
-        { id: 'campaign-content', title: 'Click “Create content for this campaign”', detail: 'That is the handoff from campaign planning into Content Studio.', locked: true },
+        { id: 'campaign-content', title: 'Click “Create content for this campaign”', detail: 'Continue to Content Studio to create campaign assets.', locked: true },
       ],
     };
   }
@@ -93,7 +93,7 @@ function routeConfig(pathname: string, view: string | null): ChecklistConfig | n
   if (campaignMatch && brandId) {
     return {
       title: 'Campaign · next actions',
-      subtitle: 'This is the execution handoff. Follow the highlighted action instead of hunting through the page.',
+      subtitle: 'Plan the campaign, then create its content.',
       tasks: [
         { id: 'campaign-plan-detail', title: 'Move the campaign to Planned', detail: 'Draft is the planning state. Click “Move to Planned” when the campaign details are ready.', matches: ['Move to Planned'] },
         { id: 'campaign-content-detail', title: 'Click “Create content for this campaign”', detail: 'Use the campaign-linked Content Studio entry so the content keeps this campaign context.', matches: ['Create content for this campaign'] },
@@ -105,10 +105,10 @@ function routeConfig(pathname: string, view: string | null): ChecklistConfig | n
   if (brandId && pathname.endsWith('/content/new')) {
     return {
       title: 'Content creation · next actions',
-      subtitle: 'Build the brief here. The next decision happens on the content detail page.',
+      subtitle: 'Create the brief, then review the content version.',
       tasks: [
         { id: 'content-brief', title: 'Create the content brief', detail: 'Use the campaign context and leave optional fields blank when approved brand rules already cover them.', matches: ['Create content'] },
-        { id: 'content-return', title: 'Return to the campaign', detail: 'After creation, the app returns you to the linked campaign. That is expected.', locked: true },
+        { id: 'content-return', title: 'Return to the campaign', detail: 'Return to the linked campaign to continue.', locked: true },
         { id: 'content-open-detail', title: 'Open the created content', detail: 'From the campaign, click the content item to enter Content Detail and generate the version.', locked: true },
       ],
     };
@@ -117,7 +117,7 @@ function routeConfig(pathname: string, view: string | null): ChecklistConfig | n
   if (contentMatch && brandId) {
     return {
       title: 'Content detail · next actions',
-      subtitle: 'This page creates and prepares the exact version. Final approval stays in Approvals.',
+      subtitle: 'Generate a version, then send it for approval.',
       tasks: [
         { id: 'content-generate', title: 'Generate the content version', detail: 'Create the version from the approved brand and strategy context.', matches: ['Generate', 'Regenerate'] },
         { id: 'content-approval', title: 'Click “Send to approval queue”', detail: 'This sends the exact current version to the human Approval Queue.', matches: ['Send to approval queue', 'Send to approval'] },
@@ -129,13 +129,13 @@ function routeConfig(pathname: string, view: string | null): ChecklistConfig | n
   if (pathname === '/approvals' || pathname.startsWith('/approvals/')) {
     return {
       title: 'Approval & publishing · next actions',
-      subtitle: 'This is the human decision boundary. Approve the exact version before queueing it for publishing.',
+      subtitle: 'Review the final version before publishing.',
       tasks: [
         { id: 'approval-preview', title: 'Open the content preview', detail: 'Inspect the rendered channel preview before making the decision.', matches: ['Preview'] },
         { id: 'approval-approve', title: 'Approve the exact version', detail: 'Use the approval action on the version you reviewed.', matches: ['Approve'] },
         { id: 'approval-queue', title: 'Queue the approved version for publishing', detail: 'After approval, move it into the publishing queue.', matches: ['Queue for publishing'] },
         { id: 'publishing-preview', title: 'Open the publishing preview', detail: 'Check the selected channel and final rendered output.', matches: ['Preview'] },
-        { id: 'publishing-confirm', title: 'Confirm publish to the connected channel', detail: 'Publishing must report a real outcome. It never silently succeeds.', matches: ['Confirm publish', 'Publish'] },
+        { id: 'publishing-confirm', title: 'Confirm publish to the connected channel', detail: 'Confirm the result after publishing.', matches: ['Confirm publish', 'Publish'] },
       ],
     };
   }
@@ -143,7 +143,7 @@ function routeConfig(pathname: string, view: string | null): ChecklistConfig | n
   if (pathname === '/campaigns' || pathname.startsWith('/content')) {
     return {
       title: 'Workspace · next actions',
-      subtitle: 'Use the contextual brand workspace when you need the campaign or content-specific handoff.',
+      subtitle: 'Open the brand workspace to continue.',
       tasks: [
         { id: 'workspace-brand', title: 'Open the relevant brand', detail: 'Enter the brand workspace so the next action stays attached to its strategy and campaign context.', matches: ['Brands'] },
       ],
