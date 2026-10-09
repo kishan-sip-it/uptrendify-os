@@ -425,9 +425,9 @@ export async function GET(request: Request) {
 
     const extraPages = await Promise.all(pageCandidates.map(async (url, index) => {
       const page = await fetchHtml(new URL(url), 1);
-      if (!page.ok) return null;
+      if (page.ok === false) return null;
       const direct = pageText(page.html);
-      if (page.renderedFallback) return { url: page.finalUrl, ...direct };
+      if (page.ok === true && page.renderedFallback) return { url: page.finalUrl, ...direct };
 
       // Keep this fallback bounded across child pages so a shell-heavy site
       // can contribute real evidence without turning one scan into an
