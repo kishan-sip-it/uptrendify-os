@@ -346,14 +346,14 @@ export function DashboardContent() {
   }
 
   if (error || !data) {
+    const message = error ?? 'Dashboard data is unavailable.';
     return (
-      <div className="card" style={{ borderColor: 'rgba(239,68,68,.35)' }}>
-        <ErrorState message={error ?? 'Dashboard data is unavailable.'} />
-        <div style={{ marginTop: 14 }}>
-          <button type="button" onClick={load} className="badge" style={{ border: 0, cursor: 'pointer' }}>
-            <Search size={13} /> Try again
-          </button>
-        </div>
+      <div className="card ui-dashboard-error">
+        <ErrorState
+          message={message}
+          action={<button type="button" onClick={() => void load()} className="badge" style={{ border: 0, cursor: 'pointer' }}><Search size={13} /> Try again</button>}
+          diagnostics={'Dashboard load error: ' + message}
+        />
       </div>
     );
   }
