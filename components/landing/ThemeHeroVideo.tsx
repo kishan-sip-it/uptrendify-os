@@ -79,7 +79,6 @@ export default function ThemeHeroVideo() {
             <strong>Website research</strong>
             <small>Public evidence in</small>
           </span>
-          <span className="landing-hero-node-status"><span /> LIVE</span>
         </div>
 
         <div className="landing-hero-brain">
@@ -152,13 +151,8 @@ export default function ThemeHeroVideo() {
 
       <div className="landing-hero-visual-topline" aria-hidden="true">
         <span className="landing-hero-visual-pulse" />
-        <span>BRAND INTELLIGENCE ENGINE</span>
+        <span>RESEARCH · STRATEGY · CONTENT</span>
         <span className="landing-hero-visual-version">UT / OS</span>
-      </div>
-      <div className="landing-hero-visual-bottomline" aria-hidden="true">
-        <span className="landing-hero-visual-bars"><i /><i /><i /><i /><i /><i /><i /></span>
-        <span>{isDark ? 'DARK SYSTEM' : 'LIGHT SYSTEM'}</span>
-        <span className="landing-hero-visual-bottom-status">{videoReady ? 'ANIMATION READY' : 'LIVE WORKFLOW'}</span>
       </div>
     </div>
   );
