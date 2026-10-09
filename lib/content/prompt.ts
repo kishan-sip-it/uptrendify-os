@@ -10,7 +10,10 @@ export function buildContentPrompt(brain: BrainSnapshot, strategy: ApprovedStrat
   const brainContext = buildStrategyTextContext(brain);
   const strategyContext = ['## APPROVED CAMPAIGN STRATEGIES', `Primary strategy: ${strategy.title} · v${strategy.version}`];
 
-  for (const current of strategies.slice(0, 20)) {
+  // Keep campaign context bounded for quota-constrained providers while still
+  // allowing the primary strategy and several supporting strategies to inform
+  // a coherent asset.
+  for (const current of strategies.slice(0, 5)) {
     const output = current.output;
     const messaging = output.messaging;
     const content = output.contentStrategy;
