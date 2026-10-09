@@ -44,6 +44,31 @@ export async function GET(request: Request) {
         message: 'Add a brand so UpTrendifyOS can research it.',
         blocker: null,
         progressPercent: 0,
+        checklistSignals: {
+          brandCount: 0,
+          researchRunCount: 0,
+          researchActive: false,
+          researchDone: false,
+          researchLatestStatus: null,
+          brainSuggestionCount: 0,
+          brainPendingCount: 0,
+          brainReviewedCount: 0,
+          brainGatePassed: false,
+          strategyCount: 0,
+          strategyActive: false,
+          strategyReady: false,
+          strategyLatestStatus: null,
+          contentCount: 0,
+          contentGeneratedCount: 0,
+          contentInReviewCount: 0,
+          contentApprovedCount: 0,
+          contentReadyToPublishCount: 0,
+          contentPublishedCount: 0,
+          campaignCount: 0,
+          campaignPlannedCount: 0,
+          campaignActiveCount: 0,
+          campaignCompletedCount: 0,
+        },
       });
     }
 
@@ -74,7 +99,7 @@ export async function GET(request: Request) {
         .limit(50),
       supabase
         .from('content_items')
-        .select('id,brand_id,status,created_at')
+        .select('id,brand_id,status,current_version_id,created_at')
         .eq('brand_id', brandId)
         .eq('organization_id', auth.context.organizationId)
         .order('created_at', { ascending: false })
@@ -96,6 +121,7 @@ export async function GET(request: Request) {
 
     const runRows = runs.data ?? [];
     const suggestionRows = suggestions.data ?? [];
+    const strategyRows = strategies.data ?? [];
     const contentRows = content.data ?? [];
     const campaignRows = campaigns.data ?? [];
     const gateFields = new Set(
@@ -107,7 +133,15 @@ export async function GET(request: Request) {
     const activeResearch = runRows.find((run) => run.status === 'QUEUED' || run.status === 'RUNNING');
     const latestResearch = runRows[0] ?? null;
     const researchDone = runRows.some((run) => run.status === 'COMPLETED' || run.status === 'PARTIAL');
-    const latestStrategy = (strategies.data ?? []).find((strategy) => strategy.status === 'SUCCEEDED');
+    const latestStrategy = strategyRows.find((strategy) => strategy.status === 'SUCCEEDED');
+    const activeStrategy = strategyRows.find((strategy) => strategy.status === 'QUEUED' || strategy.status === 'RUNNING');
+    const reviewedSuggestions = suggestionRows.filter((suggestion) =>
+      ['APPROVED', 'EDITED', 'REJECTED', 'DISMISSED'].includes(suggestion.status),
+    );
+    const contentInReview = contentRows.filter((item) => ['IN_REVIEW', 'CLIENT_REVIEW'].includes(item.status));
+    const contentApproved = contentRows.filter((item) => ['APPROVED', 'READY_TO_PUBLISH', 'PUBLISHED'].includes(item.status));
+    const contentReadyToPublish = contentRows.filter((item) => item.status === 'READY_TO_PUBLISH');
+    const contentPublished = contentRows.filter((item) => item.status === 'PUBLISHED');
     const reviewableContent = contentRows.some((item) => ['IN_REVIEW', 'CLIENT_REVIEW', 'APPROVED', 'READY_TO_PUBLISH'].includes(item.status));
     const readyToPublish = contentRows.some((item) => item.status === 'READY_TO_PUBLISH');
 
@@ -180,6 +214,31 @@ export async function GET(request: Request) {
       blocker,
       message,
       progressPercent: Math.round((Math.max(0, currentIndex) / (STAGES.length - 1)) * 100),
+      checklistSignals: {
+        brandCount: brands.length,
+        researchRunCount: runRows.length,
+        researchActive: Boolean(activeResearch),
+        researchDone,
+        researchLatestStatus: latestResearch?.status ?? null,
+        brainSuggestionCount: suggestionRows.length,
+        brainPendingCount: suggestionRows.filter((suggestion) => suggestion.status === 'PENDING').length,
+        brainReviewedCount: reviewedSuggestions.length,
+        brainGatePassed: gatePassed,
+        strategyCount: strategyRows.length,
+        strategyActive: Boolean(activeStrategy),
+        strategyReady: Boolean(latestStrategy),
+        strategyLatestStatus: strategyRows[0]?.status ?? null,
+        contentCount: contentRows.length,
+        contentGeneratedCount: contentRows.filter((item) => Boolean(item.current_version_id)).length,
+        contentInReviewCount: contentInReview.length,
+        contentApprovedCount: contentApproved.length,
+        contentReadyToPublishCount: contentReadyToPublish.length,
+        contentPublishedCount: contentPublished.length,
+        campaignCount: campaignRows.length,
+        campaignPlannedCount: campaignRows.filter((campaign) => campaign.status === 'PLANNED').length,
+        campaignActiveCount: campaignRows.filter((campaign) => ['ACTIVE', 'IN_PROGRESS'].includes(campaign.status)).length,
+        campaignCompletedCount: campaignRows.filter((campaign) => ['COMPLETED', 'PUBLISHED'].includes(campaign.status)).length,
+      },
     });
   } catch (error) {
     obs.error('Workflow state load failed', { error: error instanceof Error ? error.message : String(error) });
