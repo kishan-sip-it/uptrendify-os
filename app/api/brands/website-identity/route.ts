@@ -418,7 +418,8 @@ export async function GET(request: Request) {
     const evidencePages: Array<{ url: string; title: string | null; text: string }> = [];
 
     const directHomepage = outcome.ok ? pageText(outcome.html) : null;
-    const homepage = renderedFallbackText && (!directHomepage || outcome.renderedFallback || renderedFallbackText.length > directHomepage.text.length)
+    const usedRenderedFallback = outcome.ok === true && outcome.renderedFallback === true;
+    const homepage = renderedFallbackText && (!directHomepage || usedRenderedFallback || renderedFallbackText.length > directHomepage.text.length)
       ? { title: renderedFallbackTitle ?? directHomepage?.title ?? null, text: renderedFallbackText }
       : directHomepage ?? { title: renderedFallbackTitle, text: renderedFallbackText ?? '' };
     evidencePages.push({ url: baseUrl, ...homepage });
