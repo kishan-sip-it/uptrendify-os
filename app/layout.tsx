@@ -13,6 +13,7 @@ import './brand-profile.css';
 import './responsive-hardening.css';
 import './selection-contrast.css';
 import './interactive-state-contrast.css';
+import './ui-primitives.css';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { NetworkStatus } from '@/components/ui/NetworkStatus';
 import { GlobalWorkflowChecklist } from '@/components/ui/global-workflow-checklist';
