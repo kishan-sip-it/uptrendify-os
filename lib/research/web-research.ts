@@ -5,22 +5,18 @@ import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readB
 import { extractPage } from './extract';
 import { normalizeResearchUrl } from './url-policy';
 import { obs } from '@/lib/obs/logger';
+import { env } from '@/lib/env';
 
 const MAX_SEARCH_URLS = 10;
 const MAX_EXTERNAL_SOURCES = 6;
 const MAX_EXTERNAL_CHARS = 4_500;
 
 const SEARCH_URL_EXCLUSIONS = [
-  /google\./i,
-  /bing\.com/i,
-  /duckduckgo\.com/i,
-  /facebook\.com/i,
-  /instagram\.com/i,
-  /linkedin\.com/i,
-  /twitter\.com/i,
-  /x\.com/i,
-  /tiktok\.com/i,
-  /youtube\.com/i,
+  /(^|\.)google\./i,
+  /(^|\.)bing\.com$/i,
+  /(^|\.)duckduckgo\.com$/i,
+  /(^|\.)search\.yahoo\.com$/i,
+  /(^|\.)ecosia\.org$/i,
 ];
 
 export type WebResearchAugmentation = {
@@ -52,7 +48,41 @@ function extractUrls(text: string, rootUrl: string): string[] {
   return [...found].slice(0, MAX_SEARCH_URLS);
 }
 
-async function fetchExternalPage(url: string): Promise<{ url: string; title: string | null; text: string } | null> {
+async function fetchRenderedExternalPage(url: string): Promise<{ url: string; title: string | null; text: string } | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const key = env().JINA_API_KEY;
+    const response = await fetch('https://r.jina.ai/' + url, {
+      signal: controller.signal,
+      headers: {
+        accept: 'text/plain',
+        ...(key ? { authorization: 'Bearer ' + key } : {}),
+      },
+    });
+    if (!response.ok) return null;
+    const markdown = (await response.text()).trim();
+    if (markdown.length < 220) return null;
+    const title = markdown
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.startsWith('# '))
+      ?.slice(2)
+      .trim() || null;
+    return {
+      url,
+      title,
+      text: markdown.replace(/\s+/g, ' ').trim().slice(0, MAX_EXTERNAL_CHARS),
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchExternalPage(url: string, allowRenderedFallback = true): Promise<{ url: string; title: string | null; text: string } | null> {
+  let direct: { url: string; title: string | null; text: string } | null = null;
   try {
     const safe = assertPublicHttpUrl(url);
     await assertResolvablePublicHost(safe.hostname);
@@ -64,7 +94,7 @@ async function fetchExternalPage(url: string): Promise<{ url: string; title: str
         signal: controller.signal,
         redirect: 'follow',
         headers: {
-          'user-agent': 'UpTrendifyOSResearch/1.0',
+          'user-agent': 'Mozilla/5.0 (compatible; UpTrendifyOSResearch/1.0; +https://uptrendify-os.vercel.app)',
           accept: 'text/html,application/xhtml+xml,text/plain',
         },
       });
@@ -72,29 +102,35 @@ async function fetchExternalPage(url: string): Promise<{ url: string; title: str
       clearTimeout(timer);
     }
 
-    if (!response.ok) return null;
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('html') && !contentType.includes('xhtml') && !contentType.includes('text/plain')) return null;
+    if (response.ok) {
+      const contentType = (response.headers.get('content-type') || '').toLowerCase();
+      if (contentType.includes('html') || contentType.includes('xhtml') || contentType.includes('text/plain')) {
+        const bounded = await readBoundedBody(response, 900_000);
+        let extracted = bounded.content;
+        let title: string | null = null;
+        if (contentType.includes('html') || contentType.includes('xhtml')) {
+          const page = extractPage(bounded.content, response.url || safe.toString());
+          title = page.title;
+          extracted = page.text;
+        }
 
-    const bounded = await readBoundedBody(response, 900_000);
-    let extracted = bounded.content;
-    let title: string | null = null;
-    if (contentType.includes('html') || contentType.includes('xhtml')) {
-      const page = extractPage(bounded.content, safe.toString());
-      title = page.title;
-      extracted = page.text;
+        const text = extracted.replace(/\s+/g, ' ').trim().slice(0, MAX_EXTERNAL_CHARS);
+        if (text.length >= 220) {
+          direct = { url: response.url || safe.toString(), title, text };
+        }
+      }
     }
-
-    const text = extracted.replace(/\s+/g, ' ').trim().slice(0, MAX_EXTERNAL_CHARS);
-    if (text.length < 220) return null;
-    return {
-      url: response.url || safe.toString(),
-      title,
-      text,
-    };
   } catch {
-    return null;
+    // A blocked or broken direct fetch gets one bounded rendered-reader attempt.
   }
+
+  if (!allowRenderedFallback) return direct;
+  if (direct && direct.text.length >= 650) return direct;
+
+  const rendered = await fetchRenderedExternalPage(url);
+  if (!rendered) return direct;
+  if (!direct || rendered.text.length > direct.text.length + 100) return rendered;
+  return direct;
 }
 
 export async function augmentResearchWithWebSearch(
@@ -128,11 +164,11 @@ export async function augmentResearchWithWebSearch(
     '- official company/product/about/pricing pages not already obvious from the homepage',
     '- credible industry or organization profiles',
     '- recent reputable news or announcements',
-    '- customer/review/community pages when relevant',
+    '- public official social channels and public community/review pages when relevant',
     '- competitor/category pages when useful for positioning and SEO',
     '',
     'Return ONLY absolute http/https URLs, one URL per line, with no markdown and no commentary.',
-    'Do not return search-engine pages, social profile pages, login pages, downloads, or unrelated results.',
+    'Do not return search-engine pages, login/private account pages, downloads, or unrelated results. Public official social or community pages are allowed when they are useful evidence.',
   ].join('\n');
 
   try {
@@ -159,7 +195,7 @@ export async function augmentResearchWithWebSearch(
       };
     }
 
-    const pages = (await Promise.all(urls.map(fetchExternalPage))).filter(
+    const pages = (await Promise.all(urls.map((url, index) => fetchExternalPage(url, index < 4)))).filter(
       (page): page is { url: string; title: string | null; text: string } => Boolean(page),
     ).slice(0, MAX_EXTERNAL_SOURCES);
 
