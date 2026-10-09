@@ -11,6 +11,9 @@ type IntakeIdentity = ExtractedIdentity & {
   aiProfile?: {
     products: string[];
     services: string[];
+    keyFeatures: string[];
+    benefits: string[];
+    pricingSignals: string[];
     audience: string | null;
     personas: { name: string; description?: string | null }[];
     customerTypes: string[];
@@ -29,6 +32,17 @@ type IntakeIdentity = ExtractedIdentity & {
     businessModel: string | null;
     primaryMarket: string | null;
     geography: string | null;
+    seo: {
+      importantTopics: string[];
+      keywordThemes: string[];
+      contentGaps: string[];
+      searchIntentOpportunities: string[];
+    };
+    competition: {
+      namedCompetitors: string[];
+      alternatives: string[];
+      differentiationClaims: string[];
+    };
     evidence: { claim: string; sourceUrl: string }[];
   } | null;
   crawl?: { pages: string[]; pageCount: number; stylesheetCount: number } | null;
@@ -98,7 +112,11 @@ export function BrandIntake({
 
       const next = body.identity as IntakeIdentity;
       setIdentity(next);
-      if (next.brandName) setName(next.brandName);
+      const host = new URL(next.finalUrl ?? value).hostname.replace(/^www\\./i, '');
+      const hostLabel = (host.split('.')[0] || 'Brand')
+        .replace(/[-_]+/g, ' ')
+        .replace(/\\b\\w/g, (letter) => letter.toUpperCase());
+      setName(next.brandName || name.trim() || hostLabel);
       setPhase('review');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read that website.');
@@ -147,10 +165,15 @@ export function BrandIntake({
             valueProposition: identity.aiProfile?.valueProposition ?? null,
             differentiators: identity.aiProfile?.differentiators ?? [],
             positioningThemes: identity.aiProfile?.positioningThemes ?? [],
+            competitiveContext: identity.aiProfile?.competition ?? null,
+            seoResearch: identity.aiProfile?.seo ?? null,
           },
           offerDetails: {
             products: identity.aiProfile?.products ?? [],
             services: identity.aiProfile?.services ?? [],
+            keyFeatures: identity.aiProfile?.keyFeatures ?? [],
+            benefits: identity.aiProfile?.benefits ?? [],
+            pricingSignals: identity.aiProfile?.pricingSignals ?? [],
             productCategories: identity.aiProfile?.productCategories ?? [],
             callsToAction: identity.aiProfile?.callsToAction ?? [],
             painPoints: identity.aiProfile?.painPoints ?? [],
@@ -264,6 +287,14 @@ export function BrandIntake({
   return (
     <div>
       <BrandPanel icon={<Sparkles size={17} />} title="Brand IQ review" subtitle="Everything the website scan found, grouped into the same working contexts your content and strategy use.">
+        {identity.warnings.length || !ai ? (
+          <div className="brand-scan-warning" role="status" aria-live="polite">
+            <strong>{!ai ? 'Structured Brand IQ needs attention' : 'Some parts of the scan need review'}</strong>
+            <p>{!ai ? 'We recovered the public page, but the AI could not complete every structured field. You can retry the scan; do not treat missing values as verified facts.' : 'The scan recovered usable information, but one or more sources or enrichment steps were incomplete.'}</p>
+            {identity.warnings.length ? <ul>{identity.warnings.slice(0, 4).map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+            <button type="button" className="brand-btn" onClick={() => void scan()} disabled={phase === 'saving'}><RefreshCw size={14} /> Retry website analysis</button>
+          </div>
+        ) : null}
         <div className="brand-strip" aria-hidden="true" />
         <div className="brand-identity">
           <span className="brand-identity-logo" style={{ width: 58, height: 58 }}>
@@ -291,6 +322,9 @@ export function BrandIntake({
           <div className="brand-fields">
             <BrandField label="Products">{tags(ai?.products)}</BrandField>
             <BrandField label="Services">{tags(ai?.services)}</BrandField>
+            <BrandField label="Key features">{tags(ai?.keyFeatures)}</BrandField>
+            <BrandField label="Benefits">{tags(ai?.benefits)}</BrandField>
+            <BrandField label="Pricing signals">{tags(ai?.pricingSignals)}</BrandField>
             <BrandField label="Product categories">{tags(ai?.productCategories)}</BrandField>
             <BrandField label="Calls to action">{tags(ai?.callsToAction)}</BrandField>
           </div>
@@ -314,6 +348,23 @@ export function BrandIntake({
             <BrandField label="Terminology">{tags(ai?.terminology)}</BrandField>
             <BrandField label="Recurring claims">{tags(ai?.recurringClaims)}</BrandField>
             <BrandField label="Messaging themes">{tags(ai?.messagingThemes)}</BrandField>
+          </div>
+        </BrandSection>
+
+        <BrandSection title="SEO & Search" hint="Topics and search-intent opportunities grounded in the scanned pages.">
+          <div className="brand-fields">
+            <BrandField label="Important topics">{tags(ai?.seo?.importantTopics)}</BrandField>
+            <BrandField label="Keyword themes">{tags(ai?.seo?.keywordThemes)}</BrandField>
+            <BrandField label="Content gaps">{tags(ai?.seo?.contentGaps)}</BrandField>
+            <BrandField label="Search intent opportunities">{tags(ai?.seo?.searchIntentOpportunities)}</BrandField>
+          </div>
+        </BrandSection>
+
+        <BrandSection title="Competitive Context" hint="Competitors and alternatives only when supported by evidence.">
+          <div className="brand-fields">
+            <BrandField label="Named competitors">{tags(ai?.competition?.namedCompetitors)}</BrandField>
+            <BrandField label="Alternatives">{tags(ai?.competition?.alternatives)}</BrandField>
+            <BrandField label="Differentiation claims">{tags(ai?.competition?.differentiationClaims)}</BrandField>
           </div>
         </BrandSection>
 
@@ -347,6 +398,7 @@ export function BrandIntake({
             <BrandField label="Pages scanned"><span>{identity.crawl?.pageCount ?? 1}</span></BrandField>
             <BrandField label="External stylesheets"><span>{identity.crawl?.stylesheetCount ?? 0}</span></BrandField>
             <BrandField label="Evidence used">{tags(identity.inspected)}</BrandField>
+            {ai?.evidence?.length ? <BrandField label="Evidence claims"><div className="brand-evidence-list">{ai.evidence.slice(0, 8).map((item) => <div className="brand-evidence-item" key={item.sourceUrl + item.claim}><span>{item.claim}</span><a href={item.sourceUrl} target="_blank" rel="noreferrer">{new URL(item.sourceUrl).hostname}</a></div>)}</div></BrandField> : null}
             {identity.warnings.length ? <BrandField label="Warnings"><ul style={{ margin: 0, paddingLeft: 18 }}>{identity.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></BrandField> : null}
           </div>
         </BrandSection>
