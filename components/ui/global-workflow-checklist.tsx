@@ -233,6 +233,7 @@ export function GlobalWorkflowChecklist() {
           currentBrandId?: string | null;
           checklistSignals?: ChecklistSignals;
         };
+        if (window.location.pathname !== pathname) return;
         if (brandId && body.currentBrandId !== brandId) return;
         if (body.checklistSignals) {
           setSignals(body.checklistSignals);
@@ -256,6 +257,7 @@ export function GlobalWorkflowChecklist() {
             generation?: { status?: string | null } | null;
             versions?: unknown[];
           };
+          if (window.location.pathname !== pathname) return;
           const generationStatus = body.generation?.status ?? null;
           setResource((current) => ({
             ...current,
@@ -282,6 +284,7 @@ export function GlobalWorkflowChecklist() {
             contentItems?: unknown[];
             items?: unknown[];
           };
+          if (window.location.pathname !== pathname) return;
           const campaign = body.campaign;
           const linkedContent = body.contentItems ?? body.content ?? body.items ?? [];
           setResource((current) => ({
@@ -302,7 +305,7 @@ export function GlobalWorkflowChecklist() {
     await Promise.all(requests);
     setSyncState(successfulReads > 0 ? 'live' : 'offline');
     return active;
-  }, [brandId, campaignId, contentId]);
+  }, [brandId, campaignId, contentId, pathname]);
 
   useEffect(() => {
     refreshRef.current = refreshChecklistData;
@@ -382,9 +385,11 @@ export function GlobalWorkflowChecklist() {
   if (!config) return null;
 
   const stateContext = { pathname, view, signals, resource };
-  const nextTask = config.tasks.find((task) => {
+  const nextTask = config.tasks.find((task) =>
+    getChecklistTaskState(task.id, stateContext) === 'running',
+  ) ?? config.tasks.find((task) => {
     const derived = getChecklistTaskState(task.id, stateContext);
-    const done = derived === 'done' || derived === 'running' || (derived === null && Boolean(completed[task.id]));
+    const done = derived === 'done' || (derived === null && Boolean(completed[task.id]));
     return !done && !task.locked;
   });
 
