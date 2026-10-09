@@ -6,7 +6,7 @@
 .shell > .main {
   max-width: none;
   width: 100%;
-  padding: 28px clamp(24px, 2.5vw, 48px) 40px;
+  padding: 28px var(--layout-page-gutter, clamp(24px, 2.5vw, 48px)) 40px;
 }
 
 .shell > .main > main.main,
@@ -19,12 +19,12 @@
 
 @media (min-width: 1600px) {
   .shell > .main {
-    padding-inline: clamp(36px, 3vw, 64px);
+    padding-inline: var(--layout-page-gutter, clamp(24px, 2.5vw, 48px));
   }
 }
 
 @media (max-width: 720px) {
   .shell > .main {
-    padding: 20px 16px 32px;
+    padding: 20px var(--layout-page-gutter-mobile, 16px) 32px;
   }
 }
