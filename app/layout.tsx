@@ -3,6 +3,7 @@ import './globals.css';
 import './design-system.css';
 import './workspace-layout.css';
 import './public-pages.css';
+import './landing-hero.css';
 import './shared-theme.css';
 import './brand-brain-ux.css';
 import './authenticated-ui.css';
