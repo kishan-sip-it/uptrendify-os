@@ -120,39 +120,142 @@ export function shouldUseRenderedWebsiteFallback(html: string): boolean {
   return !title && !metaDescription && headings.length === 0 && bodyText.length < 1_400;
 }
 
+function cssComponents(body: string): string[] {
+  return body.replace(/,/g, ' ').replace(/\//g, ' ').trim().split(/\s+/).filter(Boolean);
+}
+
+function hueDegrees(token: string): number {
+  const value = token.trim().toLowerCase();
+  const numeric = Number.parseFloat(value);
+  if (!Number.isFinite(numeric)) return 0;
+  if (value.endsWith('turn')) return numeric * 360;
+  if (value.endsWith('rad')) return numeric * (180 / Math.PI);
+  return numeric;
+}
+
+function parseRgbFunction(body: string): string | null {
+  const parts = cssComponents(body);
+  if (parts.length < 3) return null;
+  const channel = (token: string) => token.endsWith('%')
+    ? clamp(Number.parseFloat(token) * 2.55, 0, 255)
+    : clamp(Number.parseFloat(token), 0, 255);
+  const values = parts.slice(0, 3).map(channel);
+  if (values.some((value) => !Number.isFinite(value))) return null;
+  return rgbToHex(values[0]!, values[1]!, values[2]!);
+}
+
+function parseHslFunction(body: string): string | null {
+  const parts = cssComponents(body);
+  if (parts.length < 3) return null;
+  const h = ((hueDegrees(parts[0]!) % 360) + 360) % 360 / 360;
+  const s = clamp(Number.parseFloat(parts[1]!) / (parts[1]!.endsWith('%') ? 100 : 1), 0, 1);
+  const l = clamp(Number.parseFloat(parts[2]!) / (parts[2]!.endsWith('%') ? 100 : 1), 0, 1);
+  if (![h, s, l].every(Number.isFinite)) return null;
+  if (s === 0) return rgbToHex(l * 255, l * 255, l * 255);
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const channel = (t: number) => {
+    let value = t;
+    if (value < 0) value += 1;
+    if (value > 1) value -= 1;
+    if (value < 1 / 6) return p + (q - p) * 6 * value;
+    if (value < 1 / 2) return q;
+    if (value < 2 / 3) return p + (q - p) * (2 / 3 - value) * 6;
+    return p;
+  };
+  return rgbToHex(channel(h + 1 / 3) * 255, channel(h) * 255, channel(h - 1 / 3) * 255);
+}
+
+function linearToSrgb(value: number): number {
+  const clamped = Math.max(0, value);
+  return clamped <= 0.0031308 ? 12.92 * clamped : 1.055 * clamped ** (1 / 2.4) - 0.055;
+}
+
+function parseOklab(l: number, a: number, b: number): string {
+  const lRoot = l + 0.3963377774 * a + 0.2158037573 * b;
+  const mRoot = l - 0.1055613458 * a - 0.0638541728 * b;
+  const sRoot = l - 0.0894841775 * a - 1.291485548 * b;
+  const ll = lRoot ** 3;
+  const mm = mRoot ** 3;
+  const ss = sRoot ** 3;
+  return rgbToHex(
+    linearToSrgb(4.0767416621 * ll - 3.3077115913 * mm + 0.2309699292 * ss) * 255,
+    linearToSrgb(-1.2684380046 * ll + 2.6097574011 * mm - 0.3413193965 * ss) * 255,
+    linearToSrgb(-0.0041960863 * ll - 0.7034186147 * mm + 1.707614701 * ss) * 255,
+  );
+}
+
+function parseOklabFunction(body: string): string | null {
+  const parts = cssComponents(body);
+  if (parts.length < 3) return null;
+  const lightness = parts[0]!.endsWith('%')
+    ? Number.parseFloat(parts[0]!) / 100
+    : Number.parseFloat(parts[0]!);
+  const axis = (token: string) => token.endsWith('%')
+    ? Number.parseFloat(token) * 0.004
+    : Number.parseFloat(token);
+  const a = axis(parts[1]!);
+  const b = axis(parts[2]!);
+  if (![lightness, a, b].every(Number.isFinite)) return null;
+  return parseOklab(clamp(lightness, 0, 1), a, b);
+}
+
+function parseOklchFunction(body: string): string | null {
+  const parts = cssComponents(body);
+  if (parts.length < 3) return null;
+  const lightness = parts[0]!.endsWith('%')
+    ? Number.parseFloat(parts[0]!) / 100
+    : Number.parseFloat(parts[0]!);
+  const chroma = Number.parseFloat(parts[1]!);
+  const hue = hueDegrees(parts[2]!) * Math.PI / 180;
+  if (![lightness, chroma, hue].every(Number.isFinite)) return null;
+  return parseOklab(
+    clamp(lightness, 0, 1),
+    Math.max(0, chroma) * Math.cos(hue),
+    Math.max(0, chroma) * Math.sin(hue),
+  );
+}
+
+function parseBareHslTriplet(value: string): string | null {
+  const parts = cssComponents(value);
+  if (parts.length !== 3 || !parts[1]!.endsWith('%') || !parts[2]!.endsWith('%')) return null;
+  return parseHslFunction(parts.join(' '));
+}
+
+const BASIC_CSS_COLORS: Record<string, string> = {
+  black: '#000000', white: '#ffffff', red: '#ff0000', green: '#008000', blue: '#0000ff',
+  yellow: '#ffff00', orange: '#ffa500', purple: '#800080', pink: '#ffc0cb', tomato: '#ff6347',
+  coral: '#ff7f50', gold: '#ffd700', indigo: '#4b0082', teal: '#008080', cyan: '#00ffff',
+  magenta: '#ff00ff', navy: '#000080', lime: '#00ff00', olive: '#808000', maroon: '#800000',
+  rebeccapurple: '#663399', transparent: '',
+};
+
 export function parseCssColor(raw: string | null | undefined): string | null {
   const value = (raw ?? '').trim().toLowerCase();
-  if (!value || value === 'transparent' || value === 'currentcolor' || value === 'inherit') return null;
+  if (!value || value === 'transparent' || value === 'currentcolor' || value === 'inherit' || value === 'initial' || value === 'unset') return null;
 
   const hex = normalizeHex(value);
   if (hex) return hex;
+  if (BASIC_CSS_COLORS[value]) return BASIC_CSS_COLORS[value] || null;
 
-  const rgbMatch = value.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/);
-  if (rgbMatch) {
-    return rgbToHex(Number(rgbMatch[1]), Number(rgbMatch[2]), Number(rgbMatch[3]));
+  const functionMatch = value.match(/^([a-z-]+)\((.*)\)$/i);
+  if (functionMatch) {
+    const name = functionMatch[1]!.toLowerCase();
+    const body = functionMatch[2]!;
+    if (name === 'rgb' || name === 'rgba') return parseRgbFunction(body);
+    if (name === 'hsl' || name === 'hsla') return parseHslFunction(body);
+    if (name === 'oklab') return parseOklabFunction(body);
+    if (name === 'oklch') return parseOklchFunction(body);
+    if (name === 'color') {
+      const parts = cssComponents(body);
+      if (parts.length >= 4 && parts[0] === 'srgb') {
+        const values = parts.slice(1, 4).map((part) => clamp(Number.parseFloat(part), 0, 1) * 255);
+        if (values.every(Number.isFinite)) return rgbToHex(values[0]!, values[1]!, values[2]!);
+      }
+    }
   }
 
-  const hslMatch = value.match(/^hsla?\(\s*([\d.]+)[\s,]+([\d.]+)%[\s,]+([\d.]+)%/);
-  if (hslMatch) {
-    const h = Number(hslMatch[1]) / 360;
-    const s = clamp(Number(hslMatch[2]) / 100, 0, 1);
-    const l = clamp(Number(hslMatch[3]) / 100, 0, 1);
-    if (s === 0) return rgbToHex(l * 255, l * 255, l * 255);
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    const channel = (t: number) => {
-      let value2 = t;
-      if (value2 < 0) value2 += 1;
-      if (value2 > 1) value2 -= 1;
-      if (value2 < 1 / 6) return p + (q - p) * 6 * value2;
-      if (value2 < 1 / 2) return q;
-      if (value2 < 2 / 3) return p + (q - p) * (2 / 3 - value2) * 6;
-      return p;
-    };
-    return rgbToHex(channel(h + 1 / 3) * 255, channel(h) * 255, channel(h - 1 / 3) * 255);
-  }
-
-  return null;
+  return parseBareHslTriplet(value);
 }
 
 type Rgb = { r: number; g: number; b: number };
@@ -196,7 +299,7 @@ export function readableTextOn(hex: string): '#0f172a' | '#ffffff' {
   return relativeLuminance(hex) > 0.45 ? '#0f172a' : '#ffffff';
 }
 
-const COLOR_TOKEN = /(#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\))/g;
+const COLOR_TOKEN = /(#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)|oklab\([^)]*\)|oklch\([^)]*\)|color\([^)]*\))/gi;
 
 export function collectColors(cssText: string, source: string, sink: Map<string, { count: number; sources: Set<string> }>): void {
   const cleaned = cssText.replace(/\/\*[\s\S]*?\*\//g, ' ');
@@ -224,7 +327,8 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
       /(^|[-_])(brand|primary|secondary|accent|cta|link|action|highlight)([-_]|$)/i.test(name) ||
       /^theme-(primary|secondary|accent|brand|link|action)([-_]|$)/i.test(name);
     if (!semanticName) continue;
-    const hex = parseCssColor(match[2] ?? '');
+    const rawValue = (match[2] ?? '').trim();
+    const hex = parseCssColor(rawValue) ?? parseBareHslTriplet(rawValue);
     if (hex) add(hex, 6, 'semantic-css');
   }
 
