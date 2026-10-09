@@ -103,13 +103,19 @@ export async function augmentResearchWithWebSearch(
   preferredProvider?: AiProvider | null,
 ): Promise<WebResearchAugmentation> {
   const registry = preferredProvider ? null : createDefaultRegistry();
-  const providers = preferredProvider
+  const configuredProviders = preferredProvider
     ? [preferredProvider]
     : (registry?.configuredInOrder() ?? []);
 
-  const provider = providers.find((candidate) => candidate.id === 'groq') ?? providers[0];
-  if (!provider) {
-    return { sourcesAdded: 0, urls: [], warning: 'No configured AI provider is available for web research.' };
+  // This path requires actual server-side browser search. Never fall back to a
+  // provider that cannot execute web search and then trust its guessed URLs.
+  const providers = configuredProviders.filter((candidate) => candidate.id === 'groq');
+  if (providers.length === 0) {
+    return {
+      sourcesAdded: 0,
+      urls: [],
+      warning: 'Live web search requires the configured Groq browser-search integration; first-party website research can still continue.',
+    };
   }
 
   const root = normalizeResearchUrl(args.rootUrl);
