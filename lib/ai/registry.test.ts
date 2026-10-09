@@ -96,14 +96,14 @@ describe('createDefaultRegistry', () => {
 
   it('creates a registry with all provider IDs', () => {
     const registry = createDefaultRegistry();
-    expect(registry.ids()).toEqual(['groq', 'openai', 'anthropic', 'gemini']);
+    expect(registry.ids()).toEqual(['groq', 'openai', 'anthropic']);
   });
 
   it('uses env-configured provider IDs', () => {
     const registry = createDefaultRegistry();
     const health = registry.list().map((p) => p.health());
     return Promise.all(health).then((all) => {
-      expect(all.every((h) => ['groq', 'openai', 'anthropic', 'gemini'].includes(h.id))).toBe(true);
+      expect(all.every((h) => ['groq', 'openai', 'anthropic'].includes(h.id))).toBe(true);
     });
   });
 });
