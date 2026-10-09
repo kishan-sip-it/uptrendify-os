@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
+import { ThemeController } from '@/components/theme/theme-controller';
 import BorderGlow from '@/components/react-bits/BorderGlow';
 import SwarmCursor from '@/components/react-bits/SwarmCursor';
 import WarpText from '@/components/react-bits/WarpText';
@@ -261,6 +262,8 @@ export function Landing() {
   const [authenticated, setAuthenticated] = useState(false);
   const [account, setAccount] = useState<LandingAccount | null>(null);
   const heroRef = useRef<HTMLElement | null>(null);
+  const mobileNavRef = useRef<HTMLDivElement | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -309,6 +312,51 @@ export function Landing() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const panel = mobileNavRef.current;
+    const toggle = menuButtonRef.current;
+    if (!panel || !toggle) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const getFocusable = () => Array.from(
+      panel.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')
+    ).filter((element) => element.getAttribute('tabindex') !== '-1');
+    getFocusable()[0]?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMobileOpen(false);
+        toggle.focus();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      toggle.focus();
+    };
+  }, [mobileOpen]);
+
   async function handleStart() {
     setLoading(true);
     try {
@@ -347,13 +395,9 @@ export function Landing() {
         </a>
         <nav className="landing-links" aria-label="Primary">
           <a href="#platform" onClick={() => setMobileOpen(false)}>Platform</a>
-          <a href="#why" onClick={() => setMobileOpen(false)}>Why it exists</a>
           <a href="#how-it-works" onClick={() => setMobileOpen(false)}>How it works</a>
-          <a href="#workflow" onClick={() => setMobileOpen(false)}>Workflow</a>
           <a href="/about" onClick={() => setMobileOpen(false)}>About</a>
           <a href="/contact" onClick={() => setMobileOpen(false)}>Contact</a>
-          <a href="/feedback" onClick={() => setMobileOpen(false)}>Feedback</a>
-          <a href="/report-issue" onClick={() => setMobileOpen(false)}>Report issue</a>
         </nav>
         <div className="landing-actions">
           {accountLoading ? (
@@ -382,6 +426,7 @@ export function Landing() {
         </div>
         <button
           type="button"
+          ref={menuButtonRef}
           className="landing-menu"
           aria-label="Toggle navigation"
           aria-expanded={mobileOpen}
@@ -390,15 +435,17 @@ export function Landing() {
           {mobileOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
         {mobileOpen ? (
-          <div className="landing-mobile">
+          <div
+            ref={mobileNavRef}
+            className="landing-mobile"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mobile navigation"
+          >
             <a href="#platform" onClick={() => setMobileOpen(false)}>Platform</a>
-            <a href="#why" onClick={() => setMobileOpen(false)}>Why it exists</a>
             <a href="#how-it-works" onClick={() => setMobileOpen(false)}>How it works</a>
-            <a href="#workflow" onClick={() => setMobileOpen(false)}>Workflow</a>
             <a href="/about" onClick={() => setMobileOpen(false)}>About</a>
             <a href="/contact" onClick={() => setMobileOpen(false)}>Contact</a>
-            <a href="/feedback" onClick={() => setMobileOpen(false)}>Feedback</a>
-            <a href="/report-issue" onClick={() => setMobileOpen(false)}>Report issue</a>
             {account ? (
               <a href={ROLE_DESTINATIONS[account.role].href} className="landing-cta" style={{ justifyContent: 'center' }} onClick={() => setMobileOpen(false)}>
                 {ROLE_DESTINATIONS[account.role].label}
@@ -730,21 +777,41 @@ export function Landing() {
       </section>
 
       <footer className="landing-footer">
-        <div className="landing-logo">
-          <span className="logo" style={{ width: 18, height: 18 }} /> UpTrendifyOS
+        <div className="landing-footer-brand">
+          <div className="landing-logo">
+            <span className="logo" style={{ width: 22, height: 22 }} aria-hidden="true" /> UpTrendifyOS
+          </div>
+          <p>Evidence-backed marketing, with human approval at every important step.</p>
+          <ThemeController compact />
         </div>
-        <div className="landing-footer-links">
-          <a href="#platform">Platform</a>
-          <a href="#how-it-works">How it works</a>
-          <a href="/about">About</a>
-          <a href="/contact">Contact</a>
-          <a href="/feedback">Feedback</a>
-          <a href="/report-issue">Report issue</a>
-          <a href="/terms">Terms</a>
-          <a href="/privacy">Privacy</a>
-          <a href="/login">Sign in</a>
+        <div className="landing-footer-columns">
+          <div className="landing-footer-group">
+            <h2>Product</h2>
+            <a href="#platform">Platform</a>
+            <a href="#how-it-works">How it works</a>
+            <a href="#workflow">Workflow</a>
+            <a href="/login">Sign in</a>
+          </div>
+          <div className="landing-footer-group">
+            <h2>Company</h2>
+            <a href="/about">About</a>
+            <a href="/contact">Contact</a>
+            <a href="/feedback">Feedback</a>
+          </div>
+          <div className="landing-footer-group">
+            <h2>Support</h2>
+            <a href="/report-issue">Report an issue</a>
+          </div>
+          <div className="landing-footer-group">
+            <h2>Legal</h2>
+            <a href="/terms">Terms</a>
+            <a href="/privacy">Privacy</a>
+          </div>
         </div>
-        <div className="landing-footer-note">© {new Date().getFullYear()} UpTrendifyOS · Research → Review → Strategy</div>
+        <div className="landing-footer-bottom">
+          <span>© {new Date().getFullYear()} UpTrendifyOS</span>
+          <span>Research → Review → Strategy → Content → Campaigns</span>
+        </div>
       </footer>
     </div>
   );
