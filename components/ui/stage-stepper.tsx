@@ -39,7 +39,7 @@ export function StageStepper({
         const content = (
           <>
             <span className="ui-stage-stepper-rail" aria-hidden="true" />
-            <span className="ui-stage-stepper-marker" aria-hidden="true">{marker}</span>
+            <span className="workflow-dot ui-stage-stepper-marker" aria-hidden="true">{marker}</span>
             <span className="ui-stage-stepper-label">{stage.label}</span>
             {stage.detail ? <span className="ui-stage-stepper-detail">{stage.detail}</span> : null}
           </>
@@ -47,7 +47,7 @@ export function StageStepper({
         return (
           <li
             key={stage.key}
-            className={'ui-stage-stepper-item ui-stage-stepper-item--' + stage.state}
+            className={'workflow-stage ' + (stage.state === 'done' ? 'completed' : stage.state === 'active' ? 'current' : stage.state === 'blocked' ? 'blocked' : 'upcoming') + ' ui-stage-stepper-item ui-stage-stepper-item--' + stage.state}
             title={stage.label + ': ' + stage.state}
             aria-current={stage.state === 'active' ? 'step' : undefined}
           >
