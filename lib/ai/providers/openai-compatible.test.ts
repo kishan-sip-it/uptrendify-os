@@ -40,11 +40,44 @@ describe('createGroqProvider', () => {
 
     expect(firstBody.model).toBe('openai/gpt-oss-120b');
     expect(secondBody.model).toBe('openai/gpt-oss-20b');
-    expect(secondBody.max_completion_tokens).toBe(1200);
+    expect(secondBody.max_completion_tokens).toBe(1500);
     expect(firstBody).not.toHaveProperty('service_tier');
     expect(secondBody).not.toHaveProperty('service_tier');
   });
 
+
+  it('waits for Retry-After and retries 20B once when both models are rate-limited', async () => {
+    vi.useFakeTimers();
+    try {
+      mockedPostJson
+        .mockRejectedValueOnce(new AiProviderError('groq', '120B rate limited', 429, 100))
+        .mockRejectedValueOnce(new AiProviderError('groq', '20B rate limited', 429, 100))
+        .mockResolvedValueOnce({
+          choices: [{ message: { content: JSON.stringify({ ok: true }) } }],
+          usage: { prompt_tokens: 100, completion_tokens: 200 },
+        });
+
+      const provider = createGroqProvider('test-key', 'openai/gpt-oss-120b');
+      const pending = provider.generate({
+        prompt: 'Create a full strategy object.',
+        json: true,
+        maxTokens: 8192,
+        model: 'openai/gpt-oss-120b',
+      });
+      await vi.advanceTimersByTimeAsync(100);
+      const result = await pending;
+
+      expect(result.model).toBe('openai/gpt-oss-20b');
+      expect(mockedPostJson).toHaveBeenCalledTimes(3);
+      const fallbackBody = mockedPostJson.mock.calls[1]?.[1]?.body as Record<string, unknown>;
+      const retryBody = mockedPostJson.mock.calls[2]?.[1]?.body as Record<string, unknown>;
+      expect(fallbackBody.model).toBe('openai/gpt-oss-20b');
+      expect(fallbackBody.max_completion_tokens).toBe(4096);
+      expect(retryBody).toEqual(fallbackBody);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('uses Groq browser search only in plain-text mode', async () => {
     mockedPostJson.mockResolvedValueOnce({
