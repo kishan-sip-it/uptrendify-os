@@ -6,6 +6,7 @@ import {
   ContentValidationError,
   contentTypeLabel,
   channelLabel,
+  contentGenerationMaxTokens,
 } from './schema';
 
 describe('contentItemInputSchema', () => {
@@ -116,6 +117,22 @@ describe('parseContentGeneration', () => {
     expect(() =>
       parseContentGeneration(JSON.stringify({ headline: 'H' }), intent),
     ).toThrow(ContentValidationError);
+  });
+});
+
+describe('content generation token budgets', () => {
+  it('keeps short-form assets within a bounded Groq completion budget', () => {
+    expect(contentGenerationMaxTokens('social_post')).toBe(1024);
+    expect(contentGenerationMaxTokens('ad_copy')).toBe(1024);
+    expect(contentGenerationMaxTokens('video_script')).toBe(1536);
+    expect(contentGenerationMaxTokens('cta_headlines')).toBe(768);
+  });
+
+  it('allows larger but bounded budgets for long-form assets', () => {
+    expect(contentGenerationMaxTokens('email')).toBe(1536);
+    expect(contentGenerationMaxTokens('blog_outline')).toBe(1536);
+    expect(contentGenerationMaxTokens('blog_draft')).toBe(2048);
+    expect(contentGenerationMaxTokens('landing_page')).toBe(2048);
   });
 });
 
