@@ -95,7 +95,7 @@ function fitEvidenceToBudget(evidence: EvidenceFragment[], limits: ExtractionLim
   // first-party pages are inserted earlier in crawl order and can fill the
   // entire budget before the model ever sees its competitor/market evidence.
   const externalSlots = external.length > 0 && limits.maxSources > 1
-    ? Math.min(2, limits.maxSources - 1)
+    ? Math.min(2, external.length, limits.maxSources - 1)
     : 0;
   const selected = [
     ...firstParty.slice(0, Math.max(0, limits.maxSources - externalSlots)).map(({ source }) => source),
@@ -242,7 +242,7 @@ export function buildEvidenceContext(sources: EvidenceFragment[]): EvidenceFragm
   const firstParty = usable.filter((source) => source.sourceType !== 'external-web');
   const external = usable.filter((source) => source.sourceType === 'external-web');
   const externalSlots = external.length > 0 && EVIDENCE_MAX_SOURCES > 1
-    ? Math.min(2, EVIDENCE_MAX_SOURCES - 1)
+    ? Math.min(2, external.length, EVIDENCE_MAX_SOURCES - 1)
     : 0;
   const selected = [
     ...firstParty.slice(0, EVIDENCE_MAX_SOURCES - externalSlots),
