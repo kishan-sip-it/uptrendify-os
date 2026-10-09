@@ -135,5 +135,9 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  // Public hero media lives in /public/assets/hero. Bypass auth interception
+  // for that static path and common video/image types, just as we already do
+  // for Next.js assets and image files. Application routes and APIs remain
+  // protected by the normal auth checks above.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|assets/hero/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|mp4|webm|mov|m4v|ogv)$).*)'],
 };
