@@ -139,10 +139,11 @@ export default function ThemeHeroVideo() {
           loop
           muted
           playsInline
-          preload="metadata"
+          preload="auto"
           aria-hidden="true"
           tabIndex={-1}
           onLoadedData={() => setVideoReady(true)}
+          onPlaying={() => setVideoReady(true)}
           onError={() => setVideoUnavailable(true)}
         >
           <source src={webmSrc} type="video/webm" />
