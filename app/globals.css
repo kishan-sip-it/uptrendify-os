@@ -2322,3 +2322,143 @@ html[data-theme="system"]:not(.theme-dark) {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+
+/* Shared, theme-aware navigation language for Brand Workspace and Brand Profile.
+   Keep colors semantic so a single accent/theme change propagates to every tab. */
+.brand-workspace-nav,
+.brand-profile-subtabs {
+  --workspace-tab-active-bg: color-mix(in srgb, var(--accent) 14%, var(--surface-card));
+  --workspace-tab-active-border: color-mix(in srgb, var(--accent) 42%, var(--line));
+  --workspace-tab-active-text: var(--text-strong);
+}
+
+.brand-workspace-nav {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 4px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface-card) 96%, transparent);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 4%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.brand-workspace-nav-scroll {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.brand-workspace-nav-scroll::-webkit-scrollbar { display: none; }
+
+.brand-workspace-tab,
+.brand-profile-subtab {
+  box-sizing: border-box;
+  font-family: inherit;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  transition:
+    background-color .16s ease,
+    color .16s ease,
+    border-color .16s ease,
+    box-shadow .16s ease,
+    transform .16s ease;
+}
+
+.brand-workspace-tab {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 13px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.brand-workspace-tab:hover {
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-card));
+  color: var(--text-strong);
+}
+
+.brand-workspace-tab.active {
+  border-color: var(--workspace-tab-active-border);
+  background: var(--workspace-tab-active-bg);
+  color: var(--workspace-tab-active-text);
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 82%, transparent);
+}
+
+.brand-workspace-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.brand-scan-warning {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0;
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--text-warning) 38%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text-warning) 7%, var(--surface-card));
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.brand-scan-warning strong {
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+.brand-scan-warning p { margin: 0; }
+.brand-scan-warning ul { margin: 0; padding-left: 18px; }
+.brand-scan-warning .brand-btn { justify-self: start; margin-top: 2px; }
+
+.brand-evidence-list {
+  display: grid;
+  gap: 0;
+  width: 100%;
+}
+
+.brand-evidence-item {
+  display: grid;
+  gap: 5px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.brand-evidence-item:last-child { border-bottom: 0; }
+
+.brand-evidence-item a {
+  justify-self: start;
+  max-width: 100%;
+  color: var(--accent);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .brand-workspace-nav { border-radius: 11px; }
+  .brand-workspace-tab { min-height: 34px; padding: 7px 10px; font-size: 11px; }
+}
+
