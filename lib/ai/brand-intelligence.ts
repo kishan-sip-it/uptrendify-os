@@ -78,22 +78,39 @@ function evidencePriority(source: EvidenceFragment): number {
 function fitEvidenceToBudget(evidence: EvidenceFragment[], limits: ExtractionLimits): EvidenceFragment[] {
   const usable = evidence
     .filter((source) => Boolean(source.url) && Boolean(source.text?.trim()))
-    .map((source, index) => ({ source, index }))
-    .sort((a, b) => {
-      const firstPartyBoost = (source: EvidenceFragment) => source.sourceType === 'first-party' ? 60 : 0;
-      return (
-        evidencePriority(b.source) + firstPartyBoost(b.source) -
-        evidencePriority(a.source) - firstPartyBoost(a.source)
-      ) || a.index - b.index;
-    })
-    .map(({ source }) => source)
-    .slice(0, limits.maxSources);
-  if (usable.length === 0) return [];
+    .map((source, index) => ({ source, index }));
 
-  const perSource = Math.max(700, Math.floor(limits.maxEvidenceChars / usable.length));
+  const sortBySignal = (a: { source: EvidenceFragment; index: number }, b: { source: EvidenceFragment; index: number }) => {
+    const firstPartyBoost = (source: EvidenceFragment) => source.sourceType === 'first-party' ? 60 : 0;
+    return (
+      evidencePriority(b.source) + firstPartyBoost(b.source) -
+      evidencePriority(a.source) - firstPartyBoost(a.source)
+    ) || a.index - b.index;
+  };
+
+  const firstParty = usable.filter(({ source }) => source.sourceType !== 'external-web').sort(sortBySignal);
+  const external = usable.filter(({ source }) => source.sourceType === 'external-web').sort(sortBySignal);
+
+  // Reserve up to two context slots for real external research. Without this,
+  // first-party pages are inserted earlier in crawl order and can fill the
+  // entire budget before the model ever sees its competitor/market evidence.
+  const externalSlots = external.length > 0 && limits.maxSources > 1
+    ? Math.min(2, limits.maxSources - 1)
+    : 0;
+  const selected = [
+    ...firstParty.slice(0, Math.max(0, limits.maxSources - externalSlots)).map(({ source }) => source),
+    ...external.slice(0, externalSlots).map(({ source }) => source),
+  ];
+  const usableSelected = selected.length > 0
+    ? selected
+    : firstParty.slice(0, limits.maxSources).map(({ source }) => source);
+  const ordered = usableSelected.slice(0, limits.maxSources);
+  if (ordered.length === 0) return [];
+
+  const perSource = Math.max(700, Math.floor(limits.maxEvidenceChars / ordered.length));
   let remaining = limits.maxEvidenceChars;
 
-  return usable.flatMap((source) => {
+  return ordered.flatMap((source) => {
     if (remaining < 200) return [];
     const take = Math.min(perSource, remaining, source.text.trim().length);
     if (take < 200) return [];
@@ -221,7 +238,18 @@ const SCHEMA_DOC = `{
 export function buildEvidenceContext(sources: EvidenceFragment[]): EvidenceFragment[] {
   const out: EvidenceFragment[] = [];
   let total = 0;
-  for (const source of sources) {
+  const usable = sources.filter((source) => Boolean(source.url) && Boolean(source.text?.trim()));
+  const firstParty = usable.filter((source) => source.sourceType !== 'external-web');
+  const external = usable.filter((source) => source.sourceType === 'external-web');
+  const externalSlots = external.length > 0 && EVIDENCE_MAX_SOURCES > 1
+    ? Math.min(2, EVIDENCE_MAX_SOURCES - 1)
+    : 0;
+  const selected = [
+    ...firstParty.slice(0, EVIDENCE_MAX_SOURCES - externalSlots),
+    ...external.slice(0, externalSlots),
+  ];
+
+  for (const source of selected) {
     if (out.length >= EVIDENCE_MAX_SOURCES) break;
     const text = (source.text ?? '').trim();
     if (!source.url || !text) continue;
