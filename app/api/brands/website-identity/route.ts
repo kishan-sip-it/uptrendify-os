@@ -3,7 +3,8 @@ import * as cheerio from 'cheerio';
 import { requireOrgRole, CAN_VIEW_DASHBOARD } from '@/lib/auth/roles';
 import { env } from '@/lib/env';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from '@/lib/research/url-security';
-import { collectColors, extractBrandIdentity, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
+import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
+import { extractRasterPalette, type RasterColorSample } from '@/lib/brand/raster-color-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { buildEvidenceContext, extractBrandIntelligence, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
 
@@ -83,6 +84,140 @@ async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH
   }
 
   return { ok: false, reason: 'The website could not be reached.', finalUrl };
+}
+
+async function readBoundedBytes(response: Response, maxBytes: number): Promise<Uint8Array | null> {
+  const contentLength = Number(response.headers.get('content-length') ?? 0);
+  if (contentLength > maxBytes) return null;
+  if (!response.body) return null;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return null;
+  }
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return output;
+}
+
+function externalScriptUrls(html: string, baseUrl: string): string[] {
+  const $ = cheerio.load(html);
+  const urls = new Set<string>();
+  const add = (raw: string | undefined) => {
+    const href = absoluteUrl(raw, baseUrl);
+    if (!href) return;
+    try {
+      urls.add(assertPublicHttpUrl(href).toString());
+    } catch {
+      // Keep unsafe schemes, credentials, and unusual ports out of extraction.
+    }
+  };
+  $('script[src]').each((_i, el) => add($(el).attr('src')));
+  $('link[href][rel]').each((_i, el) => {
+    const rel = ($(el).attr('rel') ?? '').toLowerCase().split(/\s+/);
+    const as = ($(el).attr('as') ?? '').toLowerCase();
+    if (rel.includes('modulepreload') || (rel.includes('preload') && as === 'script')) add($(el).attr('href'));
+  });
+  return [...urls].slice(0, 4);
+}
+
+async function fetchScriptText(url: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3500);
+  try {
+    const safe = assertPublicHttpUrl(url);
+    await assertResolvablePublicHost(safe.hostname);
+    const response = await fetchPublicHttp(safe.toString(), {
+      signal: controller.signal,
+      redirect: 'manual',
+      headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'text/javascript,application/javascript,application/ecmascript,*/*;q=0.1' },
+    });
+    if (!response.ok) return null;
+    const type = (response.headers.get('content-type') ?? '').toLowerCase();
+    if (!/(?:javascript|ecmascript|text\/plain)/i.test(type) && !/\.(?:m?js)(?:[?#]|$)/i.test(safe.toString())) return null;
+    const bounded = await readBoundedBody(response, 280_000);
+    return bounded.content.slice(0, 280_000);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function inlineScriptBlocks(html: string): string[] {
+  const $ = cheerio.load(html);
+  const scripts: string[] = [];
+  $('script:not([src])').each((_i, el) => {
+    const type = ($(el).attr('type') ?? '').toLowerCase();
+    if (type.includes('json')) return;
+    const text = $(el).text().trim();
+    if (text.length > 24) scripts.push(text.slice(0, 70_000));
+  });
+  return scripts.slice(0, 3);
+}
+
+function rasterLogoUrls(html: string, baseUrl: string, knownUrls: Array<string | null | undefined>): string[] {
+  const $ = cheerio.load(html);
+  const found = new Set<string>();
+  const add = (raw: string | undefined | null) => {
+    const url = absoluteUrl(raw ?? undefined, baseUrl);
+    if (!url) return;
+    try { found.add(assertPublicHttpUrl(url).toString()); } catch { /* Unsafe visual URL. */ }
+  };
+  for (const url of knownUrls) add(url ?? undefined);
+  $('link[rel][href]').each((_i, el) => {
+    const rel = ($(el).attr('rel') ?? '').toLowerCase();
+    if (/(?:icon|apple-touch-icon|mask-icon|manifest)/i.test(rel)) add($(el).attr('href'));
+  });
+  $('img, picture img, picture source').each((_i, el) => {
+    const node = $(el);
+    const hints = [node.attr('src'), node.attr('data-src'), node.attr('data-lazy-src'), node.attr('alt'), node.attr('class'), node.attr('id')].filter(Boolean).join(' ');
+    if (/(logo|wordmark|brandmark|brand-logo|favicon|brand-icon)/i.test(hints)) {
+      add(node.attr('src') ?? node.attr('data-src') ?? node.attr('data-lazy-src') ?? node.attr('srcset')?.split(',')[0]?.trim().split(' ')[0]);
+    }
+  });
+  // Common icon conventions are additional candidates, not assumed to exist.
+  for (const path of ['/favicon.png', '/favicon-32x32.png', '/apple-touch-icon.png']) add(path);
+  return [...found].slice(0, 5);
+}
+
+async function fetchRasterColors(url: string): Promise<RasterColorSample[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    const safe = assertPublicHttpUrl(url);
+    await assertResolvablePublicHost(safe.hostname);
+    const response = await fetchPublicHttp(safe.toString(), {
+      signal: controller.signal,
+      redirect: 'manual',
+      headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'image/png,image/x-icon,image/vnd.microsoft.icon,image/*;q=0.5,*/*;q=0.1' },
+    });
+    if (!response.ok) return [];
+    const type = (response.headers.get('content-type') ?? '').toLowerCase();
+    if (type.includes('text/html') || type.includes('application/json') || type.includes('javascript')) return [];
+    const bytes = await readBoundedBytes(response, 420_000);
+    return bytes ? extractRasterPalette(bytes, 12) : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchCss(url: string): Promise<string> {
