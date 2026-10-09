@@ -12,6 +12,7 @@ function readTheme(): ThemeName {
 export default function ThemeHeroVideo() {
   const [theme, setTheme] = useState<ThemeName>('light');
   const [videoReady, setVideoReady] = useState(false);
+  const [stillReady, setStillReady] = useState(false);
   const [videoUnavailable, setVideoUnavailable] = useState(false);
   const [stillUnavailable, setStillUnavailable] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -42,6 +43,7 @@ export default function ThemeHeroVideo() {
 
   useEffect(() => {
     setVideoReady(false);
+    setStillReady(false);
     setVideoUnavailable(false);
     setStillUnavailable(false);
 
@@ -57,7 +59,7 @@ export default function ThemeHeroVideo() {
 
   return (
     <div
-      className={'landing-hero-visual ' + (isDark ? 'is-dark' : 'is-light')}
+      className={'landing-hero-visual ' + (isDark ? 'is-dark' : 'is-light') + (stillReady || videoReady ? ' has-media' : '')}
       role="img"
       aria-label="UpTrendifyOS visual: public website research flows into the Brand Brain and then into marketing content."
     >
@@ -121,7 +123,8 @@ export default function ThemeHeroVideo() {
           alt=""
           aria-hidden="true"
           draggable={false}
-          onError={() => setStillUnavailable(true)}
+          onLoad={() => setStillReady(true)}
+          onError={() => { setStillReady(false); setStillUnavailable(true); }}
         />
       )}
 
