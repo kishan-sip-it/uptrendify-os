@@ -3,6 +3,9 @@ import { ArrowUpRight, Boxes, CalendarDays, Plus } from 'lucide-react';
 import { CAN_VIEW_CAMPAIGNS, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAMPAIGN_CHANNEL_LABELS, CAMPAIGN_STATUS_LABELS } from '@/lib/campaign/schema';
+import { PageHeader } from '@/components/ui/page-header';
+import { SectionHeading } from '@/components/ui/section-heading';
+import { StatusBadge } from '@/components/ui/status-badge';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,20 +25,6 @@ type CampaignRow = {
   updated_at: string;
 };
 
-function statusTone(status: string): string {
-  switch (status) {
-    case 'ACTIVE':
-      return 'tone-good';
-    case 'DRAFT':
-      return 'tone-info';
-    case 'ARCHIVED':
-      return 'tone-muted';
-    case 'COMPLETED':
-      return 'tone-warn';
-    default:
-      return 'tone-info';
-  }
-}
 
 function formatBudget(campaign: CampaignRow): string {
   if (campaign.budget == null) return 'No budget set';
@@ -123,15 +112,7 @@ export default async function CampaignsHubPage() {
 
   return (
     <main className="main">
-      <div className="topbar" style={{ marginBottom: 20, flexWrap: 'wrap' }}>
-        <div>
-          <div className="eyebrow">Organization view</div>
-          <h1 style={{ fontSize: 'clamp(24px, 3vw, 34px)', marginTop: 8 }}>All campaigns</h1>
-          <p className="subtitle">
-            Every campaign across your organization, grouped by client and brand.
-          </p>
-        </div>
-      </div>
+      <PageHeader eyebrow="Organization view" title="All campaigns" description="Every campaign across your organization, grouped by client and brand." />
 
       <div className="card" style={{ padding: '14px 18px', marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -156,12 +137,7 @@ export default async function CampaignsHubPage() {
 
       {clientSections.map((section) => (
         <section key={section.id ?? 'unassigned'} style={{ marginBottom: 28 }}>
-          <div className="section-title" style={{ marginBottom: 12 }}>
-            <div>
-              <div className="eyebrow">Client</div>
-              <h2 style={{ margin: '4px 0' }}>{section.name}</h2>
-            </div>
-          </div>
+          <SectionHeading className="section-title" eyebrow="Client" title={section.name} level={2} />
 
           {section.brands.map((brand) => {
             const brandCampaigns = campaignsByBrand.get(brand.id) ?? [];
@@ -181,7 +157,7 @@ export default async function CampaignsHubPage() {
                     {brand.name}
                     <ArrowUpRight size={14} style={{ color: 'var(--accent)' }} />
                   </a>
-                  <span className="badge tone-muted">{brand.status ?? 'brand'}</span>
+                  <StatusBadge status={brand.status ?? 'ACTIVE'} />
                   <span className="metric-label" style={{ marginLeft: 'auto' }}>
                     {brandCampaigns.length} {brandCampaigns.length === 1 ? 'campaign' : 'campaigns'}
                   </span>
@@ -207,9 +183,7 @@ export default async function CampaignsHubPage() {
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                             <span style={{ fontWeight: 600, flex: 1 }}>{campaign.name}</span>
-                            <span className={`badge tone-${statusTone(campaign.status)}`}>
-                              {CAMPAIGN_STATUS_LABELS[campaign.status as keyof typeof CAMPAIGN_STATUS_LABELS] ?? campaign.status}
-                            </span>
+                            <StatusBadge status={campaign.status} label={CAMPAIGN_STATUS_LABELS[campaign.status as keyof typeof CAMPAIGN_STATUS_LABELS] ?? campaign.status} />
                             <span className="metric-label">{formatBudget(campaign)}</span>
                           </div>
                           <div className="activity-meta" style={{ marginTop: 6 }}>

@@ -21,6 +21,7 @@ const STATUS_META: Record<string, StatusMeta> = {
   REJECTED: { label: 'Rejected', tone: 'danger' },
   DRAFT: { label: 'Draft', tone: 'neutral' },
   ACTIVE: { label: 'Active', tone: 'success' },
+  PLANNED: { label: 'Planned', tone: 'info' },
   ARCHIVED: { label: 'Archived', tone: 'neutral' },
   SCHEDULED: { label: 'Scheduled', tone: 'info' },
   PUBLISHED: { label: 'Published', tone: 'success' },
