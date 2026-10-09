@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // Keep structured strategy generation within the configured on-demand TPM
 // envelope while leaving room for input context and a bounded repair attempt.
-export const STRATEGY_MAX_TOKENS = 4096;
+export const STRATEGY_MAX_TOKENS = 3072;
 export const STRATEGY_OBJECTIVES_MIN = 3;
 export const STRATEGY_OBJECTIVES_MAX = 5;
 export const STRATEGY_ASSUMPTIONS_MAX = 25;
