@@ -109,6 +109,32 @@ async function fetchCss(url: string): Promise<string> {
 }
 
 
+async function verifyConventionalIcon(baseUrl: string): Promise<string | null> {
+  const candidates = ['/favicon.ico', '/favicon.svg', '/apple-touch-icon.png'];
+  const results = await Promise.all(candidates.map(async (path) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    try {
+      const candidate = assertPublicHttpUrl(new URL(path, baseUrl).toString());
+      await assertResolvablePublicHost(candidate.hostname);
+      const response = await fetchPublicHttp(candidate.toString(), {
+        signal: controller.signal,
+        redirect: 'manual',
+        headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'image/*' },
+      });
+      if (!response.ok) return null;
+      const type = (response.headers.get('content-type') ?? '').toLowerCase();
+      if (type.startsWith('image/')) return candidate.toString();
+      if (path.endsWith('.ico') && !type.includes('text/html') && !type.includes('application/json')) return candidate.toString();
+      return null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }));
+  return results.find((url): url is string => Boolean(url)) ?? null;
+}
 function absoluteUrl(value: string | undefined, base: string): string | null {
   if (!value || value.startsWith('data:') || value.startsWith('javascript:')) return null;
   try {
@@ -403,6 +429,20 @@ export async function GET(request: Request) {
         );
     const baseHtml = outcome.ok && !outcome.renderedFallback ? outcome.html : '';
     const baseUrl = outcome.ok ? outcome.finalUrl : raw;
+
+    // Some sites ship /favicon.ico without declaring it in the HTML head.
+    // Verify a conventional public icon path before using it as the visual
+    // fallback; never fabricate a logo URL that the site does not serve.
+    if (!identity.logoUrl || !identity.faviconUrl) {
+      const conventionalIcon = await verifyConventionalIcon(baseUrl);
+      if (conventionalIcon) {
+        identity.logoUrl = identity.logoUrl ?? conventionalIcon;
+        identity.faviconUrl = identity.faviconUrl ?? conventionalIcon;
+        if (!identity.inspected.includes('verified conventional favicon fallback')) {
+          identity.inspected.push('verified conventional favicon fallback');
+        }
+      }
+    }
     const stylesheetUrls = baseHtml ? externalStylesheetUrls(baseHtml, baseUrl) : [];
     const cssBlocks = (await Promise.all(stylesheetUrls.map(fetchCss))).filter(Boolean);
     identity = mergeExternalCss(identity, cssBlocks);
