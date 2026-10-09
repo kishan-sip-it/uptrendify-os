@@ -770,7 +770,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const cssBlocks = (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url))).then((nested) => nested.flat());
+    const cssBlocks = (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url)))).flat();
     const svgUrls = [...new Set([identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons])]
       .filter((url): url is string => {
         if (typeof url !== 'string') return false;
