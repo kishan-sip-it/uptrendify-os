@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EmptyState, ErrorState } from '@/components/ui/feedback';
+import { StatusBadge as SharedStatusBadge } from '@/components/ui/status-badge';
 import type { DashboardData, NextAction, RecentBrand, ResearchActivity, StrategyActivity } from '@/lib/dashboard/data';
 
 const ACTION_ICONS: Record<NextAction['kind'], LucideIcon> = {
@@ -135,14 +136,6 @@ function MetricCard({ label, value, Icon, hint, delay }: { label: string; value:
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className={`badge tone-${toneFor(status)}`}>
-      {isLive(status) ? <span className="status-dot live" style={{ background: dotColor(status) }} /> : null}
-      {labelFor(status)}
-    </span>
-  );
-}
 
 function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
   return (
@@ -168,7 +161,7 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
                   <h3 style={{ margin: 0 }}>{brand.name}</h3>
                   <div className="metric-label">{brand.industry || brand.website_url?.replace(/^https?:\/\//, '') || 'Brand'}</div>
                 </div>
-                <StatusBadge status={brand.status ?? 'ACTIVE'} />
+                <SharedStatusBadge status={brand.status ?? 'ACTIVE'} showDot={isLive(brand.status ?? 'ACTIVE')} />
               </div>
               <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--muted)', fontSize: 13 }}>
                 <span>Onboarded {timeAgo(brand.created_at)}</span>
