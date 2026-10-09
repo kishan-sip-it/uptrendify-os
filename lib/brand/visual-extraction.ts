@@ -198,7 +198,7 @@ export function readableTextOn(hex: string): '#0f172a' | '#ffffff' {
 
 const COLOR_TOKEN = /(#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\))/g;
 
-function collectColors(cssText: string, source: string, sink: Map<string, { count: number; sources: Set<string> }>): void {
+export function collectColors(cssText: string, source: string, sink: Map<string, { count: number; sources: Set<string> }>): void {
   const cleaned = cssText.replace(/\/\*[\s\S]*?\*\//g, ' ');
   const add = (hex: string, weight = 1, evidenceSource = source) => {
     const entry = sink.get(hex) ?? { count: 0, sources: new Set<string>() };
@@ -207,20 +207,51 @@ function collectColors(cssText: string, source: string, sink: Map<string, { coun
     sink.set(hex, entry);
   };
 
+  // Keep broad frequency evidence as a fallback for unusual frameworks, but
+  // rank semantic variables and actual brand controls above incidental colors.
   for (const match of cleaned.matchAll(COLOR_TOKEN)) {
     const hex = parseCssColor(match[0]);
-    if (!hex) continue;
-    add(hex);
+    if (hex) add(hex);
   }
 
-  const semanticDecl = /--(?:brand|primary|secondary|accent|color-primary|color-secondary|brand-color)(?:-[a-z0-9-]+)?\s*:\s*([^;}]+)/gi;
-  for (const match of cleaned.matchAll(semanticDecl)) {
-    const hex = parseCssColor(match[1] ?? '');
-    if (!hex) continue;
-    add(hex, 6, 'semantic-css');
+  // Design systems use many variable naming conventions (e.g. --theme-primary,
+  // --brand-primary, --color-accent, --action-color). Do not require one exact
+  // token order before recognizing intentional palette variables.
+  const variableDecl = /--([a-z0-9_-]+)\s*:\s*([^;}]+)/gi;
+  for (const match of cleaned.matchAll(variableDecl)) {
+    const name = (match[1] ?? '').toLowerCase();
+    const semanticName =
+      /(^|[-_])(brand|primary|secondary|accent|cta|link|action|highlight)([-_]|$)/i.test(name) ||
+      /^theme-(primary|secondary|accent|brand|link|action)([-_]|$)/i.test(name);
+    if (!semanticName) continue;
+    const hex = parseCssColor(match[2] ?? '');
+    if (hex) add(hex, 6, 'semantic-css');
+  }
+
+  // Selector-level evidence is shared by inline and external stylesheets.
+  // Avoid boosting partner/customer logos and status/notification colours.
+  const lowSignalSelector = /(partner|sponsor|testimonial|customer-logo|social-share|avatar|badge|alert|error|success|warning|status|tooltip|notification|toast|rating|review-star)/i;
+  const rules = /([^{}]+)\{([^{}]*)\}/g;
+  const colorProperty = /\b(?:color|background(?:-color)?|border(?:-[a-z]+)?-color|fill|stroke)\s*:\s*([^;]+)(?:;|$)/gi;
+  for (const rule of cleaned.matchAll(rules)) {
+    const selector = (rule[1] ?? '').trim().toLowerCase();
+    const declarations = rule[2] ?? '';
+    if (!selector || selector.startsWith('@') || lowSignalSelector.test(selector)) continue;
+
+    const headerSignal = /(^|[\s,>])(?:header|nav|banner|\.site-header|\.navbar|\.navigation|#header|#nav)(?=$|[\s,>:#.\[])/i.test(selector);
+    const controlSignal = /(?:primary|brand|cta|accent|action|button|btn|(?:^|[\s,>])a(?:$|[\s,:>#.]))/i.test(selector);
+    const weight = headerSignal ? 4 : controlSignal ? 3 : 0;
+    if (!weight) continue;
+
+    const signal = headerSignal ? 'header-ui' : /(?:^|[\s,>])a(?:$|[\s,:>#.])/i.test(selector) ? 'link-accent' : 'primary-control';
+    for (const declaration of declarations.matchAll(colorProperty)) {
+      for (const token of (declaration[1] ?? '').matchAll(COLOR_TOKEN)) {
+        const hex = parseCssColor(token[0]);
+        if (hex) add(hex, weight, signal);
+      }
+    }
   }
 }
-
 function collectSemanticUiColors(html: string, $: cheerio.CheerioAPI, sink: Map<string, { count: number; sources: Set<string> }>): void {
   const add = (raw: string | undefined, weight: number, source: string) => {
     const hex = parseCssColor(raw);
