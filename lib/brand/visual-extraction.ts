@@ -356,6 +356,33 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
     }
   }
 }
+export function collectJavaScriptDesignTokens(
+  scriptText: string,
+  sink: Map<string, { count: number; sources: Set<string> }>,
+): void {
+  // Only accept colours located close to an explicit brand/theme/palette key.
+  // This prevents arbitrary hex strings in analytics or user data from
+  // polluting the palette while still supporting JS objects and CSS-in-JS.
+  const source = scriptText
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .slice(0, 450_000);
+  for (const match of source.matchAll(COLOR_TOKEN)) {
+    const raw = match[0];
+    const index = match.index ?? 0;
+    const before = source.slice(Math.max(0, index - 180), index);
+    const tail = before.slice(Math.max(before.lastIndexOf(';'), before.lastIndexOf('\n'), before.lastIndexOf('{')));
+    const semanticKey = /(?:--[\w$-]*(?:brand|primary|secondary|accent|cta|action|link|color|colour|theme|palette)[\w$-]*|(?:brand|primary|secondary|accent|cta|action|link|highlight|palette|colou?rs?)[\w$-]*)(?:["'\`])?\s*[:=][^;]{0,150}$/i;
+    const nearbyStyleProperty = /(?:background(?:Color)?|border(?:Color)?|fill|stroke|color|colou?r|theme|palette)\s*[:=][^;]{0,150}$/i;
+    if (!semanticKey.test(tail) && !nearbyStyleProperty.test(tail)) continue;
+    const hex = parseCssColor(raw);
+    if (!hex) continue;
+    const entry = sink.get(hex) ?? { count: 0, sources: new Set<string>() };
+    entry.count += 5;
+    entry.sources.add('js-style-tokens');
+    sink.set(hex, entry);
+  }
+}
+
 function collectSemanticUiColors(html: string, $: cheerio.CheerioAPI, sink: Map<string, { count: number; sources: Set<string> }>): void {
   const add = (raw: string | undefined, weight: number, source: string) => {
     const hex = parseCssColor(raw);
@@ -393,9 +420,10 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     const semantic = sources.some((source) => source === 'semantic-css' || source === 'meta-theme-color' || source === 'manifest-theme-color');
     const uiSignal = sources.some((source) => source === 'header-ui' || source === 'nav-ui' || source === 'primary-control' || source === 'link-accent');
     const logoSignal = sources.includes('logo-svg-color');
+    const rasterLogoSignal = sources.includes('logo-raster-color');
     const scriptStyleSignal = sources.includes('js-style-tokens');
     const neutralPenalty = isNeutral(hex) ? 0.18 : 1;
-    const deliberateBoost = semantic ? 3.5 : uiSignal ? 2.5 : logoSignal ? 2.1 : scriptStyleSignal ? 1.7 : 1;
+    const deliberateBoost = semantic ? 3.5 : uiSignal ? 2.5 : logoSignal ? 2.1 : rasterLogoSignal ? 1.9 : scriptStyleSignal ? 1.7 : 1;
     const sourceDiversity = 1 + Math.min(sources.length, 5) * 0.06;
     const prominence = round(
       Math.log2(1 + entry.count) *
@@ -680,7 +708,7 @@ export function extractBrandIdentity(html: string, finalUrl: string | null): Ext
 
   collectSemanticUiColors(html, $, sink);
 
-  const themeColorHex = normalizeHex($('meta[name="theme-color"]').first().attr('content'));
+  const themeColorHex = parseCssColor($('meta[name="theme-color"]').first().attr('content'));
   if (themeColorHex) {
     const entry = sink.get(themeColorHex) ?? { count: 0, sources: new Set<string>() };
     // A declared theme-color is a deliberate brand statement: weight it above
