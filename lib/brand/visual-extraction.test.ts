@@ -7,6 +7,7 @@ import {
   readableTextOn,
   relativeLuminance,
   saturationOf,
+  shouldUseRenderedWebsiteFallback,
 } from './visual-extraction';
 
 const PAGE = `<!doctype html>
@@ -35,6 +36,18 @@ const PAGE = `<!doctype html>
   <div style="color: #ADC35D">Accent</div>
 </body>
 </html>`;
+
+describe('rendered website fallback detection', () => {
+  it('flags a 200-response JavaScript shell with no meaningful body content', () => {
+    const shell = `<!doctype html><html><head><title>Samaaroh</title><script>window.__NEXT_DATA__ = { veryLarge: '${'x'.repeat(900)}' };</script></head><body><div id="root"></div><div>Loading application…</div></body></html>`;
+    expect(shouldUseRenderedWebsiteFallback(shell)).toBe(true);
+  });
+
+  it('does not flag a structured content-heavy public page', () => {
+    const page = `<!doctype html><html><head><title>NASA</title><meta name="description" content="Explore missions and science"/></head><body><header>Explore</header><main><h1>Explore the universe</h1><p>${'NASA explores space, science, technology, and missions. '.repeat(30)}</p><h2>Our missions</h2><p>Discover science and research.</p></main></body></html>`;
+    expect(shouldUseRenderedWebsiteFallback(page)).toBe(false);
+  });
+});
 
 describe('parseCssColor', () => {
   it('parses hex, short hex, rgb, rgba and hsl', () => {
