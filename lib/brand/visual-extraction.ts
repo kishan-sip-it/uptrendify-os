@@ -393,8 +393,9 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     const semantic = sources.some((source) => source === 'semantic-css' || source === 'meta-theme-color' || source === 'manifest-theme-color');
     const uiSignal = sources.some((source) => source === 'header-ui' || source === 'nav-ui' || source === 'primary-control' || source === 'link-accent');
     const logoSignal = sources.includes('logo-svg-color');
+    const scriptStyleSignal = sources.includes('js-style-tokens');
     const neutralPenalty = isNeutral(hex) ? 0.18 : 1;
-    const deliberateBoost = semantic ? 3.5 : uiSignal ? 2.5 : logoSignal ? 2.1 : 1;
+    const deliberateBoost = semantic ? 3.5 : uiSignal ? 2.5 : logoSignal ? 2.1 : scriptStyleSignal ? 1.7 : 1;
     const sourceDiversity = 1 + Math.min(sources.length, 5) * 0.06;
     const prominence = round(
       Math.log2(1 + entry.count) *
