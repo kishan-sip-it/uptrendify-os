@@ -2,6 +2,22 @@ import type { AiProvider, GenerateInput, GenerateResult, ProviderHealth } from '
 import { AiProviderError } from '../types';
 import { postJson } from '../http';
 
+const MAX_GROQ_RATE_LIMIT_WAIT_MS = 35_000;
+const DEFAULT_GROQ_RATE_LIMIT_WAIT_MS = 1_500;
+
+async function waitForGroqRateLimit(error: AiProviderError): Promise<void> {
+  const requested = error.retryAfterMs ?? DEFAULT_GROQ_RATE_LIMIT_WAIT_MS;
+  const delay = Math.max(250, Math.min(MAX_GROQ_RATE_LIMIT_WAIT_MS, requested));
+  await new Promise((resolve) => setTimeout(resolve, delay));
+}
+
+function groqFallbackTokenBudget(input: GenerateInput): number | undefined {
+  if (input.maxTokens === undefined) return undefined;
+  // Keep structured strategy/brain outputs large enough to validate. The old
+  // flat 1,200-token fallback frequently truncated JSON for larger tasks.
+  return Math.min(input.maxTokens, 4_096);
+}
+
 export function createOpenAiCompatibleProvider(
   id: string,
   baseUrl: string,
@@ -70,18 +86,33 @@ export function createOpenAiCompatibleProvider(
     try {
       return await send(model);
     } catch (error) {
-      // Keep GPT-OSS 120B as the quality-first default. When its Groq model
-      // bucket is rate-limited, a single bounded 20B fallback keeps the task
-      // truthful and usable without inventing another provider.
-      if (
-        id === 'groq' &&
-        model === 'openai/gpt-oss-120b' &&
-        error instanceof AiProviderError &&
-        error.status === 429
-      ) {
-        return send('openai/gpt-oss-20b', Math.min(input.maxTokens ?? 1200, 1200));
+      if (id !== 'groq' || !(error instanceof AiProviderError) || error.status !== 429) {
+        throw error;
       }
-      throw error;
+
+      // A separate Groq model can have available TPM even when 120B is
+      // throttled. Preserve enough completion budget for schema-valid outputs;
+      // the previous flat 1,200-token cap could truncate strategy JSON.
+      if (model === 'openai/gpt-oss-120b') {
+        const fallbackTokens = groqFallbackTokenBudget(input);
+        try {
+          return await send('openai/gpt-oss-20b', fallbackTokens);
+        } catch (fallbackError) {
+          // The 20B model shares the on-demand organization quota in many
+          // accounts. If it is throttled too, honor Retry-After and make one
+          // bounded second attempt rather than failing immediately.
+          if (fallbackError instanceof AiProviderError && fallbackError.status === 429) {
+            await waitForGroqRateLimit(fallbackError);
+            return send('openai/gpt-oss-20b', fallbackTokens);
+          }
+          throw fallbackError;
+        }
+      }
+
+      // If the configured model is already 20B (or another Groq model),
+      // wait for its actual retry window and retry it once.
+      await waitForGroqRateLimit(error);
+      return send(model);
     }
   }
 
