@@ -99,15 +99,15 @@ function rgbToHex(r: number, g: number, b: number): string {
  */
 export function shouldUseRenderedWebsiteFallback(html: string): boolean {
   const $ = cheerio.load(html);
-  const title = $('title').first().text().replace(/\\s+/g, ' ').trim();
+  const title = $('title').first().text().replace(/\s+/g, ' ').trim();
   const metaDescription = $('meta[name="description"],meta[property="og:description"]')
     .first()
     .attr('content')?.trim() ?? '';
   $('script,style,noscript,svg,iframe,template').remove();
 
-  const bodyText = $('body').text().replace(/\\s+/g, ' ').trim();
-  const mainText = $('main,article,[role="main"]').text().replace(/\\s+/g, ' ').trim();
-  const headings = $('h1,h2,h3').toArray().filter((node) => $(node).text().replace(/\\s+/g, ' ').trim().length > 0);
+  const bodyText = $('body').text().replace(/\s+/g, ' ').trim();
+  const mainText = $('main,article,[role="main"]').text().replace(/\s+/g, ' ').trim();
+  const headings = $('h1,h2,h3').toArray().filter((node) => $(node).text().replace(/\s+/g, ' ').trim().length > 0);
   const appShellMarker = /enable javascript|javascript is required|application is loading|loading application|please wait while we load/i;
 
   if (bodyText.length < 650) return true;
@@ -391,7 +391,11 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
   let faviconScore = -1;
 
   const addCandidate = (url: string | null, score: number) => {
-    if (!url || !sameSiteUrl(base, url)) return;
+    if (!url) return;
+    // A logo can live on a dedicated public asset CDN. Permit cross-domain
+    // candidates only when markup carries strong logo semantics; generic
+    // third-party logos and social-preview cards stay excluded.
+    if (!sameSiteUrl(base, url) && score < 65) return;
     candidates.push({ url, score });
   };
 
@@ -448,18 +452,33 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     void score;
   });
 
-  // JSON-LD organization/logo is stronger than social-preview metadata.
+  // Organization metadata may be a top-level object, an array, or nested in @graph.
+  // Walk only structured objects and keep organization/logo evidence stronger than OG cards.
+  const collectStructuredLogos = (value: unknown, depth = 0): void => {
+    if (depth > 5 || value == null) return;
+    if (Array.isArray(value)) {
+      for (const entry of value) collectStructuredLogos(entry, depth + 1);
+      return;
+    }
+    if (typeof value !== 'object') return;
+    const node = value as Record<string, unknown>;
+    const rawType = node['@type'];
+    const type = Array.isArray(rawType) ? rawType.join(' ') : String(rawType ?? '');
+    if (/(Organization|Corporation|Brand|WebSite)/i.test(type)) {
+      const rawLogo = node.logo;
+      const logo = typeof rawLogo === 'string'
+        ? rawLogo
+        : rawLogo && typeof rawLogo === 'object'
+          ? String((rawLogo as Record<string, unknown>).url ?? (rawLogo as Record<string, unknown>).contentUrl ?? '')
+          : '';
+      addCandidate(absoluteUrl(logo, base), 80);
+    }
+    if (node['@graph']) collectStructuredLogos(node['@graph'], depth + 1);
+    if (node.mainEntity) collectStructuredLogos(node.mainEntity, depth + 1);
+  };
   $('script[type="application/ld+json"]').each((_i, el) => {
     try {
-      const parsed = JSON.parse($(el).text());
-      const nodes = Array.isArray(parsed) ? parsed : [parsed];
-      for (const node of nodes) {
-        if (!node || typeof node !== 'object') continue;
-        const type = Array.isArray(node['@type']) ? node['@type'].join(' ') : String(node['@type'] ?? '');
-        if (!/(Organization|Corporation|Brand|WebSite)/i.test(type)) continue;
-        const logo = typeof node.logo === 'string' ? node.logo : node.logo?.url;
-        addCandidate(absoluteUrl(logo, base), 80);
-      }
+      collectStructuredLogos(JSON.parse($(el).text()));
     } catch {
       // Invalid JSON-LD is ignored rather than breaking deterministic extraction.
     }
@@ -476,7 +495,7 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const node = $(el);
     const rel = (node.attr('rel') ?? '').toLowerCase();
     const href = absoluteUrl(node.attr('href'), base);
-    if (!href || !sameSiteUrl(base, href)) return;
+    if (!href) return;
     if (rel.includes('apple-touch-icon')) {
       const score = 32;
       if (!faviconUrl || score > faviconScore) { faviconUrl = href; faviconScore = score; }
@@ -489,7 +508,10 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
   });
 
   candidates.sort((a, b) => b.score - a.score);
-  return { logo: candidates[0]?.url ?? null, favicon: faviconUrl };
+  // Don't use a social-preview OG image as the brand logo when a linked
+  // favicon/app icon is available. The icon is a useful, honest fallback.
+  const semanticLogo = candidates.find((candidate) => candidate.score >= 20)?.url ?? null;
+  return { logo: semanticLogo ?? faviconUrl, favicon: faviconUrl };
 }
 
 function detectSocials($: cheerio.CheerioAPI, base: string | null): { platform: string; url: string }[] {
@@ -535,7 +557,7 @@ export function extractBrandIdentity(html: string, finalUrl: string | null): Ext
   });
   const cssText = styleBlocks.join('\n');
   if (cssText.trim()) inspected.push('inline <style> blocks');
-  else warnings.push('No inline stylesheet found on the page.');
+  else warnings.push('No embedded stylesheet found; linked stylesheets and declared theme colours are checked separately.');
 
   const sink = new Map<string, { count: number; sources: Set<string> }>();
   if (cssText.trim()) collectColors(cssText, 'inline-css', sink);
