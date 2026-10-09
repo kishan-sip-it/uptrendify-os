@@ -49,6 +49,30 @@ describe('raster colour extraction', () => {
     ]);
   });
 
+  it('samples a legacy 32-bit BMP favicon frame inside an ICO container', () => {
+    const header = Buffer.alloc(62);
+    header[0] = 0;
+    header[1] = 0;
+    header[2] = 1;
+    header[4] = 1;
+    header[6] = 1;
+    header[7] = 1;
+    header.writeUInt16LE(1, 10);
+    header.writeUInt16LE(32, 12);
+    header.writeUInt32LE(48, 14);
+    header.writeUInt32LE(22, 18);
+    header.writeUInt32LE(40, 22);
+    header.writeInt32LE(1, 26);
+    header.writeInt32LE(2, 30);
+    header.writeUInt16LE(1, 34);
+    header.writeUInt16LE(32, 36);
+    header.writeUInt32LE(0, 38);
+    header.writeUInt32LE(8, 42);
+    // One bottom-up BGRA pixel (red), followed by the 1-bit AND mask row.
+    header.set([0, 0, 255, 255, 0, 0, 0, 0], 54);
+    expect(extractRasterPalette(header)).toEqual([{ hex: '#ff0000', count: 1 }]);
+  });
+
   it('ignores invalid and unsupported image bytes safely', () => {
     expect(extractRasterPalette(new Uint8Array([1, 2, 3, 4]))).toEqual([]);
   });
