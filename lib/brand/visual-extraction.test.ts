@@ -224,6 +224,26 @@ describe('extractBrandIdentity hardening', () => {
   });
 });
 
+describe('logo fallbacks for sparse public HTML', () => {
+  it('uses a declared favicon as a logo fallback when the page has no visible logo image', () => {
+    const html = `<html><head><title>Samaaroh</title><link rel="icon" href="/favicon.svg" /></head><body><main><h1>Samaaroh wedding services</h1></main></body></html>`;
+    const identity = extractBrandIdentity(html, 'https://samaaroh.example/');
+    expect(identity.faviconUrl).toBe('https://samaaroh.example/favicon.svg');
+    expect(identity.logoUrl).toBe('https://samaaroh.example/favicon.svg');
+  });
+
+  it('detects a first-party logo hosted on an external asset CDN when the markup identifies it', () => {
+    const html = `<html><head><title>Samaaroh</title></head><body><header><a href="/"><img src="https://cdn.assets-example.net/samaaroh-wordmark.svg" alt="Samaaroh logo" width="180" height="40" /></a></header><main><h1>Premium wedding services</h1></main></body></html>`;
+    const identity = extractBrandIdentity(html, 'https://samaaroh.example/');
+    expect(identity.logoUrl).toBe('https://cdn.assets-example.net/samaaroh-wordmark.svg');
+  });
+
+  it('reads organization logos nested inside a JSON-LD @graph', () => {
+    const html = `<html><head><title>Example</title><script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': [{ '@type': 'Organization', name: 'Example', logo: { '@type': 'ImageObject', url: 'https://cdn.assets-example.net/example-logo.svg' } }] })}</script></head><body><h1>Example</h1></body></html>`;
+    const identity = extractBrandIdentity(html, 'https://example.com/');
+    expect(identity.logoUrl).toBe('https://cdn.assets-example.net/example-logo.svg');
+  });
+});
 describe('extractBrandIdentity with no usable evidence', () => {
   const bare = extractBrandIdentity('<html><head></head><body><p>hi</p></body></html>', null);
 
