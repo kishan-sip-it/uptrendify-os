@@ -118,7 +118,7 @@ describe('colour classification', () => {
 
 describe('JavaScript design-token extraction', () => {
   it('extracts brand colours from CSS-in-JS and theme objects without treating unrelated literals as palette', () => {
-    const script = \`const theme = { colors: { primary: "#e11d48", accent: "oklch(62% 0.19 28)" }, analytics: { sample: "#00ff00" } };\`;
+    const script = 'const theme = { colors: { primary: "#e11d48", accent: "oklch(62% 0.19 28)" }, analytics: { sample: "#00ff00" } };';
     const sink = new Map<string, { count: number; sources: Set<string> }>();
     collectJavaScriptDesignTokens(script, sink);
     expect([...sink.keys()]).toContain('#e11d48');
