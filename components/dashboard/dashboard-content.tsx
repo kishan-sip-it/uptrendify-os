@@ -7,6 +7,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { EmptyState, ErrorState } from '@/components/ui/feedback';
 import { StatusBadge as SharedStatusBadge } from '@/components/ui/status-badge';
+import { Stat } from '@/components/ui/stat';
 import type { DashboardData, NextAction, RecentBrand, ResearchActivity, StrategyActivity } from '@/lib/dashboard/data';
 
 const ACTION_ICONS: Record<NextAction['kind'], LucideIcon> = {
@@ -128,14 +129,16 @@ function Skeleton({ height = 16, width = '100%', radius = 10 }: { height?: numbe
 function MetricCard({ label, value, Icon, hint, delay }: { label: string; value: number; Icon: LucideIcon; hint?: string; delay: number }) {
   const animated = useCountUp(value);
   return (
-    <div className="card metric hover-lift animate-fade-up" style={{ animationDelay: `${delay}ms` }}>
-      <div className="metric-label"><Icon size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />{label}</div>
-      <div className="metric-value">{animated}</div>
-      {hint ? <div className="metric-hint">{hint}</div> : null}
-    </div>
+    <Stat
+      label={label}
+      value={animated}
+      hint={hint}
+      icon={<Icon size={15} />}
+      className="metric hover-lift animate-fade-up"
+      style={{ animationDelay: String(delay) + 'ms' }}
+    />
   );
 }
-
 
 function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
   return (
