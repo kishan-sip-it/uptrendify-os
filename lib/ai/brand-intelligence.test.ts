@@ -196,7 +196,7 @@ describe('extractBrandIntelligence', () => {
     await extractBrandIntelligence(provider as any, largeEvidence);
     expect(provider.__calls).toHaveLength(1);
     expect(provider.__calls[0].json).toBe(true);
-    expect(provider.__calls[0].maxTokens).toBe(1200);
+    expect(provider.__calls[0].maxTokens).toBe(model === 'openai/gpt-oss-20b' ? 1600 : 1200);
     expect(provider.__calls[0].prompt.length).toBeLessThan(16_000);
   });
 });
