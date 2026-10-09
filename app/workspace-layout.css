@@ -17,6 +17,24 @@
   padding: 0;
 }
 
+/* Brand detail views should use the available content frame in both themes.
+   Keep the right-side contextual checklist in its reserved rail; never center
+   or cap the brand workspace itself at a narrower width. */
+.shell > .main > main.brand-workspace-page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.shell > .main > main.brand-workspace-page .brain-evidence-grid,
+.shell > .main > main.brand-workspace-page .brain-run-history {
+  width: 100%;
+  min-width: 0;
+}
+
 @media (min-width: 1600px) {
   .shell > .main {
     padding-inline: var(--layout-page-gutter, clamp(24px, 2.5vw, 48px));
