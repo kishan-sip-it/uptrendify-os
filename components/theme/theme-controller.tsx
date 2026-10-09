@@ -69,6 +69,8 @@ export function ThemeController({ compact = false }: { compact?: boolean }) {
           className={'theme-option ' + (theme === key ? 'active' : '')}
           onClick={() => change(key)}
           aria-pressed={theme === key}
+          aria-label={label + ' theme'}
+          title={label}
         >
           <Icon size={14} /> {label}
         </button>
