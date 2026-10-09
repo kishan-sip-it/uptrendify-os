@@ -301,9 +301,15 @@ function mergeExternalCss(identity: ExtractedIdentity, cssBlocks: string[]): Ext
 }
 
 function buildAiProfile(intelligence: Awaited<ReturnType<typeof extractBrandIntelligence>>['result']) {
+  const combinedOfferings = intelligence.offer.productsAndServices.slice(0, 20);
   return {
-    products: intelligence.offer.productsAndServices.slice(0, 20),
-    services: intelligence.offer.productsAndServices.slice(0, 20),
+    // Keep offerings distinct. The previous mapping duplicated every combined
+    // offering into both UI fields, creating false product/service classifications.
+    products: (intelligence.offer.products.length ? intelligence.offer.products : combinedOfferings).slice(0, 20),
+    services: intelligence.offer.services.slice(0, 20),
+    keyFeatures: intelligence.offer.keyFeatures.slice(0, 16),
+    benefits: intelligence.offer.benefits.slice(0, 16),
+    pricingSignals: intelligence.offer.pricingSignals.slice(0, 12),
     audience: intelligence.audience.targetAudience,
     personas: intelligence.audience.buyerPersonas.slice(0, 8),
     customerTypes: intelligence.audience.customerTypes.slice(0, 12),
@@ -318,9 +324,21 @@ function buildAiProfile(intelligence: Awaited<ReturnType<typeof extractBrandInte
     positioningThemes: intelligence.positioning.positioningThemes.slice(0, 12),
     callsToAction: intelligence.offer.callsToAction.slice(0, 12),
     productCategories: intelligence.identity.productCategories.slice(0, 12),
+    industry: intelligence.identity.industry,
     businessModel: intelligence.identity.businessModel,
     primaryMarket: intelligence.identity.primaryMarket,
     geography: intelligence.identity.geography,
+    seo: {
+      importantTopics: intelligence.seo.importantTopics.slice(0, 12),
+      keywordThemes: intelligence.seo.keywordThemes.slice(0, 12),
+      contentGaps: intelligence.seo.contentGaps.slice(0, 12),
+      searchIntentOpportunities: intelligence.seo.searchIntentOpportunities.slice(0, 12),
+    },
+    competition: {
+      namedCompetitors: intelligence.competition.namedCompetitors.slice(0, 12),
+      alternatives: intelligence.competition.alternatives.slice(0, 12),
+      differentiationClaims: intelligence.competition.differentiationClaims.slice(0, 12),
+    },
     evidence: intelligence.evidence.slice(0, 20),
   };
 }
