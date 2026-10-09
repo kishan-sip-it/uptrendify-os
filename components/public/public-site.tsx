@@ -70,7 +70,7 @@ export function PublicShell({ active, eyebrow, title, intro, children }: PublicN
       <section className="public-hero">
         <PageHeader
           className="ui-public-page-header"
-          eyebrow={eyebrow}
+          eyebrow={<><Sparkles size={13} aria-hidden="true" /> {eyebrow}</>}
           title={title}
           description={intro}
         />
