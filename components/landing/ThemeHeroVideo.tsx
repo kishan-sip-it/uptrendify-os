@@ -37,7 +37,7 @@ export default function ThemeHeroVideo() {
   }, []);
 
   const isDark = theme === 'dark';
-  const stillSrc = isDark ? '/assets/hero/dark-still.png' : '/assets/hero/light-still.png';
+  const stillSrc = isDark ? '/assets/hero/dark-still.webp' : '/assets/hero/light-still.webp';
   const webmSrc = isDark ? '/assets/hero/dark-video.webm' : '/assets/hero/light-video.webm';
   const mp4Src = isDark ? '/assets/hero/dark-video.mp4' : '/assets/hero/light-video.mp4';
 
