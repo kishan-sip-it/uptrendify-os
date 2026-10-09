@@ -10,6 +10,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import BorderGlow from '@/components/react-bits/BorderGlow';
 import SwarmCursor from '@/components/react-bits/SwarmCursor';
 import WarpText from '@/components/react-bits/WarpText';
+import ThemeHeroVideo from '@/components/landing/ThemeHeroVideo';
 
 type StepState = 'pending' | 'running' | 'done';
 
@@ -422,35 +423,43 @@ export function Landing() {
 
       <section ref={heroRef} className="landing-hero">
         <div className="landing-hero-ambient" aria-hidden="true" />
-        <Reveal>
-          <div className="landing-eyebrow"><Sparkles size={13} /> AI Marketing Agency OS</div>
-        </Reveal>
-        <Reveal delay={80}>
-          <WarpText
-            text="From a brand website to a complete marketing workflow."
-            color="var(--text)"
-            fontSize="clamp(2.5rem, 6vw, 5rem)"
-            fontWeight={800}
-            warpStrength={0.05}
-            speed={0.4}
-            pointerStrength={0.3}
-          />
-        </Reveal>
-        <Reveal delay={160}>
-          <p className="landing-hero-sub">
-            Research the business. Review what AI discovered. Build the strategy. Create content, organize campaigns, approve the exact version, and prepare it for publishing.
-          </p>
-        </Reveal>
-        <Reveal delay={240}>
-          <div className="landing-hero-actions">
-            <button type="button" className="landing-cta" onClick={handleStart} disabled={loading} style={{ fontSize: 15, padding: '14px 22px', cursor: 'pointer' }}>
-              {loading ? 'Working…' : <>Start your workspace <ArrowRight size={15} /></>}
-            </button>
-            <a className="landing-ghost" href="#how-it-works">See the workflow</a>
+        <div className="landing-hero-main">
+          <div className="landing-hero-copy">
+            <Reveal>
+              <div className="landing-eyebrow"><Sparkles size={13} /> AI Marketing Agency OS</div>
+            </Reveal>
+            <Reveal delay={80}>
+              <WarpText
+                text="From a brand website to a complete marketing workflow."
+                color="var(--text)"
+                fontSize="clamp(2.45rem, 5.2vw, 4.6rem)"
+                fontWeight={800}
+                warpStrength={0.05}
+                speed={0.4}
+                pointerStrength={0.3}
+              />
+            </Reveal>
+            <Reveal delay={160}>
+              <p className="landing-hero-sub">
+                Research the business. Review what AI discovered. Build the strategy. Create content, organize campaigns, approve the exact version, and prepare it for publishing.
+              </p>
+            </Reveal>
+            <Reveal delay={240}>
+              <div className="landing-hero-actions">
+                <button type="button" className="landing-cta" onClick={handleStart} disabled={loading} style={{ fontSize: 15, padding: '14px 22px', cursor: 'pointer' }}>
+                  {loading ? 'Working…' : <>Start your workspace <ArrowRight size={15} /></>}
+                </button>
+                <a className="landing-ghost" href="#how-it-works">See the workflow</a>
+              </div>
+            </Reveal>
           </div>
-        </Reveal>
-        {/* Layout contract: this slot is always present so auth resolution can never push
-            the hero pipeline/terminal and metrics downward after first paint. */}
+          <div className="landing-hero-visual-wrap">
+            <ThemeHeroVideo />
+          </div>
+        </div>
+
+        {/* Keep this slot reserved so asynchronous auth resolution never moves
+            the workflow demo or the rest of the first viewport after paint. */}
         <div className="landing-account-context-slot" aria-live="polite">
           {account ? (
             <div className="landing-account-context" aria-label="Current workspace context">
