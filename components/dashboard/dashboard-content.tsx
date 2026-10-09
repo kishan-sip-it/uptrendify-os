@@ -10,6 +10,7 @@ import { StatusBadge as SharedStatusBadge } from '@/components/ui/status-badge';
 import { Stat } from '@/components/ui/stat';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RelativeTime } from '@/components/ui/relative-time';
+import { SectionHeading } from '@/components/ui/section-heading';
 import type { DashboardData, NextAction, RecentBrand, ResearchActivity, StrategyActivity } from '@/lib/dashboard/data';
 
 const ACTION_ICONS: Record<NextAction['kind'], LucideIcon> = {
@@ -20,72 +21,6 @@ const ACTION_ICONS: Record<NextAction['kind'], LucideIcon> = {
   strategy: Target,
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  ACTIVE: 'Active',
-  COMPLETED: 'Complete',
-  PARTIAL: 'Partial',
-  RUNNING: 'Running',
-  QUEUED: 'Queued',
-  FAILED: 'Failed',
-  CANCELLED: 'Cancelled',
-  DRAFT: 'Draft',
-  IN_REVIEW: 'Needs review',
-  CLIENT_REVIEW: 'Client review',
-  CHANGES_REQUESTED: 'Changes requested',
-  APPROVED: 'Approved',
-  SCHEDULED: 'Scheduled',
-  PUBLISHED: 'Published',
-  ARCHIVED: 'Archived',
-};
-
-type Tone = 'good' | 'warn' | 'danger' | 'info' | 'muted';
-
-function toneFor(status: string): Tone {
-  switch (status) {
-    case 'COMPLETED':
-    case 'ACTIVE':
-    case 'APPROVED':
-    case 'PUBLISHED':
-    case 'SUCCEEDED':
-      return 'good';
-    case 'PARTIAL':
-    case 'IN_REVIEW':
-    case 'CLIENT_REVIEW':
-    case 'CHANGES_REQUESTED':
-    case 'SCHEDULED':
-      return 'warn';
-    case 'FAILED':
-      return 'danger';
-    case 'QUEUED':
-    case 'RUNNING':
-      return 'info';
-    default:
-      return 'muted';
-  }
-}
-
-function labelFor(status: string): string {
-  return STATUS_LABELS[status] ?? status.toLowerCase().replaceAll('_', ' ');
-}
-
-function isLive(status: string): boolean {
-  return status === 'RUNNING' || status === 'QUEUED';
-}
-
-function dotColor(status: string): string {
-  switch (toneFor(status)) {
-    case 'good':
-      return 'var(--accent)';
-    case 'warn':
-      return 'var(--text-warning)';
-    case 'danger':
-      return 'var(--text-danger)';
-    case 'info':
-      return 'var(--accent-2)';
-    default:
-      return 'var(--muted)';
-  }
-}
 
 
 function useCountUp(target: number, duration = 900): number {
@@ -131,12 +66,7 @@ function MetricCard({ label, value, Icon, hint, delay }: { label: string; value:
 function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
   return (
     <div className="card" style={{ gridColumn: 'span 2' }}>
-      <div className="section-title">
-        <div>
-          <div className="eyebrow">Portfolio</div>
-          <h2 style={{ margin: '5px 0' }}>Recent brands</h2>
-        </div>
-      </div>
+      <SectionHeading className="section-title" eyebrow="Portfolio" title="Recent brands" />
       {brands.length === 0 ? (
         <EmptyState
           title="No brands yet"
@@ -152,7 +82,7 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
                   <h3 style={{ margin: 0 }}>{brand.name}</h3>
                   <div className="metric-label">{brand.industry || brand.website_url?.replace(/^https?:\/\//, '') || 'Brand'}</div>
                 </div>
-                <SharedStatusBadge status={brand.status ?? 'ACTIVE'} showDot={isLive(brand.status ?? 'ACTIVE')} />
+                <SharedStatusBadge status={brand.status ?? 'ACTIVE'} />
               </div>
               <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--muted)', fontSize: 13 }}>
                 <span>Onboarded <RelativeTime date={brand.created_at} /></span>
@@ -169,13 +99,7 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
 function ResearchActivityPanel({ activity }: { activity: ResearchActivity[] }) {
   return (
     <div className="card">
-      <div className="section-title">
-        <div>
-          <div className="eyebrow">Activity</div>
-          <h2 style={{ margin: '5px 0' }}>Research runs</h2>
-        </div>
-        <Globe2 size={18} color="var(--muted)" />
-      </div>
+      <SectionHeading className="section-title" eyebrow="Activity" title="Research runs" action={<Globe2 size={18} color="var(--muted)" />} />
       {activity.length === 0 ? (
         <EmptyState
           title="No research yet"
@@ -187,10 +111,9 @@ function ResearchActivityPanel({ activity }: { activity: ResearchActivity[] }) {
           {activity.map((run, i) => (
             <a className="activity-item hover-lift animate-fade-up" href={`/brands/${run.brand_id}`} key={run.id} style={{ animationDelay: `${i * 50}ms`, display: 'block' }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <span className={`status-dot${isLive(run.status) ? ' live' : ''}`} style={{ background: dotColor(run.status), marginTop: 4, flexShrink: 0 }} />
                 <div className="activity-body">
                   <div className="activity-title">{run.brand_name ?? 'Unknown brand'}</div>
-                  <div className="activity-meta">{labelFor(run.status)} · <RelativeTime date={run.created_at} /></div>
+                  <div className="activity-meta"><SharedStatusBadge status={run.status} /> · <RelativeTime date={run.created_at} /></div>
                   {run.status === 'FAILED' && run.error_message ? <div className="activity-error">{run.error_message}</div> : null}
                 </div>
               </div>
@@ -205,13 +128,7 @@ function ResearchActivityPanel({ activity }: { activity: ResearchActivity[] }) {
 function StrategyActivityPanel({ activity }: { activity: StrategyActivity[] }) {
   return (
     <div className="card">
-      <div className="section-title">
-        <div>
-          <div className="eyebrow">Activity</div>
-          <h2 style={{ margin: '5px 0' }}>Strategy versions</h2>
-        </div>
-        <Target size={18} color="var(--muted)" />
-      </div>
+      <SectionHeading className="section-title" eyebrow="Activity" title="Strategy versions" action={<Target size={18} color="var(--muted)" />} />
       {activity.length === 0 ? (
         <EmptyState
           title="No strategies yet"
@@ -222,13 +139,12 @@ function StrategyActivityPanel({ activity }: { activity: StrategyActivity[] }) {
           {activity.map((run, i) => (
             <a className="activity-item hover-lift animate-fade-up" href={`/brands/${run.brand_id}`} key={run.id} style={{ animationDelay: `${i * 50}ms`, display: 'block' }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <span className={`status-dot${isLive(run.status) ? ' live' : ''}`} style={{ background: dotColor(run.status), marginTop: 4, flexShrink: 0 }} />
                 <div className="activity-body">
                   <div className="activity-title">
                     {run.brand_name ?? 'Unknown brand'}
                     <span className="chip" style={{ marginLeft: 8 }}>v{run.version}</span>
                   </div>
-                  <div className="activity-meta">{labelFor(run.status)} · {timeAgo(run.created_at)}</div>
+                  <div className="activity-meta"><SharedStatusBadge status={run.status} /> · <RelativeTime date={run.created_at} /></div>
                 </div>
               </div>
             </a>
@@ -243,12 +159,7 @@ function NextActionsPanel({ actions }: { actions: NextAction[] }) {
   if (actions.length === 0) return null;
   return (
     <section className="next-actions" aria-label="Suggested next steps">
-      <div className="section-title">
-        <div>
-          <div className="eyebrow">Do this next</div>
-          <h2 style={{ margin: '5px 0' }}>Recommended actions</h2>
-        </div>
-      </div>
+      <SectionHeading className="section-title" eyebrow="Do this next" title="Recommended actions" />
       <div className="next-actions-grid">
         {actions.map((action, i) => {
           const Icon = ACTION_ICONS[action.kind];
