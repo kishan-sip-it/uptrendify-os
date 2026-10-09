@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { requireOrgRole, CAN_VIEW_DASHBOARD } from '@/lib/auth/roles';
 import { env } from '@/lib/env';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from '@/lib/research/url-security';
-import { extractBrandIdentity, parseCssColor, rankPalette, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
+import { extractBrandIdentity, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { buildEvidenceContext, extractBrandIntelligence, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
 
@@ -17,7 +17,7 @@ function sameSite(a: string, b: string): boolean {
 }
 
 type FetchOutcome =
-  | { ok: true; html: string; finalUrl: string }
+  | { ok: true; html: string; finalUrl: string; renderedFallback?: boolean }
   | { ok: false; reason: string; finalUrl: string | null };
 
 async function fetchHtml(root: URL, maxRedirects = 3): Promise<FetchOutcome> {
@@ -55,7 +55,7 @@ async function fetchHtml(root: URL, maxRedirects = 3): Promise<FetchOutcome> {
         if ([401, 403, 407, 408, 429, 451, 500, 502, 503, 504].includes(response.status)) {
           const rendered = await fetchRenderedResearch(target);
           if (rendered) {
-            return { ok: true, html: `<html><head><title>${rendered.title ?? ''}</title><meta name="description" content="${rendered.title ?? ''}"/></head><body><p>${rendered.text.replace(/</g, '&lt;')}</p></body></html>`, finalUrl: target };
+            return { ok: true, html: `<html><head><title>${(rendered.title ?? '').replace(/[<>]/g, '')}</title><meta name="description" content="${(rendered.title ?? '').replace(/["<>]/g, '')}"/></head><body><main><p>${rendered.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p></main></body></html>`, finalUrl: target, renderedFallback: true };
           }
         }
         return { ok: false, reason: `The website responded with HTTP ${response.status}.`, finalUrl: target };
@@ -71,8 +71,9 @@ async function fetchHtml(root: URL, maxRedirects = 3): Promise<FetchOutcome> {
       if (rendered) {
         return {
           ok: true,
-          html: `<html><head><title>${rendered.title ?? ''}</title><meta name="description" content="${rendered.title ?? ''}"/></head><body><p>${rendered.text.replace(/</g, '&lt;')}</p></body></html>`,
+          html: `<html><head><title>${(rendered.title ?? '').replace(/[<>]/g, '')}</title><meta name="description" content="${(rendered.title ?? '').replace(/["<>]/g, '')}"/></head><body><main><p>${rendered.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p></main></body></html>`,
           finalUrl: target,
+          renderedFallback: true,
         };
       }
       return { ok: false, reason: 'The website could not be reached.', finalUrl: finalUrl ?? target };
@@ -147,6 +148,27 @@ async function fetchRenderedResearch(url: string): Promise<{ title: string | nul
   }
 }
 
+function renderedResearchLinks(text: string, baseUrl: string): string[] {
+  const found = new Set<string>();
+  const add = (raw: string) => {
+    try {
+      const candidate = assertPublicHttpUrl(new URL(raw, baseUrl).toString());
+      if (!sameSite(baseUrl, candidate.toString())) return;
+      candidate.hash = '';
+      if (/\\.(?:png|jpe?g|gif|svg|webp|pdf|zip|xml|css|js|mp4|webm)$/i.test(candidate.pathname)) return;
+      found.add(candidate.toString());
+    } catch {
+      // Reader links are untrusted input; invalid/private/non-HTTP URLs are ignored.
+    }
+  };
+  for (const match of text.matchAll(/\\]\\((https?:\\/\\/[^)\\s]+|\\/[^)\\s]+)\\)/g)) {
+    if (match[1]) add(match[1]);
+  }
+  for (const match of text.matchAll(/https?:\\/\\/[^\\s<>"')]+/g)) {
+    if (match[0]) add(match[0].replace(/[.,;:!?]+$/, ''));
+  }
+  return [...found].slice(0, 8);
+}
 function pageText(html: string): { title: string | null; text: string } {
   const $ = cheerio.load(html);
   $('script,style,noscript,svg').remove();
@@ -326,10 +348,28 @@ export async function GET(request: Request) {
     let renderedFallbackText: string | null = null;
     let renderedFallbackTitle: string | null = null;
 
-    if (!outcome.ok) {
-      const rendered = await fetchRenderedResearch(raw);
+    if (outcome.ok && outcome.renderedFallback) {
+      const fallbackPage = pageText(outcome.html);
+      renderedFallbackText = fallbackPage.text;
+      renderedFallbackTitle = fallbackPage.title;
+    } else if (outcome.ok && shouldUseRenderedWebsiteFallback(outcome.html)) {
+      // HTTP 200 does not mean that useful website content was returned. Many
+      // React/Next/static-hosting sites return only an application shell to a
+      // server fetch, so attempt one bounded rendered read before building an
+      // empty Brand IQ review.
+      const directPage = pageText(outcome.html);
+      const rendered = await fetchRenderedResearch(outcome.finalUrl);
+      if (rendered && rendered.text.length >= 180 && rendered.text.length > directPage.text.length + 100) {
+        renderedFallbackText = rendered.text;
+        renderedFallbackTitle = rendered.title ?? directPage.title;
+      }
+    } else if (!outcome.ok) {
+      const rendered = await fetchRenderedResearch(outcome.finalUrl ?? root.toString());
       if (!rendered) {
-        return NextResponse.json({ error: outcome.reason, identity: null }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+        return NextResponse.json(
+          { error: outcome.reason + ' The rendered reader could not recover meaningful public content from this URL.', identity: null },
+          { status: 422, headers: { 'Cache-Control': 'no-store' } },
+        );
       }
       renderedFallbackText = rendered.text;
       renderedFallbackTitle = rendered.title;
@@ -345,27 +385,57 @@ export async function GET(request: Request) {
             '</p></body></html>',
           raw,
         );
-    const baseHtml = outcome.ok ? outcome.html : '';
+    const baseHtml = outcome.ok && !outcome.renderedFallback ? outcome.html : '';
     const baseUrl = outcome.ok ? outcome.finalUrl : raw;
-    const stylesheetUrls = outcome.ok ? externalStylesheetUrls(baseHtml, baseUrl) : [];
+    const stylesheetUrls = baseHtml ? externalStylesheetUrls(baseHtml, baseUrl) : [];
     const cssBlocks = (await Promise.all(stylesheetUrls.map(fetchCss))).filter(Boolean);
     identity = mergeExternalCss(identity, cssBlocks);
 
-    const pageCandidates = outcome.ok ? prioritizedLinks(baseHtml, baseUrl) : [];
+    const directLinks = baseHtml ? prioritizedLinks(baseHtml, baseUrl) : [];
+    const readerLinks = renderedFallbackText ? renderedResearchLinks(renderedFallbackText, baseUrl) : [];
+    const pageCandidates = [...new Set([...directLinks, ...readerLinks])]
+      .filter((url) => sameSite(baseUrl, url))
+      .slice(0, 7);
     const pageUrls = [baseUrl, ...pageCandidates];
     const evidencePages: Array<{ url: string; title: string | null; text: string }> = [];
 
-    const homepage = outcome.ok
-      ? pageText(outcome.html)
-      : { title: renderedFallbackTitle, text: renderedFallbackText ?? '' };
+    const directHomepage = outcome.ok ? pageText(outcome.html) : null;
+    const homepage = renderedFallbackText && (!directHomepage || outcome.renderedFallback || renderedFallbackText.length > directHomepage.text.length)
+      ? { title: renderedFallbackTitle ?? directHomepage?.title ?? null, text: renderedFallbackText }
+      : directHomepage ?? { title: renderedFallbackTitle, text: renderedFallbackText ?? '' };
     evidencePages.push({ url: baseUrl, ...homepage });
 
-    const extraPages = await Promise.all(pageCandidates.map(async (url) => {
+    const extraPages = await Promise.all(pageCandidates.map(async (url, index) => {
       const page = await fetchHtml(new URL(url), 1);
       if (!page.ok) return null;
-      return { url: page.finalUrl, ...pageText(page.html) };
+      const direct = pageText(page.html);
+      if (page.renderedFallback) return { url: page.finalUrl, ...direct };
+
+      // Keep this fallback bounded across child pages so a shell-heavy site
+      // can contribute real evidence without turning one scan into an
+      // unbounded set of third-party rendering requests.
+      if (index < 3 && shouldUseRenderedWebsiteFallback(page.html)) {
+        const rendered = await fetchRenderedResearch(page.finalUrl);
+        if (rendered && rendered.text.length > direct.text.length + 100) {
+          return { url: page.finalUrl, title: rendered.title ?? direct.title, text: rendered.text };
+        }
+      }
+      return { url: page.finalUrl, ...direct };
     }));
-    for (const page of extraPages) if (page?.text) evidencePages.push(page);
+    for (const page of extraPages) if (page?.text?.trim()) evidencePages.push(page);
+
+    const accessibleTextChars = evidencePages.reduce((total, page) => total + page.text.trim().length, 0);
+    const hasVisualEvidence = Boolean(identity.brandName || identity.description || identity.logoUrl || identity.faviconUrl || identity.palette.length);
+    if (accessibleTextChars < 180 && !hasVisualEvidence) {
+      return NextResponse.json(
+        {
+          error: 'The URL responded, but no meaningful public content could be extracted. The site may require client-side rendering, block automated readers, or only be available after sign-in. Try the canonical homepage URL or check that the page is public.',
+          identity: null,
+          diagnostics: { pageCount: evidencePages.length, accessibleTextChars, renderedReaderUsed: Boolean(renderedFallbackText) },
+        },
+        { status: 422, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
 
     const assets = (() => {
       if (!outcome.ok) return [];
@@ -391,7 +461,7 @@ export async function GET(request: Request) {
       } else {
         const fragments: EvidenceFragment[] = evidencePages
           .filter((page) => page.text.trim())
-          .map((page) => ({ url: page.url, title: page.title, text: page.text }));
+          .map((page) => ({ url: page.url, title: page.title, text: page.text, sourceType: 'first-party' as const }));
         const evidence = buildEvidenceContext(fragments);
         if (evidence.length > 0) {
           const extractionRun = await runWithProviderFailover(
