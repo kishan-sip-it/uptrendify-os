@@ -36,7 +36,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
   if (!brand) redirect('/brands');
 
   return (
-    <main className="main">
+    <main className="main brand-workspace-page">
       <BrandHashRouteBridge />
       <div className="topbar" style={{ marginBottom: 14, flexWrap: 'wrap' }}>
         <div>
