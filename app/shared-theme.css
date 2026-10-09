@@ -1,4 +1,17 @@
 /* Shared visual theme: presentation only. No copy/content changes. */
+/* Geometry tokens are intentionally theme-invariant. Themes may change colours,
+   never page gutters, sidebar width, drawer width, or reserved rail space. */
+:root {
+  --layout-sidebar-width: 250px;
+  --layout-page-gutter: clamp(24px, 2.5vw, 48px);
+  --layout-page-gutter-mobile: 16px;
+  --layout-checklist-width: 276px;
+  --layout-checklist-right: 24px;
+  --layout-checklist-gap: 20px;
+  --layout-checklist-reserve: calc(var(--layout-checklist-width) + var(--layout-checklist-right) + var(--layout-checklist-gap));
+}
+
+
 :root {
   --theme-bg: #f7f9fc;
   --theme-surface: #ffffff;
