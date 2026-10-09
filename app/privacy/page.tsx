@@ -2,8 +2,11 @@ import type { Metadata } from 'next';
 import { LegalNotice, LegalSection, PublicShell } from '@/components/public/public-site';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — UpTrendifyOS',
-  description: 'How UpTrendifyOS describes collection and use of account, workspace and product data.',
+  title: "Privacy Policy",
+  description: "How UpTrendifyOS describes collection and use of account, workspace and product data.",
+  alternates: { canonical: "/privacy" },
+  openGraph: { type: 'website', siteName: 'UpTrendifyOS', title: "UpTrendifyOS · Privacy Policy", description: "How UpTrendifyOS describes collection and use of account, workspace and product data.", url: "/privacy", images: ['/opengraph-image'] },
+  twitter: { card: 'summary_large_image', title: "UpTrendifyOS · Privacy Policy", description: "How UpTrendifyOS describes collection and use of account, workspace and product data.", images: ['/opengraph-image'] },
 };
 
 export default function PrivacyPage() {

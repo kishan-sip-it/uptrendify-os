@@ -11,6 +11,7 @@ import BorderGlow from '@/components/react-bits/BorderGlow';
 import SwarmCursor from '@/components/react-bits/SwarmCursor';
 import WarpText from '@/components/react-bits/WarpText';
 import ThemeHeroVideo from '@/components/landing/ThemeHeroVideo';
+import { SITE_FAQ } from '@/lib/marketing/site-content';
 
 type StepState = 'pending' | 'running' | 'done';
 
@@ -63,10 +64,10 @@ const FEATURES: { icon: LucideIcon; title: string; description: string }[] = [
 ];
 
 const METRICS: { value: string; label: string }[] = [
-  { value: '7', label: 'Connected workflow stages' },
-  { value: '1', label: 'Shared brand context' },
-  { value: 'Human', label: 'Approval stays in the loop' },
-  { value: '1', label: 'Workspace for the workflow' },
+  { value: '7 stages', label: 'Connected research-to-publishing workflow' },
+  { value: 'Source-backed', label: 'Brand evidence stays reviewable' },
+  { value: 'Human gate', label: 'Approval before strategy and publishing' },
+  { value: 'Isolated', label: 'Client brand workspaces and roles' },
 ];
 
 const PIPELINE: { step: string; label: string }[] = WORKFLOW.map((item, index) => ({
@@ -94,12 +95,7 @@ const AUDIENCE_CARDS = [
   { icon: Sparkles, title: 'Brand owners', description: 'Start with your own website, teach the system your rules and stay in control of what becomes authoritative.' },
 ];
 
-const FAQ = [
-  { question: 'Does AI get to decide what is true?', answer: 'No. Research produces evidence and Brand Brain produces reviewable suggestions. Human approval is the gate before those facts become authoritative.' },
-  { question: 'What happens when a website is difficult to crawl?', answer: 'The research pipeline can try rendered-page extraction for JavaScript-heavy sites and reports the actual limitation when content remains unavailable.' },
-  { question: 'Can an agency manage more than one brand?', answer: 'Yes. Agency workspaces are designed around multiple brands with tenant isolation, roles and separate brand context.' },
-  { question: 'What happens before anything is published?', answer: 'Content has its own lifecycle and approval stage. A connector must exist before an external channel can actually receive the content.' },
-];
+const FAQ = SITE_FAQ;
 
 function EvidenceExplorer() {
   const [active, setActive] = useState(0);

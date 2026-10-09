@@ -1,5 +1,6 @@
 'use client';
 
+import { PageHeader } from '@/components/ui/page-header';
 import { FormEvent, useMemo, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, CircleAlert, FileText, Globe2,
@@ -67,9 +68,12 @@ export function PublicShell({ active, eyebrow, title, intro, children }: PublicN
       <div className="public-aurora public-aurora-two" aria-hidden="true" />
       <PublicHeader active={active} />
       <section className="public-hero">
-        <div className="public-eyebrow"><Sparkles size={13} /> {eyebrow}</div>
-        <h1>{title}</h1>
-        <p>{intro}</p>
+        <PageHeader
+          className="ui-public-page-header"
+          eyebrow={<><Sparkles size={13} aria-hidden="true" /> {eyebrow}</>}
+          title={title}
+          description={intro}
+        />
       </section>
       <section className="public-content">{children}</section>
       <PublicFooter />

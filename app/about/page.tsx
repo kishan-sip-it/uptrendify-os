@@ -3,8 +3,23 @@ import { ArrowRight, Bot, CheckCircle2, Fingerprint, ShieldCheck, Workflow } fro
 import { InfoCard, PublicShell } from '@/components/public/public-site';
 
 export const metadata: Metadata = {
-  title: 'About UpTrendifyOS',
-  description: 'Why UpTrendifyOS exists and how its human-controlled marketing workflow is designed.',
+  title: "About",
+  description: "Why UpTrendifyOS exists and how its human-controlled marketing workflow is designed.",
+  alternates: { canonical: "/about" },
+  openGraph: {
+    type: 'website',
+    siteName: 'UpTrendifyOS',
+    title: "About UpTrendifyOS",
+    description: "Why UpTrendifyOS exists and how its human-controlled marketing workflow is designed.",
+    url: "/about",
+    images: ['/opengraph-image'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: "About UpTrendifyOS",
+    description: "Why UpTrendifyOS exists and how its human-controlled marketing workflow is designed.",
+    images: ['/opengraph-image'],
+  },
 };
 
 export default function AboutPage() {
