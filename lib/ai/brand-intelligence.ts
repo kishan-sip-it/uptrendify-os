@@ -33,16 +33,16 @@ function extractionLimitsForModel(model: string): ExtractionLimits {
   }
   if (normalized === 'openai/gpt-oss-120b') {
     return {
-      maxEvidenceChars: 14_000,
+      maxEvidenceChars: 12_000,
       maxSources: 8,
-      maxTokens: 1_500,
+      maxTokens: 2_000,
     };
   }
   if (normalized === 'openai/gpt-oss-20b') {
     return {
-      maxEvidenceChars: 9_000,
-      maxSources: 7,
-      maxTokens: 1_200,
+      maxEvidenceChars: 8_000,
+      maxSources: 6,
+      maxTokens: 1_600,
     };
   }
   return DEFAULT_EXTRACTION_LIMITS;
