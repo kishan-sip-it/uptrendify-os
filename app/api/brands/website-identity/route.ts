@@ -426,8 +426,10 @@ function mergeExternalCss(
   cssBlocks: string[],
   assetBlocks: string[] = [],
   manifestColors: string[] = [],
+  rasterColors: RasterColorSample[] = [],
+  scriptBlocks: string[] = [],
 ): ExtractedIdentity {
-  if (cssBlocks.length === 0 && assetBlocks.length === 0 && manifestColors.length === 0) return identity;
+  if (cssBlocks.length === 0 && assetBlocks.length === 0 && manifestColors.length === 0 && rasterColors.length === 0 && scriptBlocks.length === 0) return identity;
   const sink = new Map<string, { count: number; sources: Set<string> }>();
   const fonts = new Map(identity.fonts.map((font) => [font.family.toLowerCase(), font]));
   for (const css of cssBlocks) {
@@ -442,6 +444,13 @@ function mergeExternalCss(
     }
   }
   for (const asset of assetBlocks) collectColors(asset, 'logo-svg-color', sink);
+  for (const script of scriptBlocks) collectJavaScriptDesignTokens(script, sink);
+  for (const sample of rasterColors) {
+    const entry = sink.get(sample.hex) ?? { count: 0, sources: new Set<string>() };
+    entry.count += Math.min(sample.count, 500);
+    entry.sources.add('logo-raster-color');
+    sink.set(sample.hex, entry);
+  }
   for (const rawColor of manifestColors) {
     const hex = parseCssColor(rawColor);
     if (!hex) continue;
@@ -479,10 +488,14 @@ function mergeExternalCss(
       ...(cssBlocks.length ? [`${cssBlocks.length} external stylesheet(s)`] : []),
       ...(assetBlocks.length ? [`${assetBlocks.length} SVG visual asset(s)`] : []),
       ...(manifestColors.length ? ['web-app manifest theme colour'] : []),
+      ...(rasterColors.length ? [String(rasterColors.length) + ' logo/favicon raster colour sample(s)'] : []),
+      ...(scriptBlocks.length ? [String(scriptBlocks.length) + ' inline/script bundle(s) inspected for design tokens'] : []),
+      ...([...sink.values()].some((entry) => entry.sources.has('js-style-tokens')) ? ['JavaScript/CSS-in-JS design tokens'] : []),
     ],
     warnings: identity.warnings.filter((warning) =>
-      !(cssBlocks.length > 0 && (warning.includes('inline stylesheet') || warning.includes('embedded stylesheet'))) &&
-      !((cssBlocks.length > 0 || assetBlocks.length > 0 || manifestColors.length > 0) &&
+      !((cssBlocks.length > 0 || assetBlocks.length > 0 || manifestColors.length > 0 || rasterColors.length > 0 || scriptBlocks.length > 0) &&
+        (warning.includes('inline stylesheet') || warning.includes('embedded stylesheet'))) &&
+      !((cssBlocks.length > 0 || assetBlocks.length > 0 || manifestColors.length > 0 || rasterColors.length > 0 || scriptBlocks.length > 0) &&
         mergedPalette.some((color) => color.role !== 'neutral') &&
         warning.includes('No usable colour declarations')),
     ),
@@ -757,7 +770,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const cssBlocks = (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url)))).flat();
+    const cssBlocks = (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url))).then((nested) => nested.flat());
     const svgUrls = [...new Set([identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons])]
       .filter((url): url is string => {
         if (typeof url !== 'string') return false;
@@ -765,7 +778,18 @@ export async function GET(request: Request) {
       })
       .slice(0, 3);
     const svgBlocks = (await Promise.all(svgUrls.map(fetchSvgAsset))).filter((asset): asset is string => Boolean(asset));
-    identity = mergeExternalCss(identity, cssBlocks, svgBlocks, manifestVisuals.colors);
+
+    // Modern frameworks frequently keep theme colours in JS/CSS-in-JS bundles
+    // instead of HTML or standalone CSS. Read only explicitly declared public
+    // scripts, with strict time and byte caps.
+    const inlineScripts = inlineScriptBlocks(baseHtml);
+    const externalScripts = (await Promise.all(externalScriptUrls(baseHtml, baseUrl).map(fetchScriptText)))
+      .filter((script): script is string => Boolean(script));
+    const scriptBlocks = [...inlineScripts, ...externalScripts];
+    const rasterUrls = rasterLogoUrls(baseHtml, baseUrl, [identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons]);
+    const rasterColors = (await Promise.all(rasterUrls.map(fetchRasterColors))).flat();
+
+    identity = mergeExternalCss(identity, cssBlocks, svgBlocks, manifestVisuals.colors, rasterColors, scriptBlocks);
 
     const directLinks = baseHtml ? prioritizedLinks(baseHtml, baseUrl) : [];
     const readerLinks = renderedFallbackText ? renderedResearchLinks(renderedFallbackText, baseUrl) : [];
