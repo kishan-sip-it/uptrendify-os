@@ -226,15 +226,28 @@ function prioritizedLinks(html: string, rootUrl: string): string[] {
 function externalStylesheetUrls(html: string, baseUrl: string): string[] {
   const $ = cheerio.load(html);
   const urls = new Set<string>();
-  $('link[rel="stylesheet"]').each((_i, el) => {
-    const href = absoluteUrl($(el).attr('href'), baseUrl);
-    if (href && sameSite(baseUrl, href)) urls.add(href);
+  const add = (raw: string | undefined) => {
+    const href = absoluteUrl(raw, baseUrl);
+    if (!href) return;
+    try {
+      // A public website may host its CSS on a CDN that is not a subdomain of
+      // the site's apex. Fetch only resources explicitly declared as CSS and
+      // let URL/DNS checks in fetchCss reject private or unsafe destinations.
+      const parsed = assertPublicHttpUrl(href);
+      urls.add(parsed.toString());
+    } catch {
+      // Invalid schemes, credentials and non-standard ports are rejected.
+    }
+  };
+  $('link[rel="stylesheet"]').each((_i, el) => add($(el).attr('href')));
+  $('link[rel~="preload"][as="style"]').each((_i, el) => add($(el).attr('href')));
+  $('style').each((_i, el) => {
+    const css = $(el).text();
+    for (const match of css.matchAll(/@import\\s+(?:url\\()?\\s*["']?([^"')\\s;]+)["']?\\s*\\)?/gi)) {
+      if (match[1]) add(match[1]);
+    }
   });
-  $('link[rel~="preload"][as="style"]').each((_i, el) => {
-    const href = absoluteUrl($(el).attr('href'), baseUrl);
-    if (href && sameSite(baseUrl, href)) urls.add(href);
-  });
-  return [...urls].slice(0, 8);
+  return [...urls].slice(0, 12);
 }
 
 function mergeExternalCss(identity: ExtractedIdentity, cssBlocks: string[]): ExtractedIdentity {
@@ -277,7 +290,11 @@ function mergeExternalCss(identity: ExtractedIdentity, cssBlocks: string[]): Ext
     accentColors: chromatic.slice(5, 9).map((c) => c.hex),
     fonts: [...fonts.values()].slice(0, 10),
     inspected: [...identity.inspected, `${cssBlocks.length} external stylesheet(s)`],
-    warnings: identity.warnings.filter((warning) => !warning.includes('inline stylesheet')),
+    warnings: identity.warnings.filter((warning) =>
+      !warning.includes('inline stylesheet') &&
+      !warning.includes('embedded stylesheet') &&
+      !(mergedPalette.some((color) => color.role !== 'neutral') && warning.includes('No usable colour declarations')),
+    ),
   };
 }
 
