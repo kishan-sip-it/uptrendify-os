@@ -1086,17 +1086,6 @@
    is present or when the browser is zoomed. Switch to a compact, non-colliding
    definition-row layout based on the actual Brand Profile column width. */
 @container brand-profile-main (max-width: 560px) {
-  .brand-profile-subtabs {
-    gap: 5px;
-    padding: 7px;
-  }
-
-  .brand-profile-subtab {
-    min-width: 0;
-    padding-inline: 4px;
-    font-size: 10px;
-  }
-
   .brand-field {
     grid-template-columns: minmax(112px, 0.34fr) minmax(0, 0.66fr);
     gap: 12px;
@@ -1111,15 +1100,6 @@
     width: 80px;
     height: 80px;
   }
-}
-
-
-@container brand-profile-main (max-width: 380px) {
-  .brand-profile-subtabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-
-@container brand-profile-main (max-width: 300px) {
-  .brand-profile-subtabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .brand-profile-brand-hero {
