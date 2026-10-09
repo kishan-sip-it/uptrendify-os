@@ -54,7 +54,6 @@ export function createOpenAiCompatibleProvider(
           : {}),
         ...(useBrowserSearch
           ? {
-              citation_options: 'enabled',
               tool_choice: 'required',
               tools: [{ type: 'browser_search' }],
             }
