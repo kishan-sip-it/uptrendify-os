@@ -98,7 +98,26 @@ describe('colour classification', () => {
   });
 });
 
-describe('semantic CSS palette ranking', () => {\n  it('prioritizes declared brand colors and real primary controls over incidental status colors', () => {\n    const css = [\n      ':root { --theme-primary: #3ecf8e; --color-accent: #a855f7; }',\n      'header nav a { color: #3ecf8e; }',\n      '.btn-primary { background-color: #3ecf8e; }',\n      '.toast.error { background: #ff2d7d; }',\n      '.partner-logo { border-color: #f97316; }',\n    ].join('\\n');\n    const sink = new Map<string, { count: number; sources: Set<string> }>();\n    collectColors(css, 'external-stylesheet', sink);\n    const palette = rankPalette(sink, 8);\n    expect(palette[0]?.hex).toBe('#3ecf8e');\n    expect(palette.find((color) => color.hex === '#3ecf8e')?.sources).toContain('semantic-css');\n    expect(palette.find((color) => color.hex === '#3ecf8e')?.sources).toContain('header-ui');\n    expect(palette.find((color) => color.hex === '#ff2d7d')?.sources).not.toContain('primary-control');\n    expect(palette.find((color) => color.hex === '#f97316')?.sources).not.toContain('primary-control');\n  });\n});\ndescribe('extractBrandIdentity', () => {
+describe('semantic CSS palette ranking', () => {
+  it('prioritizes declared brand colors and real primary controls over incidental status colors', () => {
+    const css = [
+      ':root { --theme-primary: #3ecf8e; --color-accent: #a855f7; }',
+      'header nav a { color: #3ecf8e; }',
+      '.btn-primary { background-color: #3ecf8e; }',
+      '.toast.error { background: #ff2d7d; }',
+      '.partner-logo { border-color: #f97316; }',
+    ].join('\\n');
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    collectColors(css, 'external-stylesheet', sink);
+    const palette = rankPalette(sink, 8);
+    expect(palette[0]?.hex).toBe('#3ecf8e');
+    expect(palette.find((color) => color.hex === '#3ecf8e')?.sources).toContain('semantic-css');
+    expect(palette.find((color) => color.hex === '#3ecf8e')?.sources).toContain('header-ui');
+    expect(palette.find((color) => color.hex === '#ff2d7d')?.sources).not.toContain('primary-control');
+    expect(palette.find((color) => color.hex === '#f97316')?.sources).not.toContain('primary-control');
+  });
+});
+describe('extractBrandIdentity', () => {
   const identity = extractBrandIdentity(PAGE, 'https://broya.com/');
 
   it('reads identity metadata', () => {
