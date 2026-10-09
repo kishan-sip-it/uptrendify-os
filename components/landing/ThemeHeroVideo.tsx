@@ -66,7 +66,8 @@ export default function ThemeHeroVideo() {
       <div className="landing-hero-visual-halo landing-hero-visual-halo-one" aria-hidden="true" />
       <div className="landing-hero-visual-halo landing-hero-visual-halo-two" aria-hidden="true" />
 
-      <div className="landing-hero-visual-art" aria-hidden="true">
+      {stillUnavailable && (!videoReady || reducedMotion) && (
+        <div className="landing-hero-visual-art" aria-hidden="true">
         <div className="landing-hero-orbit landing-hero-orbit-one" />
         <div className="landing-hero-orbit landing-hero-orbit-two" />
         <div className="landing-hero-flowline landing-hero-flowline-one" />
@@ -113,7 +114,8 @@ export default function ThemeHeroVideo() {
           <span className="landing-hero-caption-mark"><Workflow size={14} /></span>
           <span><strong>One connected system</strong><small>Research · Review · Strategy · Create</small></span>
         </div>
-      </div>
+        </div>
+      )}
 
       {!stillUnavailable && (
         <img
