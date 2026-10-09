@@ -50,3 +50,27 @@ There are 45 API route handlers and 3 layouts. This work will not change API con
 ## Validation rule
 
 For each phase, run `npm run typecheck && npm test && npm run build` locally or via CI. A Vercel deployment marked READY is a build signal, not proof of the authenticated golden journey. Record the exact checks that ran. Do not claim Lighthouse 95+ or axe-clean without those measurements. Preview deployments may be limited by the team's Vercel daily deployment quota; do not upgrade billing or alter Production environment variables without explicit approval.
+
+
+## Execution checkpoint — 2026-10-09
+
+### Delivered on `feat/ui-elevation-20261009`
+
+- Preserved the existing CSS-based styling system and the `light` / `dark` / `system` theme mechanism.
+- Added shared UI foundations for status mapping, workflow stage progress, page headers, statistics, skeletons, relative time, copy actions, and keyboard-accessible command navigation.
+- Added site metadata/SEO assets and public structured data, while keeping factual product claims tied to real workflow properties.
+- Removed the root landing route's server-side auth/database gate so the marketing page can render immediately; its client navigation continues to discover authentication after hydration.
+- Replaced the app-wide text loading indicator with the shared skeleton UI and added safe, copyable error diagnostics.
+- Simplified landing navigation, moved secondary links into a categorized footer, added a theme preference control there, and made mobile navigation a full-height sheet with Escape handling and keyboard focus trapping.
+- Kept changes additive and presentation-focused. No API contracts, Supabase schema/RLS, migrations, roles, auth/token behavior, approval gate, or publishing state machine were changed.
+
+### Verification
+
+On the exact branch tree at commit `f061e4c2e7a250de89f7d3ad6b52120f1e3d52d8`:
+
+- `npm run typecheck` — passed.
+- `npm test -- --reporter=dot` — 61 test files and 531 tests passed.
+- `npm run build` — passed; Next.js compiled and generated 47 static pages/routes.
+- `git status` — clean at the checked-out branch head.
+
+Lighthouse, axe, screenshot-based responsive inspection, and the complete signed-in golden journey were not run in this automated checkpoint and are not claimed as passed. Recheck those against the deployed preview with a configured demo account before considering the UX quality bar fully closed.
