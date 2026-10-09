@@ -25,6 +25,71 @@ function pngFrameFromIco(bytes: Uint8Array): Uint8Array | null {
   return null;
 }
 
+function bitmapPaletteFromIco(bytes: Uint8Array, limit: number): RasterColorSample[] {
+  if (bytes.length < 22 || bytes[0] !== 0 || bytes[1] !== 0 || bytes[2] !== 1 || bytes[3] !== 0) return [];
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = view.getUint16(4, true);
+  const frames: Array<{ offset: number; length: number; area: number }> = [];
+  for (let index = 0; index < Math.min(count, 8); index += 1) {
+    const entry = 6 + index * 16;
+    if (entry + 16 > bytes.length) break;
+    const width = bytes[entry] || 256;
+    const height = bytes[entry + 1] || 256;
+    const length = view.getUint32(entry + 8, true);
+    const offset = view.getUint32(entry + 12, true);
+    if (length >= 40 && offset + length <= bytes.length) frames.push({ offset, length, area: width * height });
+  }
+  frames.sort((a, b) => b.area - a.area);
+  for (const frame of frames) {
+    const offset = frame.offset;
+    const headerSize = view.getUint32(offset, true);
+    if (headerSize < 40 || headerSize > frame.length) continue;
+    const dibWidth = view.getInt32(offset + 4, true);
+    const dibHeight = view.getInt32(offset + 8, true);
+    const planes = view.getUint16(offset + 12, true);
+    const bitDepth = view.getUint16(offset + 14, true);
+    const compression = view.getUint32(offset + 16, true);
+    if (dibWidth <= 0 || dibWidth > 1024 || dibHeight === 0 || planes !== 1 || ![24, 32].includes(bitDepth) || compression !== 0) continue;
+    const width = dibWidth;
+    const height = Math.floor(Math.abs(dibHeight) / 2);
+    if (!height || height > 1024 || width * height > 750_000) continue;
+    const rowBytes = Math.floor((width * bitDepth + 31) / 32) * 4;
+    const pixelBytes = rowBytes * height;
+    const pixelOffset = offset + headerSize;
+    if (pixelOffset + pixelBytes > offset + frame.length) continue;
+    const bytesPerPixel = bitDepth / 8;
+    const rawPixels: Array<{ r: number; g: number; b: number; a: number }> = [];
+    let alphaHasSignal = false;
+    for (let y = 0; y < height; y += 1) {
+      const sourceY = dibHeight > 0 ? height - 1 - y : y;
+      const rowStart = pixelOffset + sourceY * rowBytes;
+      for (let x = 0; x < width; x += 1) {
+        const index = rowStart + x * bytesPerPixel;
+        const b = bytes[index]!;
+        const g = bytes[index + 1]!;
+        const r = bytes[index + 2]!;
+        const a = bitDepth === 32 ? bytes[index + 3]! : 255;
+        if (a > 0) alphaHasSignal = true;
+        rawPixels.push({ r, g, b, a });
+      }
+    }
+    const counts = new Map<string, number>();
+    for (const pixel of rawPixels) {
+      const alpha = bitDepth === 32 && alphaHasSignal ? pixel.a : 255;
+      if (alpha < 96) continue;
+      const hex = rgbaToHex(pixel.r, pixel.g, pixel.b);
+      counts.set(hex, (counts.get(hex) ?? 0) + 1);
+    }
+    if (counts.size) {
+      return [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, Math.max(1, Math.min(24, limit)))
+        .map(([hex, colorCount]) => ({ hex, count: colorCount }));
+    }
+  }
+  return [];
+}
+
 function crc32(bytes: Uint8Array): number {
   let crc = 0xffffffff;
   for (const byte of bytes) {
@@ -40,7 +105,8 @@ function rgbaToHex(r: number, g: number, b: number): string {
 
 export function extractRasterPalette(input: Uint8Array, limit = 12): RasterColorSample[] {
   const png = pngFrameFromIco(input);
-  if (!png || png.length < 33) return [];
+  if (!png) return bitmapPaletteFromIco(input, limit);
+  if (png.length < 33) return [];
 
   const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
   let offset = 8;
