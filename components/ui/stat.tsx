@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 export function Stat({
   label,
@@ -7,6 +7,7 @@ export function Stat({
   icon,
   tone = 'default',
   className = '',
+  style,
 }: {
   label: string;
   value: ReactNode;
@@ -14,9 +15,10 @@ export function Stat({
   icon?: ReactNode;
   tone?: 'default' | 'brand' | 'success' | 'warning' | 'danger';
   className?: string;
+  style?: CSSProperties;
 }) {
   return (
-    <article className={['card', 'ui-stat', 'ui-stat--' + tone, className].filter(Boolean).join(' ')}>
+    <article className={['card', 'ui-stat', 'ui-stat--' + tone, className].filter(Boolean).join(' ')} style={style}>
       <div className="ui-stat-label">
         {icon ? <span className="ui-stat-icon" aria-hidden="true">{icon}</span> : null}
         <span>{label}</span>
