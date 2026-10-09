@@ -13,7 +13,7 @@ export function PageHeader({
 }: {
   title: string;
   description?: string;
-  eyebrow?: string;
+  eyebrow?: ReactNode;
   breadcrumbs?: BreadcrumbItem[];
   action?: ReactNode;
   status?: ReactNode;
