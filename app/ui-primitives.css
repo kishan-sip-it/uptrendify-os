@@ -26,6 +26,7 @@
   font-variant-numeric: tabular-nums;
 }
 .ui-status-dot { width: 7px; height: 7px; flex: 0 0 7px; }
+.ui-status-badge.ui-status-badge--compact { min-height: 20px; padding: 3px 7px; gap: 5px; font-size: 11px; vertical-align: middle; }
 .ui-status-dot-static { flex: 0 0 auto; opacity: .72; }
 .ui-status-badge--success { border-color: var(--status-success-line); }
 .ui-status-badge--warning { border-color: var(--status-warning-line); }

@@ -113,7 +113,7 @@ function ResearchActivityPanel({ activity }: { activity: ResearchActivity[] }) {
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                 <div className="activity-body">
                   <div className="activity-title">{run.brand_name ?? 'Unknown brand'}</div>
-                  <div className="activity-meta"><SharedStatusBadge status={run.status} /> · <RelativeTime date={run.created_at} /></div>
+                  <div className="activity-meta"><SharedStatusBadge status={run.status} className="ui-status-badge--compact" /> · <RelativeTime date={run.created_at} /></div>
                   {run.status === 'FAILED' && run.error_message ? <div className="activity-error">{run.error_message}</div> : null}
                 </div>
               </div>
