@@ -9,6 +9,7 @@ export function PageHeader({
   breadcrumbs = [],
   action,
   status,
+  className = '',
 }: {
   title: string;
   description?: string;
@@ -16,9 +17,10 @@ export function PageHeader({
   breadcrumbs?: BreadcrumbItem[];
   action?: ReactNode;
   status?: ReactNode;
+  className?: string;
 }) {
   return (
-    <header className="ui-page-header">
+    <header className={['ui-page-header', className].filter(Boolean).join(' ')}>
       {breadcrumbs.length ? (
         <nav className="ui-breadcrumbs" aria-label="Breadcrumb">
           <ol>
