@@ -6,8 +6,23 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'UpTrendifyOS — AI Marketing Agency OS',
-  description: 'One operating system for research, brand intelligence, strategy, content and campaign execution across every client brand.',
+  title: "AI Marketing Agency OS",
+  description: "Research client brands, review evidence-backed brand intelligence, build strategies and create connected marketing work.",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: 'website',
+    siteName: 'UpTrendifyOS',
+    title: "UpTrendifyOS — AI Marketing Agency OS",
+    description: "Research client brands, review evidence-backed brand intelligence, build strategies and create connected marketing work.",
+    url: "/",
+    images: ['/opengraph-image'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: "UpTrendifyOS — AI Marketing Agency OS",
+    description: "Research client brands, review evidence-backed brand intelligence, build strategies and create connected marketing work.",
+    images: ['/opengraph-image'],
+  },
 };
 
 export default async function Home() {
