@@ -60,6 +60,23 @@ describe('parseCssColor', () => {
     expect(parseCssColor('hsl(0, 66%, 44%)')).toBe('#ba2626');
   });
 
+  it('parses modern CSS color spaces and space-separated RGB/HSL syntax', () => {
+    expect(parseCssColor('oklch(62% 0.19 28)')).not.toBeNull();
+    expect(parseCssColor('oklab(62% 0.12 0.08)')).not.toBeNull();
+    expect(parseCssColor('rgb(20 40 60 / 50%)')).toBe('#14283c');
+    expect(parseCssColor('hsl(210 50% 40% / 25%)')).toBe('#336699');
+    expect(parseCssColor('color(srgb 0.2 0.4 0.6)')).toBe('#336699');
+    expect(parseCssColor('tomato')).toBe('#ff6347');
+  });
+
+  it('extracts HSL component tokens used by design systems', () => {
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    collectColors(':root { --primary: 210 50% 40%; --brand-accent: oklch(62% 0.19 28); }', 'external-stylesheet', sink);
+    const palette = rankPalette(sink, 8);
+    expect(palette.map((color) => color.hex)).toContain('#336699');
+    expect(palette.some((color) => color.sources.includes('semantic-css'))).toBe(true);
+  });
+
   it('rejects values that carry no usable colour', () => {
     expect(parseCssColor('transparent')).toBeNull();
     expect(parseCssColor('currentColor')).toBeNull();
