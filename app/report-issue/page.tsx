@@ -3,8 +3,11 @@ import { Bug, CircleAlert, ShieldAlert, TriangleAlert } from 'lucide-react';
 import { AudienceForm, InfoCard, PublicShell } from '@/components/public/public-site';
 
 export const metadata: Metadata = {
-  title: 'Report an Issue — UpTrendifyOS',
-  description: 'Report a product problem or unexpected behavior in UpTrendifyOS.',
+  title: "Report an Issue",
+  description: "Report a product problem or unexpected behavior in UpTrendifyOS.",
+  alternates: { canonical: "/report-issue" },
+  openGraph: { type: 'website', siteName: 'UpTrendifyOS', title: "UpTrendifyOS · Report an Issue", description: "Report a product problem or unexpected behavior in UpTrendifyOS.", url: "/report-issue", images: ['/opengraph-image'] },
+  twitter: { card: 'summary_large_image', title: "UpTrendifyOS · Report an Issue", description: "Report a product problem or unexpected behavior in UpTrendifyOS.", images: ['/opengraph-image'] },
 };
 
 export default function ReportIssuePage() {

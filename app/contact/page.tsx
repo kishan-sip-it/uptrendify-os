@@ -3,8 +3,11 @@ import { ArrowRight, Mail, MessageSquare, ShieldCheck } from 'lucide-react';
 import { ContactPanel, InfoCard, PublicShell } from '@/components/public/public-site';
 
 export const metadata: Metadata = {
-  title: 'Contact — UpTrendifyOS',
-  description: 'Contact UpTrendifyOS about the product, feedback and issues.',
+  title: "Contact",
+  description: "Contact UpTrendifyOS about the product, feedback and issues.",
+  alternates: { canonical: "/contact" },
+  openGraph: { type: 'website', siteName: 'UpTrendifyOS', title: "UpTrendifyOS · Contact", description: "Contact UpTrendifyOS about the product, feedback and issues.", url: "/contact", images: ['/opengraph-image'] },
+  twitter: { card: 'summary_large_image', title: "UpTrendifyOS · Contact", description: "Contact UpTrendifyOS about the product, feedback and issues.", images: ['/opengraph-image'] },
 };
 
 export default function ContactPage() {
