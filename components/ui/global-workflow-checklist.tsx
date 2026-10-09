@@ -249,12 +249,12 @@ export function GlobalWorkflowChecklist() {
   return (
     <>
       <style jsx global>{`
-        body:has(.contextual-workflow-checklist) .shell > .main { padding-right: 320px; }
+        body:has(.contextual-workflow-checklist) .shell > .main { padding-right: var(--layout-checklist-reserve, 320px); }
         .contextual-workflow-checklist {
           position: fixed;
-          right: 24px;
+          right: var(--layout-checklist-right, 24px);
           top: 142px;
-          width: 276px;
+          width: var(--layout-checklist-width, 276px);
           max-height: calc(100vh - 166px);
           overflow-y: auto;
           z-index: 25;
@@ -285,11 +285,11 @@ export function GlobalWorkflowChecklist() {
         .contextual-workflow-next strong { display:block; color:var(--text); font-size:11px; line-height:1.35; }
         .contextual-workflow-next span { display:block; margin-top:3px; color:var(--muted); font-size:10px; line-height:1.45; }
         @media (max-width: 1260px) {
-          body:has(.contextual-workflow-checklist) .shell > .main { padding-right: 28px; }
+          body:has(.contextual-workflow-checklist) .shell > .main { padding-right: var(--layout-page-gutter, 28px); }
           .contextual-workflow-checklist { display:none; }
         }
         @media (max-width: 720px) {
-          body:has(.contextual-workflow-checklist) .shell > .main { padding-right:16px; }
+          body:has(.contextual-workflow-checklist) .shell > .main { padding-right: var(--layout-page-gutter-mobile, 16px); }
         }
       `}</style>
       <aside className="contextual-workflow-checklist" aria-label="Contextual workflow checklist">
