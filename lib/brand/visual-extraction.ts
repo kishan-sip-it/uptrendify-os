@@ -634,7 +634,7 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const node = $(el);
     const rel = (node.attr('rel') ?? '').toLowerCase();
     const href = absoluteUrl(node.attr('href'), base);
-    if (!href) return;
+    if (!href || !sameSiteUrl(base, href)) return;
     if (rel.includes('apple-touch-icon')) {
       const score = 32;
       if (!faviconUrl || score > faviconScore) { faviconUrl = href; faviconScore = score; }
