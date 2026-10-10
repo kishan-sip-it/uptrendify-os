@@ -13,6 +13,8 @@ import { RelativeTime } from '@/components/ui/relative-time';
 import { SectionHeading } from '@/components/ui/section-heading';
 import type { DashboardData, NextAction, RecentBrand, ResearchActivity, StrategyActivity } from '@/lib/dashboard/data';
 
+const DASHBOARD_RECENT_BRANDS_LIMIT = 4;
+
 const ACTION_ICONS: Record<NextAction['kind'], LucideIcon> = {
   brand: Plus,
   review: ListChecks,
@@ -64,15 +66,18 @@ function MetricCard({ label, value, Icon, hint, delay }: { label: string; value:
 }
 
 function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
+  const visibleBrands = brands.slice(0, DASHBOARD_RECENT_BRANDS_LIMIT);
+  const moreBrands = brands.slice(DASHBOARD_RECENT_BRANDS_LIMIT);
+
   return (
     <div className="card portfolio-card" style={{ gridColumn: 'span 2' }}>
-      <SectionHeading className="section-title" eyebrow="Portfolio" title="Recent brands" action={brands.length > 4 ? (
+      <SectionHeading className="section-title" eyebrow="Portfolio" title="Recent brands" action={moreBrands.length > 0 ? (
         <details className="portfolio-drawer">
-          <summary className="portfolio-drawer-trigger"><ChevronDown size={13} /> All brands · {brands.length}</summary>
+          <summary className="portfolio-drawer-trigger"><ChevronDown size={13} /> See more <span aria-hidden="true">· {moreBrands.length}</span></summary>
           <div className="portfolio-drawer-content">
-            <div className="portfolio-drawer-heading"><strong>All workspace brands</strong><span>{brands.length} brands</span></div>
+            <div className="portfolio-drawer-heading"><strong>More recent brands</strong><span>{moreBrands.length} more</span></div>
             <div className="portfolio-drawer-list">
-              {brands.map((brand) => (
+              {moreBrands.map((brand) => (
                 <a className="portfolio-drawer-brand" href={`/brands/${brand.id}`} key={brand.id}>
                   <span className="portfolio-drawer-brand-copy"><strong>{brand.name}</strong><span>{brand.industry || brand.website_url?.replace('https://', '').replace('http://', '') || 'Brand workspace'}</span></span>
                   <SharedStatusBadge status={brand.status ?? 'ACTIVE'} />
@@ -87,7 +92,7 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
         <EmptyState title="No brands yet" description="Add your first brand to start analyzing its public website and building strategies." action={<span className="field-note">Use <strong>Add brand</strong> in the left sidebar to create your first brand.</span>} />
       ) : (
         <div className="grid" id="brands">
-          {brands.slice(0, 4).map((brand, i) => (
+          {visibleBrands.map((brand, i) => (
             <a className="card brand-card hover-lift animate-fade-up" href={`/brands/${brand.id}`} key={brand.id} style={{ animationDelay: `${i * 60}ms`, display: 'block' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, minWidth: 0 }}>
                 <div style={{ minWidth: 0, flex: 1 }}><h3 style={{ margin: 0, overflowWrap: 'anywhere' }}>{brand.name}</h3><div className="metric-label" style={{ overflowWrap: 'anywhere' }}>{brand.industry || brand.website_url?.replace('https://', '').replace('http://', '') || 'Brand'}</div></div>
