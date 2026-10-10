@@ -2776,7 +2776,7 @@ html[data-theme="system"]:not(.theme-dark) {
 .portfolio-drawer-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; max-width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-card); color: var(--text); cursor: pointer; list-style: none; white-space: nowrap; }
 .portfolio-drawer-trigger::-webkit-details-marker { display: none; }
 .portfolio-drawer[open] .portfolio-drawer-trigger { border-color: var(--accent); }
-.portfolio-drawer-content { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; margin-top: 8px; padding: 13px; max-height: min(420px, 62vh); border: 1px solid var(--line); border-radius: 15px; background: var(--surface-overlay, var(--surface-card)); box-shadow: 0 22px 60px color-mix(in srgb, var(--text) 16%, transparent); backdrop-filter: blur(18px); }
+.portfolio-drawer-content { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; margin-top: 8px; padding: 13px; height: min(420px, 62vh); max-height: min(420px, 62vh); border: 1px solid var(--line); border-radius: 15px; background: var(--surface-overlay, var(--surface-card)); box-shadow: 0 22px 60px color-mix(in srgb, var(--text) 16%, transparent); backdrop-filter: blur(18px); }
 .portfolio-drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .portfolio-drawer-heading strong { color: var(--text-strong); font-size: 13px; }
 .portfolio-drawer-heading span { color: var(--text-muted); font-size: 11px; }
@@ -2787,4 +2787,4 @@ html[data-theme="system"]:not(.theme-dark) {
 .portfolio-drawer-brand-copy strong, .portfolio-drawer-brand-copy span { overflow-wrap: anywhere; word-break: break-word; }
 .portfolio-drawer-brand-copy strong { color: var(--text-strong); font-size: 12px; }
 .portfolio-drawer-brand-copy span { color: var(--text-muted); font-size: 10px; }
-@media (max-width: 620px) { .portfolio-drawer { position: static; width: 100%; } .portfolio-drawer-content { max-height: 360px; } }
+@media (max-width: 620px) { .portfolio-drawer { position: static; width: 100%; } .portfolio-drawer-content { height: min(360px, 60vh); max-height: 360px; } }
