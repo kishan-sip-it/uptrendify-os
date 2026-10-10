@@ -1,0 +1,430 @@
+/* Responsive layout system
+   Use the available workspace width (container queries) as well as viewport
+   breakpoints. Preserve readable control sizes; reflow dense layouts instead
+   of shrinking the whole interface or clipping content.
+*/
+
+:root {
+  --responsive-page-inline: clamp(12px, 2.15vw, 36px);
+  --responsive-page-block: clamp(14px, 2.2vh, 28px);
+  --responsive-card-padding: clamp(12px, 1.25vw, 18px);
+  --responsive-grid-gap: clamp(10px, 1.2vw, 18px);
+}
+
+html {
+  scroll-padding-block-start: 76px;
+}
+
+body {
+  min-width: 320px;
+}
+
+.shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.shell > .sidebar {
+  min-width: 0;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overscroll-behavior: contain;
+}
+
+.shell > .main {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  padding: var(--responsive-page-block) var(--responsive-page-inline) clamp(30px, 4vh, 56px);
+  container: workspace-frame / inline-size;
+}
+
+.shell > .main > main.main,
+.shell > .main > .main {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  container: workspace-page / inline-size;
+}
+
+.main,
+.main > *,
+.shell .card,
+.shell .panel {
+  min-width: 0;
+}
+
+.shell .card,
+.shell .panel {
+  padding: var(--responsive-card-padding);
+}
+
+.grid,
+.grid-2,
+.grid-3,
+.grid-4,
+.kpi-grid,
+.roadmap-grid,
+.next-actions-grid,
+.review-grid,
+.settings-grid,
+.settings-tool-grid,
+.brain-evidence-grid,
+.brand-persona-grid,
+.content-filters,
+.content-form-row {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.grid > *,
+.grid-2 > *,
+.grid-3 > *,
+.grid-4 > *,
+.kpi-grid > *,
+.roadmap-grid > *,
+.next-actions-grid > *,
+.review-grid > *,
+.settings-grid > *,
+.settings-tool-grid > *,
+.brain-evidence-grid > *,
+.brand-persona-grid > * {
+  min-width: 0;
+}
+
+.shell .topbar,
+.shell .topbar-compact {
+  min-width: 0;
+  gap: clamp(8px, 1vw, 14px);
+}
+
+.shell .topbar-title {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.shell .topbar-title h1,
+.main h1,
+.main h2,
+.main h3,
+.main h4 {
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.brand-profile-layout {
+  grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr);
+  gap: clamp(14px, 1.8vw, 28px);
+}
+
+.brand-profile-main,
+.brand-profile-preview-column {
+  min-width: 0;
+}
+
+.brand-profile-preview-column {
+  align-self: start;
+}
+
+.brand-live-preview-stage {
+  height: clamp(360px, 64vh, 534px);
+  height: clamp(360px, 64dvh, 534px);
+  min-height: 0;
+  max-height: none;
+}
+
+.brand-live-preview-copy {
+  padding: clamp(16px, 2.1vw, 36px);
+}
+
+.brand-workspace-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  max-width: 100%;
+}
+
+.brand-workspace-nav-scroll {
+  max-width: 100%;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+table {
+  max-width: 100%;
+}
+
+.table-scroll,
+.table-responsive,
+.table-wrap,
+[data-scroll-container] {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+/* A page can have less space than its window when the navigation is open,
+   the right-hand checklist is docked, or the browser is zoomed. */
+@container workspace-frame (max-width: 1120px) {
+  .shell .topbar {
+    flex-wrap: wrap;
+  }
+
+  .shell .topbar-title {
+    flex: 1 1 14rem;
+  }
+}
+
+@container workspace-page (max-width: 1120px) {
+  .grid-4,
+  .grid-3,
+  .kpi-grid,
+  .roadmap-grid,
+  .next-actions-grid,
+  .review-grid,
+  .settings-tool-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .brand-profile-layout {
+    grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr);
+  }
+
+  .content-form-row,
+  .onboarding-grid,
+  .choice-grid,
+  .settings-grid,
+  .brand-input-grid,
+  .brain-evidence-grid,
+  .public-form-layout,
+  .public-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detail-row,
+  .fact-row {
+    min-width: 0;
+  }
+}
+
+@container workspace-page (max-width: 900px) {
+  .brand-profile-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brand-profile-preview-column {
+    position: static;
+  }
+
+  .brand-live-preview-stage {
+    height: clamp(360px, 62vh, 500px);
+    height: clamp(360px, 62dvh, 500px);
+  }
+
+  .grid-4,
+  .grid-3,
+  .kpi-grid,
+  .roadmap-grid,
+  .next-actions-grid,
+  .review-grid,
+  .settings-tool-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .content-form-row,
+  .onboarding-grid,
+  .choice-grid,
+  .settings-grid,
+  .brand-input-grid,
+  .brain-evidence-grid,
+  .public-form-layout,
+  .public-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container workspace-page (max-width: 720px) {
+  .grid-4,
+  .grid-3,
+  .kpi-grid,
+  .roadmap-grid,
+  .next-actions-grid,
+  .review-grid,
+  .settings-tool-grid,
+  .content-form-row,
+  .onboarding-grid,
+  .choice-grid,
+  .settings-grid,
+  .brand-input-grid,
+  .brain-evidence-grid,
+  .public-form-layout,
+  .public-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brand-profile-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brand-live-preview-stage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    height: auto;
+    min-height: 0;
+  }
+
+  .brand-live-preview-copy {
+    min-height: clamp(280px, 76vw, 360px);
+    padding: clamp(18px, 4vw, 28px);
+    overflow: visible;
+  }
+
+  .brand-live-preview-art {
+    min-height: clamp(170px, 45vw, 220px);
+  }
+
+  .brand-workspace-nav {
+    top: 0;
+  }
+
+  .brand-workspace-nav-scroll {
+    overflow-x: auto;
+    padding-block: 3px;
+  }
+
+  .content-filters {
+    align-items: stretch;
+  }
+
+  .content-filters > *,
+  .content-filter-input,
+  .content-filter-select {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .shell .topbar,
+  .shell .topbar-compact {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .shell .topbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+}
+
+@container workspace-page (max-width: 560px) {
+  .review-tabs,
+  .brand-profile-subtabs,
+  .brain-topic-nav {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .brand-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .brand-axis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brand-profile-brand-hero-meta,
+  .topbar-actions {
+    flex-wrap: wrap;
+  }
+
+  .card,
+  .panel {
+    padding: 12px;
+  }
+}
+
+@media (min-width: 1101px) {
+  .shell {
+    grid-template-columns: clamp(220px, 17.5vw, 248px) minmax(0, 1fr);
+  }
+
+  .shell > .sidebar {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 1100px) {
+  .shell > .main {
+    padding-inline: clamp(12px, 2.2vw, 24px) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --responsive-page-inline: 14px;
+    --responsive-page-block: 18px;
+    --responsive-card-padding: 14px;
+    --responsive-grid-gap: 12px;
+  }
+
+  .brand-profile-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brand-profile-preview-column {
+    position: static;
+  }
+
+  .brand-live-preview-stage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    height: auto;
+  }
+
+  .brand-live-preview-copy {
+    min-height: clamp(280px, 76vw, 360px);
+  }
+
+  .brand-live-preview-art {
+    min-height: clamp(170px, 45vw, 220px);
+  }
+
+  .brand-workspace-nav {
+    position: sticky;
+    top: 0;
+  }
+}
+
+@media (max-height: 820px) and (min-width: 1101px) {
+  .shell > .sidebar {
+    padding-block: clamp(10px, 1.6vh, 16px);
+  }
+
+  .shell .brand-mark {
+    padding-bottom: clamp(10px, 1.6vh, 18px);
+  }
+
+  .shell .card {
+    margin-top: 14px !important;
+  }
+
+  .brand-profile-preview-column {
+    top: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-workspace-nav,
+  .brand-workspace-tab,
+  .contextual-workflow-toggle {
+    scroll-behavior: auto;
+    transition-duration: 0.001ms !important;
+  }
+}
