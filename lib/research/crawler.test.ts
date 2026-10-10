@@ -192,6 +192,31 @@ describe('crawlBrand', () => {
     expect(result.processedPages[0].text).toContain('rendered content from the client application');
   });
 
+  it('retries a bot-protected public page with a browser user-agent before rendered fallback', async () => {
+    const calls: Array<{ url: string; userAgent: string }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, opts: RequestInit) => {
+      const headers = new Headers(opts.headers);
+      calls.push({ url, userAgent: headers.get('user-agent') ?? '' });
+      if (calls.length === 1) {
+        return new Response('blocked', { status: 403, headers: { 'content-type': 'text/html' } });
+      }
+      return new Response(htmlPage('Microsoft', ''), { status: 200, headers: { 'content-type': 'text/html' } });
+    }));
+
+    const client = mockSupabase() as any;
+    const result = await crawlBrand(client, {
+      organizationId: ORG_ID,
+      brandId: BRAND_ID,
+      websiteUrl: 'http://8.8.8.8',
+      researchRunId: RUN_ID,
+    });
+
+    expect(result.pagesProcessed).toBeGreaterThanOrEqual(1);
+    expect(result.status).toBe('COMPLETED');
+    expect(calls[0]?.userAgent).toBe('TestBot/1.0');
+    expect(calls[1]?.userAgent).toContain('Mozilla/5.0');
+  });
+
   it('returns FAILED when no pages can be processed (all 404)', async () => {
     vi.stubGlobal('fetch', vi.fn(async () =>
       new Response('not found', { status: 404, headers: { 'content-type': 'text/html' } })
