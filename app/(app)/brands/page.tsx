@@ -2,6 +2,9 @@ import { redirect } from 'next/navigation';
 import { ArrowRight, Globe2 } from 'lucide-react';
 import { CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { PageHeader } from '@/components/ui/page-header';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { EmptyState } from '@/components/ui/feedback';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,24 +72,15 @@ export default async function BrandsListPage() {
 
   return (
     <main className="main" style={{ maxWidth: 1100 }}>
-      <div className="topbar">
-        <div>
-          <a href="/" className="metric-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>Back to command center</a>
-          <h1>Brands</h1>
-          <p className="subtitle">Every client brand with its own research run history and Brand Brain.</p>
-        </div>
-      </div>
+      <a href="/" className="metric-label ui-backlink" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>Back to command center</a>
+      <PageHeader eyebrow="Portfolio" title="Brands" description="Every client brand with its own research run history and Brand Brain." />
 
       {(brands ?? []).length === 0 ? (
-        <div className="card">
-          <div className="section-title">
-            <div>
-              <div className="eyebrow">Portfolio</div>
-              <h2 style={{ margin: '5px 0' }}>No brands yet</h2>
-            </div>
-          </div>
-          <p className="subtitle">Use <strong>Add brand</strong> in the left sidebar to add your first brand and start analyzing its public website.</p>
-        </div>
+        <EmptyState
+          title="No brands yet"
+          description="Add your first brand to analyze its public website and start building its evidence-backed Brand Brain."
+          action={<a className="badge auth-submit" href="/brands/new" style={{ display: 'inline-flex', textDecoration: 'none' }}>Add your first brand <ArrowRight size={14} /></a>}
+        />
       ) : (
         <div className="grid">
           {(brands ?? []).map((brand, i) => {
@@ -123,7 +117,7 @@ export default async function BrandsListPage() {
                       <div className="metric-label">{brand.industry || brand.website_url?.replace(/^https?:\/\//, '') || 'Brand'}</div>
                     </div>
                   </div>
-                  <span className="badge tone-muted">{brand.status ?? 'ACTIVE'}</span>
+                  <StatusBadge status={brand.status ?? 'ACTIVE'} />
                 </div>
                 {palette.length > 0 ? (
                   <div

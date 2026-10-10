@@ -1,11 +1,9 @@
-import { LoadingState } from '@/components/ui/feedback';
+import { PageSkeleton } from '@/components/ui/skeleton';
 
 export default function Loading() {
   return (
-    <main className="main" style={{ display: 'grid', placeItems: 'center', minHeight: '80vh' }}>
-      <div style={{ width: '100%', maxWidth: 420 }}>
-        <LoadingState label="Loading workspace…" />
-      </div>
+    <main className="main ui-route-loading" aria-busy="true">
+      <PageSkeleton />
     </main>
   );
 }

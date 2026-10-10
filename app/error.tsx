@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { CopyButton } from '@/components/ui/copy-button';
 
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
@@ -8,6 +9,11 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
   }, [error]);
 
   const buildSha = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? 'unknown';
+  const diagnostics = JSON.stringify({
+    name: error.name || 'Error',
+    digest: error.digest ?? null,
+    build: buildSha === 'unknown' ? null : buildSha.slice(0, 12),
+  }, null, 2);
 
   return (
     <main className="main" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
@@ -26,9 +32,12 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
             {error.message}
           </pre>
         ) : null}
-        <button type="button" className="badge" onClick={() => reset()} style={{ border: 0, cursor: 'pointer', padding: '10px 15px' }}>
-          Try again
-        </button>
+        <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <button type="button" className="badge" onClick={() => reset()} style={{ border: 0, cursor: 'pointer', padding: '10px 15px' }}>
+            Try again
+          </button>
+          <CopyButton value={diagnostics} label="Copy diagnostics" />
+        </div>
       </section>
     </main>
   );

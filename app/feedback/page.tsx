@@ -3,8 +3,11 @@ import { HeartHandshake, MessageSquare, Sparkles } from 'lucide-react';
 import { AudienceForm, InfoCard, PublicShell } from '@/components/public/public-site';
 
 export const metadata: Metadata = {
-  title: 'Feedback — UpTrendifyOS',
-  description: 'Share product feedback with the UpTrendifyOS team.',
+  title: "Feedback",
+  description: "Share product feedback with the UpTrendifyOS team.",
+  alternates: { canonical: "/feedback" },
+  openGraph: { type: 'website', siteName: 'UpTrendifyOS', title: "UpTrendifyOS · Feedback", description: "Share product feedback with the UpTrendifyOS team.", url: "/feedback", images: ['/opengraph-image'] },
+  twitter: { card: 'summary_large_image', title: "UpTrendifyOS · Feedback", description: "Share product feedback with the UpTrendifyOS team.", images: ['/opengraph-image'] },
 };
 
 export default function FeedbackPage() {

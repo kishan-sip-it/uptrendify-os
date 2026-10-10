@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { CAN_VIEW_CONTENT, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ApprovalsQueue } from './queue';
+import { PageHeader } from '@/components/ui/page-header';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,14 +21,7 @@ export default async function ApprovalsPage() {
 
   return (
     <main className="main">
-      <div className="topbar" style={{ marginBottom: 20, flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 'clamp(24px, 3vw, 34px)', marginTop: 8 }}>Approvals</h1>
-          <p className="subtitle">
-            Content in review and ready for publishing across your organization. Decisions here are version-exact and auditable.
-          </p>
-        </div>
-      </div>
+      <PageHeader eyebrow="Review & control" title="Approvals" description="Content in review and ready for publishing across your organization. Decisions here are version-exact and auditable." />
       <ApprovalsQueue />
     </main>
   );

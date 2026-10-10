@@ -2,8 +2,11 @@ import type { Metadata } from 'next';
 import { LegalNotice, LegalSection, PublicShell } from '@/components/public/public-site';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service — UpTrendifyOS',
-  description: 'Terms governing use of the UpTrendifyOS service.',
+  title: "Terms of Service",
+  description: "Terms governing use of the UpTrendifyOS service.",
+  alternates: { canonical: "/terms" },
+  openGraph: { type: 'website', siteName: 'UpTrendifyOS', title: "UpTrendifyOS · Terms of Service", description: "Terms governing use of the UpTrendifyOS service.", url: "/terms", images: ['/opengraph-image'] },
+  twitter: { card: 'summary_large_image', title: "UpTrendifyOS · Terms of Service", description: "Terms governing use of the UpTrendifyOS service.", images: ['/opengraph-image'] },
 };
 
 export default function TermsPage() {

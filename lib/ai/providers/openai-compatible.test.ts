@@ -64,7 +64,7 @@ describe('createGroqProvider', () => {
         maxTokens: 8192,
         model: 'openai/gpt-oss-120b',
       });
-      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(250);
       const result = await pending;
 
       expect(result.model).toBe('openai/gpt-oss-20b');
