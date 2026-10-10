@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowRight, Globe2, ListChecks, Plus, Search, Sparkles, Target, Users, Zap,
+  ArrowRight, ChevronDown, Globe2, ListChecks, Plus, Search, Sparkles, Target, Users, Zap,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EmptyState, ErrorState } from '@/components/ui/feedback';
@@ -65,29 +65,35 @@ function MetricCard({ label, value, Icon, hint, delay }: { label: string; value:
 
 function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
   return (
-    <div className="card" style={{ gridColumn: 'span 2' }}>
-      <SectionHeading className="section-title" eyebrow="Portfolio" title="Recent brands" />
+    <div className="card portfolio-card" style={{ gridColumn: 'span 2' }}>
+      <SectionHeading className="section-title" eyebrow="Portfolio" title="Recent brands" action={brands.length > 4 ? (
+        <details className="portfolio-drawer">
+          <summary className="portfolio-drawer-trigger"><ChevronDown size={13} /> All brands · {brands.length}</summary>
+          <div className="portfolio-drawer-content">
+            <div className="portfolio-drawer-heading"><strong>All workspace brands</strong><span>{brands.length} brands</span></div>
+            <div className="portfolio-drawer-list">
+              {brands.map((brand) => (
+                <a className="portfolio-drawer-brand" href={`/brands/${brand.id}`} key={brand.id}>
+                  <span className="portfolio-drawer-brand-copy"><strong>{brand.name}</strong><span>{brand.industry || brand.website_url?.replace('https://', '').replace('http://', '') || 'Brand workspace'}</span></span>
+                  <SharedStatusBadge status={brand.status ?? 'ACTIVE'} />
+                  <ArrowRight size={14} aria-hidden="true" />
+                </a>
+              ))}
+            </div>
+          </div>
+        </details>
+      ) : undefined} />
       {brands.length === 0 ? (
-        <EmptyState
-          title="No brands yet"
-          description="Add your first brand to start analyzing its public website and building strategies."
-          action={<span className="field-note">Use <strong>Add brand</strong> in the left sidebar to create your first brand.</span>}
-        />
+        <EmptyState title="No brands yet" description="Add your first brand to start analyzing its public website and building strategies." action={<span className="field-note">Use <strong>Add brand</strong> in the left sidebar to create your first brand.</span>} />
       ) : (
         <div className="grid" id="brands">
-          {brands.map((brand, i) => (
+          {brands.slice(0, 4).map((brand, i) => (
             <a className="card brand-card hover-lift animate-fade-up" href={`/brands/${brand.id}`} key={brand.id} style={{ animationDelay: `${i * 60}ms`, display: 'block' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
-                <div>
-                  <h3 style={{ margin: 0 }}>{brand.name}</h3>
-                  <div className="metric-label">{brand.industry || brand.website_url?.replace(/^https?:\/\//, '') || 'Brand'}</div>
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, minWidth: 0 }}>
+                <div style={{ minWidth: 0, flex: 1 }}><h3 style={{ margin: 0, overflowWrap: 'anywhere' }}>{brand.name}</h3><div className="metric-label" style={{ overflowWrap: 'anywhere' }}>{brand.industry || brand.website_url?.replace('https://', '').replace('http://', '') || 'Brand'}</div></div>
                 <SharedStatusBadge status={brand.status ?? 'ACTIVE'} />
               </div>
-              <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--muted)', fontSize: 13 }}>
-                <span>Onboarded <RelativeTime date={brand.created_at} /></span>
-                <ArrowRight size={16} />
-              </div>
+              <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--muted)', fontSize: 13, gap: 8, minWidth: 0 }}><span>Onboarded <RelativeTime date={brand.created_at} /></span><ArrowRight size={16} /></div>
             </a>
           ))}
         </div>
@@ -95,7 +101,6 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
     </div>
   );
 }
-
 function ResearchActivityPanel({ activity }: { activity: ResearchActivity[] }) {
   return (
     <div className="card">

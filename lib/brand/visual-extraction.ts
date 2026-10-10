@@ -520,17 +520,16 @@ function sameSiteUrl(base: string | null, candidate: string): boolean {
 function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string | null; favicon: string | null } {
   const rootHost = base ? (() => { try { return new URL(base).hostname.toLowerCase().replace(/^www\./, ''); } catch { return ''; } })() : '';
   const rootToken = rootHost.split('.')[0] ?? '';
-  const candidates: Array<{ url: string; score: number }> = [];
+  const candidates: Array<{ url: string; score: number; semanticLogo: boolean }> = [];
   let faviconUrl: string | null = null;
   let faviconScore = -1;
 
-  const addCandidate = (url: string | null, score: number) => {
+  const addCandidate = (url: string | null, score: number, semanticLogo = false) => {
     if (!url) return;
-    // A logo can live on a dedicated public asset CDN. Permit cross-domain
-    // candidates only when markup carries strong logo semantics; generic
-    // third-party logos and social-preview cards stay excluded.
-    if (!sameSiteUrl(base, url) && score < 65) return;
-    candidates.push({ url, score });
+    // External CDNs are accepted only when the markup explicitly identifies
+    // the asset as a logo; a homepage link or generic header image is not enough.
+    if (!sameSiteUrl(base, url) && (!semanticLogo || score < 65)) return;
+    candidates.push({ url, score, semanticLogo });
   };
 
   $('img, picture img, picture source').each((_i, el) => {
@@ -569,7 +568,13 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
       if (width >= 1000 || height >= 800) score -= 25;
     }
 
-    addCandidate(url, score);
+    const declaredSiteName = cleanMetaText($('meta[property="og:site_name"]').first().attr('content')) ?? cleanMetaText($('meta[name="application-name"]').first().attr('content')) ?? rootToken;
+    const normalizedAlt = alt.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const normalizedSiteName = declaredSiteName.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const genericLogoAlt = /^(?:company |brand )?(?:logo|wordmark|brandmark)$/i.test(normalizedAlt);
+    const altMatchesSite = !normalizedAlt || genericLogoAlt || (normalizedSiteName.length > 2 && normalizedAlt.includes(normalizedSiteName)) || (rootToken.length > 2 && normalizedAlt.includes(rootToken));
+    const semanticLogo = LOGO_HINT.test(path + ' ' + alt + ' ' + classes) && altMatchesSite && !/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail)/i.test(path + ' ' + alt + ' ' + classes + ' ' + parentText);
+    addCandidate(url, score, semanticLogo);
   });
 
   // SVG logos often appear inline rather than as <img>.
@@ -605,7 +610,7 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
         : rawLogo && typeof rawLogo === 'object'
           ? String((rawLogo as Record<string, unknown>).url ?? (rawLogo as Record<string, unknown>).contentUrl ?? '')
           : '';
-      addCandidate(absoluteUrl(logo, base), 80);
+      addCandidate(absoluteUrl(logo, base), 80, true);
     }
     if (node['@graph']) collectStructuredLogos(node['@graph'], depth + 1);
     if (node.mainEntity) collectStructuredLogos(node.mainEntity, depth + 1);
@@ -644,7 +649,7 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
   candidates.sort((a, b) => b.score - a.score);
   // Don't use a social-preview OG image as the brand logo when a linked
   // favicon/app icon is available. The icon is a useful, honest fallback.
-  const semanticLogo = candidates.find((candidate) => candidate.score >= 20)?.url ?? null;
+  const semanticLogo = candidates.find((candidate) => candidate.semanticLogo && candidate.score >= 20)?.url ?? null;
   return { logo: semanticLogo ?? faviconUrl, favicon: faviconUrl };
 }
 
@@ -677,6 +682,28 @@ function cleanMetaText(value: string | undefined | null): string | null {
   const cleaned = value.replace(/\s+/g, ' ').trim();
   if (cleaned.length < 2) return null;
   return cleaned.slice(0, 400);
+}
+
+function detectStructuredBrandName($: cheerio.CheerioAPI): string | null {
+  let found: string | null = null;
+  const visit = (value: unknown, depth = 0): void => {
+    if (found || depth > 6 || value == null) return;
+    if (Array.isArray(value)) { for (const item of value) visit(item, depth + 1); return; }
+    if (typeof value !== 'object') return;
+    const node = value as Record<string, unknown>;
+    const rawType = node['@type'];
+    const type = Array.isArray(rawType) ? rawType.join(' ') : String(rawType ?? '');
+    if (/(Organization|Corporation|Brand|WebSite)/i.test(type) && typeof node.name === 'string') {
+      const name = cleanMetaText(node.name);
+      if (name) { found = name; return; }
+    }
+    for (const key of ['@graph', 'mainEntity', 'publisher', 'author']) visit(node[key], depth + 1);
+  };
+  $('script[type="application/ld+json"]').each((_i, el) => {
+    if (found) return;
+    try { visit(JSON.parse($(el).text())); } catch { /* Ignore malformed structured data. */ }
+  });
+  return found;
 }
 
 export function extractBrandIdentity(html: string, finalUrl: string | null): ExtractedIdentity {
@@ -737,7 +764,8 @@ export function extractBrandIdentity(html: string, finalUrl: string | null): Ext
   const brandName =
     cleanMetaText($('meta[property="og:site_name"]').first().attr('content')) ??
     cleanMetaText($('meta[name="application-name"]').first().attr('content')) ??
-    cleanMetaText($('meta[property="og:title"]').first().attr('content')) ??
+    detectStructuredBrandName($) ??
+    // og:title often names a product/campaign rather than the organization.
     cleanMetaText($('title').first().text());
 
   const description =

@@ -683,7 +683,13 @@ export async function GET(request: Request) {
     const root = assertPublicHttpUrl(raw);
     await assertResolvablePublicHost(root.hostname);
 
-    const outcome = await fetchHtml(root);
+    let outcome = await fetchHtml(root);
+
+    // Retry once with a normal browser identity before the rendered-reader fallback.
+    if (!outcome.ok) {
+      const browserOutcome = await fetchHtml(root, 3, 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36', false);
+      if (browserOutcome.ok) outcome = browserOutcome;
+    }
     let renderedFallbackText: string | null = null;
     let renderedFallbackTitle: string | null = null;
 
@@ -827,10 +833,10 @@ export async function GET(request: Request) {
 
     const accessibleTextChars = evidencePages.reduce((total, page) => total + page.text.trim().length, 0);
     const hasVisualEvidence = Boolean(identity.brandName || identity.description || identity.logoUrl || identity.faviconUrl || identity.palette.length);
-    if (accessibleTextChars < 180 && !hasVisualEvidence) {
+    if (accessibleTextChars < 180) {
       return NextResponse.json(
         {
-          error: 'The URL responded, but no meaningful public content could be extracted. The site may require client-side rendering, block automated readers, or only be available after sign-in. Try the canonical homepage URL or check that the page is public.',
+          error: 'The website was reached, but the scan could not verify enough readable first-party content to build a reliable Brand IQ. The site may require JavaScript rendering or block automated readers. Try its canonical homepage URL or retry later; no guessed company profile was created.',
           identity: null,
           diagnostics: { pageCount: evidencePages.length, accessibleTextChars, renderedReaderUsed: Boolean(renderedFallbackText) },
         },
@@ -897,10 +903,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json(
       { ok: true, identity: enriched, detectedCount: enriched.palette.length, evidenceCount: evidencePages.length },
-      { headers: { 'Cache-Control': 'private, max-age=300' } },
+      { headers: { 'Cache-Control': 'private, no-store, max-age=0' } },
     );
   } catch (error) {
     const message = error instanceof Error && error.message ? error.message : 'Could not inspect the website.';
-    return NextResponse.json({ error: message, identity: null }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json({ error: message, identity: null }, { status: /URL|hostname|protocol|port|resolve|public host/i.test(message) ? 400 : 500, headers: { 'Cache-Control': 'no-store' } });
   }
 }

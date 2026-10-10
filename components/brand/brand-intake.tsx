@@ -87,13 +87,18 @@ export function BrandIntake({
   const reviewAfterScan = showReview !== false;
 
   const scan = useCallback(async () => {
-    const value = website.trim();
-    if (!/^https?:\/\//i.test(value)) {
-      setError('Enter a full website URL, starting with https://');
+    const entered = website.trim();
+    const value = /^https?:\/\//i.test(entered) ? entered : `https://${entered.replace(/^\/+/g, '')}`;
+    try {
+      const parsed = new URL(value);
+      if (!parsed.hostname.includes('.') || !['http:', 'https:'].includes(parsed.protocol)) throw new Error('Enter a valid public website domain or URL.');
+    } catch {
+      setError('Enter a valid public website domain or URL, such as salesforce.com');
       setPhase('error');
       return;
     }
 
+    setWebsite(value);
     setError(null);
     setPhase('scanning');
     setStepIndex(0);

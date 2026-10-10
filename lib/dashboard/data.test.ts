@@ -132,7 +132,7 @@ describe('loadDashboardData', () => {
     expect(failedEq?.args[1]).toBe('FAILED');
   });
 
-  it('returns recent brands ordered newest-first and limited', async () => {
+  it('returns portfolio brands ordered newest-first and bounded for the drawer', async () => {
     const recentBrands = [
       { id: 'a', name: 'Aurora', website_url: 'https://aurora.dev', industry: 'B2B SaaS', status: 'ACTIVE', created_at: '2026-09-10T10:00:00.000Z' },
       { id: 'b', name: 'Nova Health', website_url: 'https://nova.health', industry: 'Healthcare', status: 'ACTIVE', created_at: '2026-09-01T10:00:00.000Z' },

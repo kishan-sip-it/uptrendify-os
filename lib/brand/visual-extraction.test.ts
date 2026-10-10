@@ -299,3 +299,29 @@ describe('extractBrandIdentity with no usable evidence', () => {
     expect(bare.warnings.length).toBeGreaterThan(0);
   });
 });
+ 
+describe('logo identity confidence', () => {
+  it('does not mistake an unrelated customer logo in the header for the site logo', () => {
+    const html = '<html><head><title>Salesforce: The Customer Company</title><meta property="og:site_name" content="Salesforce" /></head><body><header><a href="/"><img src="https://cdn.customer-assets.example/balaji-wafers.png" alt="Balaji Wafers" /></a></header><main><h1>Salesforce Customer 360</h1><p>Connect sales, service, marketing and commerce on one customer platform.</p></main></body></html>';
+    const identity = extractBrandIdentity(html, 'https://www.salesforce.com/in/');
+    expect(identity.brandName).toBe('Salesforce');
+    expect(identity.logoUrl).toBeNull();
+  });
+  it('does not use a third-party favicon as the company logo', () => {
+    const html = '<html><head><title>GitHub</title><link rel="icon" href="https://duolingo.example/favicon.ico" /></head><body><main><h1>GitHub</h1><p>Build software together.</p></main></body></html>';
+    const identity = extractBrandIdentity(html, 'https://github.com/');
+    expect(identity.faviconUrl).toBeNull();
+    expect(identity.logoUrl).toBeNull();
+  });
+  it('does not promote an OpenGraph share image to a company logo', () => {
+    const html = '<html><head><title>Notion</title><meta property="og:image" content="https://figma.example/figma-card.png" /></head><body><main><h1>Notion</h1><p>One workspace for your docs and projects.</p></main></body></html>';
+    const identity = extractBrandIdentity(html, 'https://www.notion.so/');
+    expect(identity.brandName).toBe('Notion');
+    expect(identity.logoUrl).toBeNull();
+  });
+  it('uses structured organization identity ahead of a product-level OpenGraph title', () => {
+    const html = '<html><head><title>Salesforce</title><meta property="og:title" content="Balaji Wafers promotion" /><script type="application/ld+json">' + JSON.stringify({ '@type': 'Organization', name: 'Salesforce' }) + '</script></head><body><h1>Salesforce</h1></body></html>';
+    const identity = extractBrandIdentity(html, 'https://salesforce.com/');
+    expect(identity.brandName).toBe('Salesforce');
+  });
+});
