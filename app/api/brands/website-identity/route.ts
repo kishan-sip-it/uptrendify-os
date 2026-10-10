@@ -683,7 +683,7 @@ export async function GET(request: Request) {
     const root = assertPublicHttpUrl(raw);
     await assertResolvablePublicHost(root.hostname);
 
-    let outcome = await fetchHtml(root);
+    let outcome = await fetchHtml(root, 3, env().RESEARCH_USER_AGENT, false);
 
     // Retry once with a normal browser identity before the rendered-reader fallback.
     if (!outcome.ok) {
