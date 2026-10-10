@@ -336,6 +336,32 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           clearTimeout(timeout);
         }
 
+        // Some public sites reject the crawler's descriptive user-agent but
+        // serve the same page to an ordinary browser. Retry only transient or
+        // bot-protection responses, with the same SSRF-safe fetch wrapper and
+        // a separate bounded timeout, before falling back to rendered reading.
+        if (!response.ok && [401, 403, 407, 408, 429, 451, 500, 502, 503, 504].includes(response.status)) {
+          const browserController = new AbortController();
+          const browserTimeout = setTimeout(() => browserController.abort(), e.RESEARCH_TIMEOUT_MS);
+          try {
+            const browserResponse = await fetchPublicHttp(target, {
+              signal: browserController.signal,
+              redirect: 'manual',
+              headers: {
+                'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                accept: 'text/html,application/xhtml+xml',
+              },
+            });
+            if (browserResponse.ok || REDIRECT_STATUSES.has(browserResponse.status)) {
+              response = browserResponse;
+            }
+          } catch {
+            // Preserve the original response and continue to the rendered-reader fallback.
+          } finally {
+            clearTimeout(browserTimeout);
+          }
+        }
+
         if (REDIRECT_STATUSES.has(response.status)) {
           const location = response.headers.get('location');
           const redirectCount = Number(response.headers.get('x-redirect-count') || 0) + 1;
