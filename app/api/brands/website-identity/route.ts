@@ -7,6 +7,7 @@ import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, par
 import { extractRasterPalette, type RasterColorSample } from '@/lib/brand/raster-color-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { buildEvidenceContext, extractBrandIntelligence, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
+import { normalizeWebsiteHostname } from '@/lib/brand/website-url';
 
 export const maxDuration = 45;
 
@@ -346,7 +347,7 @@ function pageText(html: string): { title: string | null; text: string } {
 function prioritizedLinks(html: string, rootUrl: string): string[] {
   const $ = cheerio.load(html);
   const root = new URL(rootUrl);
-  const rootHost = root.hostname.replace(/^www\\./, '');
+  const rootHost = normalizeWebsiteHostname(root.hostname);
   const scored = new Map<string, number>();
   const highSignal = [
     ['mission', 18], ['science', 18], ['research', 17], ['technology', 16], ['program', 15],
@@ -364,7 +365,7 @@ function prioritizedLinks(html: string, rootUrl: string): string[] {
     if (!href) return;
     let parsed: URL;
     try { parsed = new URL(href); } catch { return; }
-    if (parsed.hostname.replace(/^www\\./, '') !== rootHost) return;
+    if (normalizeWebsiteHostname(parsed.hostname) !== rootHost) return;
     if (parsed.hash) return;
 
     const pathText = parsed.pathname + ' ' + ($(el).text() || '');
