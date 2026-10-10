@@ -529,7 +529,7 @@ export function GlobalWorkflowChecklist() {
           .contextual-workflow-checklist.is-open {
             display: block;
             position: fixed;
-            z-index: 1000;
+            z-index: 2147483000;
             top: 12px;
             right: 12px;
             bottom: calc(76px + env(safe-area-inset-bottom, 0px));
@@ -554,7 +554,7 @@ export function GlobalWorkflowChecklist() {
             bottom: calc(72px + env(safe-area-inset-bottom, 0px));
             width: auto;
             max-height: none;
-            z-index: 1000;
+            z-index: 2147483000;
           }
           .contextual-workflow-toggle {
             right: 12px;
