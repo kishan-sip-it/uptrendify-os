@@ -177,12 +177,35 @@ export function GlobalWorkflowChecklist() {
   const [resource, setResource] = useState<ChecklistResourceState | null>(null);
   const [syncState, setSyncState] = useState<'checking' | 'live' | 'offline'>('checking');
   const [checklistOpen, setChecklistOpen] = useState(false);
+  const checklistToggleRef = useRef<HTMLButtonElement | null>(null);
+  const checklistCloseRef = useRef<HTMLButtonElement | null>(null);
+  const closeChecklist = useCallback(() => {
+    setChecklistOpen(false);
+    window.requestAnimationFrame(() => checklistToggleRef.current?.focus());
+  }, []);
   const refreshRef = useRef<() => Promise<boolean>>(async () => false);
   const brandId = pathname.match(/^\/brands\/([^/]+)/)?.[1] ?? null;
   const contentIdMatch = pathname.match(/^\/brands\/[^/]+\/content\/([^/]+)$/);
   const contentId = contentIdMatch?.[1] && contentIdMatch[1] !== 'new' ? contentIdMatch[1] : null;
   const campaignMatch = pathname.match(/^\/brands\/([^/]+)\/campaigns\/([^/]+)$/);
   const campaignId = campaignMatch && campaignMatch[2] !== 'new' ? campaignMatch[2] : null;
+
+  useEffect(() => {
+    setChecklistOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!checklistOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeChecklist();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    checklistCloseRef.current?.focus();
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [checklistOpen, closeChecklist, pathname]);
 
   useEffect(() => {
     const syncView = () => setView(new URLSearchParams(window.location.search).get('view'));
@@ -439,6 +462,12 @@ export function GlobalWorkflowChecklist() {
         }
         .contextual-workflow-close,
         .contextual-workflow-toggle { display: none; }
+        .contextual-workflow-close:focus-visible,
+        .contextual-workflow-toggle:focus-visible {
+          outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+          outline-offset: 3px;
+        }
+        .contextual-workflow-checklist.is-open { scrollbar-gutter: stable; }
         .contextual-workflow-toggle {
           align-items: center;
           justify-content: center;
@@ -548,7 +577,7 @@ export function GlobalWorkflowChecklist() {
             </div>
           </div>
           <div className="contextual-workflow-controls">
-            <button type="button" className="contextual-workflow-control contextual-workflow-close" onClick={() => setChecklistOpen(false)} aria-label="Close workflow checklist" title="Close checklist">
+            <button ref={checklistCloseRef} type="button" className="contextual-workflow-control contextual-workflow-close" onClick={closeChecklist} aria-label="Close workflow checklist" title="Close checklist">
               <X size={14} />
             </button>
             <button type="button" className="contextual-workflow-control" onClick={restartChecklist} aria-label="Reset manually tracked checklist steps" title="Reset manually tracked steps">
@@ -601,6 +630,7 @@ export function GlobalWorkflowChecklist() {
       <button
         type="button"
         className="contextual-workflow-toggle"
+        ref={checklistToggleRef}
         onClick={() => setChecklistOpen((open) => !open)}
         aria-controls="contextual-workflow-checklist"
         aria-expanded={checklistOpen}
