@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Globe2, LoaderCircle, RefreshCw, Sparkles } from 'lucide-react';
 import type { ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { toVisualIdentity } from '@/lib/brand/identity-mapping';
+import { brandNameFromWebsiteUrl } from '@/lib/brand/website-url';
 import { brandInitials, BrandField, BrandPanel, BrandSection, NotDetected } from './brand-profile-primitives';
 
 type IntakeIdentity = ExtractedIdentity & {
@@ -117,10 +118,7 @@ export function BrandIntake({
 
       const next = body.identity as IntakeIdentity;
       setIdentity(next);
-      const host = new URL(next.finalUrl ?? value).hostname.replace(/^www\\./i, '');
-      const hostLabel = (host.split('.')[0] || 'Brand')
-        .replace(/[-_]+/g, ' ')
-        .replace(/\\b\\w/g, (letter) => letter.toUpperCase());
+      const hostLabel = brandNameFromWebsiteUrl(next.finalUrl ?? value);
       setName(next.brandName || name.trim() || hostLabel);
       setPhase('review');
     } catch (err) {
@@ -129,7 +127,7 @@ export function BrandIntake({
     } finally {
       window.clearInterval(ticker);
     }
-  }, [website]);
+  }, [website, name]);
 
   const create = useCallback(async () => {
     if (!identity || createInFlightRef.current) return;
