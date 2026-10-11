@@ -80,8 +80,8 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
               {moreBrands.map((brand) => (
                 <a className="portfolio-drawer-brand" href={`/brands/${brand.id}`} key={brand.id}>
                   <span className="portfolio-drawer-brand-copy"><strong>{brand.name}</strong><span>{brand.industry || brand.website_url?.replace('https://', '').replace('http://', '') || 'Brand workspace'}</span></span>
-                  <SharedStatusBadge status={brand.status ?? 'ACTIVE'} />
-                  <ArrowRight size={14} aria-hidden="true" />
+                  <SharedStatusBadge status={brand.status ?? 'ACTIVE'} className="portfolio-drawer-status" />
+                  <ArrowRight className="portfolio-drawer-arrow" size={14} aria-hidden="true" />
                 </a>
               ))}
             </div>
@@ -94,9 +94,12 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
         <div className="grid" id="brands">
           {visibleBrands.map((brand, i) => (
             <a className="card brand-card hover-lift animate-fade-up" href={`/brands/${brand.id}`} key={brand.id} style={{ animationDelay: `${i * 60}ms`, display: 'block' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, minWidth: 0 }}>
-                <div style={{ minWidth: 0, flex: 1 }}><h3 style={{ margin: 0, overflowWrap: 'anywhere' }}>{brand.name}</h3><div className="metric-label" style={{ overflowWrap: 'anywhere' }}>{brand.industry || brand.website_url?.replace('https://', '').replace('http://', '') || 'Brand'}</div></div>
-                <SharedStatusBadge status={brand.status ?? 'ACTIVE'} />
+              <div className="brand-card-header">
+                <div className="brand-card-copy">
+                  <h3>{brand.name}</h3>
+                  <div className="metric-label">{brand.industry || brand.website_url?.replace('https://', '').replace('http://', '') || 'Brand'}</div>
+                </div>
+                <SharedStatusBadge status={brand.status ?? 'ACTIVE'} className="brand-card-status" />
               </div>
               <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--muted)', fontSize: 13, gap: 8, minWidth: 0 }}><span>Onboarded <RelativeTime date={brand.created_at} /></span><ArrowRight size={16} /></div>
             </a>
