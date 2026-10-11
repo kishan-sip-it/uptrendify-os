@@ -671,7 +671,7 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     if (href && (href === base || (rootHost && new URL(href).hostname.toLowerCase().replace(/^www\./, '') === rootHost))) score += 25;
     if (rootToken && path.includes(rootToken)) score += 8;
     if (pathSuggestsWordmark) score += 35;
-    if (aspectRatio >= 2.2 && aspectRatio <= 10 && measuredWidth <= 900 && measuredHeight <= 240) score += 28;
+    if (aspectRatio >= 2.2 && aspectRatio <= 10 && measuredWidth <= 900 && measuredHeight <= 240) score += 42;
     if (/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail)/i.test(path + ' ' + alt + ' ' + classes + ' ' + parentText)) score -= 60;
     if (/(^|\s)(logo|wordmark)(\s|$)/i.test(alt)) score += 15;
 
