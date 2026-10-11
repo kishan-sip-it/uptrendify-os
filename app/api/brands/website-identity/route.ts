@@ -877,6 +877,8 @@ export async function GET(request: Request) {
   try {
     const auth = await requireOrgRole(CAN_VIEW_DASHBOARD);
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
+    const scanStartedAt = Date.now();
+    const elapsed = () => Date.now() - scanStartedAt;
 
     const raw = new URL(request.url).searchParams.get('url')?.trim();
     if (!raw) return NextResponse.json({ error: 'Website URL is required.' }, { status: 400 });
@@ -992,7 +994,11 @@ export async function GET(request: Request) {
       }
     }
 
-    const cssResources = (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url)))).flat();
+    // Preserve time for the required identity response. Optional visual enrichment
+    // yields first if blocked-host recovery has already consumed most of the route budget.
+    const cssResources = elapsed() < 25_000
+      ? (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url)))).flat()
+      : [];
     const cssBlocks = cssResources.map((resource) => resource.css);
     // The server may expose SVG assets behind extensionless CDN/asset URLs.
     // Ask the response validator whether a candidate is SVG instead of relying
@@ -1008,14 +1014,15 @@ export async function GET(request: Request) {
     // Modern frameworks frequently keep theme colours in JS/CSS-in-JS bundles
     // instead of HTML or standalone CSS. Read only explicitly declared public
     // scripts, with strict time and byte caps.
-    const inlineScripts = baseHtml ? inlineScriptBlocks(baseHtml) : [];
-    const externalScripts = baseHtml
+    const canFetchOptionalAssets = elapsed() < 30_000;
+    const inlineScripts = baseHtml && canFetchOptionalAssets ? inlineScriptBlocks(baseHtml) : [];
+    const externalScripts = baseHtml && canFetchOptionalAssets
       ? (await Promise.all(externalScriptUrls(baseHtml, baseUrl).map(fetchScriptText)))
           .filter((script): script is string => Boolean(script))
       : [];
     const scriptBlocks = [...inlineScripts, ...externalScripts];
-    const rasterUrls = baseHtml ? rasterLogoUrls(baseHtml, baseUrl, [identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons]) : [];
-    const rasterColors = (await Promise.all(rasterUrls.map(fetchRasterColors))).flat();
+    const rasterUrls = baseHtml && canFetchOptionalAssets ? rasterLogoUrls(baseHtml, baseUrl, [identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons]) : [];
+    const rasterColors = canFetchOptionalAssets ? (await Promise.all(rasterUrls.map(fetchRasterColors))).flat() : [];
 
     identity = mergeExternalCss(identity, cssBlocks, svgBlocks, manifestVisuals.colors, rasterColors, scriptBlocks);
     identity = { ...identity, fonts: await attachSourceFontAssets(identity.fonts, cssResources) };
@@ -1040,7 +1047,7 @@ export async function GET(request: Request) {
     // nine links. Two short, same-origin reader pages add evidence without
     // exhausting the function's 45-second request budget.
     const readerOnlyFallback = Boolean(renderedFallbackText && !baseHtml);
-    const researchPageCandidates = readerOnlyFallback ? pageCandidates.slice(0, 2) : pageCandidates.slice(0, 6);
+    const researchPageCandidates = readerOnlyFallback || elapsed() >= 28_000 ? pageCandidates.slice(0, 2) : pageCandidates.slice(0, 6);
     const extraPages = await Promise.all(researchPageCandidates.map(async (url, index) => {
       if (readerOnlyFallback) {
         const rendered = await fetchRenderedResearch(url, 3_500);
@@ -1115,8 +1122,8 @@ export async function GET(request: Request) {
                 aiWarnings.push(`AI enrichment switched from ${failed.id} to ${next.id} after a transient provider limit or availability error.`);
               },
             ),
-            12_000,
-            'AI enrichment exceeded its 12-second budget',
+            elapsed() < 28_000 ? 12_000 : 7_000,
+            'AI enrichment exceeded its bounded time budget',
           );
           aiProfile = buildAiProfile(extractionRun.result.result);
           if (!identity.brandName && extractionRun.result.result.identity.brandName) identity.brandName = extractionRun.result.result.identity.brandName;
