@@ -93,11 +93,6 @@ function rgbToHex(r: number, g: number, b: number): string {
 }
 
 /**
- * Flags public pages whose fetched HTML is only an application shell or
- * navigation chrome. These pages need the rendered-reader fallback even when
- * the server responds with HTTP 200.
- */
-/** 
  * Detects anti-bot/error interstitials that often arrive with HTTP 200.
  * They are not valid first-party evidence and should trigger the reader fallback.
  */
@@ -116,6 +111,11 @@ export function isRenderedReaderError(text: string): boolean {
   return /warning:\s*target url returned error\s+[45]\d\d|this site is experiencing technical difficulty|we are aware of the issue and are working as quickly as possible to correct the issue|^title:\s*(?:fw_error|access denied|request blocked|attention required)/im.test(opening);
 }
 
+/**
+ * Flags public pages whose fetched HTML is only an application shell or
+ * navigation chrome. These pages need the rendered-reader fallback even when
+ * the server responds with HTTP 200.
+ */
 export function shouldUseRenderedWebsiteFallback(html: string): boolean {
   const $ = cheerio.load(html);
   const title = $('title').first().text().replace(/\s+/g, ' ').trim();
