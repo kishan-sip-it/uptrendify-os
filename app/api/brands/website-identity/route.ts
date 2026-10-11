@@ -960,7 +960,9 @@ export async function GET(request: Request) {
 
     // Verify conventional icon paths if neither HTML nor the manifest exposes
     // one. The fallback is based on a successful public response, never a guess.
-    if (!identity.logoUrl || !identity.faviconUrl) {
+    // A text-reader-only page has no captured HTML to link its icon candidates
+    // to; don't spend the rest of the request budget guessing common asset paths.
+    if (baseHtml && (!identity.logoUrl || !identity.faviconUrl)) {
       const conventionalIcon = await verifyConventionalIcon(baseUrl);
       if (conventionalIcon) {
         identity.logoUrl = identity.logoUrl ?? conventionalIcon;
@@ -976,19 +978,24 @@ export async function GET(request: Request) {
     // The server may expose SVG assets behind extensionless CDN/asset URLs.
     // Ask the response validator whether a candidate is SVG instead of relying
     // on the URL suffix; ordinary PNG/ICO candidates are rejected by fetchSvgAsset.
-    const svgUrls = [...new Set([identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons])]
-      .filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
-      .slice(0, 3);
+    const svgUrls = baseHtml
+      ? [...new Set([identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons])]
+          .filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
+          .filter((url) => !/\.(?:png|jpe?g|gif|ico|webp|avif)(?:[?#]|$)/i.test(url))
+          .slice(0, 3)
+      : [];
     const svgBlocks = (await Promise.all(svgUrls.map(fetchSvgAsset))).filter((asset): asset is string => Boolean(asset));
 
     // Modern frameworks frequently keep theme colours in JS/CSS-in-JS bundles
     // instead of HTML or standalone CSS. Read only explicitly declared public
     // scripts, with strict time and byte caps.
-    const inlineScripts = inlineScriptBlocks(baseHtml);
-    const externalScripts = (await Promise.all(externalScriptUrls(baseHtml, baseUrl).map(fetchScriptText)))
-      .filter((script): script is string => Boolean(script));
+    const inlineScripts = baseHtml ? inlineScriptBlocks(baseHtml) : [];
+    const externalScripts = baseHtml
+      ? (await Promise.all(externalScriptUrls(baseHtml, baseUrl).map(fetchScriptText)))
+          .filter((script): script is string => Boolean(script))
+      : [];
     const scriptBlocks = [...inlineScripts, ...externalScripts];
-    const rasterUrls = rasterLogoUrls(baseHtml, baseUrl, [identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons]);
+    const rasterUrls = baseHtml ? rasterLogoUrls(baseHtml, baseUrl, [identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons]) : [];
     const rasterColors = (await Promise.all(rasterUrls.map(fetchRasterColors))).flat();
 
     identity = mergeExternalCss(identity, cssBlocks, svgBlocks, manifestVisuals.colors, rasterColors, scriptBlocks);
