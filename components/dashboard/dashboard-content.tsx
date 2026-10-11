@@ -145,9 +145,9 @@ function StrategyActivityPanel({ activity }: { activity: StrategyActivity[] }) {
           description="Generated strategies will appear here once a brand has been researched."
         />
       ) : (
-        <div className="activity-list">
+        <div className="activity-list strategy-version-list">
           {activity.map((run, i) => (
-            <a className="activity-item hover-lift animate-fade-up" href={`/brands/${run.brand_id}`} key={run.id} style={{ animationDelay: `${i * 50}ms`, display: 'block' }}>
+            <a className="activity-item strategy-version-item hover-lift animate-fade-up" href={`/brands/${run.brand_id}`} key={run.id} style={{ animationDelay: `${i * 50}ms` }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                 <div className="activity-body">
                   <div className="activity-title">
