@@ -197,9 +197,22 @@ export function parseVisualIdentity(raw: unknown): BrandVisualIdentity {
   };
 }
 
-export function resolveFontRoles(fonts: { family: string }[]): { headingFont: string | null; bodyFont: string | null } {
-  if (fonts.length === 0) return { headingFont: null, bodyFont: null };
-  return { headingFont: fonts[0]?.family ?? null, bodyFont: fonts[1]?.family ?? fonts[0]?.family ?? null };
+export function prioritizeDetectedFonts<T extends { family: string; source?: string }>(fonts: T[]): T[] {
+  const priority = (source: string | undefined) => source === 'css-declaration' ? 0 : source === 'google-fonts' ? 1 : source === 'theme-font' ? 2 : 3;
+  return fonts
+    .map((font, index) => ({ font, index }))
+    .sort((a, b) => priority(a.font.source) - priority(b.font.source) || a.index - b.index)
+    .map(({ font }) => font);
+}
+
+export function preferredPreviewFontFamily(fonts: { family: string; source?: string }[]): string | null {
+  return prioritizeDetectedFonts(fonts).find((font) => font.family.trim())?.family ?? null;
+}
+
+export function resolveFontRoles(fonts: { family: string; source?: string }[]): { headingFont: string | null; bodyFont: string | null } {
+  const preferred = prioritizeDetectedFonts(fonts).filter((font) => font.family.trim());
+  if (preferred.length === 0) return { headingFont: null, bodyFont: null };
+  return { headingFont: preferred[0]?.family ?? null, bodyFont: preferred[1]?.family ?? preferred[0]?.family ?? null };
 }
 
 export function toVisualIdentity(identity: ExtractedIdentity & {
