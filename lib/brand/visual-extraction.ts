@@ -537,13 +537,23 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     const semanticBrand = sources.includes('semantic-brand-css');
     const semanticSecondary = sources.includes('semantic-secondary-css');
     const semanticAccent = sources.includes('semantic-accent-css');
-    const semantic = sources.some((source) => source === 'semantic-css' || source.startsWith('semantic-') || source === 'meta-theme-color' || source === 'manifest-theme-color');
+    const themeSignal = sources.includes('meta-theme-color') || sources.includes('manifest-theme-color');
+    const semantic = sources.some((source) => source === 'semantic-css' || source.startsWith('semantic-') || themeSignal);
     const uiSignal = sources.some((source) => source === 'header-ui' || source === 'nav-ui' || source === 'primary-control' || source === 'link-accent');
     const logoSignal = sources.includes('logo-svg-color');
     const rasterLogoSignal = sources.includes('logo-raster-color');
     const scriptStyleSignal = sources.includes('js-style-tokens');
+    const corroborated = uiSignal || logoSignal || rasterLogoSignal || themeSignal || scriptStyleSignal;
     const neutralPenalty = isNeutral(hex) ? 0.18 : 1;
-    const deliberateBoost = semanticPrimary ? 8 : semanticBrand ? 6.5 : semanticSecondary ? 5.2 : semanticAccent ? 4.4 : semantic ? 3.5 : uiSignal ? 2.5 : logoSignal ? 2.1 : rasterLogoSignal ? 1.9 : scriptStyleSignal ? 1.7 : 1;
+    // A semantic token is useful evidence, but its name alone is not proof that
+    // it is the public-facing brand colour. Independent usage in the site chrome,
+    // controls, logo or theme metadata can confirm that role.
+    const deliberateBoost = semanticPrimary ? (corroborated ? 7 : 3.2)
+      : semanticBrand ? (corroborated ? 6 : 2.8)
+        : semanticSecondary ? (corroborated ? 4.8 : 2.3)
+          : semanticAccent ? (corroborated ? 4.2 : 2)
+            : semantic ? (corroborated ? 3.2 : 2)
+              : uiSignal ? 2.5 : logoSignal ? 2.1 : rasterLogoSignal ? 1.9 : scriptStyleSignal ? 1.7 : 1;
     const sourceDiversity = 1 + Math.min(sources.length, 5) * 0.06;
     const prominence = round(
       Math.log2(1 + entry.count) *
@@ -696,11 +706,16 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const normalizedSiteName = declaredSiteName.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     const genericLogoAlt = /^(?:company |brand )?(?:logo|wordmark|brandmark)$/i.test(normalizedAlt);
     const altMatchesSite = !normalizedAlt || genericLogoAlt || (normalizedSiteName.length > 2 && normalizedAlt.includes(normalizedSiteName)) || (rootToken.length > 2 && normalizedAlt.includes(rootToken));
-    const describesBrandWordmark = pathSuggestsWordmark || (inBrandHeader && aspectRatio >= 2.2 && aspectRatio <= 10 && altMatchesSite);
+    const headerSiteMatch = inBrandHeader && Boolean(normalizedAlt) && altMatchesSite;
+    // Header images often omit width/height attributes. When their accessible
+    // name matches the site and they sit in the header, keep them eligible even
+    // when structured metadata points at a compact app symbol.
+    if (headerSiteMatch && aspectRatio === 0) score += 65;
+    const describesBrandWordmark = pathSuggestsWordmark || (headerSiteMatch && (aspectRatio === 0 || (aspectRatio >= 2.2 && aspectRatio <= 10)));
     // Structured metadata often exposes a compact symbol, while the header
-    // contains the readable corporate wordmark. Prefer that wider first-party
-    // asset when its dimensions/placement or explicit filename support it.
-    const semanticLogo = (LOGO_HINT.test(path + ' ' + alt + ' ' + classes) || describesBrandWordmark) && altMatchesSite && !/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail)/i.test(path + ' ' + alt + ' ' + classes + ' ' + parentText);
+    // contains the readable corporate wordmark. Prefer the first-party header
+    // asset when its accessible name or shape supports that interpretation.
+    const semanticLogo = (LOGO_HINT.test(path + ' ' + alt + ' ' + classes) || describesBrandWordmark || headerSiteMatch) && altMatchesSite && !/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail)/i.test(path + ' ' + alt + ' ' + classes + ' ' + parentText);
     addCandidate(url, score, semanticLogo);
   });
 
