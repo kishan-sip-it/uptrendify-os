@@ -2784,7 +2784,9 @@ html[data-theme="system"]:not(.theme-dark) {
 .brand-card-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; min-width:0; }
 .brand-card-copy { flex:1 1 0%; min-width:0; overflow-wrap:anywhere; }
 .brand-card-copy h3 { margin:0; overflow-wrap:anywhere; word-break:break-word; }
-.brand-card-status, .portfolio-drawer-status { flex:0 0 auto; flex-shrink:0; align-self:flex-start; max-width:fit-content; white-space:nowrap; }
+.brand-card-status, .portfolio-drawer-status { flex:0 0 auto; flex-shrink:0; max-width:fit-content; white-space:nowrap; }
+.brand-card-status { align-self:flex-start; }
+.portfolio-drawer-status { align-self:center; }
 .portfolio-drawer { position: relative; z-index: 80; width: auto; }
 .portfolio-drawer-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; max-width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-card); color: var(--text); cursor: pointer; list-style: none; white-space: nowrap; }
 .portfolio-drawer-trigger::-webkit-details-marker { display: none; }
