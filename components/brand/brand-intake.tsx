@@ -82,21 +82,33 @@ export function BrandIntake({
   const [name, setName] = useState(initialBrandName);
   const [identity, setIdentity] = useState<IntakeIdentity | null>(null);
   useEffect(() => {
-    // Load only font families the scanned site explicitly declared as Google Fonts.
-    // The preview uses the detected family rather than UpTrendify's application font.
-    const families = [...new Set((identity?.fonts ?? [])
-      .filter((font) => font.source === 'google-fonts')
-      .map((font) => font.family))]
+    // Prefer font files declared by the inspected website itself; use Google Fonts
+    // only when no source-hosted face was discovered for an explicitly linked family.
+    const families = [...new Map((identity?.fonts ?? []).map((font) => [font.family.toLowerCase(), font])).values()]
+      .filter((font) => Boolean(font.fontAssetUrl) || font.source === 'google-fonts')
       .slice(0, 3);
-    const links = families.map((family) => {
+    const nodes = families.map((font) => {
+      if (font.fontAssetUrl) {
+        const style = document.createElement('style');
+        const safeFamily = font.family.replace(/["\\\r\n]/g, '');
+        const safeUrl = font.fontAssetUrl.replace(/["\\\r\n]/g, '');
+        const format = font.fontAssetFormat ? ' format("' + font.fontAssetFormat + '")' : '';
+        const weight = font.fontWeight ?? '400';
+        const fontStyle = font.fontStyle ?? 'normal';
+        style.dataset.brandIntakeFont = font.family;
+        style.textContent = '@font-face{font-family:"' + safeFamily + '";src:url("' + safeUrl + '")' + format + ';font-weight:' + weight + ';font-style:' + fontStyle + ';font-display:swap;}';
+        document.head.appendChild(style);
+        return style;
+      }
+
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, '+')}&display=swap`;
-      link.dataset.brandIntakeFont = family;
+      link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(font.family).replace(/%20/g, '+') + '&display=swap';
+      link.dataset.brandIntakeFont = font.family;
       document.head.appendChild(link);
       return link;
     });
-    return () => links.forEach((link) => link.remove());
+    return () => nodes.forEach((node) => node.remove());
   }, [identity?.fonts]);
   const [stepIndex, setStepIndex] = useState(0);
   const [scanElapsed, setScanElapsed] = useState(0);
