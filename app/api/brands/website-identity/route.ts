@@ -120,8 +120,13 @@ async function fetchFallbackFirstPartyPage(root: URL): Promise<FetchOutcome | nu
       if (result.ok) {
         const page = pageText(result.html);
         const opening = (page.title ?? '') + ' ' + page.text.slice(0, 800);
-        if (page.text.length >= 180 && !shouldUseRenderedWebsiteFallback(result.html) &&
-          !/(?:\b404\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening)) {
+        const $ = cheerio.load(result.html);
+        const mainHeading = $('main h1, article h1, [role="main"] h1, h1').first().text().replace(/\s+/g, ' ').trim();
+        const hasReaderError = /(?:\b404\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening);
+        // The global shell heuristic is intentionally conservative for roots.
+        // A short About/Product page with a real H1 and substantive body text is
+        // still valid evidence and should not be discarded just for being concise.
+        if (page.text.length >= 180 && (!shouldUseRenderedWebsiteFallback(result.html) || mainHeading.length >= 3) && !hasReaderError) {
           return result;
         }
       }
