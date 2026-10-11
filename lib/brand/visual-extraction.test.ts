@@ -169,6 +169,26 @@ describe('semantic CSS palette ranking', () => {
     expect(palette.find((color) => color.hex === '#f97316')?.sources).not.toContain('primary-control');
   });
 });
+describe('semantic colour role ordering', () => {
+  it('keeps explicitly declared primary and secondary tokens ahead of incidental CSS colours', () => {
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    const css = [
+      ':root { --primary: #0f766e; --secondary: #f59e0b; --accent: #2563eb; }',
+      '.toast { background: #e11d48; border-color: #e11d48; color: #e11d48; }',
+      '.alert { background: #e11d48; border-color: #e11d48; color: #e11d48; }',
+      '.status { background: #e11d48; border-color: #e11d48; color: #e11d48; }',
+    ].join('\n');
+    collectColors(css, 'external-stylesheet', sink);
+    const palette = rankPalette(sink, 8);
+    expect(palette[0]?.hex).toBe('#0f766e');
+    expect(palette[0]?.sources).toContain('semantic-primary-css');
+    expect(palette[1]?.hex).toBe('#f59e0b');
+    expect(palette[1]?.sources).toContain('semantic-secondary-css');
+    expect(palette[2]?.hex).toBe('#2563eb');
+    expect(palette[2]?.sources).toContain('semantic-accent-css');
+  });
+});
+
 describe('extractBrandIdentity', () => {
   const identity = extractBrandIdentity(PAGE, 'https://broya.com/');
 
