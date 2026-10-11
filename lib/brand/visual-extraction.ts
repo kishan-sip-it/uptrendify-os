@@ -29,6 +29,11 @@ export type ExtractedFont = {
   family: string;
   source: 'google-fonts' | 'css-declaration' | 'theme-font';
   evidence: string;
+  /** Resolved public font asset declared by the source site's own @font-face CSS. */
+  fontAssetUrl?: string;
+  fontAssetFormat?: 'woff2' | 'woff' | 'opentype' | 'truetype';
+  fontWeight?: string;
+  fontStyle?: string;
 };
 
 export type ExtractedIdentity = {
