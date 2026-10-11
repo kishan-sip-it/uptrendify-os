@@ -354,6 +354,27 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
     sink.set(hex, entry);
   };
 
+  // Resolve declared custom properties so patterns such as
+  // color: rgb(var(--brand-rgb)) count as evidence without guessing values.
+  const variableValues = new Map<string, string>();
+  const variableDecl = /(--[a-z0-9_-]+)\s*:\s*([^;}]+)/gi;
+  for (const match of cleaned.matchAll(variableDecl)) {
+    const name = (match[1] ?? '').toLowerCase();
+    const value = (match[2] ?? '').trim();
+    if (name && value) variableValues.set(name, value);
+  }
+  const resolveCssColor = (rawValue: string): string | null => {
+    let value = rawValue.trim();
+    for (let depth = 0; depth < 8; depth += 1) {
+      const next = value.replace(/var\(\s*(--[a-z0-9_-]+)\s*(?:,\s*([^()]+))?\)/gi, (original, rawName: string, fallback?: string) => {
+        return variableValues.get(rawName.toLowerCase()) ?? fallback?.trim() ?? original;
+      });
+      if (next === value) break;
+      value = next;
+    }
+    return parseCssColor(value) ?? parseBareHslTriplet(value);
+  };
+
   // Keep broad frequency evidence as a fallback for unusual frameworks, but
   // rank semantic variables and actual brand controls above incidental colors.
   for (const match of cleaned.matchAll(COLOR_TOKEN)) {
@@ -361,27 +382,28 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
     if (hex) add(hex);
   }
 
-  // Some design systems use named CSS colours directly in declarations rather
-  // than hex/functions. Parse whole values too; this remains declaration-based
-  // evidence and does not invent a palette from brand names.
+  // Parse complete colour declarations as well as tokens. This captures named
+  // CSS colours and values that reference custom properties.
   const declaredColorProperty = /\b(?:color|background(?:-color)?|border(?:-[a-z]+)?-color|fill|stroke)\s*:\s*([^;{}]+)/gi;
   for (const declaration of cleaned.matchAll(declaredColorProperty)) {
-    const hex = parseCssColor((declaration[1] ?? '').trim());
+    const value = (declaration[1] ?? '').trim();
+    const hex = resolveCssColor(value);
     if (hex) add(hex, 2, 'css-color-declaration');
+    for (const token of value.matchAll(COLOR_TOKEN)) {
+      const tokenHex = resolveCssColor(token[0]);
+      if (tokenHex) add(tokenHex, 1, 'css-color-declaration');
+    }
   }
 
-  // Design systems use many variable naming conventions (e.g. --theme-primary,
-  // --brand-primary, --color-accent, --action-color). Do not require one exact
-  // token order before recognizing intentional palette variables.
-  const variableDecl = /--([a-z0-9_-]+)\s*:\s*([^;}]+)/gi;
+  // Give intentional palette variables higher weight when their names signal
+  // role; values still have to resolve to evidence found in the CSS itself.
   for (const match of cleaned.matchAll(variableDecl)) {
-    const name = (match[1] ?? '').toLowerCase();
+    const name = (match[1] ?? '').replace(/^--/, '').toLowerCase();
     const semanticName =
       /(^|[-_])(brand|primary|secondary|accent|cta|link|action|highlight)([-_]|$)/i.test(name) ||
       /^theme-(primary|secondary|accent|brand|link|action)([-_]|$)/i.test(name);
     if (!semanticName) continue;
-    const rawValue = (match[2] ?? '').trim();
-    const hex = parseCssColor(rawValue) ?? parseBareHslTriplet(rawValue);
+    const hex = resolveCssColor((match[2] ?? '').trim());
     if (hex) add(hex, 6, 'semantic-css');
   }
 
@@ -402,8 +424,11 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
 
     const signal = headerSignal ? 'header-ui' : /(?:^|[\s,>])a(?:$|[\s,:>#.])/i.test(selector) ? 'link-accent' : 'primary-control';
     for (const declaration of declarations.matchAll(colorProperty)) {
-      for (const token of (declaration[1] ?? '').matchAll(COLOR_TOKEN)) {
-        const hex = parseCssColor(token[0]);
+      const value = (declaration[1] ?? '').trim();
+      const resolved = resolveCssColor(value);
+      if (resolved) add(resolved, weight, signal);
+      for (const token of value.matchAll(COLOR_TOKEN)) {
+        const hex = resolveCssColor(token[0]);
         if (hex) add(hex, weight, signal);
       }
     }
