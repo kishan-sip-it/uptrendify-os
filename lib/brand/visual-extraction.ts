@@ -377,7 +377,22 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
       if (next === value) break;
       value = next;
     }
-    return parseCssColor(value) ?? parseBareHslTriplet(value);
+    const direct = parseCssColor(value) ?? parseBareHslTriplet(value);
+    if (direct) return direct;
+
+    // CSS design systems often wrap a declared token in color-mix(), calc(),
+    // or another compound value. Once vars are resolved, retain the concrete
+    // colour token actually declared inside that expression instead of losing
+    // the evidence because the outer function is not directly convertible.
+    for (const token of value.matchAll(COLOR_TOKEN)) {
+      const parsed = parseCssColor(token[0]);
+      if (parsed) return parsed;
+    }
+    for (const word of value.match(/[a-z]{3,20}/gi) ?? []) {
+      const named = BASIC_CSS_COLORS[word.toLowerCase()];
+      if (named) return named;
+    }
+    return null;
   };
 
   // Keep broad frequency evidence as a fallback for unusual frameworks, but
