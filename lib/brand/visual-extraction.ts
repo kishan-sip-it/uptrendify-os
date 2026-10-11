@@ -441,7 +441,8 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
       /(^|[-_])(accent|cta|link|action|highlight)([-_]|$)/i.test(name) ? 'semantic-accent-css' :
       'semantic-css';
     const weight = roleSource === 'semantic-primary-css' ? 9 : roleSource === 'semantic-brand-css' ? 7 : roleSource === 'semantic-secondary-css' ? 6 : 5;
-    add(hex, weight, roleSource);
+    add(hex, weight, 'semantic-css');
+    sink.get(hex)?.sources.add(roleSource);
   }
 
   // Selector-level evidence is shared by inline and external stylesheets.
@@ -666,7 +667,7 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const href = parent.is('a') ? absoluteUrl(parent.attr('href'), base) : null;
     const path = (() => { try { return new URL(url).pathname.toLowerCase(); } catch { return ''; } })();
 
-    const inBrandHeader = parent.is('header') || parent.is('nav') || parent.is('[role="banner"]');
+    const inBrandHeader = parent.is('header') || parent.is('nav') || parent.is('[role="banner"]') || node.closest('header, nav, [role="banner"]').length > 0;
     const width = Number(node.attr('width') ?? 0);
     const height = Number(node.attr('height') ?? 0);
     const inlineStyle = node.attr('style') ?? '';
