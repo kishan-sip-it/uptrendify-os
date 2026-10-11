@@ -845,8 +845,9 @@ export async function GET(request: Request) {
 
     let outcome = await fetchHtml(root, 3, env().RESEARCH_USER_AGENT, false);
 
-    // Retry once with a normal browser identity before the rendered-reader fallback.
-    if (!outcome.ok) {
+    // A second user-agent request is useful for ordinary HTTP failures, but
+    // repeating a confirmed HTTP-200 block interstitial wastes the scan budget.
+    if (!outcome.ok && !/security\/block page/i.test(outcome.reason)) {
       const browserOutcome = await fetchHtml(root, 3, BROWSER_USER_AGENT, false);
       if (browserOutcome.ok) outcome = browserOutcome;
     }
@@ -950,11 +951,11 @@ export async function GET(request: Request) {
 
     const cssResources = (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url)))).flat();
     const cssBlocks = cssResources.map((resource) => resource.css);
+    // The server may expose SVG assets behind extensionless CDN/asset URLs.
+    // Ask the response validator whether a candidate is SVG instead of relying
+    // on the URL suffix; ordinary PNG/ICO candidates are rejected by fetchSvgAsset.
     const svgUrls = [...new Set([identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons])]
-      .filter((url): url is string => {
-        if (typeof url !== 'string') return false;
-        return /\.svg(?:[?#]|$)/i.test(url);
-      })
+      .filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
       .slice(0, 3);
     const svgBlocks = (await Promise.all(svgUrls.map(fetchSvgAsset))).filter((asset): asset is string => Boolean(asset));
 
@@ -986,7 +987,20 @@ export async function GET(request: Request) {
       : directHomepage ?? { title: renderedFallbackTitle, text: renderedFallbackText ?? '' };
     evidencePages.push({ url: baseUrl, ...homepage });
 
-    const extraPages = await Promise.all(pageCandidates.map(async (url, index) => {
+    // When the homepage could only be read through the text reader, avoid
+    // re-fetching the blocked host directly and then retrying the reader for
+    // nine links. Two short, same-origin reader pages add evidence without
+    // exhausting the function's 45-second request budget.
+    const readerOnlyFallback = Boolean(renderedFallbackText && !baseHtml);
+    const researchPageCandidates = readerOnlyFallback ? pageCandidates.slice(0, 2) : pageCandidates;
+    const extraPages = await Promise.all(researchPageCandidates.map(async (url, index) => {
+      if (readerOnlyFallback) {
+        const rendered = await fetchRenderedResearch(url, 5_500);
+        return rendered && rendered.text.trim().length >= 180
+          ? { url, title: rendered.title, text: rendered.text }
+          : null;
+      }
+
       const page = await fetchHtml(new URL(url), 1);
       if (page.ok === false) return null;
       const direct = pageText(page.html);
@@ -996,7 +1010,7 @@ export async function GET(request: Request) {
       // can contribute real evidence without turning one scan into an
       // unbounded set of third-party rendering requests.
       if (index < 3 && shouldUseRenderedWebsiteFallback(page.html)) {
-        const rendered = await fetchRenderedResearch(page.finalUrl);
+        const rendered = await fetchRenderedResearch(page.finalUrl, 5_500);
         if (rendered && rendered.text.length > direct.text.length + 100) {
           return { url: page.finalUrl, title: rendered.title ?? direct.title, text: rendered.text };
         }
