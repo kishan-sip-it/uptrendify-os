@@ -91,6 +91,15 @@ describe('parseCssColor', () => {
     expect(palette.find((color) => color.hex === '#dc1428')?.sources).toContain('css-color-declaration');
   });
 
+  it('recovers declared brand colours wrapped in color-mix after resolving CSS variables', () => {
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    const css = ':root { --brand-primary: #c74634; } .button { background-color: color-mix(in srgb, var(--brand-primary) 12%, transparent); }';
+    collectColors(css, 'external-stylesheet', sink);
+    const palette = rankPalette(sink, 8);
+    expect(palette.map((color) => color.hex)).toContain('#c74634');
+    expect(palette.find((color) => color.hex === '#c74634')?.sources).toContain('css-color-declaration');
+  });
+
   it('rejects values that carry no usable colour', () => {
     expect(parseCssColor('transparent')).toBeNull();
     expect(parseCssColor('currentColor')).toBeNull();
