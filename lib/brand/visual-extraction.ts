@@ -651,33 +651,40 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const href = parent.is('a') ? absoluteUrl(parent.attr('href'), base) : null;
     const path = (() => { try { return new URL(url).pathname.toLowerCase(); } catch { return ''; } })();
 
+    const inBrandHeader = parent.is('header') || parent.is('nav') || parent.is('[role="banner"]');
+    const width = Number(node.attr('width') ?? 0);
+    const height = Number(node.attr('height') ?? 0);
+    const inlineStyle = node.attr('style') ?? '';
+    const styledWidth = Number(inlineStyle.match(/(?:^|;)\s*width\s*:\s*(\d+(?:\.\d+)?)px/i)?.[1] ?? 0);
+    const styledHeight = Number(inlineStyle.match(/(?:^|;)\s*height\s*:\s*(\d+(?:\.\d+)?)px/i)?.[1] ?? 0);
+    const measuredWidth = width || styledWidth;
+    const measuredHeight = height || styledHeight;
+    const aspectRatio = measuredWidth > 0 && measuredHeight > 0 ? measuredWidth / measuredHeight : 0;
+    const pathSuggestsWordmark = /(wordmark|logotype|full[-_]?logo|logo[-_]?full|brand[-_]?name|corporate[-_]?logo)/i.test(path + ' ' + classes);
+
     let score = 0;
     if (LOGO_HINT.test(path)) score += 55;
     if (LOGO_HINT.test(alt)) score += 50;
     if (/(brand|wordmark|masthead)/i.test(classes)) score += 28;
     if (/(header|nav|banner)/i.test(classes)) score += 18;
-    if (parent.is('header') || parent.is('nav') || parent.is('[role="banner"]')) score += 22;
+    if (inBrandHeader) score += 22;
     if (href && (href === base || (rootHost && new URL(href).hostname.toLowerCase().replace(/^www\./, '') === rootHost))) score += 25;
     if (rootToken && path.includes(rootToken)) score += 8;
-    if (/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail)/i.test(path + ' ' + alt + ' ' + parentText)) score -= 60;
+    if (pathSuggestsWordmark) score += 35;
+    if (aspectRatio >= 2.2 && aspectRatio <= 10 && measuredWidth <= 900 && measuredHeight <= 240) score += 28;
+    if (/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail)/i.test(path + ' ' + alt + ' ' + classes + ' ' + parentText)) score -= 60;
     if (/(^|\s)(logo|wordmark)(\s|$)/i.test(alt)) score += 15;
-
-    // Dimensions and placement are useful semantic evidence when markup is sparse.
-    const width = Number(node.attr('width') ?? 0);
-    const height = Number(node.attr('height') ?? 0);
-    if (width > 0 && height > 0) {
-      const ratio = width / height;
-      if (width <= 900 && height <= 400 && ratio >= 1.2 && ratio <= 8) score += 12;
-      if (width <= 300 && height <= 300) score += 5;
-      if (width >= 1000 || height >= 800) score -= 25;
-    }
 
     const declaredSiteName = cleanMetaText($('meta[property="og:site_name"]').first().attr('content')) ?? cleanMetaText($('meta[name="application-name"]').first().attr('content')) ?? rootToken;
     const normalizedAlt = alt.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     const normalizedSiteName = declaredSiteName.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     const genericLogoAlt = /^(?:company |brand )?(?:logo|wordmark|brandmark)$/i.test(normalizedAlt);
     const altMatchesSite = !normalizedAlt || genericLogoAlt || (normalizedSiteName.length > 2 && normalizedAlt.includes(normalizedSiteName)) || (rootToken.length > 2 && normalizedAlt.includes(rootToken));
-    const semanticLogo = LOGO_HINT.test(path + ' ' + alt + ' ' + classes) && altMatchesSite && !/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail)/i.test(path + ' ' + alt + ' ' + classes + ' ' + parentText);
+    const describesBrandWordmark = pathSuggestsWordmark || (inBrandHeader && aspectRatio >= 2.2 && aspectRatio <= 10 && altMatchesSite);
+    // Structured metadata often exposes a compact symbol, while the header
+    // contains the readable corporate wordmark. Prefer that wider first-party
+    // asset when its dimensions/placement or explicit filename support it.
+    const semanticLogo = (LOGO_HINT.test(path + ' ' + alt + ' ' + classes) || describesBrandWordmark) && altMatchesSite && !/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail)/i.test(path + ' ' + alt + ' ' + classes + ' ' + parentText);
     addCandidate(url, score, semanticLogo);
   });
 
