@@ -362,9 +362,9 @@ async function fetchRenderedResearch(url: string): Promise<RenderedResearch | nu
       if (!response.ok) continue;
       const text = (await response.text()).trim();
       if (text.length < 180 || isRenderedReaderError(text)) continue;
-      const lines = text.split('\\n').map((line) => line.trim());
+      const lines = text.split('\n').map((line) => line.trim());
       const title = lines.find((line) => line.startsWith('# '))?.slice(2).trim()
-        || lines.find((line) => /^title:\\s*\\S/i.test(line))?.replace(/^title:\\s*/i, '').trim()
+        || lines.find((line) => /^title:\s*\S/i.test(line))?.replace(/^title:\s*/i, '').trim()
         || null;
       return { title, text: text.slice(0, 50_000) };
     } catch {
