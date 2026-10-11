@@ -566,7 +566,9 @@ function mergeExternalCss(
   };
 }
 
-async function fetchCssTree(url: string, depth = 0, seen = new Set<string>()): Promise<string[]> {
+type CssResource = { url: string; css: string };
+
+async function fetchCssTree(url: string, depth = 0, seen = new Set<string>()): Promise<CssResource[]> {
   let normalized: string;
   try {
     normalized = assertPublicHttpUrl(url).toString();
@@ -577,7 +579,7 @@ async function fetchCssTree(url: string, depth = 0, seen = new Set<string>()): P
   seen.add(normalized);
   const css = await fetchCss(normalized);
   if (!css) return [];
-  if (depth >= 2) return [css];
+  if (depth >= 2) return [{ url: normalized, css }];
 
   const imported = new Set<string>();
   for (const match of css.matchAll(/@import\s+(?:url\()?\s*["']?([^"')\s;]+)["']?\s*\)?/gi)) {
@@ -588,9 +590,84 @@ async function fetchCssTree(url: string, depth = 0, seen = new Set<string>()): P
     }
   }
   const children = await Promise.all([...imported].slice(0, 4).map((child) => fetchCssTree(child, depth + 1, seen)));
-  return [css, ...children.flat()];
+  return [{ url: normalized, css }, ...children.flat()];
 }
 
+async function attachSourceFontAssets(
+  fonts: ExtractedIdentity['fonts'],
+  resources: CssResource[],
+): Promise<ExtractedIdentity['fonts']> {
+  if (fonts.length === 0 || resources.length === 0) return fonts;
+
+  const knownFamilies = new Set(fonts.map((font) => font.family.trim().toLowerCase()));
+  const candidates = new Map<string, { url: string; format?: 'woff2' | 'woff' | 'opentype' | 'truetype'; weight?: string; style?: string }>();
+  const rankFormat = (format: string | undefined) => format === 'woff2' ? 4 : format === 'woff' ? 3 : format === 'opentype' ? 2 : format === 'truetype' ? 1 : 0;
+
+  for (const resource of resources) {
+    const css = resource.css.replace(/\/\*[\s\S]*?\*\//g, ' ');
+    for (const face of css.matchAll(/@font-face\s*\{([^{}]*)\}/gi)) {
+      const declarations = face[1] ?? '';
+      const family = declarations.match(/font-family\s*:\s*([^;]+)/i)?.[1]
+        ?.trim()
+        .replace(/^["']|["']$/g, '')
+        .replace(/\s+/g, ' ');
+      if (!family || !knownFamilies.has(family.toLowerCase())) continue;
+
+      const src = declarations.match(/src\s*:\s*([^;]+)/i)?.[1] ?? '';
+      const urls = [...src.matchAll(/url\(\s*(["']?)([^"')]+)\1\s*\)/gi)]
+        .map((match) => match[2]?.trim())
+        .filter((value): value is string => Boolean(value) && !/^data:/i.test(value!));
+      const weightRaw = declarations.match(/font-weight\s*:\s*([^;]+)/i)?.[1]?.trim();
+      const styleRaw = declarations.match(/font-style\s*:\s*([^;]+)/i)?.[1]?.trim();
+      const weight = weightRaw && /^(?:normal|bold|[1-9]00(?:\s+[1-9]00)?)$/i.test(weightRaw) ? weightRaw : undefined;
+      const style = styleRaw && /^(?:normal|italic|oblique(?:\s+-?\d+(?:deg)?)?)$/i.test(styleRaw) ? styleRaw : undefined;
+
+      for (const rawUrl of urls) {
+        try {
+          const safe = assertPublicHttpUrl(new URL(rawUrl, resource.url).toString()).toString();
+          const parsed = new URL(safe);
+          const extension = parsed.pathname.match(/\.(woff2?|ttf|otf)$/i)?.[1]?.toLowerCase();
+          const format = extension === 'woff2' ? 'woff2' : extension === 'woff' ? 'woff' : extension === 'otf' ? 'opentype' : extension === 'ttf' ? 'truetype' : undefined;
+          const key = family.toLowerCase();
+          const previous = candidates.get(key);
+          if (!previous || rankFormat(format) > rankFormat(previous.format)) {
+            candidates.set(key, { url: safe, ...(format ? { format } : {}), ...(weight ? { weight } : {}), ...(style ? { style } : {}) });
+          }
+          break;
+        } catch {
+          // Ignore data URLs, private hosts, credentials and non-HTTP font sources.
+        }
+      }
+    }
+  }
+
+  const verified = new Map<string, { url: string; format?: 'woff2' | 'woff' | 'opentype' | 'truetype'; weight?: string; style?: string }>();
+  const checkedHosts = new Set<string>();
+  for (const [family, candidate] of candidates) {
+    try {
+      const hostname = new URL(candidate.url).hostname;
+      if (!checkedHosts.has(hostname)) {
+        await assertResolvablePublicHost(hostname);
+        checkedHosts.add(hostname);
+      }
+      verified.set(family, candidate);
+    } catch {
+      // A font asset is optional. A failed DNS/public-host check leaves the family unavailable.
+    }
+  }
+
+  return fonts.map((font) => {
+    const asset = verified.get(font.family.trim().toLowerCase());
+    if (!asset) return font;
+    return {
+      ...font,
+      fontAssetUrl: asset.url,
+      ...(asset.format ? { fontAssetFormat: asset.format } : {}),
+      ...(asset.weight ? { fontWeight: asset.weight } : {}),
+      ...(asset.style ? { fontStyle: asset.style } : {}),
+    };
+  });
+}
 async function fetchSvgAsset(url: string): Promise<string | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);
