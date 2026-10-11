@@ -97,6 +97,25 @@ function rgbToHex(r: number, g: number, b: number): string {
  * navigation chrome. These pages need the rendered-reader fallback even when
  * the server responds with HTTP 200.
  */
+/** 
+ * Detects anti-bot/error interstitials that often arrive with HTTP 200.
+ * They are not valid first-party evidence and should trigger the reader fallback.
+ */
+export function isBlockedWebsiteResponse(html: string): boolean {
+  const $ = cheerio.load(html);
+  const title = $('title').first().text().replace(/\s+/g, ' ').trim();
+  const body = $('body').text().replace(/\s+/g, ' ').trim().slice(0, 8_000);
+  const blockedTitle = /(?:your request has been blocked|access denied|request rejected|request blocked|attention required|just a moment|security verification|verify (?:that )?you(?:'| a)re human|robot check|captcha required|web page blocked)/i;
+  const blockedBody = /your request has been blocked|automated requests? (?:are )?not allowed|unusual traffic from your network|please verify you are human|security check to access this (?:site|website)|we have detected unusual traffic/i;
+  return blockedTitle.test(title) || blockedBody.test(body.slice(0, 3_000));
+}
+
+/** Rejects reader-proxy responses that contain an upstream error page. */
+export function isRenderedReaderError(text: string): boolean {
+  const opening = text.slice(0, 5_000);
+  return /warning:\s*target url returned error\s+[45]\d\d|this site is experiencing technical difficulty|we are aware of the issue and are working as quickly as possible to correct the issue|^title:\s*(?:fw_error|access denied|request blocked|attention required)/im.test(opening);
+}
+
 export function shouldUseRenderedWebsiteFallback(html: string): boolean {
   const $ = cheerio.load(html);
   const title = $('title').first().text().replace(/\s+/g, ' ').trim();
@@ -622,6 +641,18 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
       // Invalid JSON-LD is ignored rather than breaking deterministic extraction.
     }
   });
+
+  // Some organizations publish a full wordmark as og:image while structured
+  // metadata points to a symbol-only brand asset. Promote only a same-site
+  // image whose path explicitly identifies a logo, never generic social cards.
+  const ogImage = absoluteUrl($('meta[property="og:image"]').first().attr('content'), base);
+  if (ogImage && sameSiteUrl(base, ogImage)) {
+    let path = '';
+    try { path = new URL(ogImage).pathname.toLowerCase(); } catch { /* filtered by absoluteUrl */ }
+    if (/(logo|wordmark|brandmark)/i.test(path) && !/(?:og[-_]?image|social|share|twitter|card|thumb|hero|banner|experienceguides|brand[-_]?guide)/i.test(path)) {
+      addCandidate(ogImage, 96, true);
+    }
+  }
 
   // OpenGraph/Twitter images are social-preview evidence only and must not
   // outrank an actual first-party logo candidate.
