@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { preferredPreviewFontFamily, resolveFontRoles } from './identity-mapping';
 import {
   collectColors,
   collectJavaScriptDesignTokens,
@@ -445,5 +446,25 @@ describe('rendered reader error detection', () => {
 
   it('does not reject real first-party page text', () => {
     expect(isRenderedReaderError('Title: Microsoft\nURL Source: https://www.microsoft.com/\nMarkdown Content: Explore Microsoft products, services and solutions.')).toBe(false);
+  });
+});
+
+describe('preview typography source priority', () => {
+  it('prefers a CSS-declared font over an unrelated linked Google Font', () => {
+    const fonts = [
+      { family: 'Roboto', source: 'google-fonts' },
+      { family: 'Source Sans 3', source: 'css-declaration' },
+    ];
+    expect(preferredPreviewFontFamily(fonts)).toBe('Source Sans 3');
+    expect(resolveFontRoles(fonts)).toEqual({ headingFont: 'Source Sans 3', bodyFont: 'Roboto' });
+  });
+
+  it('uses a linked Google Font when no CSS font declaration is available', () => {
+    expect(preferredPreviewFontFamily([{ family: 'Inter', source: 'google-fonts' }])).toBe('Inter');
+  });
+
+  it('does not invent a font when no evidence is available', () => {
+    expect(preferredPreviewFontFamily([])).toBeNull();
+    expect(resolveFontRoles([])).toEqual({ headingFont: null, bodyFont: null });
   });
 });
