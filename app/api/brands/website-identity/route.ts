@@ -107,7 +107,7 @@ const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (
 
 async function fetchRegionalHomepage(root: URL): Promise<FetchOutcome | null> {
   // Only retry conventional regional homepages after the root and reader fail.
-  // Keep this to three same-origin paths to stay bounded under the route budget.
+  // These same-origin paths are bounded and work across sites that route by locale.
   if (root.pathname !== '/' && root.pathname !== '/index.html') return null;
   const candidates = ['/in/', '/us/', '/en-in/'];
   const results = await Promise.all(candidates.map(async (pathname): Promise<FetchOutcome | null> => {
@@ -115,20 +115,36 @@ async function fetchRegionalHomepage(root: URL): Promise<FetchOutcome | null> {
       const candidate = assertPublicHttpUrl(new URL(pathname, root).toString());
       await assertResolvablePublicHost(candidate.hostname);
       const result = await fetchHtml(candidate, 2, BROWSER_USER_AGENT, false);
-      if (!result.ok) return result;
-      const page = pageText(result.html);
-      const opening = `${page.title ?? ''} ${page.text.slice(0, 800)}`;
-      if (page.text.length < 180 || shouldUseRenderedWebsiteFallback(result.html) || /(?:\\b404\\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening)) {
-        return { ok: false, reason: 'The regional homepage did not contain usable public website content.', finalUrl: result.finalUrl };
+      if (result.ok) {
+        const page = pageText(result.html);
+        const opening = (page.title ?? '') + ' ' + page.text.slice(0, 800);
+        if (page.text.length < 180 || shouldUseRenderedWebsiteFallback(result.html) || /(?:\b404\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening)) {
+          return { ok: false, reason: 'The regional homepage did not contain usable public website content.', finalUrl: result.finalUrl };
+        }
+        return result;
       }
-      return result;
+
+      // Some sites block ordinary requests for every locale path too. Give each
+      // candidate one short rendered-reader attempt without brand-specific rules.
+      const rendered = await fetchRenderedResearch(candidate.toString(), 8_000);
+      if (!rendered) return result;
+      const page = pageText(renderedPageHtml(rendered));
+      const opening = (page.title ?? '') + ' ' + page.text.slice(0, 800);
+      if (page.text.length < 180 || /(?:\b404\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening)) {
+        return { ok: false, reason: 'The rendered regional homepage did not contain usable public website content.', finalUrl: candidate.toString() };
+      }
+      return {
+        ok: true,
+        html: renderedPageHtml(rendered),
+        finalUrl: candidate.toString(),
+        renderedFallback: true,
+      };
     } catch {
       return null;
     }
   }));
   return results.find((result): result is FetchOutcome & { ok: true } => result?.ok === true) ?? null;
 }
-
 async function readBoundedBytes(response: Response, maxBytes: number): Promise<Uint8Array | null> {
   const contentLength = Number(response.headers.get('content-length') ?? 0);
   if (contentLength > maxBytes) return null;
@@ -328,7 +344,7 @@ function absoluteUrl(value: string | undefined, base: string): string | null {
   }
 }
 
-async function fetchRenderedResearch(url: string): Promise<RenderedResearch | null> {
+async function fetchRenderedResearch(url: string, maxWaitMs = 15_000): Promise<RenderedResearch | null> {
   let source: URL;
   try {
     source = assertPublicHttpUrl(url);
@@ -344,7 +360,7 @@ async function fetchRenderedResearch(url: string): Promise<RenderedResearch | nu
   alternateProtocol.protocol = source.protocol === 'https:' ? 'http:' : 'https:';
   if (!targets.includes(alternateProtocol.toString())) targets.push(alternateProtocol.toString());
 
-  const deadline = Date.now() + Math.min(Math.max(env().RESEARCH_TIMEOUT_MS, 6_000), 15_000);
+  const deadline = Date.now() + Math.min(Math.max(env().RESEARCH_TIMEOUT_MS, 6_000), maxWaitMs);
   for (const target of targets) {
     const remaining = deadline - Date.now();
     if (remaining < 1_000) break;
@@ -854,6 +870,11 @@ export async function GET(request: Request) {
         const regional = await fetchRegionalHomepage(root);
         if (regional?.ok) {
           outcome = regional;
+          if (regional.renderedFallback) {
+            const regionalPage = pageText(regional.html);
+            renderedFallbackText = regionalPage.text;
+            renderedFallbackTitle = regionalPage.title;
+          }
         } else {
           return NextResponse.json(
             { error: outcome.reason + ' The public-page reader could not recover real first-party content, and no public regional homepage succeeded, so no Brand IQ was created. Retry later or use a public page that loads without a security challenge.', identity: null },
