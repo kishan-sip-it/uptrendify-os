@@ -118,16 +118,20 @@ async function fetchRegionalHomepage(root: URL): Promise<FetchOutcome | null> {
       if (result.ok) {
         const page = pageText(result.html);
         const opening = (page.title ?? '') + ' ' + page.text.slice(0, 800);
-        if (page.text.length < 180 || shouldUseRenderedWebsiteFallback(result.html) || /(?:\b404\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening)) {
-          return { ok: false, reason: 'The regional homepage did not contain usable public website content.', finalUrl: result.finalUrl };
+        if (page.text.length >= 180 && !shouldUseRenderedWebsiteFallback(result.html) &&
+          !/(?:\b404\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening)) {
+          return result;
         }
-        return result;
       }
 
-      // Some sites block ordinary requests for every locale path too. Give each
-      // candidate one short rendered-reader attempt without brand-specific rules.
+      // Some sites block ordinary requests or return only an app shell for every
+      // locale path. Give each candidate one short rendered-reader attempt.
       const rendered = await fetchRenderedResearch(candidate.toString(), 8_000);
-      if (!rendered) return result;
+      if (!rendered) {
+        return result.ok
+          ? { ok: false, reason: 'The regional homepage did not contain usable public website content.', finalUrl: result.finalUrl }
+          : result;
+      }
       const page = pageText(renderedPageHtml(rendered));
       const opening = (page.title ?? '') + ' ' + page.text.slice(0, 800);
       if (page.text.length < 180 || /(?:\b404\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening)) {
