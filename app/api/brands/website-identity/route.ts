@@ -31,6 +31,20 @@ function renderedPageHtml(rendered: RenderedResearch): string {
 }
 
 
+async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH_USER_AGENT, allowReaderFallback = true): Promise<FetchOutcome> {
   let target = root.toString();
   let finalUrl: string | null = null;
@@ -111,7 +125,7 @@ async function fetchFallbackFirstPartyPage(root: URL): Promise<FetchOutcome | nu
   // Every candidate must return substantive first-party content; path names are
   // discovery hints only and are never treated as evidence by themselves.
   if (root.pathname !== '/' && root.pathname !== '/index.html') return null;
-  const candidates = ['/in/', '/us/', '/en-in/', '/about/', '/company/', '/products/'];
+  const candidates = ['/in/', '/us/', '/about/', '/products/'];
   const results = await Promise.all(candidates.map(async (pathname): Promise<FetchOutcome | null> => {
     try {
       const candidate = assertPublicHttpUrl(new URL(pathname, root).toString());
@@ -133,7 +147,7 @@ async function fetchFallbackFirstPartyPage(root: URL): Promise<FetchOutcome | nu
 
       // Some sites block ordinary requests or return only an app shell for every
       // locale path. Give each candidate one short rendered-reader attempt.
-      const rendered = await fetchRenderedResearch(candidate.toString(), 5_000);
+      const rendered = await fetchRenderedResearch(candidate.toString(), 3_000);
       if (!rendered) {
         return result.ok
           ? { ok: false, reason: 'The regional homepage did not contain usable public website content.', finalUrl: result.finalUrl }
@@ -368,7 +382,7 @@ function absoluteUrl(value: string | undefined, base: string): string | null {
   }
 }
 
-async function fetchRenderedResearch(url: string, maxWaitMs = 15_000): Promise<RenderedResearch | null> {
+async function fetchRenderedResearch(url: string, maxWaitMs = 9_000): Promise<RenderedResearch | null> {
   let source: URL;
   try {
     source = assertPublicHttpUrl(url);
@@ -1026,10 +1040,10 @@ export async function GET(request: Request) {
     // nine links. Two short, same-origin reader pages add evidence without
     // exhausting the function's 45-second request budget.
     const readerOnlyFallback = Boolean(renderedFallbackText && !baseHtml);
-    const researchPageCandidates = readerOnlyFallback ? pageCandidates.slice(0, 2) : pageCandidates;
+    const researchPageCandidates = readerOnlyFallback ? pageCandidates.slice(0, 2) : pageCandidates.slice(0, 6);
     const extraPages = await Promise.all(researchPageCandidates.map(async (url, index) => {
       if (readerOnlyFallback) {
-        const rendered = await fetchRenderedResearch(url, 5_500);
+        const rendered = await fetchRenderedResearch(url, 3_500);
         return rendered && rendered.text.trim().length >= 180
           ? { url, title: rendered.title, text: rendered.text }
           : null;
@@ -1093,12 +1107,16 @@ export async function GET(request: Request) {
           .map((page) => ({ url: page.url, title: page.title, text: page.text, sourceType: 'first-party' as const }));
         const evidence = buildEvidenceContext(fragments);
         if (evidence.length > 0) {
-          const extractionRun = await runWithProviderFailover(
-            providers,
-            (provider) => extractBrandIntelligence(provider, evidence),
-            (failed, next) => {
-              aiWarnings.push(`AI enrichment switched from ${failed.id} to ${next.id} after a transient provider limit or availability error.`);
-            },
+          const extractionRun = await withTimeout(
+            runWithProviderFailover(
+              providers,
+              (provider) => extractBrandIntelligence(provider, evidence),
+              (failed, next) => {
+                aiWarnings.push(`AI enrichment switched from ${failed.id} to ${next.id} after a transient provider limit or availability error.`);
+              },
+            ),
+            12_000,
+            'AI enrichment exceeded its 12-second budget',
           );
           aiProfile = buildAiProfile(extractionRun.result.result);
           if (!identity.brandName && extractionRun.result.result.identity.brandName) identity.brandName = extractionRun.result.result.identity.brandName;
