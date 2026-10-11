@@ -189,6 +189,35 @@ describe('semantic colour role ordering', () => {
   });
 });
 
+describe('semantic colour evidence conflicts', () => {
+  it('does not let an unused primary token override a stronger colour used in the header and primary control', () => {
+    const css = [
+      ':root { --primary: #e11d48; --accent: #0f766e; }',
+      'header nav a { color: var(--accent); }',
+      '.btn-primary { background-color: var(--accent); }',
+      '.toast.error { background: #e11d48; border-color: #e11d48; color: #e11d48; }',
+    ].join('\n');
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    collectColors(css, 'external-stylesheet', sink);
+    const palette = rankPalette(sink, 8);
+    expect(palette[0]?.hex).toBe('#0f766e');
+    expect(palette.find((color) => color.hex === '#e11d48')?.sources).toContain('semantic-primary-css');
+    expect(palette.find((color) => color.hex === '#0f766e')?.sources).toContain('header-ui');
+    expect(palette.find((color) => color.hex === '#0f766e')?.sources).toContain('primary-control');
+  });
+
+  it('resolves nested variables in compound colour expressions and preserves semantic roles', () => {
+    const css = [
+      ':root { --brand-base: #0f766e; --primary: var(--brand-base); --surface: color-mix(in srgb, var(--missing, var(--brand-base)) 86%, white); }',
+      'header nav a { color: var(--primary); }',
+    ].join('\n');
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    collectColors(css, 'external-stylesheet', sink);
+    expect(sink.get('#0f766e')?.sources).toContain('semantic-primary-css');
+    expect(rankPalette(sink, 8)[0]?.hex).toBe('#0f766e');
+  });
+});
+
 describe('extractBrandIdentity', () => {
   const identity = extractBrandIdentity(PAGE, 'https://broya.com/');
 
@@ -385,6 +414,15 @@ describe('complete company logo metadata', () => {
     const symbol = 'https://www.ibm.com/brand/experienceguides/developer/b1db1ae501d522a1a4b49613fe07c9f1/01_8-bar-positive.svg';
     const html = `<html><head><title>IBM</title><meta property="og:site_name" content="IBM"/><meta property="og:image" content="${wordmark}"/><script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'Corporation', name: 'IBM', url: 'https://www.ibm.com/', logo: symbol })}</script></head><body><main><h1>IBM</h1><p>Global technology company.</p></main></body></html>`;
     expect(extractBrandIdentity(html, 'https://www.ibm.com/us-en').logoUrl).toBe(wordmark);
+  });
+
+  it('prefers a site-named header wordmark even when HTML omits its dimensions', () => {
+    const symbol = 'https://acme.example/assets/brand-symbol.svg';
+    const wordmark = 'https://acme.example/assets/header-artwork.svg';
+    const html = '<html><head><title>Acme</title><meta property="og:site_name" content="Acme"/><script type="application/ld+json">' +
+      JSON.stringify({ '@context': 'https://schema.org', '@type': 'Organization', name: 'Acme', logo: symbol }) +
+      '</script></head><body><header><a href="/"><img src="/assets/header-artwork.svg" alt="Acme"/></a></header><main><h1>Acme</h1><p>Public company website with readable content.</p></main></body></html>';
+    expect(extractBrandIdentity(html, 'https://acme.example/').logoUrl).toBe(wordmark);
   });
 
   it('prefers a wide, site-named header wordmark over a compact structured symbol', () => {
