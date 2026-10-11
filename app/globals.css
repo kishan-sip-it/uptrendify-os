@@ -2778,6 +2778,11 @@ html[data-theme="system"]:not(.theme-dark) {
 .source-item > .badge { flex: 0 0 auto; max-width: 100%; white-space: nowrap; }
 .source-item .activity-title { max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
 .portfolio-card { position: relative; min-width: 0; align-self: start; height: fit-content; }
+/* Keep every brand status pill in its own stable, single-line flex slot. */
+.brand-card-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; min-width:0; }
+.brand-card-copy { flex:1 1 0%; min-width:0; overflow-wrap:anywhere; }
+.brand-card-copy h3 { margin:0; overflow-wrap:anywhere; word-break:break-word; }
+.brand-card-status, .portfolio-drawer-status { flex:0 0 auto; flex-shrink:0; align-self:flex-start; max-width:fit-content; white-space:nowrap; }
 .portfolio-drawer { position: relative; z-index: 80; width: auto; }
 .portfolio-drawer-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; max-width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-card); color: var(--text); cursor: pointer; list-style: none; white-space: nowrap; }
 .portfolio-drawer-trigger::-webkit-details-marker { display: none; }
@@ -2788,6 +2793,8 @@ html[data-theme="system"]:not(.theme-dark) {
 .portfolio-drawer-heading span { color: var(--text-muted); font-size: 11px; }
 .portfolio-drawer-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; align-content: start; gap: 6px; padding-right: 2px; }
 .portfolio-drawer-brand { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-card); color: var(--text); text-decoration: none; }
+.portfolio-drawer-brand .portfolio-drawer-copy { flex:1 1 0%; min-width:0; }
+.portfolio-drawer-arrow { flex:0 0 auto; margin-left:2px; color:var(--muted); }
 .portfolio-drawer-brand:hover { border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); background: var(--surface-hover); }
 .portfolio-drawer-brand-copy { display: grid; flex: 1 1 auto; gap: 3px; min-width: 0; }
 .portfolio-drawer-brand-copy strong, .portfolio-drawer-brand-copy span { overflow-wrap: anywhere; word-break: break-word; }
