@@ -81,6 +81,16 @@ describe('parseCssColor', () => {
     expect(palette.some((color) => color.sources.includes('semantic-css'))).toBe(true);
   });
 
+  it('resolves CSS custom properties and named colours from declarations', () => {
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    const css = ':root { --brand-rgb: 220 20 40; --theme-primary: #dc1428; } .button-primary { color: rgb(var(--brand-rgb)); background-color: var(--theme-primary); border-color: tomato; }';
+    collectColors(css, 'external-stylesheet', sink);
+    const palette = rankPalette(sink, 8);
+    expect(palette.map((color) => color.hex)).toContain('#dc1428');
+    expect(palette.map((color) => color.hex)).toContain('#ff6347');
+    expect(palette.find((color) => color.hex === '#dc1428')?.sources).toContain('css-color-declaration');
+  });
+
   it('rejects values that carry no usable colour', () => {
     expect(parseCssColor('transparent')).toBeNull();
     expect(parseCssColor('currentColor')).toBeNull();
