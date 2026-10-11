@@ -126,7 +126,7 @@ async function fetchRegionalHomepage(root: URL): Promise<FetchOutcome | null> {
 
       // Some sites block ordinary requests or return only an app shell for every
       // locale path. Give each candidate one short rendered-reader attempt.
-      const rendered = await fetchRenderedResearch(candidate.toString(), 8_000);
+      const rendered = await fetchRenderedResearch(candidate.toString(), 5_000);
       if (!rendered) {
         return result.ok
           ? { ok: false, reason: 'The regional homepage did not contain usable public website content.', finalUrl: result.finalUrl }
@@ -488,16 +488,19 @@ function prioritizedLinks(html: string, rootUrl: string): string[] {
 
 function externalStylesheetUrls(html: string, baseUrl: string): string[] {
   const $ = cheerio.load(html);
-  const urls = new Set<string>();
-  const add = (raw: string | undefined) => {
+  const scores = new Map<string, number>();
+  const add = (raw: string | undefined, priority: number) => {
     const href = absoluteUrl(raw, baseUrl);
     if (!href) return;
     try {
-      // A public website may host its CSS on a CDN that is not a subdomain of
-      // the site's apex. Fetch only resources explicitly declared as CSS and
-      // let URL/DNS checks in fetchCss reject private or unsafe destinations.
       const parsed = assertPublicHttpUrl(href);
-      urls.add(parsed.toString());
+      const url = parsed.toString();
+      const path = (parsed.pathname + parsed.search).toLowerCase();
+      // Prefer explicitly linked stylesheets and likely site-wide design tokens
+      // over unrelated preloads when a page declares many CSS resources.
+      const assetSignal = /(?:^|[-_/.])(core|base|theme|global|main|style|styles|design|brand|token)(?:[-_/.]|$)/i.test(path) ? 8 : 0;
+      const sameOriginSignal = parsed.origin === new URL(baseUrl).origin ? 2 : 0;
+      scores.set(url, Math.max(scores.get(url) ?? 0, priority + assetSignal + sameOriginSignal));
     } catch {
       // Invalid schemes, credentials and non-standard ports are rejected.
     }
@@ -507,17 +510,21 @@ function externalStylesheetUrls(html: string, baseUrl: string): string[] {
     const rel = (node.attr('rel') ?? '').toLowerCase().split(/\s+/);
     const as = (node.attr('as') ?? '').toLowerCase();
     const href = node.attr('href') ?? '';
-    if (rel.includes('stylesheet') || (rel.includes('preload') && as === 'style') || /\.css(?:[?#]|$)/i.test(href)) add(href);
+    if (rel.includes('stylesheet')) add(href, 30);
+    else if (rel.includes('preload') && as === 'style') add(href, 20);
+    else if (/\.css(?:[?#]|$)/i.test(href)) add(href, 15);
   });
   $('style').each((_i, el) => {
     const css = $(el).text();
     for (const match of css.matchAll(/@import\s+(?:url\()?\s*["']?([^"')\s;]+)["']?\s*\)?/gi)) {
-      if (match[1]) add(match[1]);
+      if (match[1]) add(match[1], 10);
     }
   });
-  return [...urls].slice(0, 12);
+  return [...scores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([url]) => url);
 }
-
 function mergeExternalCss(
   identity: ExtractedIdentity,
   cssBlocks: string[],
@@ -860,7 +867,7 @@ export async function GET(request: Request) {
 
     // A second user-agent request is useful for ordinary HTTP failures, but
     // repeating a confirmed HTTP-200 block interstitial wastes the scan budget.
-    if (!outcome.ok && !/security\/block page/i.test(outcome.reason)) {
+    if (!outcome.ok && !/(?:security\/block page|HTTP (?:401|403|407|429|451))/i.test(outcome.reason)) {
       const browserOutcome = await fetchHtml(root, 3, BROWSER_USER_AGENT, false);
       if (browserOutcome.ok) outcome = browserOutcome;
     }
