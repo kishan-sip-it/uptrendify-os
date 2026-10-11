@@ -81,6 +81,23 @@ export function BrandIntake({
   const [website, setWebsite] = useState(initialWebsite);
   const [name, setName] = useState(initialBrandName);
   const [identity, setIdentity] = useState<IntakeIdentity | null>(null);
+  useEffect(() => {
+    // Load only font families the scanned site explicitly declared as Google Fonts.
+    // The preview uses the detected family rather than UpTrendify's application font.
+    const families = [...new Set((identity?.fonts ?? [])
+      .filter((font) => font.source === 'google-fonts')
+      .map((font) => font.family))]
+      .slice(0, 3);
+    const links = families.map((family) => {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, '+')}&display=swap`;
+      link.dataset.brandIntakeFont = family;
+      document.head.appendChild(link);
+      return link;
+    });
+    return () => links.forEach((link) => link.remove());
+  }, [identity?.fonts]);
   const [stepIndex, setStepIndex] = useState(0);
   const [scanElapsed, setScanElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -284,6 +301,7 @@ export function BrandIntake({
   if (!identity) return null;
   const ai = identity.aiProfile;
   const assets = identity.assets ?? [];
+  const previewFont = identity.fonts.find((font) => font.source === 'google-fonts')?.family ?? identity.fonts[0]?.family;
 
   if (!reviewAfterScan) return null;
 
@@ -390,7 +408,7 @@ export function BrandIntake({
         </BrandSection>
 
         <BrandSection title="Live Preview" hint="A small brand-context preview using the imported identity, not generated placeholder data.">
-          <div className="brand-voice-summary" style={{ background: 'color-mix(in srgb, var(--brand-primary, var(--accent)) 12%, var(--surface))' }}>
+          <div className="brand-voice-summary" style={{ background: 'color-mix(in srgb, var(--brand-primary, var(--accent)) 12%, var(--surface))', ...(previewFont ? { fontFamily: `"${previewFont.replace(/["\\]/g, '')}", sans-serif` } : {}) }}>
             <strong>{name || identity.brandName || 'Your brand'}</strong>{ai?.valueProposition ? ` — ${ai.valueProposition}` : identity.description ? ` — ${identity.description}` : ''}
             {ai?.tone?.length ? <span style={{ display: 'block', marginTop: 6, opacity: .78 }}>Voice: {ai.tone.join(' · ')}</span> : null}
           </div>
