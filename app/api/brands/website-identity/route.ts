@@ -105,11 +105,13 @@ async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH
 
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-async function fetchRegionalHomepage(root: URL): Promise<FetchOutcome | null> {
-  // Only retry conventional regional homepages after the root and reader fail.
-  // These same-origin paths are bounded and work across sites that route by locale.
+async function fetchFallbackFirstPartyPage(root: URL): Promise<FetchOutcome | null> {
+  // If the canonical root is blocked or only an app shell, try a small set of
+  // conventional locale, company and product paths on the same public host.
+  // Every candidate must return substantive first-party content; path names are
+  // discovery hints only and are never treated as evidence by themselves.
   if (root.pathname !== '/' && root.pathname !== '/index.html') return null;
-  const candidates = ['/in/', '/us/', '/en-in/'];
+  const candidates = ['/in/', '/us/', '/en-in/', '/about/', '/company/', '/products/'];
   const results = await Promise.all(candidates.map(async (pathname): Promise<FetchOutcome | null> => {
     try {
       const candidate = assertPublicHttpUrl(new URL(pathname, root).toString());
@@ -892,7 +894,7 @@ export async function GET(request: Request) {
     } else if (!outcome.ok) {
       const rendered = await fetchRenderedResearch(outcome.finalUrl ?? root.toString());
       if (!rendered) {
-        const regional = await fetchRegionalHomepage(root);
+        const regional = await fetchFallbackFirstPartyPage(root);
         if (regional?.ok) {
           outcome = regional;
           if (regional.renderedFallback) {
@@ -902,7 +904,7 @@ export async function GET(request: Request) {
           }
         } else {
           return NextResponse.json(
-            { error: outcome.reason + ' The public-page reader could not recover real first-party content, and no public regional homepage succeeded, so no Brand IQ was created. Retry later or use a public page that loads without a security challenge.', identity: null },
+            { error: outcome.reason + ' The public-page reader could not recover enough real first-party content from the homepage or common company/product pages, so no Brand IQ was created. Retry later, or enter a public About/Product page URL directly.', identity: null },
             { status: 422, headers: { 'Cache-Control': 'no-store' } },
           );
         }
