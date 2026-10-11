@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Globe2, LoaderCircle, RefreshCw, Sparkles } from 'lucide-react';
 import type { ExtractedIdentity } from '@/lib/brand/visual-extraction';
-import { toVisualIdentity } from '@/lib/brand/identity-mapping';
+import { preferredPreviewFontFamily, toVisualIdentity } from '@/lib/brand/identity-mapping';
 import { brandNameFromWebsiteUrl } from '@/lib/brand/website-url';
 import { brandInitials, BrandField, BrandPanel, BrandSection, NotDetected } from './brand-profile-primitives';
 
@@ -318,7 +318,7 @@ export function BrandIntake({
   if (!identity) return null;
   const ai = identity.aiProfile;
   const assets = identity.assets ?? [];
-  const previewFont = identity.fonts.find((font) => font.source === 'google-fonts')?.family ?? identity.fonts[0]?.family;
+  const previewFont = preferredPreviewFontFamily(identity.fonts);
 
   if (!reviewAfterScan) return null;
 
