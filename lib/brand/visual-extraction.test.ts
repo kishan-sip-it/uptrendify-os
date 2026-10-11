@@ -367,6 +367,13 @@ describe('complete company logo metadata', () => {
     expect(extractBrandIdentity(html, 'https://www.ibm.com/us-en').logoUrl).toBe(wordmark);
   });
 
+  it('prefers a wide, site-named header wordmark over a compact structured symbol', () => {
+    const symbol = 'https://acme.example/assets/brand-symbol.svg';
+    const wordmark = 'https://acme.example/assets/header-asset.svg';
+    const html = `<html><head><title>Acme</title><meta property="og:site_name" content="Acme"/><script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'Organization', name: 'Acme', logo: symbol })}</script></head><body><header><a href="/"><img src="/assets/header-asset.svg" alt="Acme" width="240" height="40"/></a></header><main><h1>Acme</h1><p>Public company website with readable content.</p></main></body></html>`;
+    expect(extractBrandIdentity(html, 'https://acme.example/').logoUrl).toBe(wordmark);
+  });
+
   it('does not promote generic social images to logos just because the filename contains logo', () => {
     const html = '<html><head><title>Example</title><meta property="og:image" content="https://example.com/assets/social-logo-share-card.jpg"/></head><body><h1>Example</h1><p>Public company website with readable content.</p></body></html>';
     expect(extractBrandIdentity(html, 'https://example.com/').logoUrl).toBeNull();
