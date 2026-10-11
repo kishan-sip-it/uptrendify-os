@@ -364,7 +364,7 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
   const variableValues = new Map<string, string>();
   const variableDecl = /(--[a-z0-9_-]+)\s*:\s*([^;}]+)/gi;
   for (const match of cleaned.matchAll(variableDecl)) {
-    const name = (match[1] ?? '').toLowerCase();
+    const name = match[1] ?? '';
     const value = (match[2] ?? '').trim();
     if (name && value) variableValues.set(name, value);
   }
@@ -372,7 +372,7 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
     let value = rawValue.trim();
     for (let depth = 0; depth < 8; depth += 1) {
       const next = value.replace(/var\(\s*(--[a-z0-9_-]+)\s*(?:,\s*([^()]+))?\)/gi, (original, rawName: string, fallback?: string) => {
-        return variableValues.get(rawName.toLowerCase()) ?? fallback?.trim() ?? original;
+        return variableValues.get(rawName) ?? fallback?.trim() ?? original;
       });
       if (next === value) break;
       value = next;
