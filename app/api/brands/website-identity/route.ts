@@ -3,11 +3,11 @@ import * as cheerio from 'cheerio';
 import { requireOrgRole, CAN_VIEW_DASHBOARD } from '@/lib/auth/roles';
 import { env } from '@/lib/env';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from '@/lib/research/url-security';
-import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
+import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, isBlockedWebsiteResponse, isRenderedReaderError, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { extractRasterPalette, type RasterColorSample } from '@/lib/brand/raster-color-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { buildEvidenceContext, extractBrandIntelligence, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
-import { normalizeWebsiteHostname } from '@/lib/brand/website-url';
+import { brandNameFromWebsiteUrl, normalizeWebsiteHostname } from '@/lib/brand/website-url';
 
 export const maxDuration = 45;
 
@@ -21,6 +21,15 @@ function sameSite(a: string, b: string): boolean {
 type FetchOutcome =
   | { ok: true; html: string; finalUrl: string; renderedFallback?: boolean }
   | { ok: false; reason: string; finalUrl: string | null };
+
+type RenderedResearch = { title: string | null; text: string };
+
+function renderedPageHtml(rendered: RenderedResearch): string {
+  const title = (rendered.title ?? '').replace(/[<>]/g, '');
+  const text = rendered.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<html><head><title>${title}</title></head><body><main><p>${text}</p></main></body></html>`;
+}
+
 
 async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH_USER_AGENT, allowReaderFallback = true): Promise<FetchOutcome> {
   let target = root.toString();
@@ -57,7 +66,7 @@ async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH
         if (allowReaderFallback && [401, 403, 407, 408, 429, 451, 500, 502, 503, 504].includes(response.status)) {
           const rendered = await fetchRenderedResearch(target);
           if (rendered) {
-            return { ok: true, html: `<html><head><title>${(rendered.title ?? '').replace(/[<>]/g, '')}</title><meta name="description" content="${(rendered.title ?? '').replace(/["<>]/g, '')}"/></head><body><main><p>${rendered.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p></main></body></html>`, finalUrl: target, renderedFallback: true };
+            return { ok: true, html: renderedPageHtml(rendered), finalUrl: target, renderedFallback: true };
           }
         }
         return { ok: false, reason: `The website responded with HTTP ${response.status}.`, finalUrl: target };
@@ -67,13 +76,20 @@ async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH
         return { ok: false, reason: 'That URL did not return an HTML page.', finalUrl: target };
       }
       const bounded = await readBoundedBody(response, Math.min(env().MAX_RESEARCH_BYTES, 900_000));
+      if (isBlockedWebsiteResponse(bounded.content)) {
+        if (allowReaderFallback) {
+          const rendered = await fetchRenderedResearch(target);
+          if (rendered) return { ok: true, html: renderedPageHtml(rendered), finalUrl: target, renderedFallback: true };
+        }
+        return { ok: false, reason: 'The website returned a security/block page instead of its public homepage.', finalUrl: target };
+      }
       return { ok: true, html: bounded.content, finalUrl: target };
     } catch {
       const rendered = allowReaderFallback ? await fetchRenderedResearch(target) : null;
       if (rendered) {
         return {
           ok: true,
-          html: `<html><head><title>${(rendered.title ?? '').replace(/[<>]/g, '')}</title><meta name="description" content="${(rendered.title ?? '').replace(/["<>]/g, '')}"/></head><body><main><p>${rendered.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p></main></body></html>`,
+          html: renderedPageHtml(rendered),
           finalUrl: target,
           renderedFallback: true,
         };
@@ -85,6 +101,32 @@ async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH
   }
 
   return { ok: false, reason: 'The website could not be reached.', finalUrl };
+}
+
+const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+async function fetchRegionalHomepage(root: URL): Promise<FetchOutcome | null> {
+  // Only retry conventional regional homepages after the root and reader fail.
+  // Keep this to three same-origin paths to stay bounded under the route budget.
+  if (root.pathname !== '/' && root.pathname !== '/index.html') return null;
+  const candidates = ['/in/', '/us/', '/en-in/'];
+  const results = await Promise.all(candidates.map(async (pathname): Promise<FetchOutcome | null> => {
+    try {
+      const candidate = assertPublicHttpUrl(new URL(pathname, root).toString());
+      await assertResolvablePublicHost(candidate.hostname);
+      const result = await fetchHtml(candidate, 2, BROWSER_USER_AGENT, false);
+      if (!result.ok) return result;
+      const page = pageText(result.html);
+      const opening = `${page.title ?? ''} ${page.text.slice(0, 800)}`;
+      if (page.text.length < 180 || shouldUseRenderedWebsiteFallback(result.html) || /(?:\\b404\\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening)) {
+        return { ok: false, reason: 'The regional homepage did not contain usable public website content.', finalUrl: result.finalUrl };
+      }
+      return result;
+    } catch {
+      return null;
+    }
+  }));
+  return results.find((result): result is FetchOutcome & { ok: true } => result?.ok === true) ?? null;
 }
 
 async function readBoundedBytes(response: Response, maxBytes: number): Promise<Uint8Array | null> {
@@ -286,7 +328,7 @@ function absoluteUrl(value: string | undefined, base: string): string | null {
   }
 }
 
-async function fetchRenderedResearch(url: string): Promise<{ title: string | null; text: string } | null> {
+async function fetchRenderedResearch(url: string): Promise<RenderedResearch | null> {
   const key = env().JINA_API_KEY;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(env().RESEARCH_TIMEOUT_MS * 2, 20_000));
@@ -300,7 +342,7 @@ async function fetchRenderedResearch(url: string): Promise<{ title: string | nul
     });
     if (!response.ok) return null;
     const text = (await response.text()).trim();
-    if (text.length < 180) return null;
+    if (text.length < 180 || isRenderedReaderError(text)) return null;
     const title = text
       .split('\n')
       .map((line) => line.trim())
@@ -367,6 +409,9 @@ function prioritizedLinks(html: string, rootUrl: string): string[] {
     try { parsed = new URL(href); } catch { return; }
     if (normalizeWebsiteHostname(parsed.hostname) !== rootHost) return;
     if (parsed.hash) return;
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (/^(?:utm_.+|icid|bc|source|campaign|cmp|ref|_gl|gclid|fbclid)$/i.test(key)) parsed.searchParams.delete(key);
+    }
 
     const pathText = parsed.pathname + ' ' + ($(el).text() || '');
     const normalized = pathText.toLowerCase();
@@ -386,7 +431,7 @@ function prioritizedLinks(html: string, rootUrl: string): string[] {
 
   return [...scored.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
+    .slice(0, 12)
     .map(([url]) => url);
 }
 
@@ -688,7 +733,7 @@ export async function GET(request: Request) {
 
     // Retry once with a normal browser identity before the rendered-reader fallback.
     if (!outcome.ok) {
-      const browserOutcome = await fetchHtml(root, 3, 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36', false);
+      const browserOutcome = await fetchHtml(root, 3, BROWSER_USER_AGENT, false);
       if (browserOutcome.ok) outcome = browserOutcome;
     }
     let renderedFallbackText: string | null = null;
@@ -712,13 +757,19 @@ export async function GET(request: Request) {
     } else if (!outcome.ok) {
       const rendered = await fetchRenderedResearch(outcome.finalUrl ?? root.toString());
       if (!rendered) {
-        return NextResponse.json(
-          { error: outcome.reason + ' The rendered reader could not recover meaningful public content from this URL.', identity: null },
-          { status: 422, headers: { 'Cache-Control': 'no-store' } },
-        );
+        const regional = await fetchRegionalHomepage(root);
+        if (regional?.ok) {
+          outcome = regional;
+        } else {
+          return NextResponse.json(
+            { error: outcome.reason + ' The public-page reader could not recover real first-party content, and no public regional homepage succeeded, so no Brand IQ was created. Retry later or use a public page that loads without a security challenge.', identity: null },
+            { status: 422, headers: { 'Cache-Control': 'no-store' } },
+          );
+        }
+      } else {
+        renderedFallbackText = rendered.text;
+        renderedFallbackTitle = rendered.title;
       }
-      renderedFallbackText = rendered.text;
-      renderedFallbackTitle = rendered.title;
     }
 
     let identity = outcome.ok
@@ -733,6 +784,7 @@ export async function GET(request: Request) {
         );
     let baseHtml = outcome.ok && !outcome.renderedFallback ? outcome.html : '';
     let baseUrl = outcome.ok ? outcome.finalUrl : raw;
+    if (renderedFallbackText) identity.brandName = brandNameFromWebsiteUrl(baseUrl);
     let stylesheetUrls = baseHtml ? externalStylesheetUrls(baseHtml, baseUrl) : [];
 
     // If the scraper user-agent received a rendered-reader fallback or HTML
@@ -802,7 +854,7 @@ export async function GET(request: Request) {
     const readerLinks = renderedFallbackText ? renderedResearchLinks(renderedFallbackText, baseUrl) : [];
     const pageCandidates = [...new Set([...directLinks, ...readerLinks])]
       .filter((url) => sameSite(baseUrl, url))
-      .slice(0, 7);
+      .slice(0, 9);
     const pageUrls = [baseUrl, ...pageCandidates];
     const evidencePages: Array<{ url: string; title: string | null; text: string }> = [];
 
