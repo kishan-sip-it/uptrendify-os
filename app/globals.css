@@ -114,8 +114,9 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .progress > span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--accent),var(--accent-2)); }
 .activity-list { display:grid; gap:12px; margin-top:4px; }
 /* Strategy version history is a compact horizontal rail, independent of other activity lists. */
-.strategy-version-list { display:flex; align-items:stretch; gap:12px; overflow-x:auto; overflow-y:hidden; padding:2px 2px 8px; margin:4px -2px 0; scroll-snap-type:x proximity; overscroll-behavior-inline:contain; scrollbar-width:thin; }
-.strategy-version-item { display:flex; flex:0 0 min(248px, 84%); flex-direction:column; min-width:0; min-height:112px; scroll-snap-align:start; }
+.strategy-version-list { display:flex; align-items:stretch; gap:12px; overflow-x:auto; overflow-y:hidden; padding:2px 2px 8px; margin:4px -2px 0; scroll-snap-type:x mandatory; scroll-padding-inline:2px; overscroll-behavior-inline:contain; scrollbar-width:thin; }
+/* Show one readable strategy card per rail viewport instead of clipping a second card. */
+.strategy-version-item { display:flex; flex:0 0 100%; width:100%; flex-direction:column; min-width:0; min-height:112px; scroll-snap-align:start; }
 .strategy-version-item .activity-body { width:100%; min-width:0; }
 .strategy-version-item .activity-title { display:flex; flex-wrap:wrap; align-items:flex-start; gap:6px; line-height:1.45; overflow-wrap:anywhere; word-break:break-word; }
 .strategy-version-item .activity-title .chip { margin-left:0 !important; flex:0 0 auto; }
@@ -2781,10 +2782,11 @@ html[data-theme="system"]:not(.theme-dark) {
 .source-item .activity-title { max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
 .portfolio-card { position: relative; min-width: 0; align-self: start; height: fit-content; }
 /* Keep every brand status pill in its own stable, single-line flex slot. */
-.brand-card-header { display:grid; grid-template-columns:minmax(0, 1fr) auto; align-items:center; gap:12px; min-width:0; }
+.brand-card-header { display:grid; grid-template-columns:minmax(0, 1fr) max-content; align-items:center; gap:12px; min-width:0; }
 .brand-card-copy { flex:1 1 0%; min-width:0; overflow-wrap:anywhere; }
-.brand-card-copy h3 { margin:0; overflow-wrap:anywhere; word-break:break-word; }
-.brand-card-status, .portfolio-drawer-status { flex:0 0 auto; flex-shrink:0; max-width:fit-content; white-space:nowrap; }
+.brand-card-copy h3 { margin:0; min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+.brand-card-copy .metric-label { min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+.brand-card-status, .portfolio-drawer-status { display:inline-flex; flex:0 0 auto; flex-shrink:0; width:max-content; max-width:100%; white-space:nowrap; }
 .brand-card-status { align-self:center; justify-self:end; line-height:1; min-height:26px; }
 .portfolio-drawer-status { align-self:center; }
 .portfolio-drawer { position: relative; z-index: 80; width: auto; }
