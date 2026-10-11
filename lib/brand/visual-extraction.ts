@@ -361,6 +361,15 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
     if (hex) add(hex);
   }
 
+  // Some design systems use named CSS colours directly in declarations rather
+  // than hex/functions. Parse whole values too; this remains declaration-based
+  // evidence and does not invent a palette from brand names.
+  const declaredColorProperty = /\\b(?:color|background(?:-color)?|border(?:-[a-z]+)?-color|fill|stroke)\\s*:\\s*([^;{}]+)/gi;
+  for (const declaration of cleaned.matchAll(declaredColorProperty)) {
+    const hex = parseCssColor((declaration[1] ?? '').trim());
+    if (hex) add(hex, 2, 'css-color-declaration');
+  }
+
   // Design systems use many variable naming conventions (e.g. --theme-primary,
   // --brand-primary, --color-accent, --action-color). Do not require one exact
   // token order before recognizing intentional palette variables.
