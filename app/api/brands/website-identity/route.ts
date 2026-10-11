@@ -329,34 +329,52 @@ function absoluteUrl(value: string | undefined, base: string): string | null {
 }
 
 async function fetchRenderedResearch(url: string): Promise<RenderedResearch | null> {
-  const key = env().JINA_API_KEY;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Math.min(env().RESEARCH_TIMEOUT_MS * 2, 20_000));
+  let source: URL;
   try {
-    const response = await fetch('https://r.jina.ai/' + url, {
-      signal: controller.signal,
-      headers: {
-        accept: 'text/plain',
-        ...(key ? { authorization: 'Bearer ' + key } : {}),
-      },
-    });
-    if (!response.ok) return null;
-    const text = (await response.text()).trim();
-    if (text.length < 180 || isRenderedReaderError(text)) return null;
-    const title = text
-      .split('\n')
-      .map((line) => line.trim())
-      .find((line) => line.startsWith('# '))
-      ?.slice(2)
-      .trim() || null;
-    return { title, text: text.slice(0, 50_000) };
+    source = assertPublicHttpUrl(url);
+    source.hash = '';
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
-}
 
+  // Keep reader recovery generic. Some public hosts behave differently when
+  // their page is fetched through an HTTPS- or HTTP-origin reader URL.
+  const targets = [source.toString()];
+  const alternateProtocol = new URL(source);
+  alternateProtocol.protocol = source.protocol === 'https:' ? 'http:' : 'https:';
+  if (!targets.includes(alternateProtocol.toString())) targets.push(alternateProtocol.toString());
+
+  const deadline = Date.now() + Math.min(Math.max(env().RESEARCH_TIMEOUT_MS, 6_000), 15_000);
+  for (const target of targets) {
+    const remaining = deadline - Date.now();
+    if (remaining < 1_000) break;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), remaining);
+    try {
+      const response = await fetch('https://r.jina.ai/' + target, {
+        signal: controller.signal,
+        headers: {
+          accept: 'text/plain',
+          ...(env().JINA_API_KEY ? { authorization: 'Bearer ' + env().JINA_API_KEY } : {}),
+        },
+      });
+      if (!response.ok) continue;
+      const text = (await response.text()).trim();
+      if (text.length < 180 || isRenderedReaderError(text)) continue;
+      const lines = text.split('\\n').map((line) => line.trim());
+      const title = lines.find((line) => line.startsWith('# '))?.slice(2).trim()
+        || lines.find((line) => /^title:\\s*\\S/i.test(line))?.replace(/^title:\\s*/i, '').trim()
+        || null;
+      return { title, text: text.slice(0, 50_000) };
+    } catch {
+      // Retry the same public page through the alternate scheme within the shared deadline.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
 function renderedResearchLinks(text: string, baseUrl: string): string[] {
   const found = new Set<string>();
   const add = (raw: string) => {
