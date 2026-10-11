@@ -143,7 +143,12 @@ export function BrandIntake({
       const response = await fetch(`/api/brands/website-identity?url=${encodeURIComponent(value)}`, { cache: 'no-store' });
       const body = await response.json().catch(() => null);
       if (response.status === 401) { window.location.href = '/login'; return; }
-      if (!response.ok || !body?.identity) throw new Error(body?.error || 'Could not read that website.');
+      if (!response.ok || !body?.identity) {
+        if (!body?.error && response.status >= 500) {
+          throw new Error('Website analysis hit a server-side timeout or temporary failure before enough public content could be recovered. Retry once, or enter a public About/Products page URL. No brand was created.');
+        }
+        throw new Error(body?.error || 'The website did not return enough readable public content to create a reliable Brand IQ.');
+      }
 
       const next = body.identity as IntakeIdentity;
       setIdentity(next);
