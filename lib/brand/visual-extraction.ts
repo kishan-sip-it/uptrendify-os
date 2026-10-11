@@ -369,7 +369,7 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
     if (name && value) variableValues.set(name, value);
   }
   const resolveCssColor = (rawValue: string): string | null => {
-    let value = rawValue.trim();
+    let value = rawValue.replace(/\\s*!important\\s*$/i, '').trim();
     for (let depth = 0; depth < 8; depth += 1) {
       const next = value.replace(/var\(\s*(--[a-z0-9_-]+)\s*(?:,\s*([^()]+))?\)/gi, (original, rawName: string, fallback?: string) => {
         return variableValues.get(rawName) ?? fallback?.trim() ?? original;
@@ -389,11 +389,17 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
 
   // Parse complete colour declarations as well as tokens. This captures named
   // CSS colours and values that reference custom properties.
-  const declaredColorProperty = /\b(?:color|background(?:-color)?|border(?:-[a-z]+)?-color|fill|stroke)\s*:\s*([^;{}]+)/gi;
+  const declaredColorProperty = /\b(?:color|background(?:-color)?|border(?:-[a-z]+)?(?:-color)?|outline(?:-color)?|text-decoration-color|caret-color|fill|stroke)\s*:\s*([^;{}]+)/gi;
   for (const declaration of cleaned.matchAll(declaredColorProperty)) {
     const value = (declaration[1] ?? '').trim();
     const hex = resolveCssColor(value);
     if (hex) add(hex, 2, 'css-color-declaration');
+    // Named colours may occur inside compound declarations such as
+    // "border: 1px solid tomato" rather than as the complete value.
+    for (const word of value.match(/[a-z]{3,20}/gi) ?? []) {
+      const named = BASIC_CSS_COLORS[word.toLowerCase()];
+      if (named) add(named, 2, 'css-color-declaration');
+    }
     for (const token of value.matchAll(COLOR_TOKEN)) {
       const tokenHex = resolveCssColor(token[0]);
       if (tokenHex) add(tokenHex, 1, 'css-color-declaration');
