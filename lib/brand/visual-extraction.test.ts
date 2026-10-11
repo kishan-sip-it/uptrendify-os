@@ -3,6 +3,8 @@ import {
   collectColors,
   collectJavaScriptDesignTokens,
   extractBrandIdentity,
+  isBlockedWebsiteResponse,
+  isRenderedReaderError,
   rankPalette,
   isNeutral,
   normalizeHex,
@@ -323,5 +325,40 @@ describe('logo identity confidence', () => {
     const html = '<html><head><title>Salesforce</title><meta property="og:title" content="Balaji Wafers promotion" /><script type="application/ld+json">' + JSON.stringify({ '@type': 'Organization', name: 'Salesforce' }) + '</script></head><body><h1>Salesforce</h1></body></html>';
     const identity = extractBrandIdentity(html, 'https://salesforce.com/');
     expect(identity.brandName).toBe('Salesforce');
+  });
+});
+
+
+describe('blocked website interstitial detection', () => {
+  it('detects Microsoft-style HTTP 200 blocked-request pages', () => {
+    expect(isBlockedWebsiteResponse('<html><head><title>Your request has been blocked. This could be due to several reasons.</title></head><body><main><h1>Your request has been blocked</h1></main></body></html>')).toBe(true);
+  });
+
+  it('does not classify a normal homepage as blocked', () => {
+    expect(isBlockedWebsiteResponse('<html><head><title>Microsoft</title></head><body><main><h1>Welcome to Microsoft</h1><p>Explore products and services.</p></main></body></html>')).toBe(false);
+  });
+});
+
+describe('complete company logo metadata', () => {
+  it('prefers a same-site full wordmark image over a symbol-only structured logo', () => {
+    const wordmark = 'https://www.ibm.com/content/dam/worldwide-content/creative-assets/s-migr/ul/g/18/f9/ibm_logo_pos_blue60_rgb.png/_jcr_content/renditions/cq5dam.web.1280.1280.jpeg';
+    const symbol = 'https://www.ibm.com/brand/experienceguides/developer/b1db1ae501d522a1a4b49613fe07c9f1/01_8-bar-positive.svg';
+    const html = `<html><head><title>IBM</title><meta property="og:site_name" content="IBM"/><meta property="og:image" content="${wordmark}"/><script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'Corporation', name: 'IBM', url: 'https://www.ibm.com/', logo: symbol })}</script></head><body><main><h1>IBM</h1><p>Global technology company.</p></main></body></html>`;
+    expect(extractBrandIdentity(html, 'https://www.ibm.com/us-en').logoUrl).toBe(wordmark);
+  });
+
+  it('does not promote generic social images to logos just because the filename contains logo', () => {
+    const html = '<html><head><title>Example</title><meta property="og:image" content="https://example.com/assets/social-logo-share-card.jpg"/></head><body><h1>Example</h1><p>Public company website with readable content.</p></body></html>';
+    expect(extractBrandIdentity(html, 'https://example.com/').logoUrl).toBeNull();
+  });
+});
+
+describe('rendered reader error detection', () => {
+  it('rejects a reader response that wraps an upstream 403 error page', () => {
+    expect(isRenderedReaderError('Title: fw_error_www\nURL Source: https://www.oracle.com/\nWarning: Target URL returned error 403: Forbidden\nThis site is experiencing technical difficulty.')).toBe(true);
+  });
+
+  it('does not reject real first-party page text', () => {
+    expect(isRenderedReaderError('Title: Microsoft\nURL Source: https://www.microsoft.com/\nMarkdown Content: Explore Microsoft products, services and solutions.')).toBe(false);
   });
 });
