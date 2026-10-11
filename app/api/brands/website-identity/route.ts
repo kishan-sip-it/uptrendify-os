@@ -560,7 +560,7 @@ function mergeExternalCss(
       !((cssBlocks.length > 0 || assetBlocks.length > 0 || manifestColors.length > 0 || rasterColors.length > 0 || scriptBlocks.length > 0) &&
         (warning.includes('inline stylesheet') || warning.includes('embedded stylesheet'))) &&
       !((cssBlocks.length > 0 || assetBlocks.length > 0 || manifestColors.length > 0 || rasterColors.length > 0 || scriptBlocks.length > 0) &&
-        mergedPalette.some((color) => color.role !== 'neutral') &&
+        (externalPalette.length > 0 || mergedPalette.some((color) => color.role !== 'neutral')) &&
         warning.includes('No usable colour declarations')),
     ),
   };
