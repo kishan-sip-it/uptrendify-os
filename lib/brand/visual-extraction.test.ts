@@ -69,6 +69,7 @@ describe('parseCssColor', () => {
     expect(parseCssColor('rgb(20 40 60 / 50%)')).toBe('#14283c');
     expect(parseCssColor('hsl(210 50% 40% / 25%)')).toBe('#336699');
     expect(parseCssColor('color(srgb 0.2 0.4 0.6)')).toBe('#336699');
+    expect(parseCssColor('color(display-p3 0.8 0.2 0.1)')).toMatch(/^#[0-9a-f]{6}$/);
     expect(parseCssColor('tomato')).toBe('#ff6347');
   });
 
