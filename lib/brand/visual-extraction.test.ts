@@ -83,7 +83,7 @@ describe('parseCssColor', () => {
 
   it('resolves CSS custom properties and named colours from declarations', () => {
     const sink = new Map<string, { count: number; sources: Set<string> }>();
-    const css = ':root { --brand-rgb: 220 20 40; --theme-primary: #dc1428; } .button-primary { color: rgb(var(--brand-rgb)); background-color: var(--theme-primary); border-color: tomato; }';
+    const css = ':root { --brand-rgb: 220 20 40; --theme-primary: #dc1428; } .button-primary { color: rgb(var(--brand-rgb)) !important; background-color: var(--theme-primary); border: 1px solid tomato; }';
     collectColors(css, 'external-stylesheet', sink);
     const palette = rankPalette(sink, 8);
     expect(palette.map((color) => color.hex)).toContain('#dc1428');
