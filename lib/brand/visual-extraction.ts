@@ -430,7 +430,18 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
       /^theme-(primary|secondary|accent|brand|link|action)([-_]|$)/i.test(name);
     if (!semanticName) continue;
     const hex = resolveCssColor((match[2] ?? '').trim());
-    if (hex) add(hex, 6, 'semantic-css');
+    if (!hex) continue;
+    // Preserve the intended role from the token name so a real --primary
+    // declaration outranks frequently repeated status colours, while explicit
+    // secondary/accent tokens remain available in the right order.
+    const roleSource =
+      /(^|[-_])primary([-_]|$)/i.test(name) ? 'semantic-primary-css' :
+      /(^|[-_])brand([-_]|$)/i.test(name) ? 'semantic-brand-css' :
+      /(^|[-_])secondary([-_]|$)/i.test(name) ? 'semantic-secondary-css' :
+      /(^|[-_])(accent|cta|link|action|highlight)([-_]|$)/i.test(name) ? 'semantic-accent-css' :
+      'semantic-css';
+    const weight = roleSource === 'semantic-primary-css' ? 9 : roleSource === 'semantic-brand-css' ? 7 : roleSource === 'semantic-secondary-css' ? 6 : 5;
+    add(hex, weight, roleSource);
   }
 
   // Selector-level evidence is shared by inline and external stylesheets.
@@ -521,13 +532,17 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     const saturation = saturationOf(hex);
     const luminance = relativeLuminance(hex);
     const sources = Array.from(entry.sources);
-    const semantic = sources.some((source) => source === 'semantic-css' || source === 'meta-theme-color' || source === 'manifest-theme-color');
+    const semanticPrimary = sources.includes('semantic-primary-css');
+    const semanticBrand = sources.includes('semantic-brand-css');
+    const semanticSecondary = sources.includes('semantic-secondary-css');
+    const semanticAccent = sources.includes('semantic-accent-css');
+    const semantic = sources.some((source) => source === 'semantic-css' || source.startsWith('semantic-') || source === 'meta-theme-color' || source === 'manifest-theme-color');
     const uiSignal = sources.some((source) => source === 'header-ui' || source === 'nav-ui' || source === 'primary-control' || source === 'link-accent');
     const logoSignal = sources.includes('logo-svg-color');
     const rasterLogoSignal = sources.includes('logo-raster-color');
     const scriptStyleSignal = sources.includes('js-style-tokens');
     const neutralPenalty = isNeutral(hex) ? 0.18 : 1;
-    const deliberateBoost = semantic ? 3.5 : uiSignal ? 2.5 : logoSignal ? 2.1 : rasterLogoSignal ? 1.9 : scriptStyleSignal ? 1.7 : 1;
+    const deliberateBoost = semanticPrimary ? 8 : semanticBrand ? 6.5 : semanticSecondary ? 5.2 : semanticAccent ? 4.4 : semantic ? 3.5 : uiSignal ? 2.5 : logoSignal ? 2.1 : rasterLogoSignal ? 1.9 : scriptStyleSignal ? 1.7 : 1;
     const sourceDiversity = 1 + Math.min(sources.length, 5) * 0.06;
     const prominence = round(
       Math.log2(1 + entry.count) *
