@@ -633,7 +633,6 @@ async function attachSourceFontAssets(
           if (!previous || rankFormat(format) > rankFormat(previous.format)) {
             candidates.set(key, { url: safe, ...(format ? { format } : {}), ...(weight ? { weight } : {}), ...(style ? { style } : {}) });
           }
-          break;
         } catch {
           // Ignore data URLs, private hosts, credentials and non-HTTP font sources.
         }
