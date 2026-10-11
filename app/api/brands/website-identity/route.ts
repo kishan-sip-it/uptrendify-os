@@ -924,7 +924,8 @@ export async function GET(request: Request) {
       }
     }
 
-    const cssBlocks = (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url)))).flat();
+    const cssResources = (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url)))).flat();
+    const cssBlocks = cssResources.map((resource) => resource.css);
     const svgUrls = [...new Set([identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons])]
       .filter((url): url is string => {
         if (typeof url !== 'string') return false;
@@ -944,6 +945,7 @@ export async function GET(request: Request) {
     const rasterColors = (await Promise.all(rasterUrls.map(fetchRasterColors))).flat();
 
     identity = mergeExternalCss(identity, cssBlocks, svgBlocks, manifestVisuals.colors, rasterColors, scriptBlocks);
+    identity = { ...identity, fonts: await attachSourceFontAssets(identity.fonts, cssResources) };
 
     const directLinks = baseHtml ? prioritizedLinks(baseHtml, baseUrl) : [];
     const readerLinks = renderedFallbackText ? renderedResearchLinks(renderedFallbackText, baseUrl) : [];
