@@ -115,9 +115,11 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .activity-list { display:grid; gap:12px; margin-top:4px; }
 /* Strategy version history is a compact horizontal rail, independent of other activity lists. */
 .strategy-version-list { display:flex; align-items:stretch; gap:12px; overflow-x:auto; overflow-y:hidden; padding:2px 2px 8px; margin:4px -2px 0; scroll-snap-type:x proximity; overscroll-behavior-inline:contain; scrollbar-width:thin; }
-.strategy-version-item { display:flex; flex:0 0 min(250px, 76vw); flex-direction:column; min-width:0; min-height:82px; scroll-snap-align:start; }
+.strategy-version-item { display:flex; flex:0 0 calc((100% - 12px) / 2); flex-direction:column; min-width:0; min-height:82px; scroll-snap-align:start; }
 .strategy-version-item .activity-body { width:100%; min-width:0; }
-.strategy-version-item .activity-title { overflow-wrap:anywhere; }
+.strategy-version-item .activity-title { display:flex; flex-wrap:wrap; align-items:flex-start; gap:4px 6px; overflow-wrap:anywhere; word-break:break-word; }
+.strategy-version-item .activity-title .chip { margin-left:0 !important; flex:0 0 auto; }
+.strategy-version-item .activity-meta .ui-status-badge { flex:0 0 auto; white-space:nowrap; }
 
 .activity-item { display:flex; gap:12px; align-items:flex-start; padding:11px 12px; border:1px solid var(--line); border-radius:12px; background:var(--surface-muted); }
 .activity-item:hover { border-color: rgba(183,148,246,.28); background:var(--surface-hover); }
@@ -2793,7 +2795,7 @@ html[data-theme="system"]:not(.theme-dark) {
 .portfolio-drawer-heading span { color: var(--text-muted); font-size: 11px; }
 .portfolio-drawer-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; align-content: start; gap: 6px; padding-right: 2px; }
 .portfolio-drawer-brand { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-card); color: var(--text); text-decoration: none; }
-.portfolio-drawer-brand .portfolio-drawer-copy { flex:1 1 0%; min-width:0; }
+.portfolio-drawer-brand .portfolio-drawer-brand-copy { flex:1 1 0%; min-width:0; }
 .portfolio-drawer-arrow { flex:0 0 auto; margin-left:2px; color:var(--muted); }
 .portfolio-drawer-brand:hover { border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); background: var(--surface-hover); }
 .portfolio-drawer-brand-copy { display: grid; flex: 1 1 auto; gap: 3px; min-width: 0; }
