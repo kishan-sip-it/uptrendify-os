@@ -284,31 +284,44 @@ async function fetchRasterColors(url: string): Promise<RasterColorSample[]> {
 }
 
 async function fetchCss(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  let safe: URL;
   try {
-    const safe = assertPublicHttpUrl(url);
+    safe = assertPublicHttpUrl(url);
     await assertResolvablePublicHost(safe.hostname);
-    const response = await fetchPublicHttp(safe.toString(), {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'text/css,*/*;q=0.1' },
-    });
-    if (!response.ok) return '';
-    const type = (response.headers.get('content-type') || '').toLowerCase();
-    if (type.includes('text/html') || type.includes('application/json') || type.includes('javascript') || type.startsWith('image/')) return '';
-    const bounded = await readBoundedBody(response, 350_000);
-    const content = bounded.content;
-    // Some hosts serve declared stylesheets as text/plain or omit content-type
-    // on hashed CSS routes. Validate the response body instead of discarding it.
-    const looksLikeCss = /(?:--[\w-]+\s*:|(?:^|[;{\s])(?:color|background(?:-color)?|font-family|@import)\s*:?)|[^{}]+\{[^{}]*\}/i.test(content);
-    if (!type.includes('css') && !/\.css(?:[?#]|$)/i.test(url) && !looksLikeCss) return '';
-    return content;
   } catch {
     return '';
-  } finally {
-    clearTimeout(timeout);
   }
+
+  // Some public CDNs serve a block/error interstitial to the crawler identity.
+  // Retry only that stylesheet with a standard browser user-agent, keeping each
+  // attempt bounded and accepting only real CSS rather than an HTML error page.
+  const agents = [...new Set([env().RESEARCH_USER_AGENT, BROWSER_USER_AGENT])];
+  for (const userAgent of agents) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    try {
+      const response = await fetchPublicHttp(safe.toString(), {
+        signal: controller.signal,
+        redirect: 'follow',
+        headers: { 'user-agent': userAgent, accept: 'text/css,*/*;q=0.1' },
+      });
+      if (!response.ok) continue;
+      const type = (response.headers.get('content-type') || '').toLowerCase();
+      if (type.includes('text/html') || type.includes('application/json') || type.includes('javascript') || type.startsWith('image/')) continue;
+      const bounded = await readBoundedBody(response, 350_000);
+      const content = bounded.content;
+      // Some hosts serve declared stylesheets as text/plain or omit content-type
+      // on hashed CSS routes. Validate response content before accepting it.
+      const looksLikeCss = /(?:--[\w-]+\s*:|(?:^|[;{\s])(?:color|background(?:-color)?|font-family|@import)\s*:?)|[^{}]+\{[^{}]*\}/i.test(content);
+      if (!content.trim() || (!type.includes('css') && !/\.css(?:[?#]|$)/i.test(safe.toString()) && !looksLikeCss)) continue;
+      return content;
+    } catch {
+      // A failed request can be retried once with the alternate user-agent.
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return '';
 }
 
 
