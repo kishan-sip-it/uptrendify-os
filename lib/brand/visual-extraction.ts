@@ -271,6 +271,31 @@ export function parseCssColor(raw: string | null | undefined): string | null {
         const values = parts.slice(1, 4).map((part) => clamp(Number.parseFloat(part), 0, 1) * 255);
         if (values.every(Number.isFinite)) return rgbToHex(values[0]!, values[1]!, values[2]!);
       }
+      if (parts.length >= 4 && parts[0] === 'display-p3') {
+        const component = (part: string) => {
+          const number = Number.parseFloat(part);
+          const normalized = part.endsWith('%') ? number / 100 : number;
+          return Number.isFinite(normalized) ? clamp(normalized, 0, 1) : null;
+        };
+        const encoded = parts.slice(1, 4).map(component);
+        if (encoded.some((part) => part === null)) return null;
+        const linearize = (channel: number) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+        const [r, g, b] = encoded.map((channel) => linearize(channel!));
+        // Convert Display-P3 through D65 XYZ to sRGB, then gamut-map for CSS hex.
+        const x = 0.4865709486 * r! + 0.2656676932 * g! + 0.1982172852 * b!;
+        const y = 0.2289745641 * r! + 0.6917385218 * g! + 0.0792869141 * b!;
+        const z = 0.0451133819 * g! + 1.0439443690 * b!;
+        const linearSrgb = [
+          3.2409699419 * x - 1.5373831776 * y - 0.4986107603 * z,
+          -0.9692436363 * x + 1.8759675015 * y + 0.0415550574 * z,
+          0.0556300797 * x - 0.2039769589 * y + 1.0569715142 * z,
+        ];
+        const encodedSrgb = linearSrgb.map((channel) => {
+          const mapped = clamp(channel, 0, 1);
+          return (mapped <= 0.0031308 ? 12.92 * mapped : 1.055 * mapped ** (1 / 2.4) - 0.055) * 255;
+        });
+        if (encodedSrgb.every(Number.isFinite)) return rgbToHex(encodedSrgb[0]!, encodedSrgb[1]!, encodedSrgb[2]!);
+      }
     }
   }
 
