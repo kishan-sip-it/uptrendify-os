@@ -28,9 +28,8 @@ export function optionalResearchPageLimit(elapsedMs: number): number {
 }
 
 export function aiEnrichmentBudgetMs(elapsedMs: number): number {
-  // AI is required Brand IQ work, not optional visual enrichment. Allow it to
-  // start late when needed, but stop by 38s so the route can still return JSON
-  // before Vercel's 45s hard timeout.
-  if (!Number.isFinite(elapsedMs) || elapsedMs >= 38_000) return 0;
-  return Math.max(0, Math.min(8_000, 38_000 - Math.max(0, elapsedMs)));
+  // Begin AI as soon as evidence pages are ready and let it run while optional
+  // visual assets are inspected. Reserve 11 seconds before Vercel's 45s limit.
+  if (!Number.isFinite(elapsedMs) || elapsedMs >= 34_000) return 0;
+  return Math.max(0, Math.min(18_000, 34_000 - Math.max(0, elapsedMs)));
 }
