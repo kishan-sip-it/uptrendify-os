@@ -26,9 +26,9 @@ export type DfdDiagram = {
 export const DFD_LEVELS: Record<DfdLevel, DfdDiagram> = {
   0: {
     level: 0,
-    title: 'Context diagram',
-    description: 'One system boundary: who exchanges information with UpTrendifyOS, and what crosses that boundary.',
-    scope: 'System context · external entities · high-level data contracts',
+    title: 'Platform overview',
+    description: 'The people, public sources, AI services and saved workspace data around the application workflow.',
+    scope: 'Platform inputs · services · saved results',
     nodes: [
       { id: 'agency', label: 'Agency team', subtitle: 'People', kind: 'external', position: [-7.4, 0, 0], detail: 'Agency users create client brands, request research, review suggested facts, approve decisions and request strategies or content.' },
       { id: 'platform', label: 'UpTrendifyOS', subtitle: 'Core platform', kind: 'system', position: [0, 0, 0], detail: 'The platform validates requests, scans public websites, runs research, prepares Brand Brain suggestions and generates downstream strategy and campaign work.' },
@@ -52,9 +52,9 @@ export const DFD_LEVELS: Record<DfdLevel, DfdDiagram> = {
   },
   1: {
     level: 1,
-    title: 'Application processes',
-    description: 'The major processes and data stores that turn a client request into saved intelligence and approved deliverables.',
-    scope: 'Major processes · data stores · cross-process flows',
+    title: 'End-to-end workflow',
+    description: 'The real product journey from brand setup and website scanning through research, human review, strategy and delivery.',
+    scope: 'Brand setup · evidence · decisions · deliverables',
     nodes: [
       { id: 'user', label: 'Agency team', subtitle: 'External entity', kind: 'external', position: [-8.0, 0.0, 0], detail: 'Starts work, supplies a public website, reviews research and suggestions, approves facts and requests downstream output.' },
       { id: 'site', label: 'Client website', subtitle: 'First-party source', kind: 'external', position: [-8.0, 3.8, 0], detail: 'The source of public pages and public brand assets. Fetches are bounded and should not be treated as successful when they return a security interstitial.' },
@@ -102,9 +102,9 @@ export const DFD_LEVELS: Record<DfdLevel, DfdDiagram> = {
   },
   2: {
     level: 2,
-    title: 'Website identity scan',
-    description: 'Inside P2: URL safety, retrieval, DOM/assets, deterministic visual evidence, AI enrichment and additive persistence.',
-    scope: 'Process decomposition · validation gates · failure recovery',
+    title: 'Website scan detail',
+    description: 'How the website scanner validates a public URL, reads page evidence, ranks visual identity, enriches supported fields and saves results without discarding useful existing data.',
+    scope: 'Safe URL · retrieval · extraction · validation · merge',
     nodes: [
       { id: 'requester', label: 'Brand intake', subtitle: 'Input URL', kind: 'external', position: [-8.0, 0.0, 0], detail: 'Receives the website URL for a brand. The scan should be explicit when fields could not be observed, instead of fabricating identity values.' },
       { id: 'validate', label: 'Validate URL', subtitle: 'P2.1 · SSRF / redirects', kind: 'process', position: [-5.1, 0.0, 0], detail: 'Normalizes the public URL, applies protocol/host/IP and redirect safety policy, and rejects unsafe internal destinations before outbound requests.' },
