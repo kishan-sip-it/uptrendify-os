@@ -7,6 +7,10 @@ export interface GenerateInput {
   temperature?: number;
   /** Enable Groq's server-side browser search for a plain-text research pass. */
   webSearch?: boolean;
+  /** Abort a live request when its caller's wall-clock budget expires. */
+  signal?: AbortSignal;
+  /** Avoid provider-specific retry sleeps when a user-facing request has a hard deadline. */
+  fastFail?: boolean;
 }
 
 export interface Usage {
