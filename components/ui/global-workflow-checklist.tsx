@@ -418,46 +418,41 @@ export function GlobalWorkflowChecklist() {
     return !done && !task.locked;
   });
 
-  async function refreshCurrentChecklist() {
+  async function refreshWholeChecklist() {
     if (refreshingChecklist) return;
     setRefreshingChecklist(true);
-    setControlMessage('Refreshing live checklist status…');
+    setControlMessage('Refreshing the complete live checklist…');
     try {
       const result = await refreshRef.current();
       const time = new Date().toLocaleTimeString();
       setControlMessage(result.successful
-        ? 'This checklist was refreshed at ' + time + '.'
-        : 'The refresh could not reach live workflow data. Automatic retries remain enabled.');
+        ? 'Whole checklist status refreshed at ' + time + '.'
+        : 'Live workflow data could not be reached. Automatic retries remain enabled.');
     } catch {
-      setControlMessage('The refresh failed. Automatic retries remain enabled.');
+      setControlMessage('The checklist refresh failed. Automatic retries remain enabled.');
     } finally {
       setRefreshingChecklist(false);
     }
   }
 
-  async function resetAllChecklistProgress() {
+  async function resetCurrentChecklistProgress() {
     if (refreshingChecklist) return;
     try {
-      const keysToRemove: string[] = [];
-      for (let index = 0; index < window.sessionStorage.length; index += 1) {
-        const key = window.sessionStorage.key(index);
-        if (key?.startsWith(CHECKLIST_STORAGE_PREFIX)) keysToRemove.push(key);
-      }
-      keysToRemove.forEach((key) => window.sessionStorage.removeItem(key));
+      window.sessionStorage.removeItem(storageKey);
     } catch {
       // Manual checklist state is best-effort and must never block the workflow.
     }
     setCompleted({});
     setRefreshingChecklist(true);
-    setControlMessage('Manual checklist progress reset. Refreshing live status…');
+    setControlMessage('Manual progress for this checklist reset. Refreshing live status…');
     try {
       const result = await refreshRef.current();
       const time = new Date().toLocaleTimeString();
       setControlMessage(result.successful
-        ? 'Manual progress reset across pages; live status refreshed at ' + time + '.'
-        : 'Manual progress reset across pages. Live status is unavailable; automatic retries remain enabled.');
+        ? 'This checklist reset; live status refreshed at ' + time + '.'
+        : 'This checklist reset. Live status is unavailable; automatic retries remain enabled.');
     } catch {
-      setControlMessage('Manual progress reset across pages. Live status refresh failed; automatic retries remain enabled.');
+      setControlMessage('This checklist reset. Live status refresh failed; automatic retries remain enabled.');
     } finally {
       setRefreshingChecklist(false);
     }
@@ -604,11 +599,11 @@ export function GlobalWorkflowChecklist() {
             {controlMessage ? <div className="contextual-workflow-sync" role="status" aria-live="polite">{controlMessage}</div> : null}
           </div>
           <div className="contextual-workflow-controls">
-            <button type="button" className="contextual-workflow-control" onClick={() => void refreshCurrentChecklist()} disabled={refreshingChecklist} aria-label="Refresh this checklist from live workflow data" title="Refresh this checklist">
-              <RefreshCw size={14} className={refreshingChecklist ? 'spin' : undefined} />
-            </button>
-            <button type="button" className="contextual-workflow-control" onClick={() => void resetAllChecklistProgress()} disabled={refreshingChecklist} aria-label="Reset manual checklist progress across all pages" title="Reset all manual checklist progress">
+            <button type="button" className="contextual-workflow-control" onClick={() => void resetCurrentChecklistProgress()} disabled={refreshingChecklist} aria-label="Reset manual progress for this checklist" title="Reset this checklist">
               <RotateCcw size={14} />
+            </button>
+            <button type="button" className="contextual-workflow-control" onClick={() => void refreshWholeChecklist()} disabled={refreshingChecklist} aria-label="Refresh the complete live workflow checklist" title="Refresh whole checklist">
+              <RefreshCw size={14} className={refreshingChecklist ? 'spin' : undefined} />
             </button>
           </div>
         </div>
