@@ -118,7 +118,7 @@ export function parseVisualIdentity(raw: unknown): BrandVisualIdentity {
         .filter((f) => typeof f.family === 'string')
         .map((f) => ({
           family: f.family as string,
-          source: typeof f.source === 'string' ? f.source : 'css-declaration',
+          source: f.source === 'google-fonts' || f.source === 'css-declaration' || f.source === 'theme-font' ? f.source : 'css-declaration',
           evidence: typeof f.evidence === 'string' ? f.evidence : '',
           ...(typeof f.fontAssetUrl === 'string' && f.fontAssetUrl.trim() ? { fontAssetUrl: f.fontAssetUrl.trim() } : {}),
           ...(['woff2', 'woff', 'opentype', 'truetype'].includes(String(f.fontAssetFormat)) ? { fontAssetFormat: f.fontAssetFormat as ExtractedIdentity['fonts'][number]['fontAssetFormat'] } : {}),
