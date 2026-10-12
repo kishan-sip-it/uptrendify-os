@@ -86,7 +86,7 @@ export function createOpenAiCompatibleProvider(
     try {
       return await send(model);
     } catch (error) {
-      if (id !== 'groq' || !(error instanceof AiProviderError) || error.status !== 429) {
+      if (!id.startsWith('groq') || !(error instanceof AiProviderError) || error.status !== 429) {
         throw error;
       }
 
@@ -125,8 +125,8 @@ export function createOpenAiCompatibleProvider(
   };
 }
 
-export function createGroqProvider(apiKey: string | null, defaultModel: string): AiProvider {
-  return createOpenAiCompatibleProvider('groq', 'https://api.groq.com/openai/v1', apiKey, defaultModel);
+export function createGroqProvider(apiKey: string | null, defaultModel: string, providerId = 'groq'): AiProvider {
+  return createOpenAiCompatibleProvider(providerId, 'https://api.groq.com/openai/v1', apiKey, defaultModel);
 }
 
 export function createOpenAiProvider(apiKey: string | null, defaultModel: string): AiProvider {
