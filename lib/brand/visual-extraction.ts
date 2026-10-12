@@ -809,7 +809,8 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     // the page header. A platform's own site is exempt from this cross-brand
     // guard so Facebook, LinkedIn, etc. can still identify their own websites.
     const rootIsSocialPlatform = /^(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter|x)$/i.test(rootToken);
-    const socialAssetHint = /(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter|x-twitter|social[-_ ]?(?:icon|logo|link)|(?:icon|logo)[-_ ]?(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter))/i.test(path + ' ' + alt + ' ' + classes);
+    const socialAssetHost = (() => { try { return new URL(url).hostname.toLowerCase(); } catch { return ''; } })();
+    const socialAssetHint = /(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter|x-twitter|social[-_ ]?(?:icon|logo|link)|(?:icon|logo)[-_ ]?(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter))/i.test(path + ' ' + socialAssetHost + ' ' + alt + ' ' + classes);
     const linksToExternalSocialProfile = Boolean(href && !sameSiteUrl(base, href) && (() => {
       try {
         const linkedHost = new URL(href).hostname.toLowerCase().replace(/^www\./, '');
