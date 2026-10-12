@@ -294,7 +294,7 @@ describe('crawlBrand', () => {
         );
       }
       return new Response(
-        'Warning: Target URL returned error 403\\n' + 'The requested page is blocked by an upstream security service. '.repeat(8),
+        'Warning: Target URL returned error 403' + String.fromCharCode(10) + 'The requested page is blocked by an upstream security service. '.repeat(8),
         { status: 200, headers: { 'content-type': 'text/plain' } },
       );
     }));
