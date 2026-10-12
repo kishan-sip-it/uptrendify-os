@@ -101,6 +101,11 @@ function rgbToHex(r: number, g: number, b: number): string {
  * Detects anti-bot/error interstitials that often arrive with HTTP 200.
  * They are not valid first-party evidence and should trigger the reader fallback.
  */
+/** Reject a scan only when neither readable text nor trustworthy visual identity was recovered. */
+export function shouldRejectInsufficientWebsiteEvidence(textLength: number, hasVisualEvidence: boolean): boolean {
+  return textLength < 180 && !hasVisualEvidence;
+}
+
 export function isBlockedWebsiteResponse(html: string): boolean {
   const $ = cheerio.load(html);
   const title = $('title').first().text().replace(/\s+/g, ' ').trim();
