@@ -63,16 +63,19 @@ export async function runWithProviderFailover<T>(
   providers: AiProvider[],
   run: (provider: AiProvider) => Promise<T>,
   onFailover?: (failed: AiProvider, next: AiProvider, error: unknown) => Promise<void> | void,
+  signal?: AbortSignal,
 ): Promise<{ result: T; provider: AiProvider }> {
   let lastError: unknown = null;
 
   for (let index = 0; index < providers.length; index += 1) {
+    if (signal?.aborted) throw new Error('AI provider run was aborted by its time budget');
     const provider = providers[index]!;
     try {
       const result = await run(provider);
       return { result, provider };
     } catch (error) {
       lastError = error;
+      if (signal?.aborted) throw error;
       const next = providers[index + 1];
       if (!next || !shouldFailoverAiProvider(error)) throw error;
       await onFailover?.(provider, next, error);
