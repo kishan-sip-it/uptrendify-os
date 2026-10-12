@@ -430,8 +430,17 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
                 accept: 'text/html,application/xhtml+xml',
               },
             });
-            if (browserResponse.ok || REDIRECT_STATUSES.has(browserResponse.status)) {
+            if (REDIRECT_STATUSES.has(browserResponse.status)) {
               response = browserResponse;
+            } else if (browserResponse.ok) {
+              const browserType = browserResponse.headers.get('content-type') || '';
+              if (browserType.includes('text/html') || browserType.includes('application/xhtml+xml')) {
+                const probe = await readBoundedBody(browserResponse.clone(), Math.min(e.MAX_RESEARCH_BYTES, 100_000));
+                // Some bot-protection systems return an HTTP-200 interstitial to
+                // browsers too. Keep the original blocked response so the normal
+                // rendered-reader fallback runs instead of saving that interstitial.
+                if (!isBlockedWebsiteResponse(probe.content)) response = browserResponse;
+              }
             }
           } catch {
             // Preserve the original response and continue to the rendered-reader fallback.
