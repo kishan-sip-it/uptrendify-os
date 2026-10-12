@@ -39,11 +39,11 @@ export async function postJson(
     if (!response.ok) {
       const detail = data?.error?.message ?? data?.error ?? raw.slice(0, 200);
       const retryAfterHeader = response.headers.get('retry-after');
-      const retryAfterMs = retryAfterHeader && /^\\d+(?:\\.\\d+)?$/.test(retryAfterHeader)
+      const retryAfterMs = retryAfterHeader && /^\d+(?:\\.\d+)?$/.test(retryAfterHeader)
         ? Math.ceil(Number(retryAfterHeader) * 1000)
         : undefined;
       const retryAfterText = typeof detail === 'string'
-        ? detail.match(/(?:try again|retry)(?: in)?\\s+(\\d+(?:\\.\\d+)?)\\s*(ms|s|sec|secs|seconds)?/i)
+        ? detail.match(/(?:try again|retry)(?: in)?\s+(\d+(?:\\.\d+)?)\s*(ms|s|sec|secs|seconds)?/i)
         : null;
       const retryAfterFromBodyMs = retryAfterText
         ? Number(retryAfterText[1]) * (retryAfterText[2]?.toLowerCase() === 'ms' ? 1 : 1000)
