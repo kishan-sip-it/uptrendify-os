@@ -6,6 +6,7 @@ import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readB
 import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, extractDeclaredFonts, rankExtractedFonts, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, isBlockedWebsiteResponse, isRenderedReaderError, shouldRejectInsufficientWebsiteEvidence, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { extractRasterPalette, type RasterColorSample } from '@/lib/brand/raster-color-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
+import { AiProviderError } from '@/lib/ai/types';
 import { buildEvidenceContext, extractBrandIntelligence, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
 import { brandNameFromWebsiteUrl, normalizeWebsiteHostname } from '@/lib/brand/website-url';
 import { aiEnrichmentBudgetMs, optionalAssetBudgetMs, optionalResearchPageLimit, shouldRetryHomepageForVisuals } from '@/lib/brand/website-analysis-budget';
@@ -1089,16 +1090,41 @@ export async function GET(request: Request) {
             if (aiBudgetMs <= 0) {
               aiWarnings.push('AI enrichment could not start because public-page recovery used the scan deadline.');
             } else {
+              const perProviderBudgetMs = providers.length > 1 ? Math.min(9_000, aiBudgetMs) : aiBudgetMs;
               const extractionRun = await withTimeout(
                 runWithProviderFailover(
                   providers,
-                  (provider) => extractBrandIntelligence(provider, evidence, undefined, {
-                    signal: aiController.signal,
-                    fastFail: true,
-                    maxEvidenceChars: 10_000,
-                    maxSources: 7,
-                    maxTokens: 2_200,
-                  }),
+                  async (provider) => {
+                    const providerController = new AbortController();
+                    const abortWithScan = () => providerController.abort(aiController.signal.reason);
+                    if (aiController.signal.aborted) providerController.abort(aiController.signal.reason);
+                    else aiController.signal.addEventListener('abort', abortWithScan, { once: true });
+
+                    const providerTimeoutMessage = `AI provider ${provider.id} exceeded its allocated website-enrichment budget`;
+                    try {
+                      return await withTimeout(
+                        extractBrandIntelligence(provider, evidence, undefined, {
+                          signal: providerController.signal,
+                          fastFail: true,
+                          maxEvidenceChars: 10_000,
+                          maxSources: 7,
+                          maxTokens: 2_200,
+                        }),
+                        perProviderBudgetMs,
+                        providerTimeoutMessage,
+                        () => providerController.abort(new Error(providerTimeoutMessage)),
+                      ).catch((error: unknown) => {
+                        // A provider-local timeout is retryable by the registry.
+                        // A scan-wide timeout must stop all fallback attempts.
+                        if (!aiController.signal.aborted && error instanceof Error && error.message === providerTimeoutMessage) {
+                          throw new AiProviderError(provider.id, providerTimeoutMessage, 504);
+                        }
+                        throw error;
+                      });
+                    } finally {
+                      aiController.signal.removeEventListener('abort', abortWithScan);
+                    }
+                  },
                   (failed, next) => {
                     aiWarnings.push(`AI enrichment switched from ${failed.id} to ${next.id} after a transient provider limit or availability error.`);
                   },
