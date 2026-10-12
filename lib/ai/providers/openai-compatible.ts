@@ -86,31 +86,31 @@ export function createOpenAiCompatibleProvider(
     try {
       return await send(model);
     } catch (error) {
-      if (id !== 'groq' || !(error instanceof AiProviderError) || error.status !== 429 || input.fastFail) {
+      if (id !== 'groq' || !(error instanceof AiProviderError) || error.status !== 429) {
         throw error;
       }
 
       // A separate Groq model can have available TPM even when 120B is
-      // throttled. Preserve enough completion budget for schema-valid outputs;
-      // the previous flat 1,200-token cap could truncate strategy JSON.
+      // throttled. Try it immediately in latency-sensitive website scans.
       if (model === 'openai/gpt-oss-120b') {
         const fallbackTokens = groqFallbackTokenBudget(input);
         try {
           return await send('openai/gpt-oss-20b', fallbackTokens);
         } catch (fallbackError) {
-          // The 20B model shares the on-demand organization quota in many
-          // accounts. If it is throttled too, honor Retry-After and make one
-          // bounded second attempt rather than failing immediately.
-          if (fallbackError instanceof AiProviderError && fallbackError.status === 429) {
-            await waitForGroqRateLimit(fallbackError);
-            return send('openai/gpt-oss-20b', fallbackTokens);
+          if (!(fallbackError instanceof AiProviderError) || fallbackError.status !== 429) {
+            throw fallbackError;
           }
-          throw fallbackError;
+          // Interactive scans must not sleep through their entire request
+          // deadline. Non-interactive AI jobs retain the existing retry policy.
+          if (input.fastFail) throw fallbackError;
+          await waitForGroqRateLimit(fallbackError);
+          return send('openai/gpt-oss-20b', fallbackTokens);
         }
       }
 
-      // If the configured model is already 20B (or another Groq model),
-      // wait for its actual retry window and retry it once.
+      // If this request has a hard user-facing deadline, let provider failover
+      // happen now rather than sleeping for a long Retry-After interval.
+      if (input.fastFail) throw error;
       await waitForGroqRateLimit(error);
       return send(model);
     }
