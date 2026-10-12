@@ -178,12 +178,14 @@ export function GlobalWorkflowChecklist() {
   const [syncState, setSyncState] = useState<'checking' | 'live' | 'offline'>('checking');
   const [checklistOpen, setChecklistOpen] = useState(false);
   const checklistToggleRef = useRef<HTMLButtonElement | null>(null);
-  const checklistCloseRef = useRef<HTMLButtonElement | null>(null);
+  const [refreshingChecklist, setRefreshingChecklist] = useState(false);
+  const [controlMessage, setControlMessage] = useState<string | null>(null);
   const closeChecklist = useCallback(() => {
     setChecklistOpen(false);
     window.requestAnimationFrame(() => checklistToggleRef.current?.focus());
   }, []);
-  const refreshRef = useRef<() => Promise<boolean>>(async () => false);
+  type RefreshResult = { active: boolean; successful: boolean };
+  const refreshRef = useRef<() => Promise<RefreshResult>>(async () => ({ active: false, successful: false }));
   const brandId = pathname.match(/^\/brands\/([^/]+)/)?.[1] ?? null;
   const contentIdMatch = pathname.match(/^\/brands\/[^/]+\/content\/([^/]+)$/);
   const contentId = contentIdMatch?.[1] && contentIdMatch[1] !== 'new' ? contentIdMatch[1] : null;
@@ -203,7 +205,6 @@ export function GlobalWorkflowChecklist() {
       }
     };
     document.addEventListener('keydown', onKeyDown);
-    checklistCloseRef.current?.focus();
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [checklistOpen, closeChecklist, pathname]);
 
@@ -240,7 +241,7 @@ export function GlobalWorkflowChecklist() {
     setSyncState('checking');
   }, [pathname, brandId, contentId, campaignId]);
 
-  const refreshChecklistData = useCallback(async (): Promise<boolean> => {
+  const refreshChecklistData = useCallback(async (): Promise<RefreshResult> => {
     const requests: Promise<void>[] = [];
     let active = false;
     let successfulReads = 0;
@@ -328,7 +329,7 @@ export function GlobalWorkflowChecklist() {
 
     await Promise.all(requests);
     setSyncState(successfulReads > 0 ? 'live' : 'offline');
-    return active;
+    return { active, successful: successfulReads > 0 };
   }, [brandId, campaignId, contentId, pathname]);
 
   useEffect(() => {
@@ -345,17 +346,17 @@ export function GlobalWorkflowChecklist() {
         if (!stopped) timer = window.setTimeout(tick, 10000);
         return;
       }
-      const hasActiveWork = await refreshRef.current();
+      const result = await refreshRef.current();
       if (stopped) return;
-      timer = window.setTimeout(tick, hasActiveWork ? 2400 : 6000);
+      timer = window.setTimeout(tick, result.active ? 2400 : 6000);
     };
 
     const refreshAfterInteraction = () => {
       if (stopped) return;
       if (timer !== null) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
-        void refreshRef.current().then((hasActiveWork) => {
-          if (!stopped) timer = window.setTimeout(tick, hasActiveWork ? 2400 : 6000);
+        void refreshRef.current().then((result) => {
+          if (!stopped) timer = window.setTimeout(tick, result.active ? 2400 : 6000);
         });
       }, 450);
     };
@@ -417,13 +418,25 @@ export function GlobalWorkflowChecklist() {
     return !done && !task.locked;
   });
 
-  function restartChecklist() {
-    try { window.sessionStorage.removeItem(storageKey); } catch { /* best effort */ }
-    setCompleted({});
-    void refreshRef.current();
+  async function refreshCurrentChecklist() {
+    if (refreshingChecklist) return;
+    setRefreshingChecklist(true);
+    setControlMessage('Refreshing live checklist status…');
+    try {
+      const result = await refreshRef.current();
+      const time = new Date().toLocaleTimeString();
+      setControlMessage(result.successful
+        ? 'This checklist was refreshed at ' + time + '.'
+        : 'The refresh could not reach live workflow data. Automatic retries remain enabled.');
+    } catch {
+      setControlMessage('The refresh failed. Automatic retries remain enabled.');
+    } finally {
+      setRefreshingChecklist(false);
+    }
   }
 
-  function refreshAllChecklists() {
+  async function resetAllChecklistProgress() {
+    if (refreshingChecklist) return;
     try {
       const keysToRemove: string[] = [];
       for (let index = 0; index < window.sessionStorage.length; index += 1) {
@@ -432,10 +445,22 @@ export function GlobalWorkflowChecklist() {
       }
       keysToRemove.forEach((key) => window.sessionStorage.removeItem(key));
     } catch {
-      // Best effort: checklist state is client-only and must never block the workflow.
+      // Manual checklist state is best-effort and must never block the workflow.
     }
     setCompleted({});
-    void refreshRef.current();
+    setRefreshingChecklist(true);
+    setControlMessage('Manual checklist progress reset. Refreshing live status…');
+    try {
+      const result = await refreshRef.current();
+      const time = new Date().toLocaleTimeString();
+      setControlMessage(result.successful
+        ? 'Manual progress reset across pages; live status refreshed at ' + time + '.'
+        : 'Manual progress reset across pages. Live status is unavailable; automatic retries remain enabled.');
+    } catch {
+      setControlMessage('Manual progress reset across pages. Live status refresh failed; automatic retries remain enabled.');
+    } finally {
+      setRefreshingChecklist(false);
+    }
   }
 
   return (
@@ -460,9 +485,7 @@ export function GlobalWorkflowChecklist() {
           box-shadow: 0 18px 50px rgba(0,0,0,.2);
           backdrop-filter: blur(14px);
         }
-        .contextual-workflow-close,
         .contextual-workflow-toggle { display: none; }
-        .contextual-workflow-close:focus-visible,
         .contextual-workflow-toggle:focus-visible {
           outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
           outline-offset: 3px;
@@ -545,7 +568,6 @@ export function GlobalWorkflowChecklist() {
             bottom: calc(16px + env(safe-area-inset-bottom, 0px));
             z-index: 35;
           }
-          .contextual-workflow-close { display: grid; }
         }
         @media (max-width: 720px) {
           body:has(.contextual-workflow-checklist) .shell > .main { padding-right: 14px !important; }
@@ -579,16 +601,14 @@ export function GlobalWorkflowChecklist() {
             <div className={'contextual-workflow-sync is-' + syncState} role="status" aria-live="polite">
               {syncState === 'live' ? 'Synced with live workflow status' : syncState === 'offline' ? 'Live status unavailable · retrying automatically' : 'Checking live workflow status…'}
             </div>
+            {controlMessage ? <div className="contextual-workflow-sync" role="status" aria-live="polite">{controlMessage}</div> : null}
           </div>
           <div className="contextual-workflow-controls">
-            <button ref={checklistCloseRef} type="button" className="contextual-workflow-control contextual-workflow-close" onClick={closeChecklist} aria-label="Close workflow checklist" title="Close checklist">
-              <X size={14} />
+            <button type="button" className="contextual-workflow-control" onClick={() => void refreshCurrentChecklist()} disabled={refreshingChecklist} aria-label="Refresh this checklist from live workflow data" title="Refresh this checklist">
+              <RefreshCw size={14} className={refreshingChecklist ? 'spin' : undefined} />
             </button>
-            <button type="button" className="contextual-workflow-control" onClick={restartChecklist} aria-label="Reset manually tracked checklist steps" title="Reset manually tracked steps">
+            <button type="button" className="contextual-workflow-control" onClick={() => void resetAllChecklistProgress()} disabled={refreshingChecklist} aria-label="Reset manual checklist progress across all pages" title="Reset all manual checklist progress">
               <RotateCcw size={14} />
-            </button>
-            <button type="button" className="contextual-workflow-control" onClick={refreshAllChecklists} aria-label="Refresh workflow status and reset manual steps" title="Refresh workflow status">
-              <RefreshCw size={14} />
             </button>
           </div>
         </div>
