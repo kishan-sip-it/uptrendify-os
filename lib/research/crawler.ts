@@ -476,7 +476,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           if (renderedFallbacksUsed < MAX_RENDERED_FALLBACKS && [401, 403, 407, 408, 429, 451, 500, 502, 503, 504].includes(response.status)) {
             const rendered = await fetchRenderedFallback(target);
             renderedFallbacksUsed += 1;
-            if (rendered) {
+            if (rendered && rendered.text.trim().length >= 180 && !isRenderedReaderError(rendered.text)) {
               const renderedLinks = extractRenderedLinks(rendered.text, target);
               partial = true;
               processedPages.push({
