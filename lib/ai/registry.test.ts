@@ -96,14 +96,22 @@ describe('createDefaultRegistry', () => {
 
   it('creates a registry with all provider IDs', () => {
     const registry = createDefaultRegistry();
-    expect(registry.ids()).toEqual(['groq', 'openai', 'anthropic']);
+    expect(registry.ids()).toEqual(['groq', 'groq-2', 'groq-3', 'openai', 'anthropic']);
+  });
+
+  it('registers separate primary and fallback Groq provider slots', () => {
+    const registry = createDefaultRegistry();
+    expect(registry.get('groq')).toBeDefined();
+    expect(registry.get('groq-2')).toBeDefined();
+    expect(registry.get('groq-3')).toBeDefined();
+    expect(registry.ids()).toEqual(['groq', 'groq-2', 'groq-3', 'openai', 'anthropic']);
   });
 
   it('uses env-configured provider IDs', () => {
     const registry = createDefaultRegistry();
     const health = registry.list().map((p) => p.health());
     return Promise.all(health).then((all) => {
-      expect(all.every((h) => ['groq', 'openai', 'anthropic'].includes(h.id))).toBe(true);
+      expect(all.every((h) => ['groq', 'groq-2', 'groq-3', 'openai', 'anthropic'].includes(h.id))).toBe(true);
     });
   });
 });
