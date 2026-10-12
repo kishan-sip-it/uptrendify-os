@@ -804,6 +804,22 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const href = parent.is('a') ? absoluteUrl(parent.attr('href'), base) : null;
     const path = (() => { try { return new URL(url).pathname.toLowerCase(); } catch { return ''; } })();
 
+    // Social-network marks must never become a company's identity just because
+    // an icon filename or alt text contains the word "logo" and it appears in
+    // the page header. A platform's own site is exempt from this cross-brand
+    // guard so Facebook, LinkedIn, etc. can still identify their own websites.
+    const rootIsSocialPlatform = /^(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter|x)$/i.test(rootToken);
+    const socialAssetHint = /(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter|x-twitter|social[-_ ]?(?:icon|logo|link)|(?:icon|logo)[-_ ]?(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter))/i.test(path + ' ' + alt + ' ' + classes);
+    const linksToExternalSocialProfile = Boolean(href && !sameSiteUrl(base, href) && (() => {
+      try {
+        const linkedHost = new URL(href).hostname.toLowerCase().replace(/^www\\./, '');
+        return SOCIAL_HOSTS.some((entry) => entry.test(linkedHost));
+      } catch {
+        return false;
+      }
+    })());
+    if (linksToExternalSocialProfile || (socialAssetHint && !rootIsSocialPlatform)) return;
+
     const inBrandHeader = parent.is('header') || parent.is('nav') || parent.is('[role="banner"]') || node.closest('header, nav, [role="banner"]').length > 0;
     const width = Number(node.attr('width') ?? 0);
     const height = Number(node.attr('height') ?? 0);
@@ -1057,12 +1073,17 @@ export function extractBrandIdentity(html: string, finalUrl: string | null): Ext
   if (logo) inspected.push('logo candidate image');
   if (favicon) inspected.push('favicon');
 
+  const titleText = cleanMetaText($('title').first().text());
+  // SEO titles commonly append a long product/category slogan after a separator.
+  // Keep the organization label short when metadata and structured data are absent.
+  const titleBrandName = titleText
+    ? cleanMetaText(titleText.split(/\\s+(?:\\||—|–|:)\\s+/)[0] ?? titleText) ?? titleText
+    : null;
   const brandName =
     cleanMetaText($('meta[property="og:site_name"]').first().attr('content')) ??
     cleanMetaText($('meta[name="application-name"]').first().attr('content')) ??
     detectStructuredBrandName($) ??
-    // og:title often names a product/campaign rather than the organization.
-    cleanMetaText($('title').first().text());
+    titleBrandName;
 
   const description =
     cleanMetaText($('meta[name="description"]').first().attr('content')) ??
