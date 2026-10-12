@@ -15,7 +15,6 @@ export default function ThemeHeroVideo() {
   const [videoUnavailable, setVideoUnavailable] = useState(false);
   const [stillUnavailable, setStillUnavailable] = useState(false);
   const [showMotionFallback, setShowMotionFallback] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -25,14 +24,8 @@ export default function ThemeHeroVideo() {
     const observer = new MutationObserver(() => setTheme(readTheme()));
     observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
 
-    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const updateMotion = () => setReducedMotion(motionQuery.matches);
-    updateMotion();
-    motionQuery.addEventListener('change', updateMotion);
-
     return () => {
       observer.disconnect();
-      motionQuery.removeEventListener('change', updateMotion);
     };
   }, []);
 
@@ -45,13 +38,10 @@ export default function ThemeHeroVideo() {
     setVideoReady(false);
     setVideoUnavailable(false);
     setStillUnavailable(false);
-    setShowMotionFallback(reducedMotion);
+    setShowMotionFallback(false);
 
     const video = videoRef.current;
-    if (!video || reducedMotion) {
-      if (reducedMotion) setShowMotionFallback(true);
-      return;
-    }
+    if (!video) return;
 
     let active = true;
     // The still is only a short loading cover. Do not leave a static image on
@@ -78,7 +68,7 @@ export default function ThemeHeroVideo() {
       active = false;
       window.clearTimeout(fallbackTimer);
     };
-  }, [webmSrc, mp4Src, reducedMotion]);
+  }, [webmSrc, mp4Src]);
 
   return (
     <div
@@ -152,10 +142,11 @@ export default function ThemeHeroVideo() {
         />
       )}
 
-      {!reducedMotion && !videoUnavailable && (
+      {!videoUnavailable && (
         <video
           key={webmSrc + '|' + mp4Src}
           ref={videoRef}
+          src={mp4Src}
           className={'landing-hero-video' + (videoReady ? ' is-ready' : '')}
           autoPlay
           loop
@@ -171,12 +162,21 @@ export default function ThemeHeroVideo() {
             }
           }}
           onPlaying={() => { setVideoReady(true); setShowMotionFallback(false); }}
-          onError={() => { setVideoUnavailable(true); setShowMotionFallback(true); }}
-        >
-          {/* Prefer the supplied H.264 MP4. Keep WebM as the compatibility fallback. */}
-          <source src={mp4Src} type="video/mp4" />
-          <source src={webmSrc} type="video/webm" />
-        </video>
+          onError={() => {
+            const video = videoRef.current;
+            // The MP4 was directly verified. If its embedded playback fails,
+            // explicitly retry the WebM asset before switching to the artwork.
+            if (video && !video.dataset.webmFallbackTried) {
+              video.dataset.webmFallbackTried = 'true';
+              video.src = webmSrc;
+              video.load();
+              void video.play().catch(() => {});
+              return;
+            }
+            setVideoUnavailable(true);
+            setShowMotionFallback(true);
+          }}
+        />
       )}
 
       <div className="landing-hero-visual-topline" aria-hidden="true">
