@@ -1010,6 +1010,18 @@ export async function GET(request: Request) {
       );
       identity.warnings.push('The site HTML/CSS was not directly readable; visual identity is limited to independently verified public assets.');
     }
+
+    // Start logo recovery while the optional homepage and child-page checks run.
+    // This must finish before the insufficient-evidence gate, or short reader-only
+    // pages could be rejected even when their actual logo is recoverable.
+    const readerLogoTask: Promise<Array<string | null>> = !identity.logoUrl && renderedFallbackText
+      ? withTimeout(
+          Promise.all(extractRenderedLogoCandidates(renderedFallbackText, baseUrl).slice(0, 2).map(verifyPublicLogoAsset)),
+          2_800,
+          'Rendered-reader logo verification exceeded its budget',
+        ).catch(() => [] as Array<string | null>)
+      : Promise.resolve([]);
+
     let stylesheetUrls = baseHtml ? externalStylesheetUrls(baseHtml, baseUrl) : [];
 
     // If the scraper user-agent received a rendered-reader fallback or HTML
@@ -1084,6 +1096,15 @@ export async function GET(request: Request) {
         .catch(() => [] as Array<{ url: string; title: string | null; text: string } | null>)
       : [];
     for (const page of extraPages) if (page?.text?.trim()) evidencePages.push(page);
+
+    const verifiedReaderLogos = await readerLogoTask;
+    if (!identity.logoUrl) {
+      const readerLogo = verifiedReaderLogos.find((url): url is string => Boolean(url));
+      if (readerLogo) {
+        identity.logoUrl = readerLogo;
+        identity.inspected.push('logo image referenced by rendered reader and verified as public');
+      }
+    }
 
     const accessibleTextChars = evidencePages.reduce((total, page) => total + page.text.trim().length, 0);
     const hasVisualEvidence = Boolean(identity.logoUrl || identity.faviconUrl || identity.palette.length);
@@ -1190,25 +1211,6 @@ export async function GET(request: Request) {
       : { colors: [], icons: [] };
     if (!identity.logoUrl && manifestVisuals.icons[0]) identity.logoUrl = manifestVisuals.icons[0];
     if (!identity.faviconUrl && manifestVisuals.icons[0]) identity.faviconUrl = manifestVisuals.icons[0];
-
-    // A rendered reader may preserve a site's explicitly labelled logo images
-    // even when its HTML blocks direct requests. Verify at most two public image
-    // URLs, and never promote social/share/hero art just because it is an image.
-    if (!identity.logoUrl && renderedFallbackText) {
-      const readerLogoCandidates = extractRenderedLogoCandidates(renderedFallbackText, baseUrl).slice(0, 2);
-      if (readerLogoCandidates.length > 0) {
-        const verifiedReaderLogos = await withTimeout(
-          Promise.all(readerLogoCandidates.map(verifyPublicLogoAsset)),
-          2_800,
-          'Rendered-reader logo verification exceeded its budget',
-        ).catch(() => [] as Array<string | null>);
-        const readerLogo = verifiedReaderLogos.find((url): url is string => Boolean(url));
-        if (readerLogo) {
-          identity.logoUrl = readerLogo;
-          identity.inspected.push('logo image referenced by rendered reader and verified as public');
-        }
-      }
-    }
 
     // A blocked homepage can still expose its own verified favicon/icon paths.
     // Use only a successful same-origin image response; never infer a logo URL.
