@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { requireOrgRole, CAN_VIEW_DASHBOARD } from '@/lib/auth/roles';
 import { env } from '@/lib/env';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from '@/lib/research/url-security';
-import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, extractDeclaredFonts, rankExtractedFonts, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, isBlockedWebsiteResponse, isRenderedReaderError, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
+import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, extractDeclaredFonts, rankExtractedFonts, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, isBlockedWebsiteResponse, isRenderedReaderError, shouldRejectInsufficientWebsiteEvidence, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { extractRasterPalette, type RasterColorSample } from '@/lib/brand/raster-color-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { buildEvidenceContext, extractBrandIntelligence, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
@@ -1072,7 +1072,7 @@ export async function GET(request: Request) {
 
     const accessibleTextChars = evidencePages.reduce((total, page) => total + page.text.trim().length, 0);
     const hasVisualEvidence = Boolean(identity.brandName || identity.description || identity.logoUrl || identity.faviconUrl || identity.palette.length);
-    if (accessibleTextChars < 180) {
+    if (shouldRejectInsufficientWebsiteEvidence(accessibleTextChars, hasVisualEvidence)) {
       return NextResponse.json(
         {
           error: 'The website was reached, but the scan could not verify enough readable first-party content to build a reliable Brand IQ. The site may require JavaScript rendering or block automated readers. Try its canonical homepage URL or retry later; no guessed company profile was created.',
