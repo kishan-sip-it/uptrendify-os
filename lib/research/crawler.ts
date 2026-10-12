@@ -4,6 +4,7 @@ import { obs } from '@/lib/obs/logger';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from './url-security';
 import { translateResearchError } from './errors';
 import { extractPage } from './extract';
+import { isBlockedWebsiteResponse, isRenderedReaderError } from '@/lib/brand/visual-extraction';
 import { isLikelyAuthGatedContent, isLowSignalResearchPath, isResearchCandidate, normalizeResearchUrl, sameResearchSite } from './url-policy';
 
 export { sameResearchSite } from './url-policy';
@@ -212,12 +213,80 @@ function normalizeUrl(raw: string) {
   return normalizeResearchUrl(raw);
 }
 
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+async function mergeExistingSourceMetadata(
+  supabase: SupabaseClient,
+  organizationId: string,
+  brandId: string,
+  canonicalUrl: string,
+  additions: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  try {
+    const existing = await supabase
+      .from('brand_sources')
+      .select('metadata')
+      .eq('organization_id', organizationId)
+      .eq('brand_id', brandId)
+      .eq('canonical_url', canonicalUrl)
+      .maybeSingle();
+    if (existing.error) throw existing.error;
+    const merged = { ...metadataRecord(existing.data?.metadata), ...additions };
+    delete merged.last_fetch_error;
+    return merged;
+  } catch (error) {
+    // Record the scan warning but never fail an otherwise successful page just
+    // because optional historical metadata was not readable.
+    obs.warn('Could not read prior source metadata during refresh', {
+      url: canonicalUrl,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return additions;
+  }
+}
+
 async function recordPageFailure(
   supabase: SupabaseClient,
   args: { organizationId: string; brandId: string; researchRunId: string; url: string; code: string; message: string; httpStatus?: number },
-): Promise<void> {
+): Promise<ProcessedPage | null> {
   try {
     const canonical = args.url;
+    const existing = await supabase
+      .from('brand_sources')
+      .select('id,title,status,extracted_text,content_hash,metadata')
+      .eq('organization_id', args.organizationId)
+      .eq('brand_id', args.brandId)
+      .eq('canonical_url', canonical)
+      .maybeSingle();
+    if (existing.error) throw existing.error;
+
+    const cachedText = typeof existing.data?.extracted_text === 'string' ? existing.data.extracted_text.trim() : '';
+    if (existing.data?.id && cachedText.length >= 180) {
+      // Do not turn a previously successful source into an empty FAILED row
+      // during a transient block, timeout or network error. Reuse its saved
+      // evidence, and keep it linked/auditable for this research run.
+      const reused = await supabase.from('research_sources').upsert({
+        research_run_id: args.researchRunId,
+        organization_id: args.organizationId,
+        source_id: existing.data.id,
+        status: 'PROCESSED',
+        error_message: ('Refresh failed (' + args.code + '); reused previously captured public content.').slice(0, 400),
+      }, { onConflict: 'research_run_id,source_id' });
+      if (reused.error) throw reused.error;
+      return {
+        id: existing.data.id,
+        url: canonical,
+        canonicalUrl: canonical,
+        title: typeof existing.data.title === 'string' ? existing.data.title : null,
+        text: cachedText,
+      };
+    }
+
+    const existingMetadata = metadataRecord(existing.data?.metadata);
     const source = await supabase
       .from('brand_sources')
       .upsert({
@@ -225,35 +294,34 @@ async function recordPageFailure(
         brand_id: args.brandId,
         url: canonical,
         canonical_url: canonical,
-        title: null,
+        title: existing.data?.title ?? null,
         content_type: 'text/html',
         status: 'FAILED',
         http_status: args.httpStatus ?? 0,
         retrieved_at: new Date().toISOString(),
-        content_hash: null,
-        extracted_text: '',
-        metadata: { error_code: args.code, error: args.message },
+        content_hash: existing.data?.content_hash ?? null,
+        extracted_text: existing.data?.extracted_text ?? '',
+        metadata: { ...existingMetadata, error_code: args.code, error: args.message },
       }, { onConflict: 'brand_id,canonical_url' })
       .select('id')
       .single();
-    if (source.error || !source.data) return;
-    await supabase
+    if (source.error || !source.data) return null;
+    const link = await supabase
       .from('research_sources')
-      .upsert(
-        {
-          research_run_id: args.researchRunId,
-          organization_id: args.organizationId,
-          source_id: source.data.id,
-          status: 'FAILED',
-          error_message: `[${args.code}] ${args.message}`.slice(0, 400),
-        },
-        { onConflict: 'research_run_id,source_id' },
-      );
+      .upsert({
+        research_run_id: args.researchRunId,
+        organization_id: args.organizationId,
+        source_id: source.data.id,
+        status: 'FAILED',
+        error_message: ('[' + args.code + '] ' + args.message).slice(0, 400),
+      }, { onConflict: 'research_run_id,source_id' });
+    if (link.error) throw link.error;
+    return null;
   } catch (error) {
     obs.warn('Failed to record page failure', { url: args.url, error: error instanceof Error ? error.message : String(error) });
+    return null;
   }
 }
-
 export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Promise<CrawlOutcome> {
   const { organizationId, brandId, websiteUrl, researchRunId } = args;
   const e = env();
@@ -316,6 +384,16 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         if (target === root || runFailureCode === null) {
           runFailureCode = code;
           runFailureMessage = message;
+        }
+      };
+
+      const persistPageFailure = async (failure: { organizationId: string; brandId: string; researchRunId: string; url: string; code: string; message: string; httpStatus?: number }) => {
+        const cached = await recordPageFailure(supabase, failure);
+        if (cached && !processedPages.some((page) => page.id === cached.id)) {
+          processedPages.push(cached);
+          pagesProcessed += 1;
+          pagesDiscovered = seen.size;
+          partial = true;
         }
       };
 
@@ -453,14 +531,14 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
 
           partial = true;
           recordRunFailure(`HTTP_${response.status}`, `HTTP ${response.status}`);
-          await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: `HTTP_${response.status}`, message: `HTTP ${response.status}`, httpStatus: response.status });
+          await persistPageFailure({ organizationId, brandId, researchRunId, url: target, code: `HTTP_${response.status}`, message: `HTTP ${response.status}`, httpStatus: response.status });
           continue;
         }
 
         if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
           partial = true;
           recordRunFailure('NOT_HTML', 'Not an HTML page');
-          await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: 'NOT_HTML', message: 'Not an HTML page', httpStatus: response.status });
+          await persistPageFailure({ organizationId, brandId, researchRunId, url: target, code: 'NOT_HTML', message: 'Not an HTML page', httpStatus: response.status });
           continue;
         }
 
@@ -468,7 +546,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         if (contentLength > e.MAX_RESEARCH_BYTES) {
           partial = true;
           recordRunFailure('CONTENT_TOO_LARGE', `Content exceeds ${e.MAX_RESEARCH_BYTES} bytes`);
-          await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: 'CONTENT_TOO_LARGE', message: `Content exceeds ${e.MAX_RESEARCH_BYTES} bytes`, httpStatus: response.status });
+          await persistPageFailure({ organizationId, brandId, researchRunId, url: target, code: 'CONTENT_TOO_LARGE', message: `Content exceeds ${e.MAX_RESEARCH_BYTES} bytes`, httpStatus: response.status });
           continue;
         }
 
@@ -486,7 +564,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
             'AUTH_REQUIRED',
             'The public website requires a login or blocks automated public access, so no trustworthy evidence was extracted from this page.',
           );
-          await recordPageFailure(supabase, {
+          await persistPageFailure({
             organizationId,
             brandId,
             researchRunId,
@@ -579,7 +657,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         const info = translateResearchError(error);
         recordRunFailure(info.code, info.message);
         obs.warn('Research page failed', { brandId, url: target, error: info.message, errorCode: info.code });
-        await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: info.code, message: info.message });
+        await persistPageFailure({ organizationId, brandId, researchRunId, url: target, code: info.code, message: info.message });
       }
 
       const progress = await supabase.from('research_runs').update({ pages_processed: pagesProcessed, pages_discovered: seen.size }).eq('id', researchRunId);
