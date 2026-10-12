@@ -372,6 +372,12 @@ describe('logo fallbacks for sparse public HTML', () => {
     expect(identity.logoUrl).toBe('https://static.canva-cdn.example/assets/9f182a7.svg');
   });
 
+  it('keeps a high-confidence CDN header logo when its alt text is generic', () => {
+    const html = '<html><head><title>Example</title><meta property="og:site_name" content="Example" /></head><body><header><a href="/en/"><img src="https://assets.example-cdn.test/a9f81.svg" class="logo" alt="header logo icon" /></a></header><main><h1>Example brand platform</h1><p>' + 'A real website with products, customers and services. '.repeat(6) + '</p></main></body></html>';
+    const identity = extractBrandIdentity(html, 'https://www.example.com/en/');
+    expect(identity.logoUrl).toBe('https://assets.example-cdn.test/a9f81.svg');
+  });
+
   it('reads organization logos nested inside a JSON-LD @graph', () => {
     const html = `<html><head><title>Example</title><script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': [{ '@type': 'Organization', name: 'Example', logo: { '@type': 'ImageObject', url: 'https://cdn.assets-example.net/example-logo.svg' } }] })}</script></head><body><h1>Example</h1></body></html>`;
     const identity = extractBrandIdentity(html, 'https://example.com/');

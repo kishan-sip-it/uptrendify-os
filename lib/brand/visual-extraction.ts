@@ -752,16 +752,17 @@ function sameSiteUrl(base: string | null, candidate: string): boolean {
 function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string | null; favicon: string | null } {
   const rootHost = base ? (() => { try { return new URL(base).hostname.toLowerCase().replace(/^www\./, ''); } catch { return ''; } })() : '';
   const rootToken = rootHost.split('.')[0] ?? '';
-  const candidates: Array<{ url: string; score: number; semanticLogo: boolean }> = [];
+  const candidates: Array<{ url: string; score: number }> = [];
   let faviconUrl: string | null = null;
   let faviconScore = -1;
 
-  const addCandidate = (url: string | null, score: number, semanticLogo = false) => {
+  const addCandidate = (url: string | null, score: number) => {
     if (!url) return;
-    // External CDNs are accepted only when the markup explicitly identifies
-    // the asset as a logo; a homepage link or generic header image is not enough.
-    if (!sameSiteUrl(base, url) && (!semanticLogo || score < 65)) return;
-    candidates.push({ url, score, semanticLogo });
+    // Match main's proven confidence gate: cross-host CDNs are accepted when
+    // the combined URL, header-placement and link evidence is strong enough.
+    // Requiring a second semanticLogo flag wrongly rejected scored candidates.
+    if (!sameSiteUrl(base, url) && score < 65) return;
+    candidates.push({ url, score });
   };
 
   $('img, picture img, picture source').each((_i, el) => {
@@ -850,12 +851,10 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const headerSiteMatch = inBrandHeader && altMatchesSite &&
       (Boolean(normalizedAlt) || linksToSite || pathSuggestsWordmark);
     if (headerSiteMatch) score += 65;
-    const describesBrandWordmark = pathSuggestsWordmark || (headerSiteMatch && (aspectRatio === 0 || (aspectRatio >= 2.2 && aspectRatio <= 10)));
-    // Structured metadata often exposes a compact symbol, while the header
-    // contains the readable corporate wordmark. Prefer the first-party header
-    // asset when its accessible name or shape supports that interpretation.
-    const semanticLogo = (LOGO_HINT.test(path + ' ' + alt + ' ' + classes) || describesBrandWordmark || headerSiteMatch) && altMatchesSite && !/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail)/i.test(path + ' ' + alt + ' ' + classes + ' ' + parentText);
-    addCandidate(url, score, semanticLogo);
+    // Let aggregate confidence decide. The external-CDN gate above still
+    // requires strong evidence, while negative-context penalties prevent
+    // customer, partner, social and hero imagery from winning.
+    addCandidate(url, score);
   });
 
   // SVG logos often appear inline rather than as <img>.
@@ -891,7 +890,7 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
         : rawLogo && typeof rawLogo === 'object'
           ? String((rawLogo as Record<string, unknown>).url ?? (rawLogo as Record<string, unknown>).contentUrl ?? '')
           : '';
-      addCandidate(absoluteUrl(logo, base), 80, true);
+      addCandidate(absoluteUrl(logo, base), 80);
     }
     if (node['@graph']) collectStructuredLogos(node['@graph'], depth + 1);
     if (node.mainEntity) collectStructuredLogos(node.mainEntity, depth + 1);
@@ -912,7 +911,7 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     let path = '';
     try { path = new URL(ogImage).pathname.toLowerCase(); } catch { /* filtered by absoluteUrl */ }
     if (/(logo|wordmark|brandmark)/i.test(path) && !/(?:og[-_]?image|social|share|twitter|card|thumb|hero|banner|experienceguides|brand[-_]?guide)/i.test(path)) {
-      addCandidate(ogImage, 96, true);
+      addCandidate(ogImage, 96);
     }
   }
 
