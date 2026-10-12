@@ -1029,7 +1029,7 @@ export async function GET(request: Request) {
           'Optional logo SVG inspection exceeded its budget',
         ).catch(() => [])
       : [];
-    const svgBlocks = svgResults.filter((asset): asset is string => Boolean(asset));
+    const svgBlocks: string[] = svgResults.filter((asset): asset is string => typeof asset === 'string');
 
     // Modern frameworks frequently keep theme colours in JS/CSS-in-JS bundles
     // instead of HTML or standalone CSS. Read only explicitly declared public
@@ -1045,10 +1045,10 @@ export async function GET(request: Request) {
         ).catch(() => []))
           .filter((script): script is string => Boolean(script))
       : [];
-    const scriptBlocks = [...inlineScripts, ...externalScripts];
+    const scriptBlocks: string[] = [...inlineScripts, ...externalScripts.filter((script): script is string => typeof script === 'string')];
     const rasterUrls = baseHtml && canFetchOptionalAssets ? rasterLogoUrls(baseHtml, baseUrl, [identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons]).slice(0, 3) : [];
     const rasterBudgetMs = canFetchOptionalAssets ? optionalAssetBudgetMs(elapsed(), 1_800) : 0;
-    const rasterColors = rasterBudgetMs > 0
+    const rasterColors: RasterColorSample[] = rasterBudgetMs > 0
       ? (await withTimeout(
           Promise.all(rasterUrls.map(fetchRasterColors)).then((samples) => samples.flat()),
           rasterBudgetMs,
