@@ -173,8 +173,9 @@ export default function ThemeHeroVideo() {
           onPlaying={() => { setVideoReady(true); setShowMotionFallback(false); }}
           onError={() => { setVideoUnavailable(true); setShowMotionFallback(true); }}
         >
-          <source src={webmSrc} type="video/webm" />
+          {/* Prefer the supplied H.264 MP4. Keep WebM as the compatibility fallback. */}
           <source src={mp4Src} type="video/mp4" />
+          <source src={webmSrc} type="video/webm" />
         </video>
       )}
 
