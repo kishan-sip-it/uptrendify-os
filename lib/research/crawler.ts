@@ -264,7 +264,8 @@ async function recordPageFailure(
       .maybeSingle();
     if (existing.error) throw existing.error;
 
-    const cachedText = typeof existing.data?.extracted_text === 'string' ? existing.data.extracted_text.trim() : '';
+    const savedText = typeof existing.data?.extracted_text === 'string' ? existing.data.extracted_text : '';
+    const cachedText = savedText.trim();
     if (existing.data?.id && cachedText.length >= 180) {
       // Do not turn a previously successful source into an empty FAILED row
       // during a transient block, timeout or network error. Reuse its saved
@@ -282,7 +283,7 @@ async function recordPageFailure(
         url: canonical,
         canonicalUrl: canonical,
         title: typeof existing.data.title === 'string' ? existing.data.title : null,
-        text: cachedText,
+        text: savedText,
       };
     }
 
