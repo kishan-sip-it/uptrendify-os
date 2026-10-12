@@ -21,6 +21,7 @@ export function createAnthropicProvider(apiKey: string | null, defaultModel: str
     const data = await postJson(`${BASE}/messages`, {
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body,
+      ...(input.signal ? { signal: input.signal } : {}),
     });
 
     const text = (data?.content ?? [])
