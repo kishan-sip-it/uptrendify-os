@@ -1102,8 +1102,13 @@ export async function GET(request: Request) {
 
     // Some sites publish only an app manifest, or an SVG logo contains the
     // brand palette when the HTML has no authored CSS.
-    const manifestVisuals = baseHtml
-      ? await fetchManifestVisuals(baseHtml, baseUrl)
+    const manifestBudgetMs = baseHtml ? optionalAssetBudgetMs(elapsed(), 3_000) : 0;
+    const manifestVisuals = baseHtml && manifestBudgetMs > 0
+      ? await withTimeout(
+          fetchManifestVisuals(baseHtml, baseUrl),
+          manifestBudgetMs,
+          'Optional manifest inspection exceeded its budget',
+        ).catch(() => ({ colors: [], icons: [] }))
       : { colors: [], icons: [] };
     if (!identity.logoUrl && manifestVisuals.icons[0]) identity.logoUrl = manifestVisuals.icons[0];
     if (!identity.faviconUrl && manifestVisuals.icons[0]) identity.faviconUrl = manifestVisuals.icons[0];
@@ -1111,7 +1116,7 @@ export async function GET(request: Request) {
     // A blocked homepage can still expose its own verified favicon/icon paths.
     // Use only a successful same-origin image response; never infer a logo URL.
     if (!identity.logoUrl || !identity.faviconUrl) {
-      const conventionalIcon = await verifyConventionalIcon(baseUrl);
+      const conventionalIcon = await withTimeout(verifyConventionalIcon(baseUrl), 2_800, 'Optional icon fallback exceeded its budget').catch(() => null);
       if (conventionalIcon) {
         identity.logoUrl = identity.logoUrl ?? conventionalIcon;
         identity.faviconUrl = identity.faviconUrl ?? conventionalIcon;
