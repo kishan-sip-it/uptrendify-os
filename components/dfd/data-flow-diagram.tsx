@@ -160,6 +160,7 @@ export function DataFlowDiagram() {
   const [level, setLevel] = useState<DfdLevel>(0);
   const [selectedId, setSelectedId] = useState<string>('platform');
   const [sceneError, setSceneError] = useState(false);
+  const selectedIdRef = useRef<string>(selectedId);
   const mountRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const nodeGroupsRef = useRef<Map<string, THREE.Group>>(new Map());
@@ -168,6 +169,20 @@ export function DataFlowDiagram() {
 
   const relatedFlows = useMemo(() => graph.edges.filter((edge) => edge.from === selectedNode.id || edge.to === selectedNode.id), [graph, selectedNode.id]);
   const nodeMap = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph]);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+    for (const [nodeId, group] of nodeGroupsRef.current) {
+      group.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (!mesh.isMesh || mesh.userData.nodeId !== nodeId) return;
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const material of materials) {
+          if (material instanceof THREE.MeshStandardMaterial) material.emissiveIntensity = nodeId === selectedId ? 0.55 : 0.16;
+        }
+      });
+    }
+  }, [selectedId]);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -265,7 +280,7 @@ export function DataFlowDiagram() {
         roughness: 0.28,
         metalness: 0.24,
         emissive: colors.glow,
-        emissiveIntensity: node.id === selectedId ? 0.55 : 0.16,
+        emissiveIntensity: node.id === selectedIdRef.current ? 0.55 : 0.16,
       });
       const body = new THREE.Mesh(new THREE.BoxGeometry(dims.width, dims.height, dims.depth), material);
       body.userData.nodeId = node.id;
@@ -369,7 +384,7 @@ export function DataFlowDiagram() {
       renderer.dispose();
       mount.replaceChildren();
     };
-  }, [graph, level, selectedId]);
+  }, [graph]);
 
   const selectLevel = (next: DfdLevel) => {
     setLevel(next);
@@ -378,6 +393,14 @@ export function DataFlowDiagram() {
   };
 
   const resetView = () => controlsRef.current?.reset();
+  const zoomBy = (amount: number) => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    const camera = controls.object as THREE.OrthographicCamera;
+    camera.zoom = Math.max(0.72, Math.min(1.55, camera.zoom + amount));
+    camera.updateProjectionMatrix();
+    controls.update();
+  };
 
   return (
     <div className={styles.visualization}>
@@ -393,8 +416,8 @@ export function DataFlowDiagram() {
         <div className={styles.canvasActions}>
           <span className={styles.viewHint}><Box size={14} /> Drag to orbit · scroll to zoom</span>
           <button type="button" className={styles.toolButton} onClick={resetView} title="Reset 3D camera"><RotateCcw size={15} /> Reset view</button>
-          <button type="button" className={styles.toolButton} onClick={() => { if (controlsRef.current) controlsRef.current.object.zoom = Math.min(1.55, controlsRef.current.object.zoom + 0.12); controlsRef.current?.update(); }} title="Zoom in"><ZoomIn size={15} /></button>
-          <button type="button" className={styles.toolButton} onClick={() => { if (controlsRef.current) controlsRef.current.object.zoom = Math.max(0.72, controlsRef.current.object.zoom - 0.12); controlsRef.current?.update(); }} title="Zoom out"><ZoomOut size={15} /></button>
+          <button type="button" className={styles.toolButton} onClick={() => zoomBy(0.12)} title="Zoom in"><ZoomIn size={15} /></button>
+          <button type="button" className={styles.toolButton} onClick={() => zoomBy(-0.12)} title="Zoom out"><ZoomOut size={15} /></button>
         </div>
       </div>
 
