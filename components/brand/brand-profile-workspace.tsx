@@ -40,6 +40,47 @@ function BrandLivePreview({
   ai: NonNullable<BrandIdentity['aiProfile']> | null;
 }) {
   const [logoFailed, setLogoFailed] = useState(false);
+
+  useEffect(() => {
+    const candidates = identity.fonts
+      .filter((font) => Boolean(font.fontAssetUrl) || font.source === 'google-fonts')
+      .slice(0, 4);
+    const nodes = candidates.map((font) => {
+      const family = font.family.replace(/["\\\r\n;]/g, '').trim();
+      if (!family) return null;
+
+      if (font.fontAssetUrl) {
+        try {
+          const url = new URL(font.fontAssetUrl);
+          // Font files came from the source site's public stylesheets. Validate
+          // again because saved brand data can outlive its original scan.
+          if (url.protocol !== 'https:' || url.username || url.password) return null;
+          const weight = /^(?:normal|bold|[1-9]00(?:\s+[1-9]00)?)$/i.test(font.fontWeight ?? '') ? font.fontWeight : '400';
+          const fontStyle = /^(?:normal|italic|oblique(?:\s+-?\d+(?:deg)?)?)$/i.test(font.fontStyle ?? '') ? font.fontStyle : 'normal';
+          const format = ['woff2', 'woff', 'opentype', 'truetype'].includes(font.fontAssetFormat ?? '')
+            ? ' format("' + font.fontAssetFormat + '")'
+            : '';
+          const style = document.createElement('style');
+          style.dataset.brandPreviewFont = family;
+          style.textContent = '@font-face{font-family:"' + family + '";src:url("' + url.href + '")' + format + ';font-weight:' + weight + ';font-style:' + fontStyle + ';font-display:swap;}';
+          document.head.appendChild(style);
+          return style;
+        } catch {
+          return null;
+        }
+      }
+
+      if (font.source !== 'google-fonts') return null;
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(family).replace(/%20/g, '+') + '&display=swap';
+      link.dataset.brandPreviewFont = family;
+      document.head.appendChild(link);
+      return link;
+    }).filter((node): node is HTMLStyleElement | HTMLLinkElement => node !== null);
+
+    return () => nodes.forEach((node) => node.remove());
+  }, [identity.fonts]);
   const primary = /^#[0-9a-f]{6}$/i.test(identity.primaryColor ?? '')
     ? identity.primaryColor!
     : identity.palette[0]?.hex ?? 'var(--accent)';
@@ -176,7 +217,7 @@ function BrandLivePreview({
         </div>
         <div className="brand-live-preview-type">
           <span className="brand-live-preview-system-label">Typography</span>
-          <strong style={{ fontFamily: 'var(--preview-heading-font)' }}>{headingFont || 'Application type'}</strong>
+          <strong style={{ fontFamily: 'var(--preview-heading-font)' }}>{headingFont || 'Source font not detected'}</strong>
           {bodyFont && bodyFont !== headingFont ? <span style={{ fontFamily: 'var(--preview-body-font)' }}>{bodyFont}</span> : null}
         </div>
       </div>
