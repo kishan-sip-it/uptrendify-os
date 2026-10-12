@@ -239,7 +239,19 @@ export function buildEvidenceContext(sources: EvidenceFragment[]): EvidenceFragm
   const out: EvidenceFragment[] = [];
   let total = 0;
   const usable = sources.filter((source) => Boolean(source.url) && Boolean(source.text?.trim()));
-  const firstParty = usable.filter((source) => source.sourceType !== 'external-web');
+  const firstParty = usable
+    .filter((source) => source.sourceType !== 'external-web')
+    .map((source, index) => ({ source, index }))
+    .sort((a, b) => {
+      // Keep the homepage as the identity anchor, then prioritize pages likely
+      // to contain durable company, product, service and audience evidence.
+      const isHomepage = (source: EvidenceFragment) => {
+        try { return new URL(source.url).pathname.replace(/\\/$/, '') === ''; } catch { return false; }
+      };
+      const homeDelta = Number(isHomepage(b.source)) - Number(isHomepage(a.source));
+      return homeDelta || evidencePriority(b.source) - evidencePriority(a.source) || a.index - b.index;
+    })
+    .map(({ source }) => source);
   const external = usable.filter((source) => source.sourceType === 'external-web');
   const externalSlots = external.length > 0 && EVIDENCE_MAX_SOURCES > 1
     ? Math.min(2, external.length, EVIDENCE_MAX_SOURCES - 1)
