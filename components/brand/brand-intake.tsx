@@ -5,6 +5,7 @@ import { ArrowRight, Globe2, LoaderCircle, RefreshCw, Sparkles } from 'lucide-re
 import type { ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { preferredPreviewFontFamily, toVisualIdentity } from '@/lib/brand/identity-mapping';
 import { brandNameFromWebsiteUrl } from '@/lib/brand/website-url';
+import { mergeExistingBrandScanPatch } from '@/lib/brand/scan-merge';
 import { brandInitials, BrandField, BrandPanel, BrandSection, NotDetected } from './brand-profile-primitives';
 
 type IntakeIdentity = ExtractedIdentity & {
@@ -189,47 +190,59 @@ export function BrandIntake({
       }
 
       const brandId = String(created.brand.id);
+      const scannedPatch = {
+        description: identity.description ?? null,
+        primaryColor: identity.primaryColor,
+        secondaryColors: identity.secondaryColors,
+        industry: identity.aiProfile?.industry ?? null,
+        targetAudience: identity.aiProfile?.audience ?? null,
+        positioning: {
+          valueProposition: identity.aiProfile?.valueProposition ?? null,
+          differentiators: identity.aiProfile?.differentiators ?? [],
+          positioningThemes: identity.aiProfile?.positioningThemes ?? [],
+          competitiveContext: identity.aiProfile?.competition ?? null,
+          seoResearch: identity.aiProfile?.seo ?? null,
+        },
+        offerDetails: {
+          products: identity.aiProfile?.products ?? [],
+          services: identity.aiProfile?.services ?? [],
+          keyFeatures: identity.aiProfile?.keyFeatures ?? [],
+          benefits: identity.aiProfile?.benefits ?? [],
+          pricingSignals: identity.aiProfile?.pricingSignals ?? [],
+          productCategories: identity.aiProfile?.productCategories ?? [],
+          callsToAction: identity.aiProfile?.callsToAction ?? [],
+          painPoints: identity.aiProfile?.painPoints ?? [],
+          useCases: identity.aiProfile?.useCases ?? [],
+        },
+        audienceDetails: {
+          summary: identity.aiProfile?.audience ?? null,
+          personas: identity.aiProfile?.personas ?? [],
+          customerTypes: identity.aiProfile?.customerTypes ?? [],
+        },
+        messaging: {
+          toneOfVoice: identity.aiProfile?.tone ?? [],
+          terminology: identity.aiProfile?.terminology ?? [],
+          recurringClaims: identity.aiProfile?.recurringClaims ?? [],
+          messagingThemes: identity.aiProfile?.messagingThemes ?? [],
+          brandMessaging: identity.aiProfile?.valueProposition ?? null,
+        },
+        visualIdentity: toVisualIdentity(identity),
+      };
+
+      let patchPayload: Record<string, unknown> = scannedPatch;
+      if (created.existing === true) {
+        const existingResponse = await fetch(`/api/brands/${brandId}`, { cache: 'no-store' });
+        const existingBody = await existingResponse.json().catch(() => null);
+        if (!existingResponse.ok || !existingBody?.brand) {
+          throw new Error(existingBody?.error || 'Could not load the saved brand before merging this scan.');
+        }
+        patchPayload = mergeExistingBrandScanPatch(existingBody.brand, scannedPatch);
+      }
+
       const patchResponse = await fetch(`/api/brands/${brandId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          description: identity.description ?? null,
-          primaryColor: identity.primaryColor,
-          secondaryColors: identity.secondaryColors,
-          industry: identity.aiProfile?.industry ?? null,
-          targetAudience: identity.aiProfile?.audience ?? null,
-          positioning: {
-            valueProposition: identity.aiProfile?.valueProposition ?? null,
-            differentiators: identity.aiProfile?.differentiators ?? [],
-            positioningThemes: identity.aiProfile?.positioningThemes ?? [],
-            competitiveContext: identity.aiProfile?.competition ?? null,
-            seoResearch: identity.aiProfile?.seo ?? null,
-          },
-          offerDetails: {
-            products: identity.aiProfile?.products ?? [],
-            services: identity.aiProfile?.services ?? [],
-            keyFeatures: identity.aiProfile?.keyFeatures ?? [],
-            benefits: identity.aiProfile?.benefits ?? [],
-            pricingSignals: identity.aiProfile?.pricingSignals ?? [],
-            productCategories: identity.aiProfile?.productCategories ?? [],
-            callsToAction: identity.aiProfile?.callsToAction ?? [],
-            painPoints: identity.aiProfile?.painPoints ?? [],
-            useCases: identity.aiProfile?.useCases ?? [],
-          },
-          audienceDetails: {
-            summary: identity.aiProfile?.audience ?? null,
-            personas: identity.aiProfile?.personas ?? [],
-            customerTypes: identity.aiProfile?.customerTypes ?? [],
-          },
-          messaging: {
-            toneOfVoice: identity.aiProfile?.tone ?? [],
-            terminology: identity.aiProfile?.terminology ?? [],
-            recurringClaims: identity.aiProfile?.recurringClaims ?? [],
-            messagingThemes: identity.aiProfile?.messagingThemes ?? [],
-            brandMessaging: identity.aiProfile?.valueProposition ?? null,
-          },
-          visualIdentity: toVisualIdentity(identity),
-        }),
+        body: JSON.stringify(patchPayload),
       });
       const patched = await patchResponse.json().catch(() => null);
       if (!patchResponse.ok) throw new Error(patched?.error || 'Brand was created, but the imported Brand IQ could not be saved.');
