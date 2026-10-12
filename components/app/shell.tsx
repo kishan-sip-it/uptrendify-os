@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
-  ArrowUpRight, BookOpen, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Network, Plus, Settings, Sparkles, Target, Trash2, Users, X,
+  ArrowUpRight, BookOpen, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Network, Plus, Settings, Sparkles, Target, Trash2, Users, Workflow, X,
 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import HoldButton from '@/components/react-bits/HoldButton';
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { icon: Boxes, label: 'Campaigns', href: '/campaigns', soon: false },
   { icon: CheckCircle2, label: 'Approvals', href: '/approvals', soon: false },
   { icon: Network, label: 'System DFD', href: '/dfd', soon: false },
+  { icon: Workflow, label: 'Application Flow', href: '/flowchart', soon: false },
 ];
 
 type OrgOption = { id: string; name: string; role: string };
