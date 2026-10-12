@@ -1123,7 +1123,7 @@ export function extractRenderedLogoCandidates(markdown: string, baseUrl: string)
   const candidates = new Map<string, number>();
   const ignored = /(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter|x-twitter|social[-_/ ]?(?:icon|logo|share)|partner|customer|sponsor|testimonial|hero|banner|screenshot|thumbnail|og[-_]?image|share[-_]?card)/i;
 
-  for (const match of markdown.matchAll(/!\\[([^\\]]{0,240})\\]\\(\\s*(?:<)?(https?:\\/\\/[^)\\s>]+|\\/[^)\\s>]+)(?:>)?(?:\\s+["'][^)]*["'])?\\s*\\)/gi)) {
+  for (const match of markdown.matchAll(/!\[([^\]]{0,240})\]\(\s*(?:<)?(https?:\/\/[^)\s>]+|\/[^)\s>]+)(?:>)?(?:\s+["'][^)]*["'])?\s*\)/gi)) {
     const alt = (match[1] ?? '').trim();
     const rawUrl = match[2] ?? '';
     const url = absoluteUrl(rawUrl, baseUrl);
@@ -1142,7 +1142,7 @@ export function extractRenderedLogoCandidates(markdown: string, baseUrl: string)
     const sameSite = sameSiteUrl(baseUrl, url);
     let score = (semanticPath ? 80 : 0) + (semanticAlt ? 70 : 0);
     try {
-      const rootToken = new URL(baseUrl).hostname.toLowerCase().replace(/^www\\./, '').split('.')[0] ?? '';
+      const rootToken = new URL(baseUrl).hostname.toLowerCase().replace(/^www\./, '').split('.')[0] ?? '';
       if (rootToken.length >= 3 && (parsed.hostname.toLowerCase().includes(rootToken) || path.includes(rootToken))) score += 8;
     } catch {
       // URL validity has already been checked; the semantic score still applies.
