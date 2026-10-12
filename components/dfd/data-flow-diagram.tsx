@@ -406,12 +406,12 @@ export function DataFlowDiagram() {
 
   return (
     <div className={styles.visualization}>
-      <div className={styles.levelToolbar} aria-label="Data flow diagram level">
+      <div className={styles.levelToolbar} aria-label="Workflow view">
         <div className={styles.levelOptions}>
           {([0, 1, 2] as const).map((item) => (
             <button key={item} type="button" className={level === item ? styles.levelActive : styles.levelButton} onClick={() => selectLevel(item)} aria-pressed={level === item}>
-              <span className={styles.levelIndex}>L{item}</span>
-              <span>{item === 0 ? 'Context' : item === 1 ? 'System flows' : 'Scan detail'}</span>
+              <span className={styles.levelIndex}>{String(item + 1).padStart(2, '0')}</span>
+              <span>{item === 0 ? 'Platform overview' : item === 1 ? 'End-to-end workflow' : 'Website scan'}</span>
             </button>
           ))}
         </div>
@@ -424,7 +424,7 @@ export function DataFlowDiagram() {
       </div>
 
       <div className={styles.diagramScroller}>
-        <div className={styles.sceneCanvas} ref={mountRef} aria-label={'Interactive 3D data-flow diagram, level ' + level} role="img" />
+        <div className={styles.sceneCanvas} ref={mountRef} aria-label={'Interactive 3D application workflow: ' + graph.title} role="img" />
       </div>
       {sceneError ? (
         <div className={styles.webglFallback} role="status">
@@ -434,24 +434,24 @@ export function DataFlowDiagram() {
         </div>
       ) : null}
 
-      <div className={styles.legend} aria-label="DFD notation legend">
-        <span><i className={styles.legendExternal} /> External entity</span>
-        <span><i className={styles.legendProcess} /> Process</span>
-        <span><i className={styles.legendStore} /> Data store</span>
-        <span><i className={styles.legendSystem} /> System boundary</span>
-        <span><i className={styles.legendFlow} /> Directional data flow</span>
+      <div className={styles.legend} aria-label="Workflow legend">
+        <span><i className={styles.legendExternal} /> People & public services</span>
+        <span><i className={styles.legendProcess} /> Workflow stage</span>
+        <span><i className={styles.legendStore} /> Saved evidence / outputs</span>
+        <span><i className={styles.legendSystem} /> Platform</span>
+        <span><i className={styles.legendFlow} /> Direction of work</span>
       </div>
 
       <div className={styles.detailGrid}>
         <section className={styles.selectedPanel} aria-live="polite">
-          <div className={styles.detailKicker}>Selected element · Level {level}</div>
+          <div className={styles.detailKicker}>Selected step</div>
           <h3>{selectedNode.label}</h3>
           <p>{selectedNode.detail}</p>
           <div className={styles.selectedTag}>{selectedNode.subtitle}</div>
         </section>
         <section className={styles.flowPanel}>
           <div className={styles.flowPanelHead}>
-            <div><div className={styles.detailKicker}>Connected data flows</div><h3>{relatedFlows.length} flows</h3></div>
+            <div><div className={styles.detailKicker}>What connects to this step</div><h3>{relatedFlows.length} flows</h3></div>
           </div>
           {relatedFlows.length ? (
             <div className={styles.flowList}>
