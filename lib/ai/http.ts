@@ -31,7 +31,7 @@ export async function postJson(
     });
     // The time limit must cover reading the response body too; timing out only
     // until response headers arrive can leave a model call hanging indefinitely.
-    const raw = await response.text().catch(() => '');
+    const raw = await response.text();
 
     let data: any = null;
     try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
