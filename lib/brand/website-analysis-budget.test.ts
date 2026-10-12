@@ -26,12 +26,11 @@ describe('website analysis request budgets', () => {
     expect(optionalResearchPageLimit(25_000)).toBe(0);
   });
 
-  it('keeps AI enrichment available late while preserving a response buffer', () => {
-    expect(aiEnrichmentBudgetMs(10_000)).toBe(8_000);
-    expect(aiEnrichmentBudgetMs(28_000)).toBe(8_000);
-    expect(aiEnrichmentBudgetMs(30_000)).toBe(8_000);
-    expect(aiEnrichmentBudgetMs(35_500)).toBe(2_500);
-    expect(aiEnrichmentBudgetMs(37_999)).toBe(1);
-    expect(aiEnrichmentBudgetMs(38_000)).toBe(0);
+  it('gives structured AI enough time while reserving a response buffer', () => {
+    expect(aiEnrichmentBudgetMs(10_000)).toBe(18_000);
+    expect(aiEnrichmentBudgetMs(20_000)).toBe(14_000);
+    expect(aiEnrichmentBudgetMs(28_000)).toBe(6_000);
+    expect(aiEnrichmentBudgetMs(33_999)).toBe(1);
+    expect(aiEnrichmentBudgetMs(34_000)).toBe(0);
   });
 });
