@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { requireOrgRole, CAN_VIEW_DASHBOARD } from '@/lib/auth/roles';
 import { env } from '@/lib/env';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from '@/lib/research/url-security';
-import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, extractDeclaredFonts, rankExtractedFonts, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, isBlockedWebsiteResponse, isRenderedReaderError, shouldRejectInsufficientWebsiteEvidence, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
+import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, extractRenderedLogoCandidates, extractDeclaredFonts, rankExtractedFonts, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, isBlockedWebsiteResponse, isRenderedReaderError, shouldRejectInsufficientWebsiteEvidence, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { extractRasterPalette, type RasterColorSample } from '@/lib/brand/raster-color-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { AiProviderError } from '@/lib/ai/types';
@@ -355,6 +355,37 @@ async function fetchCss(url: string): Promise<string> {
   return '';
 }
 
+
+async function verifyPublicLogoAsset(url: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2500);
+  try {
+    const safe = assertPublicHttpUrl(url);
+    await assertResolvablePublicHost(safe.hostname);
+    const response = await fetchPublicHttp(safe.toString(), {
+      signal: controller.signal,
+      redirect: 'manual',
+      headers: {
+        'user-agent': env().RESEARCH_USER_AGENT,
+        accept: 'image/svg+xml,image/png,image/jpeg,image/webp,image/avif,image/gif,*/*;q=0.1',
+      },
+    });
+    if (!response.ok) return null;
+    const type = (response.headers.get('content-type') ?? '').toLowerCase();
+    if (!type.startsWith('image/')) return null;
+    const length = Number(response.headers.get('content-length') ?? 0);
+    if (length > 1_500_000) return null;
+    if (type.includes('svg')) {
+      const body = await readBoundedBody(response, 180_000);
+      if (!/<svg[\s>]/i.test(body.content)) return null;
+    }
+    return safe.toString();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function verifyConventionalIcon(baseUrl: string): Promise<string | null> {
   // Prefer explicit logo assets when published at conventional first-party paths;
@@ -1159,6 +1190,25 @@ export async function GET(request: Request) {
       : { colors: [], icons: [] };
     if (!identity.logoUrl && manifestVisuals.icons[0]) identity.logoUrl = manifestVisuals.icons[0];
     if (!identity.faviconUrl && manifestVisuals.icons[0]) identity.faviconUrl = manifestVisuals.icons[0];
+
+    // A rendered reader may preserve a site's explicitly labelled logo images
+    // even when its HTML blocks direct requests. Verify at most two public image
+    // URLs, and never promote social/share/hero art just because it is an image.
+    if (!identity.logoUrl && renderedFallbackText) {
+      const readerLogoCandidates = extractRenderedLogoCandidates(renderedFallbackText, baseUrl).slice(0, 2);
+      if (readerLogoCandidates.length > 0) {
+        const verifiedReaderLogos = await withTimeout(
+          Promise.all(readerLogoCandidates.map(verifyPublicLogoAsset)),
+          2_800,
+          'Rendered-reader logo verification exceeded its budget',
+        ).catch(() => [] as Array<string | null>);
+        const readerLogo = verifiedReaderLogos.find((url): url is string => Boolean(url));
+        if (readerLogo) {
+          identity.logoUrl = readerLogo;
+          identity.inspected.push('logo image referenced by rendered reader and verified as public');
+        }
+      }
+    }
 
     // A blocked homepage can still expose its own verified favicon/icon paths.
     // Use only a successful same-origin image response; never infer a logo URL.
