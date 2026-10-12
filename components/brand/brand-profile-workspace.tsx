@@ -5,7 +5,7 @@ import { BookOpen, Image as ImageIcon, Megaphone, Palette, Quote, Sparkles, Targ
 import { BrandField, BrandIdentityRow, BrandPanel, BrandSection, NotDetected, brandInitials } from './brand-profile-primitives';
 import { EditableBrandRules, EditableColorPalette, EditableLogo, EditablePersonas, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
 import { readIdentity, type BrandIdentity, type BrandIdentityRow as BrandIdentityDbRow } from '@/lib/brand/identity-mapping';
-import { readableTextOn } from '@/lib/brand/visual-extraction';
+import { readableTextOn, rankExtractedFonts, resolveFontRoles, type ExtractedFont } from '@/lib/brand/visual-extraction';
 import { TONE_OPTIONS, VOICE_AXES, describeVoice, voiceAxisValues } from '@/lib/brand/voice';
 
 type ProfileTab = 'identity' | 'visuals' | 'voice' | 'audience' | 'offer' | 'rules' | 'assets' | 'evidence';
@@ -242,6 +242,8 @@ export function BrandProfileWorkspace({
   const [identity, setIdentity] = useState<BrandIdentity>(initialIdentity);
   const [activeWebsiteUrl, setActiveWebsiteUrl] = useState<string | null>(websiteUrl);
   const [activeProfileTab, setActiveProfileTab] = useState<ProfileTab>('identity');
+  const [fontRefreshState, setFontRefreshState] = useState<'idle' | 'running'>('idle');
+  const [fontRefreshMessage, setFontRefreshMessage] = useState<string | null>(null);
 
   const onSaved = useCallback((brand: unknown) => {
     if (!brand || typeof brand !== 'object') return;
@@ -287,6 +289,47 @@ export function BrandProfileWorkspace({
       ...next,
     },
   }), [save, identity]);
+
+  const refreshSourceFonts = useCallback(async () => {
+    if (!activeWebsiteUrl || saving || fontRefreshState === 'running') return;
+    setFontRefreshState('running');
+    setFontRefreshMessage(null);
+    try {
+      const response = await fetch('/api/brands/website-identity?url=' + encodeURIComponent(activeWebsiteUrl), { cache: 'no-store' });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.identity) {
+        throw new Error(typeof body?.error === 'string' ? body.error : 'The website font scan could not be completed.');
+      }
+
+      const rawFonts: unknown[] = Array.isArray(body.identity.fonts) ? body.identity.fonts : [];
+      const validFonts = rawFonts.filter((raw): raw is ExtractedFont => {
+        if (!raw || typeof raw !== 'object') return false;
+        const font = raw as Record<string, unknown>;
+        return typeof font.family === 'string' && font.family.trim().length > 1 &&
+          (font.source === 'css-declaration' || font.source === 'google-fonts' || font.source === 'theme-font');
+      });
+      const fonts = rankExtractedFonts(validFonts).slice(0, 10);
+      if (fonts.length === 0) {
+        throw new Error('No usable source-font declarations were found. Your saved identity was left unchanged.');
+      }
+
+      const roles = resolveFontRoles(fonts);
+      const saved = await saveVisualIdentity({
+        fonts,
+        headingFont: roles.headingFont,
+        bodyFont: roles.bodyFont,
+        inspected: Array.isArray(body.identity.inspected) ? body.identity.inspected : identity.inspected,
+        warnings: Array.isArray(body.identity.warnings) ? body.identity.warnings : identity.warnings,
+        detectedAt: new Date().toISOString(),
+      });
+      if (!saved) throw new Error('The source fonts were detected, but could not be saved. Your previous identity remains unchanged.');
+      setFontRefreshMessage('Source fonts updated from ' + new URL(activeWebsiteUrl).hostname.replace(/^www\./, '') + '.');
+    } catch (error) {
+      setFontRefreshMessage(error instanceof Error ? error.message : 'Source font refresh failed. The saved identity was left unchanged.');
+    } finally {
+      setFontRefreshState('idle');
+    }
+  }, [activeWebsiteUrl, fontRefreshState, identity.inspected, identity.warnings, saving, saveVisualIdentity]);
 
   const removeCustomLogo = useCallback(async () => {
     const response = await fetch(`/api/brands/${brandId}/logo`, { method: 'DELETE' });
@@ -362,8 +405,9 @@ export function BrandProfileWorkspace({
           icon={<Sparkles size={17} />}
           title="Brand Profile"
           subtitle={identity.detectedAt ? 'Imported from the website. Human edits are authoritative and become the active brand context.' : 'Brand identity for this workspace.'}
-          actions={onRescan ? <button type="button" className="brand-btn" onClick={onRescan} disabled={rescanState === 'running' || saving}><Sparkles size={13} /> {rescanState === 'running' ? 'Scanning…' : 'Re-scan website'}</button> : null}
+          actions={<button type="button" className="brand-btn" onClick={() => { if (onRescan) onRescan(); else void refreshSourceFonts(); }} disabled={Boolean(saving || fontRefreshState === 'running' || rescanState === 'running')}><Sparkles size={13} /> {rescanState === 'running' || fontRefreshState === 'running' ? 'Refreshing…' : onRescan ? 'Re-scan website' : 'Refresh source fonts'}</button>}
         >
+          {fontRefreshMessage ? <p className="brand-section-hint" role="status" aria-live="polite" style={{ margin: '0 0 10px', overflowWrap: 'anywhere' }}>{fontRefreshMessage}</p> : null}
           <div
             className="brand-profile-brand-hero"
             style={{
