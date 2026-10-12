@@ -64,6 +64,7 @@ export function createOpenAiCompatibleProvider(
         provider: id,
         headers: { authorization: `Bearer ${apiKey}` },
         body,
+        ...(input.signal ? { signal: input.signal } : {}),
       });
 
       const choice = data?.choices?.[0];
@@ -85,7 +86,7 @@ export function createOpenAiCompatibleProvider(
     try {
       return await send(model);
     } catch (error) {
-      if (id !== 'groq' || !(error instanceof AiProviderError) || error.status !== 429) {
+      if (id !== 'groq' || !(error instanceof AiProviderError) || error.status !== 429 || input.fastFail) {
         throw error;
       }
 
