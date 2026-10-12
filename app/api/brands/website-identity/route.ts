@@ -8,6 +8,7 @@ import { extractRasterPalette, type RasterColorSample } from '@/lib/brand/raster
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { buildEvidenceContext, extractBrandIntelligence, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
 import { brandNameFromWebsiteUrl, normalizeWebsiteHostname } from '@/lib/brand/website-url';
+import { aiEnrichmentBudgetMs, optionalAssetBudgetMs, optionalResearchPageLimit, shouldRetryHomepageForVisuals } from '@/lib/brand/website-analysis-budget';
 
 export const maxDuration = 45;
 
@@ -953,7 +954,7 @@ export async function GET(request: Request) {
     // If the scraper user-agent received a rendered-reader fallback or HTML
     // without discoverable CSS, retry the public page once with a normal browser
     // user-agent. This does not bypass URL/DNS safety and never runs unbounded.
-    if (!baseHtml || stylesheetUrls.length === 0) {
+    if (shouldRetryHomepageForVisuals(elapsed(), Boolean(renderedFallbackText), Boolean(baseHtml), stylesheetUrls.length)) {
       const browserPage = await fetchHtml(
         root,
         3,
@@ -1000,8 +1001,15 @@ export async function GET(request: Request) {
     // link the same theme/base CSS through preload and stylesheet tags; fetching
     // those imports repeatedly wastes the small serverless scan budget.
     const visitedCssUrls = new Set<string>();
-    const cssResources = elapsed() < 15_000
-      ? (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url, 0, visitedCssUrls)))).flat()
+    // Stylesheets enrich colours/fonts, but must never consume the whole website scan.
+    const cssBudgetMs = elapsed() < 12_000 ? optionalAssetBudgetMs(elapsed(), 4_000) : 0;
+    const cssResources = cssBudgetMs > 0
+      ? await withTimeout(
+          Promise.all(stylesheetUrls.slice(0, 6).map((url) => fetchCssTree(url, 0, visitedCssUrls)))
+            .then((resources) => resources.flat()),
+          cssBudgetMs,
+          'Optional stylesheet inspection exceeded its budget',
+        ).catch(() => [])
       : [];
     const cssBlocks = cssResources.map((resource) => resource.css);
     // The server may expose SVG assets behind extensionless CDN/asset URLs.
@@ -1013,23 +1021,51 @@ export async function GET(request: Request) {
           .filter((url) => !/\.(?:png|jpe?g|gif|ico|webp|avif)(?:[?#]|$)/i.test(url))
           .slice(0, 3)
       : [];
-    const svgBlocks = (await Promise.all(svgUrls.map(fetchSvgAsset))).filter((asset): asset is string => Boolean(asset));
+    const svgBudgetMs = elapsed() < 16_000 ? optionalAssetBudgetMs(elapsed(), 2_500) : 0;
+    const svgResults = svgBudgetMs > 0
+      ? await withTimeout(
+          Promise.all(svgUrls.slice(0, 2).map(fetchSvgAsset)),
+          svgBudgetMs,
+          'Optional logo SVG inspection exceeded its budget',
+        ).catch(() => [])
+      : [];
+    const svgBlocks = svgResults.filter((asset): asset is string => Boolean(asset));
 
     // Modern frameworks frequently keep theme colours in JS/CSS-in-JS bundles
     // instead of HTML or standalone CSS. Read only explicitly declared public
     // scripts, with strict time and byte caps.
-    const canFetchOptionalAssets = elapsed() < 23_000;
+    const canFetchOptionalAssets = elapsed() < 18_000;
     const inlineScripts = baseHtml && canFetchOptionalAssets ? inlineScriptBlocks(baseHtml) : [];
-    const externalScripts = baseHtml && canFetchOptionalAssets
-      ? (await Promise.all(externalScriptUrls(baseHtml, baseUrl).map(fetchScriptText)))
+    const scriptBudgetMs = canFetchOptionalAssets ? optionalAssetBudgetMs(elapsed(), 2_500) : 0;
+    const externalScripts = baseHtml && scriptBudgetMs > 0
+      ? (await withTimeout(
+          Promise.all(externalScriptUrls(baseHtml, baseUrl).slice(0, 2).map(fetchScriptText)),
+          scriptBudgetMs,
+          'Optional design-token script inspection exceeded its budget',
+        ).catch(() => []))
           .filter((script): script is string => Boolean(script))
       : [];
     const scriptBlocks = [...inlineScripts, ...externalScripts];
-    const rasterUrls = baseHtml && canFetchOptionalAssets ? rasterLogoUrls(baseHtml, baseUrl, [identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons]) : [];
-    const rasterColors = canFetchOptionalAssets ? (await Promise.all(rasterUrls.map(fetchRasterColors))).flat() : [];
+    const rasterUrls = baseHtml && canFetchOptionalAssets ? rasterLogoUrls(baseHtml, baseUrl, [identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons]).slice(0, 3) : [];
+    const rasterBudgetMs = canFetchOptionalAssets ? optionalAssetBudgetMs(elapsed(), 1_800) : 0;
+    const rasterColors = rasterBudgetMs > 0
+      ? (await withTimeout(
+          Promise.all(rasterUrls.map(fetchRasterColors)).then((samples) => samples.flat()),
+          rasterBudgetMs,
+          'Optional raster colour inspection exceeded its budget',
+        ).catch(() => []))
+      : [];
 
     identity = mergeExternalCss(identity, cssBlocks, svgBlocks, manifestVisuals.colors, rasterColors, scriptBlocks);
-    identity = { ...identity, fonts: await attachSourceFontAssets(identity.fonts, cssResources) };
+    const fontAssetBudgetMs = elapsed() < 20_000 ? optionalAssetBudgetMs(elapsed(), 1_000) : 0;
+    const fontsWithAssets = fontAssetBudgetMs > 0
+      ? await withTimeout(
+          attachSourceFontAssets(identity.fonts, cssResources),
+          fontAssetBudgetMs,
+          'Optional font asset validation exceeded its budget',
+        ).catch(() => identity.fonts)
+      : identity.fonts;
+    identity = { ...identity, fonts: fontsWithAssets };
 
     const directLinks = baseHtml ? prioritizedLinks(baseHtml, baseUrl) : [];
     const readerLinks = renderedFallbackText ? renderedResearchLinks(renderedFallbackText, baseUrl) : [];
@@ -1051,8 +1087,11 @@ export async function GET(request: Request) {
     // nine links. Two short, same-origin reader pages add evidence without
     // exhausting the function's 45-second request budget.
     const readerOnlyFallback = Boolean(renderedFallbackText && !baseHtml);
-    const researchPageCandidates = readerOnlyFallback || elapsed() >= 28_000 ? pageCandidates.slice(0, 2) : pageCandidates.slice(0, 6);
-    const extraPages = await Promise.all(researchPageCandidates.map(async (url, index) => {
+    const pageLimit = optionalResearchPageLimit(elapsed());
+    const researchPageCandidates = pageCandidates.slice(0, readerOnlyFallback ? Math.min(2, pageLimit) : pageLimit);
+    const pageFetchBudgetMs = optionalAssetBudgetMs(elapsed(), 8_000);
+    const extraPages = pageFetchBudgetMs > 0 && researchPageCandidates.length > 0
+      ? await withTimeout(Promise.all(researchPageCandidates.map(async (url, index) => {
       if (readerOnlyFallback) {
         const rendered = await fetchRenderedResearch(url, 3_500);
         return rendered && rendered.text.trim().length >= 180
@@ -1075,7 +1114,9 @@ export async function GET(request: Request) {
         }
       }
       return { url: page.finalUrl, ...direct };
-    }));
+    })), pageFetchBudgetMs, 'Optional first-party page crawl exceeded its budget')
+        .catch(() => [] as Array<{ url: string; title: string | null; text: string } | null>)
+      : [];
     for (const page of extraPages) if (page?.text?.trim()) evidencePages.push(page);
 
     const accessibleTextChars = evidencePages.reduce((total, page) => total + page.text.trim().length, 0);
@@ -1118,6 +1159,10 @@ export async function GET(request: Request) {
           .map((page) => ({ url: page.url, title: page.title, text: page.text, sourceType: 'first-party' as const }));
         const evidence = buildEvidenceContext(fragments);
         if (evidence.length > 0) {
+          const aiBudgetMs = aiEnrichmentBudgetMs(elapsed());
+          if (aiBudgetMs <= 0) {
+            aiWarnings.push('AI enrichment was skipped to return verified website evidence within the scan time budget.');
+          } else {
           const extractionRun = await withTimeout(
             runWithProviderFailover(
               providers,
@@ -1126,12 +1171,13 @@ export async function GET(request: Request) {
                 aiWarnings.push(`AI enrichment switched from ${failed.id} to ${next.id} after a transient provider limit or availability error.`);
               },
             ),
-            Math.max(2_000, Math.min(12_000, 42_000 - elapsed())),
+            aiEnrichmentBudgetMs(elapsed()),
             'AI enrichment exceeded its bounded time budget',
           );
           aiProfile = buildAiProfile(extractionRun.result.result);
           if (!identity.brandName && extractionRun.result.result.identity.brandName) identity.brandName = extractionRun.result.result.identity.brandName;
           if (!identity.description && extractionRun.result.result.identity.companyDescription) identity.description = extractionRun.result.result.identity.companyDescription;
+          }
         }
       }
     } catch (error) {
