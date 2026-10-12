@@ -58,10 +58,12 @@ export default function ThemeHeroVideo() {
     // screen indefinitely if a codec/CDN/autoplay failure prevents the video.
     const fallbackTimer = window.setTimeout(() => {
       if (!active) return;
-      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !video.paused) {
         setVideoReady(true);
         setShowMotionFallback(false);
       } else {
+        // A decoded first frame is not animation. Keep the moving fallback when
+        // autoplay was blocked and the video is still paused.
         setShowMotionFallback(true);
       }
     }, 1800);
@@ -162,7 +164,12 @@ export default function ThemeHeroVideo() {
           preload="auto"
           aria-hidden="true"
           tabIndex={-1}
-          onLoadedData={() => { setVideoReady(true); setShowMotionFallback(false); }}
+          onLoadedData={() => {
+            if (videoRef.current && !videoRef.current.paused) {
+              setVideoReady(true);
+              setShowMotionFallback(false);
+            }
+          }}
           onPlaying={() => { setVideoReady(true); setShowMotionFallback(false); }}
           onError={() => { setVideoUnavailable(true); setShowMotionFallback(true); }}
         >
