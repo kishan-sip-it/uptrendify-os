@@ -342,6 +342,18 @@ describe('logo fallbacks for sparse public HTML', () => {
     expect(identity.logoUrl).toBe('https://samaaroh.example/favicon.svg');
   });
 
+  it('keeps a first-party header logo even when the image is not wrapped in a homepage link', () => {
+    const html = '<html><head><title>Canva</title><meta property="og:site_name" content="Canva" /></head><body><header><img src="/assets/identity-mark-42a9.svg" alt="" width="36" height="36" /></header><main><h1>Visual Suite for Everyone</h1><p>Create designs for teams and businesses.</p></main></body></html>';
+    const identity = extractBrandIdentity(html, 'https://www.canva.com/');
+    expect(identity.logoUrl).toBe('https://www.canva.com/assets/identity-mark-42a9.svg');
+  });
+
+  it('uses the real lazy-loaded logo when src is only a data-URI placeholder', () => {
+    const html = '<html><head><title>Canva</title><meta property="og:site_name" content="Canva" /></head><body><header><a href="/"><img src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" data-src="/assets/canva-wordmark.svg" alt="Canva" /></a></header><main><h1>Visual Suite for Everyone</h1><p>Create designs for teams and businesses.</p></main></body></html>';
+    const identity = extractBrandIdentity(html, 'https://www.canva.com/');
+    expect(identity.logoUrl).toBe('https://www.canva.com/assets/canva-wordmark.svg');
+  });
+
   it('detects a first-party logo hosted on an external asset CDN when the markup identifies it', () => {
     const html = `<html><head><title>Samaaroh</title></head><body><header><a href="/"><img src="https://cdn.assets-example.net/samaaroh-wordmark.svg" alt="Samaaroh logo" width="180" height="40" /></a></header><main><h1>Premium wedding services</h1></main></body></html>`;
     const identity = extractBrandIdentity(html, 'https://samaaroh.example/');

@@ -766,10 +766,34 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
 
   $('img, picture img, picture source').each((_i, el) => {
     const node = $(el);
-    const url = absoluteUrl(
-      node.attr('src') ?? node.attr('data-src') ?? node.attr('data-lazy-src') ?? node.attr('srcset')?.split(',')[0]?.trim().split(' ')[0],
-      base,
-    );
+    const sourceSetUrls = [
+      node.attr('data-srcset'),
+      node.attr('data-lazy-srcset'),
+      node.attr('srcset'),
+    ].flatMap((sourceSet) => (sourceSet ?? '').split(',').map((entry) => {
+      const [candidate, descriptor] = entry.trim().split(/\\s+/);
+      const parsed = descriptor?.match(/^([\\d.]+)(w|x)$/i);
+      const scale = parsed ? Number(parsed[1]) * (parsed[2]?.toLowerCase() === 'x' ? 1000 : 1) : 0;
+      return { candidate, scale };
+    }).filter((entry) => Boolean(entry.candidate) && !entry.candidate!.startsWith('data:'))
+      .sort((left, right) => right.scale - left.scale)
+      .map((entry) => entry.candidate));
+    const sourceCandidates = [
+      ...sourceSetUrls,
+      node.attr('data-src'),
+      node.attr('data-lazy-src'),
+      node.attr('data-original'),
+      node.attr('data-original-src'),
+      node.attr('data-fallback-src'),
+      node.attr('data-url'),
+      node.attr('src'),
+    ];
+    // Do not let a transparent/data-URI src placeholder mask the real URL in
+    // srcset or lazy-load attributes. Try each candidate until one is a safe
+    // HTTP(S) URL relative to the source page.
+    const url = sourceCandidates
+      .map((candidate) => absoluteUrl(candidate, base))
+      .find((candidate): candidate is string => candidate !== null) ?? null;
     if (!url) return;
 
     const alt = [node.attr('alt'), node.attr('aria-label'), node.attr('title')].filter(Boolean).join(' ');
@@ -918,8 +942,12 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
   candidates.sort((a, b) => b.score - a.score);
   // Don't use a social-preview OG image as the brand logo when a linked
   // favicon/app icon is available. The icon is a useful, honest fallback.
-  const semanticLogo = candidates.find((candidate) => candidate.semanticLogo && candidate.score >= 20)?.url ?? null;
-  return { logo: semanticLogo ?? faviconUrl, favicon: faviconUrl };
+  // Preserve main's proven same-site scoring behaviour. The candidate gate
+  // above still requires strong logo semantics for external/CDN URLs, but a
+  // first-party header image with an unhelpful alt or no home-link wrapper may
+  // still be the real logo even when the markup does not label it explicitly.
+  const selectedLogo = candidates.find((candidate) => candidate.score >= 20)?.url ?? null;
+  return { logo: selectedLogo ?? faviconUrl, favicon: faviconUrl };
 }
 
 function detectSocials($: cheerio.CheerioAPI, base: string | null): { platform: string; url: string }[] {
