@@ -47,7 +47,11 @@ function mockSupabase(existingSource: Record<string, unknown> | null = null) {
         return {
           select: vi.fn(() => {
             const filters: Record<string, unknown> = {};
-            const query: { eq: (column: string, value: unknown) => typeof query; maybeSingle: () => Promise<{ data: Record<string, unknown> | null; error: null }> } = {
+            type SourceQuery = {
+              eq: (column: string, value: unknown) => SourceQuery;
+              maybeSingle: () => Promise<{ data: Record<string, unknown> | null; error: null }>;
+            };
+            const query: SourceQuery = {
               eq: (column, value) => { filters[column] = value; return query; },
               maybeSingle: async () => {
                 const canonical = String(existingSource?.canonical_url ?? '').replace(/\/$/, '');
