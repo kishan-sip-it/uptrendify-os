@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { preferredPreviewFontFamily, resolveFontRoles } from './identity-mapping';
+import { parseVisualIdentity, preferredPreviewFontFamily, resolveFontRoles, toVisualIdentity } from './identity-mapping';
 import {
   collectColors,
   collectJavaScriptDesignTokens,
   extractBrandIdentity,
+  extractDeclaredFonts,
   isBlockedWebsiteResponse,
   isRenderedReaderError,
   rankPalette,
@@ -446,6 +447,40 @@ describe('rendered reader error detection', () => {
 
   it('does not reject real first-party page text', () => {
     expect(isRenderedReaderError('Title: Microsoft\nURL Source: https://www.microsoft.com/\nMarkdown Content: Explore Microsoft products, services and solutions.')).toBe(false);
+  });
+});
+
+describe('declared website typography', () => {
+  it('resolves nested CSS font variables and gives real body/heading assignments priority', () => {
+    const css = [
+      ':root { --font-body: var(--font-text, "Lato"); --font-text: "Lato", sans-serif; --font-display: "Playfair Display", serif; }',
+      'body { font-family: var(--font-body); }',
+      'h1, h2 { font-family: var(--font-display); }',
+      '@font-face { font-family: "Lato"; src: url("https://fonts.example/lato.woff2") format("woff2"); }',
+    ].join('\n');
+    const fonts = extractDeclaredFonts(css);
+    expect(fonts[0]?.family).toBe('Lato');
+    expect(fonts[0]?.evidence).toContain('body/html selector');
+    expect(fonts.some((font) => font.family === 'Playfair Display' && font.evidence.includes('heading selector'))).toBe(true);
+    expect(resolveFontRoles(fonts)).toEqual({ headingFont: 'Playfair Display', bodyFont: 'Lato' });
+  });
+
+  it('preserves a verified font asset through the saved identity mapping', () => {
+    const extracted = extractBrandIdentity('<html><head><title>Sample</title></head><body><h1>Sample</h1></body></html>', 'https://sample.example/');
+    extracted.fonts = [{
+      family: 'Lato',
+      source: 'css-declaration',
+      evidence: 'font-family from body/html selector',
+      fontAssetUrl: 'https://fonts.example/lato.woff2',
+      fontAssetFormat: 'woff2',
+      fontWeight: '400',
+      fontStyle: 'normal',
+    }];
+    const saved = toVisualIdentity(extracted);
+    const loaded = parseVisualIdentity(saved);
+    expect(loaded.fonts[0]?.fontAssetUrl).toBe('https://fonts.example/lato.woff2');
+    expect(loaded.fonts[0]?.fontAssetFormat).toBe('woff2');
+    expect(loaded.headingFont).toBe('Lato');
   });
 });
 
