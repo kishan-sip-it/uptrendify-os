@@ -277,7 +277,6 @@ async function recordPageFailure(
         organization_id: args.organizationId,
         source_id: existing.data.id,
         status: 'PROCESSED',
-        error_message: ('Refresh failed (' + args.code + '); reused previously captured public content.').slice(0, 400),
       }, { onConflict: 'research_run_id,source_id' });
       if (reused.error) throw reused.error;
       return {
