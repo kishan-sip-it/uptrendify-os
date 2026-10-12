@@ -812,7 +812,7 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const socialAssetHint = /(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter|x-twitter|social[-_ ]?(?:icon|logo|link)|(?:icon|logo)[-_ ]?(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter))/i.test(path + ' ' + alt + ' ' + classes);
     const linksToExternalSocialProfile = Boolean(href && !sameSiteUrl(base, href) && (() => {
       try {
-        const linkedHost = new URL(href).hostname.toLowerCase().replace(/^www\\./, '');
+        const linkedHost = new URL(href).hostname.toLowerCase().replace(/^www\./, '');
         return SOCIAL_HOSTS.some((entry) => entry.test(linkedHost));
       } catch {
         return false;
@@ -1077,7 +1077,7 @@ export function extractBrandIdentity(html: string, finalUrl: string | null): Ext
   // SEO titles commonly append a long product/category slogan after a separator.
   // Keep the organization label short when metadata and structured data are absent.
   const titleBrandName = titleText
-    ? cleanMetaText(titleText.split(/\\s+(?:\\||—|–|:)\\s+/)[0] ?? titleText) ?? titleText
+    ? cleanMetaText(titleText.split(/\s+(?:\||—|–|:)\s+/)[0] ?? titleText) ?? titleText
     : null;
   const brandName =
     cleanMetaText($('meta[property="og:site_name"]').first().attr('content')) ??
