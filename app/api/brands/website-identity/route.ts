@@ -956,7 +956,16 @@ export async function GET(request: Request) {
         );
     let baseHtml = outcome.ok && !outcome.renderedFallback ? outcome.html : '';
     let baseUrl = outcome.ok ? outcome.finalUrl : raw;
-    if (renderedFallbackText) identity.brandName = brandNameFromWebsiteUrl(baseUrl);
+    if (renderedFallbackText) {
+      identity.brandName = brandNameFromWebsiteUrl(baseUrl);
+      // The synthetic reader wrapper contains text but not the real site's CSS.
+      // Avoid claiming the original website has no styles or declared colours.
+      identity.warnings = identity.warnings.filter((warning) =>
+        !warning.includes('No embedded stylesheet found') &&
+        !warning.includes('No usable colour declarations were found'),
+      );
+      identity.warnings.push('The site HTML/CSS was not directly readable; visual identity is limited to independently verified public assets.');
+    }
     let stylesheetUrls = baseHtml ? externalStylesheetUrls(baseHtml, baseUrl) : [];
 
     // If the scraper user-agent received a rendered-reader fallback or HTML
