@@ -771,8 +771,8 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
       node.attr('data-lazy-srcset'),
       node.attr('srcset'),
     ].flatMap((sourceSet) => (sourceSet ?? '').split(',').map((entry) => {
-      const [candidate, descriptor] = entry.trim().split(/\\s+/);
-      const parsed = descriptor?.match(/^([\\d.]+)(w|x)$/i);
+      const [candidate, descriptor] = entry.trim().split(/\s+/);
+      const parsed = descriptor?.match(/^([\d.]+)(w|x)$/i);
       const scale = parsed ? Number(parsed[1]) * (parsed[2]?.toLowerCase() === 'x' ? 1000 : 1) : 0;
       return { candidate, scale };
     }).filter((entry) => Boolean(entry.candidate) && !entry.candidate!.startsWith('data:'))
