@@ -12,9 +12,9 @@ function readTheme(): ThemeName {
 export default function ThemeHeroVideo() {
   const [theme, setTheme] = useState<ThemeName>('light');
   const [videoReady, setVideoReady] = useState(false);
-  const [stillReady, setStillReady] = useState(false);
   const [videoUnavailable, setVideoUnavailable] = useState(false);
   const [stillUnavailable, setStillUnavailable] = useState(false);
+  const [showMotionFallback, setShowMotionFallback] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -43,30 +43,51 @@ export default function ThemeHeroVideo() {
 
   useEffect(() => {
     setVideoReady(false);
-    setStillReady(false);
     setVideoUnavailable(false);
     setStillUnavailable(false);
+    setShowMotionFallback(reducedMotion);
 
     const video = videoRef.current;
-    if (!video || reducedMotion) return;
+    if (!video || reducedMotion) {
+      if (reducedMotion) setShowMotionFallback(true);
+      return;
+    }
+
+    let active = true;
+    // The still is only a short loading cover. Do not leave a static image on
+    // screen indefinitely if a codec/CDN/autoplay failure prevents the video.
+    const fallbackTimer = window.setTimeout(() => {
+      if (!active) return;
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        setVideoReady(true);
+        setShowMotionFallback(false);
+      } else {
+        setShowMotionFallback(true);
+      }
+    }, 1800);
 
     video.load();
-    const playback = video.play();
-    playback?.catch(() => {
-      // Autoplay can be blocked by browser policy. The transparent still stays visible.
+    void video.play().catch(() => {
+      // Autoplay policy can reject play() even while the muted video is loading.
+      // onLoadedData/onPlaying or the bounded animated fallback handles the UI.
     });
+
+    return () => {
+      active = false;
+      window.clearTimeout(fallbackTimer);
+    };
   }, [webmSrc, mp4Src, reducedMotion]);
 
   return (
     <div
-      className={'landing-hero-visual ' + (isDark ? 'is-dark' : 'is-light') + (stillReady || videoReady ? ' has-media' : '')}
+      className={'landing-hero-visual ' + (isDark ? 'is-dark' : 'is-light') + (videoReady ? ' has-media' : '')}
       role="img"
       aria-label="UpTrendifyOS visual: public website research flows into the Brand Brain and then into marketing content."
     >
       <div className="landing-hero-visual-halo landing-hero-visual-halo-one" aria-hidden="true" />
       <div className="landing-hero-visual-halo landing-hero-visual-halo-two" aria-hidden="true" />
 
-      {stillUnavailable && (!videoReady || reducedMotion) && (
+      {showMotionFallback && !videoReady && (
         <div className="landing-hero-visual-art" aria-hidden="true">
         <div className="landing-hero-orbit landing-hero-orbit-one" />
         <div className="landing-hero-orbit landing-hero-orbit-two" />
@@ -120,13 +141,12 @@ export default function ThemeHeroVideo() {
       {!stillUnavailable && (
         <img
           key={stillSrc}
-          className={'landing-hero-still' + (videoReady && !reducedMotion ? ' is-hidden' : '')}
+          className={'landing-hero-still' + (videoReady || showMotionFallback ? ' is-hidden' : '')}
           src={stillSrc}
           alt=""
           aria-hidden="true"
           draggable={false}
-          onLoad={() => setStillReady(true)}
-          onError={() => { setStillReady(false); setStillUnavailable(true); }}
+          onError={() => { setStillUnavailable(true); setShowMotionFallback(true); }}
         />
       )}
 
@@ -142,9 +162,9 @@ export default function ThemeHeroVideo() {
           preload="auto"
           aria-hidden="true"
           tabIndex={-1}
-          onLoadedData={() => setVideoReady(true)}
-          onPlaying={() => setVideoReady(true)}
-          onError={() => setVideoUnavailable(true)}
+          onLoadedData={() => { setVideoReady(true); setShowMotionFallback(false); }}
+          onPlaying={() => { setVideoReady(true); setShowMotionFallback(false); }}
+          onError={() => { setVideoUnavailable(true); setShowMotionFallback(true); }}
         >
           <source src={webmSrc} type="video/webm" />
           <source src={mp4Src} type="video/mp4" />
