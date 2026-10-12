@@ -27,7 +27,7 @@ function htmlPage(title: string, links = '<a href="/about">About</a>') {
   return `<!DOCTYPE html><html><head><title>${title}</title><meta name="description" content="desc"/></head><body><h1>Hello</h1><p>Brand content here.</p>${links}</body></html>`;
 }
 
-function mockSupabase() {
+function mockSupabase(existingSource: Record<string, unknown> | null = null) {
   const updates: string[] = [];
   const updatesPayload: Array<Record<string, unknown>> = [];
   const sourceUpserts: Array<Record<string, unknown>> = [];
@@ -45,6 +45,22 @@ function mockSupabase() {
       }
       if (table === 'brand_sources') {
         return {
+          select: vi.fn(() => {
+            const filters: Record<string, unknown> = {};
+            const query: { eq: (column: string, value: unknown) => typeof query; maybeSingle: () => Promise<{ data: Record<string, unknown> | null; error: null }> } = {
+              eq: (column, value) => { filters[column] = value; return query; },
+              maybeSingle: async () => {
+                const canonical = String(existingSource?.canonical_url ?? '').replace(/\/$/, '');
+                const requested = String(filters.canonical_url ?? '').replace(/\/$/, '');
+                const matches = existingSource &&
+                  Object.entries(filters).every(([column, value]) => column === 'canonical_url'
+                    ? canonical === requested
+                    : existingSource[column] === value);
+                return { data: matches ? existingSource : null, error: null };
+              },
+            };
+            return query;
+          }),
           upsert: vi.fn((payload: Record<string, unknown>) => {
             sourceUpserts.push(payload);
             return {
