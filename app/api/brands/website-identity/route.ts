@@ -356,7 +356,18 @@ async function fetchCss(url: string): Promise<string> {
 
 
 async function verifyConventionalIcon(baseUrl: string): Promise<string | null> {
-  const candidates = ['/favicon.ico', '/favicon.svg', '/apple-touch-icon.png'];
+  // Prefer explicit logo assets when published at conventional first-party paths;
+  // use favicon/app icons only as a final fallback. Every candidate is verified
+  // by a successful image response before it is returned.
+  const candidates = [
+    '/logo.svg',
+    '/assets/logo.svg',
+    '/logo.png',
+    '/images/logo.svg',
+    '/apple-touch-icon.png',
+    '/favicon.svg',
+    '/favicon.ico',
+  ];
   const results = await Promise.all(candidates.map(async (path) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 2500);
@@ -371,7 +382,8 @@ async function verifyConventionalIcon(baseUrl: string): Promise<string | null> {
       if (!response.ok) return null;
       const type = (response.headers.get('content-type') ?? '').toLowerCase();
       if (type.startsWith('image/')) return candidate.toString();
-      if (path.endsWith('.ico') && !type.includes('text/html') && !type.includes('application/json')) return candidate.toString();
+      if (/(?:html|json|javascript)/i.test(type)) return null;
+      if (/\.(?:svg|png|ico)$/i.test(path) && !type) return candidate.toString();
       return null;
     } catch {
       return null;
