@@ -354,6 +354,12 @@ describe('logo fallbacks for sparse public HTML', () => {
     expect(identity.logoUrl).toBe('https://www.canva.com/assets/9f182a7.svg');
   });
 
+  it('recognizes a hashed CDN wordmark linked from a locale homepage route', () => {
+    const html = '<html><head><title>Canva</title><meta property="og:site_name" content="Canva" /></head><body><header><a href="/en/"><img src="https://static.canva-cdn.example/assets/9f182a7.svg" alt="" width="40" height="40" /></a></header><main><h1>Visual Suite for Everyone</h1><p>Make socials, videos, slides, and more with Canva. ' + 'Create designs for teams and businesses. '.repeat(8) + '</p></main></body></html>';
+    const identity = extractBrandIdentity(html, 'https://www.canva.com/en/');
+    expect(identity.logoUrl).toBe('https://static.canva-cdn.example/assets/9f182a7.svg');
+  });
+
   it('reads organization logos nested inside a JSON-LD @graph', () => {
     const html = `<html><head><title>Example</title><script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': [{ '@type': 'Organization', name: 'Example', logo: { '@type': 'ImageObject', url: 'https://cdn.assets-example.net/example-logo.svg' } }] })}</script></head><body><h1>Example</h1></body></html>`;
     const identity = extractBrandIdentity(html, 'https://example.com/');
