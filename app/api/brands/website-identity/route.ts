@@ -1195,7 +1195,13 @@ export async function GET(request: Request) {
           }
         }
       } catch (error) {
-        aiWarnings.push(error instanceof Error ? `AI enrichment failed: ${error.message}` : 'AI enrichment failed.');
+        if (error instanceof AiProviderError && error.status === 429 && /tokens? per day|\\bTPD\\b/i.test(error.message)) {
+          aiWarnings.push(
+            `AI enrichment failed: ${error.provider} daily organization quota is exhausted. Retry after it resets or configure a fallback provider with separate quota; another key in the same organization shares the same daily limit.`,
+          );
+        } else {
+          aiWarnings.push(error instanceof Error ? `AI enrichment failed: ${error.message}` : 'AI enrichment failed.');
+        }
       }
     })();
 
