@@ -378,13 +378,27 @@ export type ExtractionOutcome = {
   usage?: { inputTokens?: number; outputTokens?: number };
 };
 
+export type BrandIntelligenceOptions = {
+  signal?: AbortSignal;
+  fastFail?: boolean;
+  maxEvidenceChars?: number;
+  maxSources?: number;
+  maxTokens?: number;
+};
+
 export async function extractBrandIntelligence(
   provider: AiProvider,
   evidence: EvidenceFragment[],
   model?: string,
+  options: BrandIntelligenceOptions = {},
 ): Promise<ExtractionOutcome> {
   const selectedModel = model ?? provider.defaultModel;
-  const limits = extractionLimitsForModel(selectedModel);
+  const defaults = extractionLimitsForModel(selectedModel);
+  const limits: ExtractionLimits = {
+    maxEvidenceChars: options.maxEvidenceChars ?? defaults.maxEvidenceChars,
+    maxSources: options.maxSources ?? defaults.maxSources,
+    maxTokens: options.maxTokens ?? defaults.maxTokens,
+  };
   const boundedEvidence = fitEvidenceToBudget(evidence, limits);
   const prompt = buildBrandIntelligencePrompt(boundedEvidence);
 
@@ -395,6 +409,8 @@ export async function extractBrandIntelligence(
     maxTokens: limits.maxTokens,
     temperature: 0.2,
     model: selectedModel,
+    ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.fastFail ? { fastFail: true } : {}),
   };
 
   const attempt = async (promptText: string): Promise<GenerateResult> =>
