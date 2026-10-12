@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
-  ArrowUpRight, BookOpen, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Plus, Settings, Sparkles, Target, Trash2, Users, X,
+  ArrowUpRight, BookOpen, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Network, Plus, Settings, Sparkles, Target, Trash2, Users, X,
 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import HoldButton from '@/components/react-bits/HoldButton';
@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { icon: Users, label: 'Brands', href: '/brands', soon: false },
   { icon: Boxes, label: 'Campaigns', href: '/campaigns', soon: false },
   { icon: CheckCircle2, label: 'Approvals', href: '/approvals', soon: false },
+  { icon: Network, label: 'System DFD', href: '/dfd', soon: false },
 ];
 
 type OrgOption = { id: string; name: string; role: string };
@@ -351,7 +352,9 @@ export function AppShell({
                   ? pathname === '/campaigns'
                   : item.label === 'Approvals'
                     ? pathname.startsWith('/approvals')
-                    : false;
+                    : item.label === 'System DFD'
+                      ? pathname.startsWith('/dfd')
+                      : false;
 
         return (
           <a

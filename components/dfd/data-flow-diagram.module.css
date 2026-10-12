@@ -1,0 +1,48 @@
+.visualization{display:grid;gap:13px}
+.levelToolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.levelOptions{display:flex;gap:7px;flex-wrap:wrap}
+.levelButton,.levelActive{display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:11px;border:1px solid var(--line);background:var(--surface-card);color:var(--muted);cursor:pointer;transition:background .18s,border-color .18s,transform .18s;font-size:12px;font-weight:650}
+.levelButton:hover,.levelActive:hover{transform:translateY(-1px);border-color:var(--accent)}
+.levelActive{background:color-mix(in srgb,var(--accent) 12%,var(--surface-card));border-color:color-mix(in srgb,var(--accent) 60%,var(--line));color:var(--text)}
+.levelIndex{display:grid;place-items:center;width:27px;height:27px;border-radius:8px;background:var(--surface-muted);font-size:11px;font-weight:800;letter-spacing:.02em}
+.levelActive .levelIndex{background:var(--accent);color:var(--text-inverse)}
+.canvasActions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.viewHint{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;margin-right:4px}
+.toolButton{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:9px;background:var(--surface-card);color:var(--muted);padding:7px 9px;cursor:pointer;font-size:11px;font-weight:650}
+.toolButton:hover{color:var(--text);border-color:var(--accent)}
+.diagramScroller{width:100%;overflow-x:auto;overflow-y:hidden;border-radius:17px;border:1px solid rgba(115,148,184,.24);background:#07101d;box-shadow:0 24px 65px rgba(1,5,13,.20);scrollbar-color:#334862 #081220}
+.sceneCanvas{width:100%;min-width:920px;height:570px;position:relative;overflow:hidden}
+.sceneCanvas canvas{display:block;width:100%;height:100%;outline:none;touch-action:pan-y}
+.webglFallback{display:grid;gap:7px;padding:15px;border:1px solid var(--line);border-radius:12px;color:var(--muted);font-size:12px}
+.webglFallback strong{color:var(--text)}
+.webglFallback div{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.webglFallback div span{padding:5px 8px;border-radius:8px;background:var(--surface-muted);color:var(--text);font-size:11px}
+.legend{display:flex;flex-wrap:wrap;gap:9px 17px;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:var(--surface-card-2)}
+.legend span{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:11px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;border:1px solid transparent}
+.legendExternal{background:#245d84;border-color:#6ca8dc!important}
+.legendProcess{background:#1f9b82;border-color:#69e6ca!important}
+.legendStore{background:#8865db;border-color:#bca4ff!important}
+.legendSystem{background:#42d9c1;border-color:#8cf5e4!important}
+.legendFlow{width:19px!important;height:2px!important;border:0!important;border-radius:9px!important;background:#57dfcd;position:relative}
+.legendFlow:after{content:'';position:absolute;right:0;top:-3px;border-top:4px solid transparent;border-bottom:4px solid transparent;border-left:5px solid #57dfcd}
+.detailGrid{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.35fr);gap:13px}
+.selectedPanel,.flowPanel{min-width:0;border:1px solid var(--line);border-radius:15px;background:linear-gradient(180deg,var(--surface-card),var(--surface-card-2));padding:17px}
+.detailKicker{text-transform:uppercase;letter-spacing:.11em;color:var(--accent);font-size:10px;font-weight:800}
+.selectedPanel h3,.flowPanel h3{font-size:17px;line-height:1.25;margin:5px 0 8px}
+.selectedPanel p{margin:0;color:var(--muted);font-size:12px;line-height:1.7}
+.selectedTag{display:inline-flex;margin-top:13px;border:1px solid var(--line);border-radius:999px;padding:5px 8px;background:var(--surface-muted);font-size:10px;font-weight:650;color:var(--text)}
+.flowPanelHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.flowPanelHead h3{margin-bottom:0}
+.flowList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.flowRow{display:flex;align-items:flex-start;gap:8px;min-width:0;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--surface-inset)}
+.flowRow>div{min-width:0;display:grid;gap:3px}
+.flowRow strong{font-size:11px;line-height:1.35;font-weight:700;overflow-wrap:anywhere}
+.flowRow small{font-size:10px;color:var(--muted);line-height:1.4}
+.flowOut,.flowIn{flex:none;display:grid;place-items:center;min-width:29px;height:21px;border-radius:6px;font-size:9px;font-weight:850;letter-spacing:.03em}
+.flowOut{background:color-mix(in srgb,#57dfcd 14%,var(--surface-muted));color:var(--text-success)}
+.flowIn{background:color-mix(in srgb,#a78bfa 15%,var(--surface-muted));color:var(--text-info)}
+.emptyFlows{font-size:12px;color:var(--muted)}
+@media(max-width:1000px){.detailGrid{grid-template-columns:1fr}.flowList{grid-template-columns:repeat(2,minmax(0,1fr))}.sceneCanvas{height:540px}}
+@media(max-width:620px){.levelToolbar{align-items:flex-start}.levelOptions{width:100%}.levelButton,.levelActive{flex:1;justify-content:center;padding:7px 6px;gap:5px}.levelOptions button span:last-child{font-size:10px}.canvasActions{width:100%}.viewHint{width:100%;margin:0 0 2px}.flowList{grid-template-columns:1fr}.selectedPanel,.flowPanel{padding:14px}.sceneCanvas{height:510px}}
+@media(prefers-reduced-motion:reduce){.levelButton,.levelActive{transition:none}}
