@@ -31,7 +31,7 @@ export type BrandVisualIdentity = {
   logoUrl: string | null;
   faviconUrl: string | null;
   palette: { hex: string; role: string; occurrences: number; sources: string[] }[];
-  fonts: { family: string; source: string; evidence: string }[];
+  fonts: ExtractedIdentity['fonts'];
   headingFont: string | null;
   bodyFont: string | null;
   voice: BrandVoice;
@@ -120,6 +120,10 @@ export function parseVisualIdentity(raw: unknown): BrandVisualIdentity {
           family: f.family as string,
           source: typeof f.source === 'string' ? f.source : 'css-declaration',
           evidence: typeof f.evidence === 'string' ? f.evidence : '',
+          ...(typeof f.fontAssetUrl === 'string' && f.fontAssetUrl.trim() ? { fontAssetUrl: f.fontAssetUrl.trim() } : {}),
+          ...(['woff2', 'woff', 'opentype', 'truetype'].includes(String(f.fontAssetFormat)) ? { fontAssetFormat: f.fontAssetFormat as ExtractedIdentity['fonts'][number]['fontAssetFormat'] } : {}),
+          ...(typeof f.fontWeight === 'string' ? { fontWeight: f.fontWeight } : {}),
+          ...(typeof f.fontStyle === 'string' ? { fontStyle: f.fontStyle } : {}),
         }))
     : [];
 
@@ -205,14 +209,23 @@ export function prioritizeDetectedFonts<T extends { family: string; source?: str
     .map(({ font }) => font);
 }
 
-export function preferredPreviewFontFamily(fonts: { family: string; source?: string }[]): string | null {
-  return prioritizeDetectedFonts(fonts).find((font) => font.family.trim())?.family ?? null;
+export function preferredPreviewFontFamily(fonts: { family: string; source?: string; evidence?: string }[]): string | null {
+  const preferred = prioritizeDetectedFonts(fonts);
+  return preferred.find((font) => /heading selector/i.test(font.evidence ?? '') && font.family.trim())?.family
+    ?? preferred.find((font) => /body\/html selector/i.test(font.evidence ?? '') && font.family.trim())?.family
+    ?? preferred.find((font) => font.family.trim())?.family
+    ?? null;
 }
 
-export function resolveFontRoles(fonts: { family: string; source?: string }[]): { headingFont: string | null; bodyFont: string | null } {
+export function resolveFontRoles(fonts: { family: string; source?: string; evidence?: string }[]): { headingFont: string | null; bodyFont: string | null } {
   const preferred = prioritizeDetectedFonts(fonts).filter((font) => font.family.trim());
   if (preferred.length === 0) return { headingFont: null, bodyFont: null };
-  return { headingFont: preferred[0]?.family ?? null, bodyFont: preferred[1]?.family ?? preferred[0]?.family ?? null };
+  const heading = preferred.find((font) => /heading selector/i.test(font.evidence ?? ''));
+  const body = preferred.find((font) => /body\/html selector/i.test(font.evidence ?? ''));
+  return {
+    headingFont: heading?.family ?? preferred[0]?.family ?? null,
+    bodyFont: body?.family ?? preferred.find((font) => font.family !== (heading?.family ?? preferred[0]?.family))?.family ?? preferred[0]?.family ?? null,
+  };
 }
 
 export function toVisualIdentity(identity: ExtractedIdentity & {
@@ -225,7 +238,7 @@ export function toVisualIdentity(identity: ExtractedIdentity & {
     logoUrl: identity.logoUrl,
     faviconUrl: identity.faviconUrl,
     palette: identity.palette.map((c) => ({ hex: c.hex, role: c.role, occurrences: c.occurrences, sources: c.sources })),
-    fonts: identity.fonts.map((f) => ({ family: f.family, source: f.source, evidence: f.evidence })),
+    fonts: identity.fonts.map((font) => ({ ...font })),
     headingFont,
     bodyFont,
     voice: normaliseVoice(voice),
