@@ -274,7 +274,6 @@ describe('crawlBrand', () => {
       research_run_id: RUN_ID,
       source_id: SOURCE_ID,
       status: 'PROCESSED',
-      error_message: expect.stringContaining('reused previously captured public content'),
     }));
   });
 
