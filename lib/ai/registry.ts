@@ -94,6 +94,8 @@ export function createDefaultRegistry(): AiProviderRegistry {
   // failover target.
   return new AiProviderRegistry(e.DEFAULT_AI_PROVIDER, [
     createGroqProvider(e.GROQ_API_KEY ?? null, e.GROQ_MODEL),
+    createGroqProvider(e.GROQ_API_KEY_2 ?? null, e.GROQ_MODEL, 'groq-2'),
+    createGroqProvider(e.GROQ_API_KEY_3 ?? null, e.GROQ_MODEL, 'groq-3'),
     createOpenAiProvider(e.OPENAI_API_KEY ?? null, e.OPENAI_MODEL),
     createAnthropicProvider(e.ANTHROPIC_API_KEY ?? null, e.ANTHROPIC_MODEL),
   ]);
