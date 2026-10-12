@@ -67,6 +67,24 @@ describe('buildEvidenceContext', () => {
     expect(buildEvidenceContext(many)).toHaveLength(10);
   });
 
+  it('keeps homepage first and prioritizes product/about pages over news when crawl order is noisy', () => {
+    const context = buildEvidenceContext([
+      { url: 'https://sample.example/', title: 'Sample', text: 'Homepage identity evidence.' },
+      { url: 'https://sample.example/news/launch', title: 'News launch', text: 'News coverage.' },
+      { url: 'https://sample.example/blog/', title: 'Blog', text: 'Blog content.' },
+      { url: 'https://sample.example/products/platform', title: 'Products platform', text: 'Platform capabilities and product details.' },
+      { url: 'https://sample.example/about/', title: 'About us', text: 'Company mission and audience.' },
+      { url: 'https://sample.example/services/', title: 'Services', text: 'Service details.' },
+    ]);
+    expect(context[0]?.url).toBe('https://sample.example/');
+    expect(context.findIndex((item) => item.url.endsWith('/products/platform'))).toBeLessThan(
+      context.findIndex((item) => item.url.endsWith('/news/launch')),
+    );
+    expect(context.findIndex((item) => item.url.endsWith('/about/'))).toBeLessThan(
+      context.findIndex((item) => item.url.endsWith('/blog/')),
+    );
+  });
+
   it('reserves evidence slots for external web research without displacing first-party homepage evidence', () => {
     const firstParty = Array.from({ length: 12 }, (_, i) => ({
       url: `https://example.com/page-${i}`,
