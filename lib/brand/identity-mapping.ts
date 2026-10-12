@@ -116,7 +116,7 @@ export function parseVisualIdentity(raw: unknown): BrandVisualIdentity {
     ? source.fonts
         .filter((f): f is Record<string, unknown> => Boolean(f) && typeof f === 'object')
         .filter((f) => typeof f.family === 'string')
-        .map((f) => ({
+        .map((f): ExtractedIdentity['fonts'][number] => ({
           family: f.family as string,
           source: f.source === 'google-fonts' || f.source === 'css-declaration' || f.source === 'theme-font' ? f.source : 'css-declaration',
           evidence: typeof f.evidence === 'string' ? f.evidence : '',
