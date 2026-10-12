@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BookOpen, Image as ImageIcon, Megaphone, Palette, Quote, Sparkles, Target, Type, Users } from 'lucide-react';
 import { BrandField, BrandIdentityRow, BrandPanel, BrandSection, NotDetected, brandInitials } from './brand-profile-primitives';
 import { EditableBrandRules, EditableColorPalette, EditableLogo, EditablePersonas, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
-import { readIdentity, type BrandIdentity, type BrandIdentityRow as BrandIdentityDbRow } from '@/lib/brand/identity-mapping';
-import { readableTextOn, rankExtractedFonts, resolveFontRoles, type ExtractedFont } from '@/lib/brand/visual-extraction';
+import { readIdentity, resolveFontRoles, type BrandIdentity, type BrandIdentityRow as BrandIdentityDbRow } from '@/lib/brand/identity-mapping';
+import { readableTextOn, rankExtractedFonts, type ExtractedFont } from '@/lib/brand/visual-extraction';
 import { TONE_OPTIONS, VOICE_AXES, describeVoice, voiceAxisValues } from '@/lib/brand/voice';
 
 type ProfileTab = 'identity' | 'visuals' | 'voice' | 'audience' | 'offer' | 'rules' | 'assets' | 'evidence';
