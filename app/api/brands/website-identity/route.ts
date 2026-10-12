@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { requireOrgRole, CAN_VIEW_DASHBOARD } from '@/lib/auth/roles';
 import { env } from '@/lib/env';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from '@/lib/research/url-security';
-import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, isBlockedWebsiteResponse, isRenderedReaderError, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
+import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, extractDeclaredFonts, rankExtractedFonts, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, isBlockedWebsiteResponse, isRenderedReaderError, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { extractRasterPalette, type RasterColorSample } from '@/lib/brand/raster-color-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { buildEvidenceContext, extractBrandIntelligence, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
@@ -556,18 +556,14 @@ function mergeExternalCss(
 ): ExtractedIdentity {
   if (cssBlocks.length === 0 && assetBlocks.length === 0 && manifestColors.length === 0 && rasterColors.length === 0 && scriptBlocks.length === 0) return identity;
   const sink = new Map<string, { count: number; sources: Set<string> }>();
-  const fonts = new Map(identity.fonts.map((font) => [font.family.toLowerCase(), font]));
-  for (const css of cssBlocks) {
-    collectColors(css, 'external-stylesheet', sink);
-    const cleaned = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
-    for (const match of cleaned.matchAll(/font-family\s*:\s*([^;}]+)/gi)) {
-      const family = (match[1] ?? '').split(',')[0].replace(/["']/g, '').trim();
-      if (family.length >= 2 && family.length <= 60 && !/^(inherit|initial|unset|sans-serif|serif|monospace)$/i.test(family)) {
-        const key = family.toLowerCase();
-        if (!fonts.has(key)) fonts.set(key, { family, source: 'css-declaration', evidence: match[0].slice(0, 100) });
-      }
-    }
-  }
+  for (const css of cssBlocks) collectColors(css, 'external-stylesheet', sink);
+  // Analyse CSS together so font variables defined in one bundle can resolve
+  // font-family declarations in another. Body/heading assignments outrank an
+  // incidental @font-face declaration or a linked font that is never used.
+  const fonts = rankExtractedFonts([
+    ...identity.fonts,
+    ...extractDeclaredFonts(cssBlocks.join('\n')),
+  ]).slice(0, 10);
   for (const asset of assetBlocks) collectColors(asset, 'logo-svg-color', sink);
   for (const script of scriptBlocks) collectJavaScriptDesignTokens(script, sink);
   for (const sample of rasterColors) {
@@ -607,7 +603,7 @@ function mergeExternalCss(
     primaryColor: chromatic[0]?.hex ?? identity.primaryColor,
     secondaryColors: chromatic.slice(1, 5).map((c) => c.hex),
     accentColors: chromatic.slice(5, 9).map((c) => c.hex),
-    fonts: [...fonts.values()].slice(0, 10),
+    fonts,
     inspected: [
       ...identity.inspected,
       ...(cssBlocks.length ? [`${cssBlocks.length} external stylesheet(s)`] : []),
