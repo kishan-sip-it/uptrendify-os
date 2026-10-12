@@ -371,12 +371,14 @@ export function DataFlowDiagram() {
       controlsRef.current = null;
       nodeGroupsRef.current.clear();
       scene.traverse((object) => {
-        const renderable = object as THREE.Mesh | THREE.Sprite | THREE.Line | THREE.Points;
-        if ('geometry' in renderable && renderable.geometry && typeof renderable.geometry.dispose === 'function') renderable.geometry.dispose();
-        if ('material' in renderable && renderable.material) {
-          const materials = Array.isArray(renderable.material) ? renderable.material : [renderable.material];
+        if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points) {
+          object.geometry.dispose();
+        }
+        if (object instanceof THREE.Mesh || object instanceof THREE.Sprite || object instanceof THREE.Line || object instanceof THREE.Points) {
+          const materials: THREE.Material[] = Array.isArray(object.material) ? object.material : [object.material];
           for (const material of materials) {
-            if ('map' in material && material.map) material.map.dispose();
+            const mappedMaterial = material as THREE.Material & { map?: THREE.Texture | null };
+            if (mappedMaterial.map) mappedMaterial.map.dispose();
             material.dispose();
           }
         }
