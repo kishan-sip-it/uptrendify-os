@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { icon: CheckCircle2, label: 'Approvals', href: '/approvals', soon: false },
   { icon: Network, label: 'System DFD', href: '/dfd', soon: false },
   { icon: Workflow, label: 'Application Flow', href: '/flowchart', soon: false },
+  { icon: Workflow, label: 'Application Flow', href: '/flowchart', soon: false },
 ];
 
 type OrgOption = { id: string; name: string; role: string };
