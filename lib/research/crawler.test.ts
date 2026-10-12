@@ -336,7 +336,7 @@ describe('crawlBrand', () => {
       status: 'ACTIVE',
       extracted_text: 'Previous text',
       content_hash: 'old-hash',
-      metadata: { research_external: true, source_provider: 'verified-search', custom_note: 'keep-me' },
+      metadata: { research_external: true, source_provider: 'verified-search', custom_note: 'keep-me', error_code: 'HTTP_403', error: 'old security challenge' },
     }) as any;
     const result = await crawlBrand(client, {
       organizationId: ORG_ID,
@@ -351,6 +351,8 @@ describe('crawlBrand', () => {
       source_provider: 'verified-search',
       custom_note: 'keep-me',
     });
+    expect(client.__sourceUpserts[0]?.metadata).not.toHaveProperty('error_code');
+    expect(client.__sourceUpserts[0]?.metadata).not.toHaveProperty('error');
     expect(client.__sourceUpserts[0]?.metadata?.description).toBe('Design workspace');
   });
 
