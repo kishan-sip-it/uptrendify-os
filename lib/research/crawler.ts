@@ -632,7 +632,6 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
               links: [...new Set([...extracted.links, ...extractRenderedLinks(rendered.text, target)])],
             };
             usedRenderedFallback = true;
-            partial = true;
             obs.info('Used rendered research fallback', { researchRunId, brandId, url: target });
           }
         }
