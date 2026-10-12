@@ -112,6 +112,8 @@ describe('buildBrandIntelligencePrompt', () => {
     const prompt = buildBrandIntelligencePrompt([{ url: 'https://example.com/', title: 'A', text: 'facts' }]);
     expect(prompt).toContain('https://example.com/');
     expect(prompt).toContain('SOURCE 1');
+    expect(prompt).toContain('Read across every supplied source before deciding a field is unknown');
+    expect(prompt).toContain('Do not leave a field empty merely because the homepage omits it');
     expect(prompt).not.toContain('other-site.com');
   });
 });
