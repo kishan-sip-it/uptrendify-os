@@ -395,9 +395,9 @@ export async function extractBrandIntelligence(
   const selectedModel = model ?? provider.defaultModel;
   const defaults = extractionLimitsForModel(selectedModel);
   const limits: ExtractionLimits = {
-    maxEvidenceChars: options.maxEvidenceChars ?? defaults.maxEvidenceChars,
-    maxSources: options.maxSources ?? defaults.maxSources,
-    maxTokens: options.maxTokens ?? defaults.maxTokens,
+    maxEvidenceChars: Math.min(options.maxEvidenceChars ?? defaults.maxEvidenceChars, defaults.maxEvidenceChars),
+    maxSources: Math.min(options.maxSources ?? defaults.maxSources, defaults.maxSources),
+    maxTokens: Math.min(options.maxTokens ?? defaults.maxTokens, defaults.maxTokens),
   };
   const boundedEvidence = fitEvidenceToBudget(evidence, limits);
   const prompt = buildBrandIntelligencePrompt(boundedEvidence);
