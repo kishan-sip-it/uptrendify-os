@@ -452,9 +452,13 @@ function renderedResearchLinks(text: string, baseUrl: string): string[] {
 }
 function pageText(html: string): { title: string | null; text: string } {
   const $ = cheerio.load(html);
-  $('script,style,noscript,svg').remove();
+  $('script,style,noscript,svg,template,nav,footer,[role="navigation"],[role="contentinfo"]').remove();
   const title = $('title').first().text().replace(/\s+/g, ' ').trim() || null;
-  const text = $('body').text().replace(/\s+/g, ' ').trim().slice(0, 16_000);
+  // Prefer substantive page content over repeated navigation and footer links.
+  // Fall back to cleaned body text for sites without semantic content landmarks.
+  const main = $('main, [role="main"], article').first();
+  const primaryText = main.length ? main.text() : $('body').text();
+  const text = primaryText.replace(/\s+/g, ' ').trim().slice(0, 16_000);
   return { title, text };
 }
 
@@ -503,7 +507,7 @@ function prioritizedLinks(html: string, rootUrl: string): string[] {
 
   return [...scored.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 12)
+    .slice(0, 6)
     .map(([url]) => url);
 }
 
@@ -636,7 +640,7 @@ async function fetchCssTree(url: string, depth = 0, seen = new Set<string>()): P
   seen.add(normalized);
   const css = await fetchCss(normalized);
   if (!css) return [];
-  if (depth >= 2) return [{ url: normalized, css }];
+  if (depth >= 1) return [{ url: normalized, css }];
 
   const imported = new Set<string>();
   for (const match of css.matchAll(/@import\s+(?:url\()?\s*["']?([^"')\s;]+)["']?\s*\)?/gi)) {
@@ -646,7 +650,7 @@ async function fetchCssTree(url: string, depth = 0, seen = new Set<string>()): P
       // Ignore invalid or unsafe nested imports.
     }
   }
-  const children = await Promise.all([...imported].slice(0, 4).map((child) => fetchCssTree(child, depth + 1, seen)));
+  const children = await Promise.all([...imported].slice(0, 2).map((child) => fetchCssTree(child, depth + 1, seen)));
   return [{ url: normalized, css }, ...children.flat()];
 }
 
@@ -992,7 +996,7 @@ export async function GET(request: Request) {
 
     // Preserve time for the required identity response. Optional visual enrichment
     // yields first if blocked-host recovery has already consumed most of the route budget.
-    const cssResources = elapsed() < 25_000
+    const cssResources = elapsed() < 15_000
       ? (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url)))).flat()
       : [];
     const cssBlocks = cssResources.map((resource) => resource.css);
@@ -1010,7 +1014,7 @@ export async function GET(request: Request) {
     // Modern frameworks frequently keep theme colours in JS/CSS-in-JS bundles
     // instead of HTML or standalone CSS. Read only explicitly declared public
     // scripts, with strict time and byte caps.
-    const canFetchOptionalAssets = elapsed() < 30_000;
+    const canFetchOptionalAssets = elapsed() < 23_000;
     const inlineScripts = baseHtml && canFetchOptionalAssets ? inlineScriptBlocks(baseHtml) : [];
     const externalScripts = baseHtml && canFetchOptionalAssets
       ? (await Promise.all(externalScriptUrls(baseHtml, baseUrl).map(fetchScriptText)))
