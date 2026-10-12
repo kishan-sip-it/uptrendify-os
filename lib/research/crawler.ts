@@ -237,6 +237,8 @@ async function mergeExistingSourceMetadata(
     if (existing.error) throw existing.error;
     const merged = { ...metadataRecord(existing.data?.metadata), ...additions };
     delete merged.last_fetch_error;
+    delete merged.error;
+    delete merged.error_code;
     return merged;
   } catch (error) {
     // Record the scan warning but never fail an otherwise successful page just
@@ -663,7 +665,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           metadata: await mergeExistingSourceMetadata(supabase, organizationId, brandId, canonical, {
             description: extracted.description,
             headings: extracted.headings,
-            ...(usedRenderedFallback ? { rendered_fallback: true } : {}),
+            rendered_fallback: usedRenderedFallback,
           }),
         }, { onConflict: 'brand_id,canonical_url' }).select('id').single();
         if (source.error) throw source.error;
