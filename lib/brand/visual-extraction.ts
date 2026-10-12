@@ -811,7 +811,7 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const linksToSiteRoot = Boolean(href && rootHost && (() => {
       try {
         const linked = new URL(href);
-        return linked.hostname.toLowerCase().replace(/^www\\./, '') === rootHost && linked.pathname === '/';
+        return linked.hostname.toLowerCase().replace(/^www[.]/, '') === rootHost && linked.pathname === '/';
       } catch {
         return false;
       }
