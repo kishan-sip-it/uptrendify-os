@@ -1118,7 +1118,7 @@ export async function GET(request: Request) {
                 aiWarnings.push(`AI enrichment switched from ${failed.id} to ${next.id} after a transient provider limit or availability error.`);
               },
             ),
-            elapsed() < 28_000 ? 12_000 : 7_000,
+            Math.max(2_000, Math.min(12_000, 42_000 - elapsed())),
             'AI enrichment exceeded its bounded time budget',
           );
           aiProfile = buildAiProfile(extractionRun.result.result);
