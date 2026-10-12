@@ -808,23 +808,24 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const normalizedSiteName = declaredSiteName.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     const genericLogoAlt = /^(?:company |brand )?(?:logo|wordmark|brandmark)$/i.test(normalizedAlt);
     const altMatchesSite = !normalizedAlt || genericLogoAlt || (normalizedSiteName.length > 2 && normalizedAlt.includes(normalizedSiteName)) || (rootToken.length > 2 && normalizedAlt.includes(rootToken));
+    const linksToSite = Boolean(href && rootHost && sameSiteUrl(base, href));
     const linksToSiteRoot = Boolean(href && rootHost && (() => {
       try {
         const linked = new URL(href);
-        return linked.hostname.toLowerCase().replace(/^www[.]/, '') === rootHost && linked.pathname === '/';
+        return linked.hostname.toLowerCase().replace(/^www[.]/, '') === rootHost &&
+          (linked.pathname === '/' || /^\/(?:[a-z]{2}(?:[-_][a-z]{2})?)\/?$/i.test(linked.pathname));
       } catch {
         return false;
       }
     })());
-    // Some production sites use hashed asset paths and decorative alt="" on
-    // the logo. A home-linked image in the site header is strong first-party
-    // evidence even without a readable alt/path, unlike a generic page image.
+    // Production sites often link their header brand mark to a locale route
+    // (/en/, /en-us/) and serve the image from a hashed CDN URL. Header placement
+    // plus a same-site link is strong first-party evidence when the alt is blank
+    // or unhelpful. Explicit customer/partner text and social-image exclusions
+    // below still disqualify unrelated marks.
     const headerSiteMatch = inBrandHeader && altMatchesSite &&
-      (Boolean(normalizedAlt) || linksToSiteRoot || pathSuggestsWordmark);
-    // Header images often omit width/height attributes. When their accessible
-    // name matches the site and they sit in the header, keep them eligible even
-    // when structured metadata points at a compact app symbol.
-    if (headerSiteMatch && aspectRatio === 0) score += 65;
+      (Boolean(normalizedAlt) || linksToSite || pathSuggestsWordmark);
+    if (headerSiteMatch) score += 65;
     const describesBrandWordmark = pathSuggestsWordmark || (headerSiteMatch && (aspectRatio === 0 || (aspectRatio >= 2.2 && aspectRatio <= 10)));
     // Structured metadata often exposes a compact symbol, while the header
     // contains the readable corporate wordmark. Prefer the first-party header
