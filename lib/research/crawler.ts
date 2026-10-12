@@ -506,7 +506,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
                 retrieved_at: new Date().toISOString(),
                 content_hash: contentHash,
                 extracted_text: rendered.text,
-                metadata: { rendered_fallback: true },
+                metadata: await mergeExistingSourceMetadata(supabase, organizationId, brandId, target, { rendered_fallback: true }),
               }, { onConflict: 'brand_id,canonical_url' }).select('id').single();
               if (source.error) throw source.error;
               const link = await supabase.from('research_sources').upsert({
@@ -563,6 +563,42 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         if (truncated) { partial = true; }
 
         let extracted = extractPage(content, target);
+        let usedRenderedFallback = false;
+
+        // Some WAFs return a challenge page with HTTP 200. It is not website
+        // evidence. Recover with the public reader or record a failure without
+        // overwriting any previously captured content for this URL.
+        if (isBlockedWebsiteResponse(content)) {
+          let rendered: { title: string | null; text: string } | null = null;
+          if (renderedFallbacksUsed < MAX_RENDERED_FALLBACKS) {
+            renderedFallbacksUsed += 1;
+            rendered = await fetchRenderedFallback(target);
+          }
+          if (rendered && rendered.text.trim().length >= 180 && !isRenderedReaderError(rendered.text)) {
+            extracted = {
+              ...extracted,
+              title: rendered.title ?? extracted.title,
+              text: rendered.text,
+              links: [...new Set([...extracted.links, ...extractRenderedLinks(rendered.text, target)])],
+            };
+            usedRenderedFallback = true;
+            partial = true;
+            obs.info('Recovered an HTTP-200 block interstitial with rendered research', { researchRunId, brandId, url: target });
+          } else {
+            partial = true;
+            recordRunFailure('BOT_BLOCKED', 'The website returned a security challenge instead of usable public content.');
+            await persistPageFailure({
+              organizationId,
+              brandId,
+              researchRunId,
+              url: target,
+              code: 'BOT_BLOCKED',
+              message: 'The website returned a security challenge instead of usable public content.',
+              httpStatus: response.status,
+            });
+            continue;
+          }
+        }
 
         // Raw HTML is often only an app shell for JS-rendered sites. When the
         // extracted document is too thin, use Jina Reader's free browser-backed
@@ -585,7 +621,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           continue;
         }
 
-        if (renderedFallbacksUsed < MAX_RENDERED_FALLBACKS && shouldUseRenderedFallback(content, extracted.text, extracted.links, extracted.headings)) {
+        if (!usedRenderedFallback && renderedFallbacksUsed < MAX_RENDERED_FALLBACKS && shouldUseRenderedFallback(content, extracted.text, extracted.links, extracted.headings)) {
           const rendered = await fetchRenderedFallback(target);
           renderedFallbacksUsed += 1;
           if (rendered && rendered.text.length > extracted.text.length) {
@@ -595,6 +631,8 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
               text: rendered.text,
               links: [...new Set([...extracted.links, ...extractRenderedLinks(rendered.text, target)])],
             };
+            usedRenderedFallback = true;
+            partial = true;
             obs.info('Used rendered research fallback', { researchRunId, brandId, url: target });
           }
         }
@@ -616,13 +654,17 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           url: target,
           canonical_url: canonical,
           title: extracted.title,
-          content_type: contentType,
+          content_type: usedRenderedFallback ? 'text/plain' : contentType,
           status: 'ACTIVE',
           http_status: response.status,
           retrieved_at: new Date().toISOString(),
           content_hash: contentHash,
           extracted_text: extracted.text,
-          metadata: { description: extracted.description, headings: extracted.headings },
+          metadata: await mergeExistingSourceMetadata(supabase, organizationId, brandId, canonical, {
+            description: extracted.description,
+            headings: extracted.headings,
+            ...(usedRenderedFallback ? { rendered_fallback: true } : {}),
+          }),
         }, { onConflict: 'brand_id,canonical_url' }).select('id').single();
         if (source.error) throw source.error;
 
