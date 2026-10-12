@@ -405,6 +405,25 @@ describe('extractBrandIdentity with no usable evidence', () => {
 });
  
 describe('logo identity confidence', () => {
+  it('does not promote a linked Facebook mark to the Microsoft logo and trims an SEO title suffix', () => {
+    const html = '<html><head><title>Microsoft – AI, Cloud, Productivity, Computing, Gaming & Apps</title></head><body>' +
+      '<header><a href="https://www.facebook.com/Microsoft"><img src="https://cdn.example.test/icons/facebook-logo.svg" alt="Facebook logo" width="32" height="32" /></a></header>' +
+      '<main><h1>Microsoft</h1><p>Explore Microsoft products, services and solutions for home and business.</p></main></body></html>';
+    const identity = extractBrandIdentity(html, 'https://www.microsoft.com/en-in/');
+    expect(identity.brandName).toBe('Microsoft');
+    expect(identity.logoUrl).toBeNull();
+  });
+
+  it('keeps a first-party wordmark while excluding external social icons from logo ranking', () => {
+    const html = '<html><head><title>Microsoft – AI, Cloud, Productivity, Computing, Gaming & Apps</title></head><body>' +
+      '<header><a href="/en-in/"><img src="/assets/microsoft-logo.svg" alt="Microsoft logo" width="180" height="40" /></a>' +
+      '<a href="https://www.facebook.com/Microsoft"><img src="/icons/facebook-logo.svg" alt="Facebook logo" width="32" height="32" /></a></header>' +
+      '<main><h1>Microsoft</h1><p>Explore products and services. ' + 'Productivity, cloud, and tools for every business. '.repeat(5) + '</p></main></body></html>';
+    const identity = extractBrandIdentity(html, 'https://www.microsoft.com/en-in/');
+    expect(identity.brandName).toBe('Microsoft');
+    expect(identity.logoUrl).toBe('https://www.microsoft.com/assets/microsoft-logo.svg');
+  });
+
   it('does not mistake an unrelated customer logo in the header for the site logo', () => {
     const html = '<html><head><title>Salesforce: The Customer Company</title><meta property="og:site_name" content="Salesforce" /></head><body><header><a href="/"><img src="https://cdn.customer-assets.example/balaji-wafers.png" alt="Balaji Wafers" /></a></header><main><h1>Salesforce Customer 360</h1><p>Connect sales, service, marketing and commerce on one customer platform.</p></main></body></html>';
     const identity = extractBrandIdentity(html, 'https://www.salesforce.com/in/');
