@@ -15,6 +15,7 @@ import {
   relativeLuminance,
   saturationOf,
   shouldUseRenderedWebsiteFallback,
+  shouldRejectInsufficientWebsiteEvidence,
 } from './visual-extraction';
 
 const PAGE = `<!doctype html>
@@ -399,6 +400,17 @@ describe('logo identity confidence', () => {
   });
 });
 
+
+describe('website identity evidence threshold', () => {
+  it('does not reject a concise page if a real visual identity was recovered', () => {
+    expect(shouldRejectInsufficientWebsiteEvidence(120, true)).toBe(false);
+  });
+
+  it('rejects a page with too little text and no visual identity evidence', () => {
+    expect(shouldRejectInsufficientWebsiteEvidence(120, false)).toBe(true);
+    expect(shouldRejectInsufficientWebsiteEvidence(180, false)).toBe(false);
+  });
+});
 
 describe('blocked website interstitial detection', () => {
   it('detects Microsoft-style HTTP 200 blocked-request pages', () => {
