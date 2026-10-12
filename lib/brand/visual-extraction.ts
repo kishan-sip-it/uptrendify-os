@@ -602,38 +602,135 @@ function absoluteUrl(candidate: string | undefined, base: string | null): string
   }
 }
 
-function detectFonts(html: string, cssText: string, $: cheerio.CheerioAPI): ExtractedFont[] {
-  const found = new Map<string, ExtractedFont>();
+const GENERIC_FONT_FAMILIES = new Set([
+  'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui',
+  'ui-sans-serif', 'ui-serif', 'ui-monospace', 'ui-rounded', 'emoji',
+  'math', 'fangsong', 'inherit', 'initial', 'unset', 'revert', 'normal',
+]);
 
-  const add = (family: string | null, source: ExtractedFont['source'], evidence: string) => {
-    if (!family) return;
-    const cleaned = family
-      .split(',')[0]
-      .replace(/["']/g, '')
-      .replace(/\b(serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-sans-serif|ui-monospace|ui-serif)\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (cleaned.length < 2 || cleaned.length > 60) return;
-    const key = cleaned.toLowerCase();
-    if (!found.has(key)) found.set(key, { family: cleaned, source, evidence });
-  };
+function resolveFontFamilyValue(raw: string, variables: Map<string, string>): string | null {
+  let value = raw.trim().replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\s*!important\s*$/i, '');
+  for (let depth = 0; depth < 8; depth += 1) {
+    const next = value.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*([^()]+))?\)/gi, (original, name: string, fallback?: string) => {
+      const replacement = variables.get(name) ?? fallback?.trim();
+      return replacement || original;
+    });
+    if (next === value) break;
+    value = next;
+  }
+  if (/\bvar\(/i.test(value)) return null;
 
-  $('link[href*="fonts.googleapis.com"]').each((_i, el) => {
-    const href = $(el).attr('href') ?? '';
-    const families = [...href.matchAll(/family=([^&:]+)/g)].map((m) => m[1]?.split('+').join(' '));
-    const weights = href.match(/family=([^&]*)/)?.[1] ?? '';
-    for (const family of families) add(family, 'google-fonts', weights.slice(0, 80));
-  });
+  const firstFamily = value.split(',')[0]?.trim().replace(/^["']|["']$/g, '').replace(/\s+/g, ' ');
+  if (!firstFamily || firstFamily.length < 2 || firstFamily.length > 80) return null;
+  if (GENERIC_FONT_FAMILIES.has(firstFamily.toLowerCase())) return null;
+  if (/^(?:[\d.]+(?:px|pt|em|rem|%|vh|vw)?|bold|bolder|lighter|italic|oblique|normal|small-caps)$/i.test(firstFamily)) return null;
+  if (/^(?:url|local|format|var|calc|min|max|clamp)\s*\(/i.test(firstFamily)) return null;
+  if (/[;{}<>]/.test(firstFamily)) return null;
+  return firstFamily;
+}
 
-  for (const match of cssText.matchAll(/font-family\s*:\s*([^;}]+)/gi)) {
-    add(match[1] ?? null, 'css-declaration', (match[0] ?? '').slice(0, 80));
+function fontEvidencePriority(font: ExtractedFont): number {
+  const evidence = font.evidence.toLowerCase();
+  if (evidence.includes('body/html selector')) return 0;
+  if (evidence.includes('heading selector')) return 1;
+  if (evidence.includes('css font token')) return 2;
+  if (evidence.includes('font-family from selector')) return 3;
+  if (font.source === 'google-fonts') return 4;
+  if (evidence.includes('@font-face')) return 5;
+  return 6;
+}
+
+export function rankExtractedFonts(fonts: ExtractedFont[]): ExtractedFont[] {
+  return fonts
+    .map((font, index) => ({ font, index }))
+    .sort((a, b) => fontEvidencePriority(a.font) - fontEvidencePriority(b.font) || a.index - b.index)
+    .reduce<ExtractedFont[]>((ranked, item) => {
+      const key = item.font.family.trim().toLowerCase();
+      if (!key) return ranked;
+      const existingIndex = ranked.findIndex((font) => font.family.trim().toLowerCase() === key);
+      if (existingIndex === -1) ranked.push(item.font);
+      else if (fontEvidencePriority(item.font) < fontEvidencePriority(ranked[existingIndex]!)) ranked[existingIndex] = item.font;
+      return ranked;
+    }, []);
+}
+
+/** Extract only authored/linked website fonts; never infer a font from the brand name or industry. */
+export function extractDeclaredFonts(cssText: string): ExtractedFont[] {
+  const cleaned = cssText.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const variables = new Map<string, string>();
+  const variableDeclaration = /(--[\w-]+)\s*:\s*([^;}]+)/g;
+  for (const match of cleaned.matchAll(variableDeclaration)) {
+    const name = match[1] ?? '';
+    const value = (match[2] ?? '').trim();
+    if (name && value) variables.set(name, value);
   }
 
-  const themeColor = $('meta[name="theme-color"]').first().attr('content');
-  void themeColor;
-  void html;
+  const found: Array<{ font: ExtractedFont; priority: number; order: number }> = [];
+  let order = 0;
+  const add = (raw: string | null | undefined, evidence: string, priority: number) => {
+    if (!raw) return;
+    const family = resolveFontFamilyValue(raw, variables);
+    if (!family) return;
+    const font: ExtractedFont = { family, source: 'css-declaration', evidence: evidence.slice(0, 120) };
+    found.push({ font, priority, order: order++ });
+  };
 
-  return Array.from(found.values()).slice(0, 6);
+  for (const [name, value] of variables) {
+    if (!/(?:^|[-_])font(?:[-_]|$)|typeface|typography/i.test(name)) continue;
+    if (/(?:font[-_](?:size|weight|style|stretch|variant|display|feature|kerning|synthesis|variation|optical))/i.test(name)) continue;
+    add(value, 'CSS font token ' + name, 2);
+  }
+
+  const rules = /([^{}]+)\{([^{}]*)\}/g;
+  for (const rule of cleaned.matchAll(rules)) {
+    const selector = (rule[1] ?? '').trim();
+    const declarations = rule[2] ?? '';
+    if (!selector) continue;
+    const isFontFace = /@font-face/i.test(selector);
+    const isBodyHtml = /(^|[,\s>])(?:body|html)(?=$|[\s,>:#.[\]])/i.test(selector);
+    const isHeading = /(^|[,\s>])h[1-6](?=$|[\s,>:#.[\]])/i.test(selector);
+    for (const declaration of declarations.matchAll(/font-family\s*:\s*([^;}]+)/gi)) {
+      const rawFamily = declaration[1] ?? '';
+      const evidence = isBodyHtml
+        ? 'font-family from body/html selector'
+        : isHeading
+          ? 'font-family from heading selector ' + selector
+          : isFontFace
+            ? '@font-face declaration'
+            : 'font-family from selector ' + selector;
+      const priority = isBodyHtml ? 0 : isHeading ? 1 : isFontFace ? 5 : 3;
+      add(rawFamily, evidence, priority);
+    }
+  }
+
+  return found
+    .sort((a, b) => a.priority - b.priority || a.order - b.order)
+    .reduce<ExtractedFont[]>((result, item) => {
+      const key = item.font.family.toLowerCase();
+      const existing = result.findIndex((font) => font.family.toLowerCase() === key);
+      if (existing === -1) result.push(item.font);
+      return result;
+    }, [])
+    .slice(0, 12);
+}
+
+function detectFonts(html: string, cssText: string, $: cheerio.CheerioAPI): ExtractedFont[] {
+  const linkedFonts: ExtractedFont[] = [];
+  $('link[href*="fonts.googleapis.com"], link[href*="fonts.gstatic.com"]').each((_i, el) => {
+    const href = $(el).attr('href') ?? '';
+    if (!href.includes('fonts.googleapis.com')) return;
+    const families = [...href.matchAll(/[?&]family=([^&:]+)/g)].map((match) => match[1]?.split('+').join(' '));
+    for (const family of families) {
+      if (family) linkedFonts.push({ family, source: 'google-fonts', evidence: 'Google Fonts stylesheet link' });
+    }
+  });
+
+  // Prefer families actually assigned to body/heading selectors, then declared
+  // typography tokens, and use a linked Google font only when the CSS does not
+  // identify the family's real usage.
+  const fonts = rankExtractedFonts([...extractDeclaredFonts(cssText), ...linkedFonts]).slice(0, 6);
+  void html;
+  return fonts;
 }
 
 function sameSiteUrl(base: string | null, candidate: string): boolean {
