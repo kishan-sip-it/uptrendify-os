@@ -32,13 +32,21 @@ function renderedPageHtml(rendered: RenderedResearch): string {
 }
 
 
-async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+async function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  message: string,
+  onTimeout?: () => void,
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       operation,
       new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+        timer = setTimeout(() => {
+          onTimeout?.();
+          reject(new Error(message));
+        }, timeoutMs);
       }),
     ]);
   } finally {
@@ -972,101 +980,6 @@ export async function GET(request: Request) {
       }
     }
 
-    // Some sites publish only an app manifest, or an SVG logo contains the
-    // brand palette when the HTML has no authored CSS.
-    const manifestVisuals = baseHtml
-      ? await fetchManifestVisuals(baseHtml, baseUrl)
-      : { colors: [], icons: [] };
-    if (!identity.logoUrl && manifestVisuals.icons[0]) identity.logoUrl = manifestVisuals.icons[0];
-    if (!identity.faviconUrl && manifestVisuals.icons[0]) identity.faviconUrl = manifestVisuals.icons[0];
-
-    // Verify conventional icon paths if neither HTML nor the manifest exposes
-    // one. The fallback is based on a successful public response, never a guess.
-    // A text-reader-only page has no captured HTML to link its icon candidates
-    // to; don't spend the rest of the request budget guessing common asset paths.
-    if (baseHtml && (!identity.logoUrl || !identity.faviconUrl)) {
-      const conventionalIcon = await verifyConventionalIcon(baseUrl);
-      if (conventionalIcon) {
-        identity.logoUrl = identity.logoUrl ?? conventionalIcon;
-        identity.faviconUrl = identity.faviconUrl ?? conventionalIcon;
-        if (!identity.inspected.includes('verified conventional favicon fallback')) {
-          identity.inspected.push('verified conventional favicon fallback');
-        }
-      }
-    }
-
-    // Preserve time for the required identity response. Optional visual enrichment
-    // yields first if blocked-host recovery has already consumed most of the route budget.
-    // Share one visited set across all top-level stylesheets. Modern sites often
-    // link the same theme/base CSS through preload and stylesheet tags; fetching
-    // those imports repeatedly wastes the small serverless scan budget.
-    const visitedCssUrls = new Set<string>();
-    // Stylesheets enrich colours/fonts, but must never consume the whole website scan.
-    const cssBudgetMs = elapsed() < 12_000 ? optionalAssetBudgetMs(elapsed(), 4_000) : 0;
-    const cssResources = cssBudgetMs > 0
-      ? await withTimeout(
-          Promise.all(stylesheetUrls.slice(0, 6).map((url) => fetchCssTree(url, 0, visitedCssUrls)))
-            .then((resources) => resources.flat()),
-          cssBudgetMs,
-          'Optional stylesheet inspection exceeded its budget',
-        ).catch(() => [])
-      : [];
-    const cssBlocks = cssResources.map((resource) => resource.css);
-    // The server may expose SVG assets behind extensionless CDN/asset URLs.
-    // Ask the response validator whether a candidate is SVG instead of relying
-    // on the URL suffix; ordinary PNG/ICO candidates are rejected by fetchSvgAsset.
-    const svgUrls = baseHtml
-      ? [...new Set([identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons])]
-          .filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
-          .filter((url) => !/\.(?:png|jpe?g|gif|ico|webp|avif)(?:[?#]|$)/i.test(url))
-          .slice(0, 3)
-      : [];
-    const svgBudgetMs = elapsed() < 16_000 ? optionalAssetBudgetMs(elapsed(), 2_500) : 0;
-    const svgResults = svgBudgetMs > 0
-      ? await withTimeout(
-          Promise.all(svgUrls.slice(0, 2).map(fetchSvgAsset)),
-          svgBudgetMs,
-          'Optional logo SVG inspection exceeded its budget',
-        ).catch(() => [])
-      : [];
-    const svgBlocks: string[] = svgResults.filter((asset): asset is string => typeof asset === 'string');
-
-    // Modern frameworks frequently keep theme colours in JS/CSS-in-JS bundles
-    // instead of HTML or standalone CSS. Read only explicitly declared public
-    // scripts, with strict time and byte caps.
-    const canFetchOptionalAssets = elapsed() < 18_000;
-    const inlineScripts = baseHtml && canFetchOptionalAssets ? inlineScriptBlocks(baseHtml) : [];
-    const scriptBudgetMs = canFetchOptionalAssets ? optionalAssetBudgetMs(elapsed(), 2_500) : 0;
-    const externalScripts = baseHtml && scriptBudgetMs > 0
-      ? (await withTimeout(
-          Promise.all(externalScriptUrls(baseHtml, baseUrl).slice(0, 2).map(fetchScriptText)),
-          scriptBudgetMs,
-          'Optional design-token script inspection exceeded its budget',
-        ).catch(() => []))
-          .filter((script): script is string => Boolean(script))
-      : [];
-    const scriptBlocks: string[] = [...inlineScripts, ...externalScripts.filter((script): script is string => typeof script === 'string')];
-    const rasterUrls = baseHtml && canFetchOptionalAssets ? rasterLogoUrls(baseHtml, baseUrl, [identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons]).slice(0, 3) : [];
-    const rasterBudgetMs = canFetchOptionalAssets ? optionalAssetBudgetMs(elapsed(), 1_800) : 0;
-    const rasterColors: RasterColorSample[] = rasterBudgetMs > 0
-      ? (await withTimeout(
-          Promise.all(rasterUrls.map(fetchRasterColors)).then((samples) => samples.flat()),
-          rasterBudgetMs,
-          'Optional raster colour inspection exceeded its budget',
-        ).catch(() => []))
-      : [];
-
-    identity = mergeExternalCss(identity, cssBlocks, svgBlocks, manifestVisuals.colors, rasterColors, scriptBlocks);
-    const fontAssetBudgetMs = elapsed() < 20_000 ? optionalAssetBudgetMs(elapsed(), 1_000) : 0;
-    const fontsWithAssets = fontAssetBudgetMs > 0
-      ? await withTimeout(
-          attachSourceFontAssets(identity.fonts, cssResources),
-          fontAssetBudgetMs,
-          'Optional font asset validation exceeded its budget',
-        ).catch(() => identity.fonts)
-      : identity.fonts;
-    identity = { ...identity, fonts: fontsWithAssets };
-
     const directLinks = baseHtml ? prioritizedLinks(baseHtml, baseUrl) : [];
     const readerLinks = renderedFallbackText ? renderedResearchLinks(renderedFallbackText, baseUrl) : [];
     const pageCandidates = [...new Set([...directLinks, ...readerLinks])]
@@ -1089,7 +1002,7 @@ export async function GET(request: Request) {
     const readerOnlyFallback = Boolean(renderedFallbackText && !baseHtml);
     const pageLimit = optionalResearchPageLimit(elapsed());
     const researchPageCandidates = pageCandidates.slice(0, readerOnlyFallback ? Math.min(2, pageLimit) : pageLimit);
-    const pageFetchBudgetMs = optionalAssetBudgetMs(elapsed(), 8_000);
+    const pageFetchBudgetMs = optionalAssetBudgetMs(elapsed(), 5_000);
     const extraPages = pageFetchBudgetMs > 0 && researchPageCandidates.length > 0
       ? await withTimeout(Promise.all(researchPageCandidates.map(async (url, index) => {
       if (readerOnlyFallback) {
@@ -1120,7 +1033,7 @@ export async function GET(request: Request) {
     for (const page of extraPages) if (page?.text?.trim()) evidencePages.push(page);
 
     const accessibleTextChars = evidencePages.reduce((total, page) => total + page.text.trim().length, 0);
-    const hasVisualEvidence = Boolean(identity.brandName || identity.description || identity.logoUrl || identity.faviconUrl || identity.palette.length);
+    const hasVisualEvidence = Boolean(identity.logoUrl || identity.faviconUrl || identity.palette.length);
     if (shouldRejectInsufficientWebsiteEvidence(accessibleTextChars, hasVisualEvidence)) {
       return NextResponse.json(
         {
@@ -1131,6 +1044,154 @@ export async function GET(request: Request) {
         { status: 422, headers: { 'Cache-Control': 'no-store' } },
       );
     }
+
+
+    let aiProfile: Record<string, unknown> | null = null;
+    const aiWarnings: string[] = [];
+    const aiController = new AbortController();
+    // Start structured extraction as soon as the text evidence is ready. The
+    // optional stylesheet/icon work below runs concurrently instead of stealing
+    // all the time before AI gets a chance to start.
+    const aiTask = (async () => {
+      try {
+        const registry = createDefaultRegistry();
+        const providers = registry.configuredInOrder();
+        if (providers.length === 0) {
+          aiWarnings.push('AI enrichment is unavailable because no configured AI provider was found.');
+        } else {
+          const fragments: EvidenceFragment[] = evidencePages
+            .filter((page) => page.text.trim())
+            .map((page) => ({ url: page.url, title: page.title, text: page.text, sourceType: 'first-party' as const }));
+          const evidence = buildEvidenceContext(fragments);
+          if (evidence.length > 0) {
+            const aiBudgetMs = aiEnrichmentBudgetMs(elapsed());
+            if (aiBudgetMs <= 0) {
+              aiWarnings.push('AI enrichment could not start because public-page recovery used the scan deadline.');
+            } else {
+              const extractionRun = await withTimeout(
+                runWithProviderFailover(
+                  providers,
+                  (provider) => extractBrandIntelligence(provider, evidence, undefined, {
+                    signal: aiController.signal,
+                    fastFail: true,
+                    maxEvidenceChars: 10_000,
+                    maxSources: 7,
+                    maxTokens: 2_200,
+                  }),
+                  (failed, next) => {
+                    aiWarnings.push(`AI enrichment switched from ${failed.id} to ${next.id} after a transient provider limit or availability error.`);
+                  },
+                  aiController.signal,
+                ),
+                aiBudgetMs,
+                'AI enrichment exceeded its bounded time budget',
+                () => aiController.abort(new Error('AI enrichment deadline reached')),
+              );
+              aiProfile = buildAiProfile(extractionRun.result.result);
+              if (!identity.brandName && extractionRun.result.result.identity.brandName) identity.brandName = extractionRun.result.result.identity.brandName;
+              if (!identity.description && extractionRun.result.result.identity.companyDescription) identity.description = extractionRun.result.result.identity.companyDescription;
+            }
+          } else {
+            aiWarnings.push('AI enrichment needs more readable first-party page text.');
+          }
+        }
+      } catch (error) {
+        aiWarnings.push(error instanceof Error ? `AI enrichment failed: ${error.message}` : 'AI enrichment failed.');
+      }
+    })();
+
+    // Some sites publish only an app manifest, or an SVG logo contains the
+    // brand palette when the HTML has no authored CSS.
+    const manifestVisuals = baseHtml
+      ? await fetchManifestVisuals(baseHtml, baseUrl)
+      : { colors: [], icons: [] };
+    if (!identity.logoUrl && manifestVisuals.icons[0]) identity.logoUrl = manifestVisuals.icons[0];
+    if (!identity.faviconUrl && manifestVisuals.icons[0]) identity.faviconUrl = manifestVisuals.icons[0];
+
+    // A blocked homepage can still expose its own verified favicon/icon paths.
+    // Use only a successful same-origin image response; never infer a logo URL.
+    if (!identity.logoUrl || !identity.faviconUrl) {
+      const conventionalIcon = await verifyConventionalIcon(baseUrl);
+      if (conventionalIcon) {
+        identity.logoUrl = identity.logoUrl ?? conventionalIcon;
+        identity.faviconUrl = identity.faviconUrl ?? conventionalIcon;
+        if (!identity.inspected.includes('verified conventional favicon fallback')) {
+          identity.inspected.push('verified conventional favicon fallback');
+        }
+      }
+    }
+
+    // Preserve time for the required identity response. Optional visual enrichment
+    // yields first if blocked-host recovery has already consumed most of the route budget.
+    // Share one visited set across all top-level stylesheets. Modern sites often
+    // link the same theme/base CSS through preload and stylesheet tags; fetching
+    // those imports repeatedly wastes the small serverless scan budget.
+    const visitedCssUrls = new Set<string>();
+    // Stylesheets enrich colours/fonts, but must never consume the whole website scan.
+    const cssBudgetMs = elapsed() < 28_000 ? optionalAssetBudgetMs(elapsed(), 4_000) : 0;
+    const cssResources = cssBudgetMs > 0
+      ? await withTimeout(
+          Promise.all(stylesheetUrls.slice(0, 6).map((url) => fetchCssTree(url, 0, visitedCssUrls)))
+            .then((resources) => resources.flat()),
+          cssBudgetMs,
+          'Optional stylesheet inspection exceeded its budget',
+        ).catch(() => [])
+      : [];
+    const cssBlocks = cssResources.map((resource) => resource.css);
+    // The server may expose SVG assets behind extensionless CDN/asset URLs.
+    // Ask the response validator whether a candidate is SVG instead of relying
+    // on the URL suffix; ordinary PNG/ICO candidates are rejected by fetchSvgAsset.
+    const svgUrls = [...new Set([identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons])]
+      .filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
+      .filter((url) => !/\.(?:png|jpe?g|gif|ico|webp|avif)(?:[?#]|$)/i.test(url))
+      .slice(0, 3);
+    const svgBudgetMs = elapsed() < 30_000 ? optionalAssetBudgetMs(elapsed(), 2_500) : 0;
+    const svgResults = svgBudgetMs > 0
+      ? await withTimeout(
+          Promise.all(svgUrls.slice(0, 2).map(fetchSvgAsset)),
+          svgBudgetMs,
+          'Optional logo SVG inspection exceeded its budget',
+        ).catch(() => [])
+      : [];
+    const svgBlocks: string[] = svgResults.filter((asset): asset is string => typeof asset === 'string');
+
+    // Modern frameworks frequently keep theme colours in JS/CSS-in-JS bundles
+    // instead of HTML or standalone CSS. Read only explicitly declared public
+    // scripts, with strict time and byte caps.
+    const canFetchOptionalAssets = elapsed() < 30_000;
+    const inlineScripts = baseHtml && canFetchOptionalAssets ? inlineScriptBlocks(baseHtml) : [];
+    const scriptBudgetMs = canFetchOptionalAssets ? optionalAssetBudgetMs(elapsed(), 2_500) : 0;
+    const externalScripts = baseHtml && scriptBudgetMs > 0
+      ? (await withTimeout(
+          Promise.all(externalScriptUrls(baseHtml, baseUrl).slice(0, 2).map(fetchScriptText)),
+          scriptBudgetMs,
+          'Optional design-token script inspection exceeded its budget',
+        ).catch(() => []))
+          .filter((script): script is string => Boolean(script))
+      : [];
+    const scriptBlocks: string[] = [...inlineScripts, ...externalScripts.filter((script): script is string => typeof script === 'string')];
+    const rasterUrls = !canFetchOptionalAssets ? [] : (baseHtml
+      ? rasterLogoUrls(baseHtml, baseUrl, [identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons]).slice(0, 3)
+      : [identity.logoUrl, identity.faviconUrl].filter((url): url is string => Boolean(url)).slice(0, 2));
+    const rasterBudgetMs = canFetchOptionalAssets ? optionalAssetBudgetMs(elapsed(), 1_800) : 0;
+    const rasterColors: RasterColorSample[] = rasterBudgetMs > 0
+      ? (await withTimeout(
+          Promise.all(rasterUrls.map(fetchRasterColors)).then((samples) => samples.flat()),
+          rasterBudgetMs,
+          'Optional raster colour inspection exceeded its budget',
+        ).catch(() => []))
+      : [];
+
+    identity = mergeExternalCss(identity, cssBlocks, svgBlocks, manifestVisuals.colors, rasterColors, scriptBlocks);
+    const fontAssetBudgetMs = elapsed() < 31_000 ? optionalAssetBudgetMs(elapsed(), 1_000) : 0;
+    const fontsWithAssets = fontAssetBudgetMs > 0
+      ? await withTimeout(
+          attachSourceFontAssets(identity.fonts, cssResources),
+          fontAssetBudgetMs,
+          'Optional font asset validation exceeded its budget',
+        ).catch(() => identity.fonts)
+      : identity.fonts;
+    identity = { ...identity, fonts: fontsWithAssets };
 
     const assets = (() => {
       if (!baseHtml) return [];
@@ -1146,43 +1207,7 @@ export async function GET(request: Request) {
       return [...found.values()].slice(0, 18);
     })();
 
-    let aiProfile: Record<string, unknown> | null = null;
-    const aiWarnings: string[] = [];
-    try {
-      const registry = createDefaultRegistry();
-      const providers = registry.configuredInOrder();
-      if (providers.length === 0) {
-        aiWarnings.push('AI enrichment is unavailable because no configured AI provider was found.');
-      } else {
-        const fragments: EvidenceFragment[] = evidencePages
-          .filter((page) => page.text.trim())
-          .map((page) => ({ url: page.url, title: page.title, text: page.text, sourceType: 'first-party' as const }));
-        const evidence = buildEvidenceContext(fragments);
-        if (evidence.length > 0) {
-          const aiBudgetMs = aiEnrichmentBudgetMs(elapsed());
-          if (aiBudgetMs <= 0) {
-            aiWarnings.push('AI enrichment was skipped to return verified website evidence within the scan time budget.');
-          } else {
-          const extractionRun = await withTimeout(
-            runWithProviderFailover(
-              providers,
-              (provider) => extractBrandIntelligence(provider, evidence),
-              (failed, next) => {
-                aiWarnings.push(`AI enrichment switched from ${failed.id} to ${next.id} after a transient provider limit or availability error.`);
-              },
-            ),
-            aiEnrichmentBudgetMs(elapsed()),
-            'AI enrichment exceeded its bounded time budget',
-          );
-          aiProfile = buildAiProfile(extractionRun.result.result);
-          if (!identity.brandName && extractionRun.result.result.identity.brandName) identity.brandName = extractionRun.result.result.identity.brandName;
-          if (!identity.description && extractionRun.result.result.identity.companyDescription) identity.description = extractionRun.result.result.identity.companyDescription;
-          }
-        }
-      }
-    } catch (error) {
-      aiWarnings.push(error instanceof Error ? `AI enrichment failed: ${error.message}` : 'AI enrichment failed.');
-    }
+    await aiTask;
 
     const warnings = [...new Set([...identity.warnings, ...aiWarnings])];
     const enriched = {
