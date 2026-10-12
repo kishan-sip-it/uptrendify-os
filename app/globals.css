@@ -114,7 +114,8 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .progress > span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--accent),var(--accent-2)); }
 .activity-list { display:grid; gap:12px; margin-top:4px; }
 /* Strategy version history is a compact horizontal rail, independent of other activity lists. */
-.strategy-version-list { display:flex; align-items:stretch; gap:12px; overflow-x:auto; overflow-y:hidden; padding:2px 2px 8px; margin:4px -2px 0; scroll-snap-type:x mandatory; scroll-padding-inline:2px; overscroll-behavior-inline:contain; scrollbar-width:thin; }
+.strategy-version-list { display:flex; align-items:stretch; gap:12px; overflow-x:hidden; overflow-y:hidden; padding:2px 2px 8px; margin:4px -2px 0; scroll-snap-type:x mandatory; scroll-padding-inline:2px; overscroll-behavior-inline:contain; scrollbar-width:thin; }
+.strategy-version-list.is-scrollable { overflow-x:auto; }
 /* Show one readable strategy card per rail viewport instead of clipping a second card. */
 .strategy-version-item { display:flex; flex:0 0 100%; width:100%; flex-direction:column; min-width:0; min-height:112px; scroll-snap-align:start; }
 .strategy-version-item .activity-body { width:100%; min-width:0; }
