@@ -246,7 +246,7 @@ export function buildEvidenceContext(sources: EvidenceFragment[]): EvidenceFragm
       // Keep the homepage as the identity anchor, then prioritize pages likely
       // to contain durable company, product, service and audience evidence.
       const isHomepage = (source: EvidenceFragment) => {
-        try { return new URL(source.url).pathname.replace(/\\/$/, '') === ''; } catch { return false; }
+        try { const pathname = new URL(source.url).pathname; return pathname === '/' || pathname === ''; } catch { return false; }
       };
       const homeDelta = Number(isHomepage(b.source)) - Number(isHomepage(a.source));
       return homeDelta || evidencePriority(b.source) - evidencePriority(a.source) || a.index - b.index;
