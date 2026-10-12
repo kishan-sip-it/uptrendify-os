@@ -18,8 +18,6 @@ const NAV_ITEMS = [
   { icon: Users, label: 'Brands', href: '/brands', soon: false },
   { icon: Boxes, label: 'Campaigns', href: '/campaigns', soon: false },
   { icon: CheckCircle2, label: 'Approvals', href: '/approvals', soon: false },
-  { icon: Network, label: 'System DFD', href: '/dfd', soon: false },
-  { icon: Workflow, label: 'Application Flow', href: '/flowchart', soon: false },
   { icon: Workflow, label: 'Application Flow', href: '/flowchart', soon: false },
 ];
 
