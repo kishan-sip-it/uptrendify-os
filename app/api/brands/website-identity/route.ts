@@ -996,8 +996,12 @@ export async function GET(request: Request) {
 
     // Preserve time for the required identity response. Optional visual enrichment
     // yields first if blocked-host recovery has already consumed most of the route budget.
+    // Share one visited set across all top-level stylesheets. Modern sites often
+    // link the same theme/base CSS through preload and stylesheet tags; fetching
+    // those imports repeatedly wastes the small serverless scan budget.
+    const visitedCssUrls = new Set<string>();
     const cssResources = elapsed() < 15_000
-      ? (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url)))).flat()
+      ? (await Promise.all(stylesheetUrls.map((url) => fetchCssTree(url, 0, visitedCssUrls)))).flat()
       : [];
     const cssBlocks = cssResources.map((resource) => resource.css);
     // The server may expose SVG assets behind extensionless CDN/asset URLs.
