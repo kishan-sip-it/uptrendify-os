@@ -303,8 +303,13 @@ export function DashboardContent() {
         <RecentBrandsPanel brands={data.recentBrands} />
         <div className="grid" style={{ gap: 16 }}>
           <ResearchActivityPanel activity={data.recentResearch} />
-          <StrategyActivityPanel activity={data.recentStrategies} />
+          {data.recentStrategies.length > 1 ? <StrategyActivityPanel activity={data.recentStrategies} /> : null}
         </div>
+        {data.recentStrategies.length <= 1 ? (
+          <div style={{ gridColumn: '1 / -1', minWidth: 0 }}>
+            <StrategyActivityPanel activity={data.recentStrategies} />
+          </div>
+        ) : null}
       </div>
     </>
   );
