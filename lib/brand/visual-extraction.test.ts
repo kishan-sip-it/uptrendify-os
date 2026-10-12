@@ -4,6 +4,7 @@ import {
   collectColors,
   collectJavaScriptDesignTokens,
   extractBrandIdentity,
+  extractRenderedLogoCandidates,
   extractDeclaredFonts,
   isBlockedWebsiteResponse,
   isRenderedReaderError,
@@ -44,6 +45,31 @@ const PAGE = `<!doctype html>
   <div style="color: #ADC35D">Accent</div>
 </body>
 </html>`;
+
+describe('rendered-reader logo candidates', () => {
+  it('finds a labelled first-party wordmark while rejecting social and hero images', () => {
+    const markdown = [
+      '![Canva logo](https://static.canva.com/assets/canva-wordmark.svg)',
+      '![Facebook logo](https://www.facebook.com/images/facebook-logo.svg)',
+      '![Hero banner](https://www.canva.com/assets/hero-banner.png)',
+      '![Product screenshot](https://www.canva.com/assets/product-screenshot.png)',
+    ].join('\\n');
+    expect(extractRenderedLogoCandidates(markdown, 'https://www.canva.com/')).toEqual([
+      'https://static.canva.com/assets/canva-wordmark.svg',
+    ]);
+  });
+
+  it('accepts an external CDN only when the image is explicitly identified as a logo', () => {
+    expect(extractRenderedLogoCandidates(
+      '![Acme wordmark](https://cdn.example.net/brandmark.svg)',
+      'https://acme.example/',
+    )).toEqual(['https://cdn.example.net/brandmark.svg']);
+    expect(extractRenderedLogoCandidates(
+      '![Company photo](https://cdn.example.net/acme-photo.png)',
+      'https://acme.example/',
+    )).toEqual([]);
+  });
+});
 
 describe('rendered website fallback detection', () => {
   it('flags a 200-response JavaScript shell with no meaningful body content', () => {
