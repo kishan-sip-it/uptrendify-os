@@ -1112,3 +1112,49 @@ export function extractBrandIdentity(html: string, finalUrl: string | null): Ext
     warnings,
   };
 }
+
+/**
+ * Extract high-confidence logo candidates from a rendered-reader Markdown page.
+ * The reader may retain image alt text even when the origin blocks HTML fetches.
+ * Only semantic logo/wordmark references are returned; every URL still needs
+ * a successful, public image response before the route can use it.
+ */
+export function extractRenderedLogoCandidates(markdown: string, baseUrl: string): string[] {
+  const candidates = new Map<string, number>();
+  const ignored = /(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter|x-twitter|social[-_/ ]?(?:icon|logo|share)|partner|customer|sponsor|testimonial|hero|banner|screenshot|thumbnail|og[-_]?image|share[-_]?card)/i;
+
+  for (const match of markdown.matchAll(/!\\[([^\\]]{0,240})\\]\\(\\s*(?:<)?(https?:\\/\\/[^)\\s>]+|\\/[^)\\s>]+)(?:>)?(?:\\s+["'][^)]*["'])?\\s*\\)/gi)) {
+    const alt = (match[1] ?? '').trim();
+    const rawUrl = match[2] ?? '';
+    const url = absoluteUrl(rawUrl, baseUrl);
+    if (!url) continue;
+
+    let parsed: URL;
+    try { parsed = new URL(url); } catch { continue; }
+    const path = parsed.pathname.toLowerCase();
+    const hostAndHints = parsed.hostname + ' ' + path + ' ' + alt;
+    if (ignored.test(hostAndHints)) continue;
+
+    const semanticPath = /(?:logo|wordmark|brandmark|brand[-_]?mark)/i.test(path);
+    const semanticAlt = /(?:logo|wordmark|brandmark|brand[-_]?mark)/i.test(alt);
+    if (!semanticPath && !semanticAlt) continue;
+
+    const sameSite = sameSiteUrl(baseUrl, url);
+    let score = (semanticPath ? 80 : 0) + (semanticAlt ? 70 : 0);
+    try {
+      const rootToken = new URL(baseUrl).hostname.toLowerCase().replace(/^www\\./, '').split('.')[0] ?? '';
+      if (rootToken.length >= 3 && (parsed.hostname.toLowerCase().includes(rootToken) || path.includes(rootToken))) score += 8;
+    } catch {
+      // URL validity has already been checked; the semantic score still applies.
+    }
+
+    // Third-party CDNs are accepted only with explicit image/alt logo evidence.
+    if ((!sameSite && score < 65) || (sameSite && score < 45)) continue;
+    candidates.set(url, Math.max(score, candidates.get(url) ?? 0));
+  }
+
+  return [...candidates.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([url]) => url);
+}
