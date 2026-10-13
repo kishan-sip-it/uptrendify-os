@@ -2,6 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST, GET } from './route';
 
+vi.mock('next/server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('next/server')>();
+  return {
+    ...actual,
+    after: (callback: () => unknown) => {
+      // Keep request tests independent from Next's internal request scope while
+      // still executing the post-response callback in the background.
+      void Promise.resolve().then(callback);
+    },
+  };
+});
+
 const ORG_ID = '00000000-0000-4000-8000-000000000001';
 const USER_ID = '00000000-0000-4000-8000-000000000002';
 const BRAND_ID = '00000000-0000-4000-8000-000000000003';
@@ -86,9 +98,13 @@ describe('POST /api/brands/[brandId]/strategy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireOrgRole.mockResolvedValue({ error: null, ...authContext() });
+    mocks.scheduleStrategyExecution.mockResolvedValue({ status: 'QUEUED' });
   });
 
-  it('queues a strategy with the next version and schedules execution', async () => {
+  it('returns the queued strategy without waiting for AI generation to finish', async () => {
+    // Simulate a real model taking a long time; the HTTP request must still
+    // return the created QUEUED row and let the client poll for completion.
+    mocks.scheduleStrategyExecution.mockImplementation(() => new Promise(() => undefined));
     const client = makeClient([
       ['brands', { data: { id: BRAND_ID, name: 'Aurora' }, error: null }],
       ['strategies', { count: 0, error: null }],
