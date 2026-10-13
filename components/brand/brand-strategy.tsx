@@ -76,7 +76,7 @@ export function BrandStrategy({ brandId, brandName }: { brandId: string; brandNa
   useEffect(() => {
     if (!live) return;
     let cancelled = false;
-    let timer: ReturnType<typeof window.setTimeout> | null = null;
+    let timer: number | null = null;
     const poll = async () => {
       await load();
       // Schedule the next request only after the previous one settles. This
