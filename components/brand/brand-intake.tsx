@@ -333,17 +333,22 @@ export function BrandIntake({
   const ai = identity.aiProfile;
   const assets = identity.assets ?? [];
   const previewFont = preferredPreviewFontFamily(identity.fonts);
+  // Missing inline CSS / colour declarations are normal on many sites and do not
+  // mean Brand IQ failed; empty visual fields already explain what was not found.
+  const actionableWarnings = identity.warnings.filter((warning) =>
+    !/^(?:No embedded stylesheet found; linked stylesheets and declared theme colours are checked separately\\.|No usable colour declarations were found on the page\\.)$/i.test(warning.trim()),
+  );
 
   if (!reviewAfterScan) return null;
 
   return (
     <div>
       <BrandPanel icon={<Sparkles size={17} />} title="Brand IQ review" subtitle="Everything the website scan found, grouped into the same working contexts your content and strategy use.">
-        {identity.warnings.length || !ai ? (
+        {actionableWarnings.length || !ai ? (
           <div className="brand-scan-warning" role="status" aria-live="polite">
             <strong>{!ai ? 'Structured Brand IQ needs attention' : 'Some parts of the scan need review'}</strong>
             <p>{!ai ? 'We recovered the public page, but the AI could not complete every structured field. You can retry the scan; do not treat missing values as verified facts.' : 'The scan recovered usable information, but one or more sources or enrichment steps were incomplete.'}</p>
-            {identity.warnings.length ? <ul>{identity.warnings.slice(0, 4).map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+            {actionableWarnings.length ? <ul>{actionableWarnings.slice(0, 4).map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
             <button type="button" className="brand-btn" onClick={() => void scan()} disabled={phase === 'saving'}><RefreshCw size={14} /> Retry website analysis</button>
           </div>
         ) : null}
@@ -456,7 +461,7 @@ export function BrandIntake({
             <BrandField label="External stylesheets"><span>{identity.crawl?.stylesheetCount ?? 0}</span></BrandField>
             <BrandField label="Evidence used">{tags(identity.inspected)}</BrandField>
             {ai?.evidence?.length ? <BrandField label="Evidence claims"><div className="brand-evidence-list">{ai.evidence.slice(0, 8).map((item) => <div className="brand-evidence-item" key={item.sourceUrl + item.claim}><span>{item.claim}</span><a href={item.sourceUrl} target="_blank" rel="noreferrer">{new URL(item.sourceUrl).hostname}</a></div>)}</div></BrandField> : null}
-            {identity.warnings.length ? <BrandField label="Warnings"><ul style={{ margin: 0, paddingLeft: 18 }}>{identity.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></BrandField> : null}
+            {actionableWarnings.length ? <BrandField label="Warnings"><ul style={{ margin: 0, paddingLeft: 18 }}>{actionableWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></BrandField> : null}
           </div>
         </BrandSection>
 

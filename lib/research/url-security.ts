@@ -77,7 +77,7 @@ function isPrivateIp(ip: string) {
 export type LookupAddress = { address: string; family: number };
 
 const dnsLookupTimeoutMs = 3_500;
-const transientDnsCodes = new Set(['EAI_AGAIN', 'EBUSY', 'ECONNRESET', 'ETIMEDOUT']);
+const transientDnsCodes = new Set(['EAI_AGAIN', 'EBUSY', 'ECONNRESET', 'ECONNREFUSED', 'ESERVFAIL', 'ETIMEDOUT']);
 const PUBLIC_DNS_CACHE_TTL_MS = 15_000;
 const PUBLIC_DNS_CACHE_MAX_ENTRIES = 256;
 
@@ -119,6 +119,57 @@ async function lookupWithTimeout(hostname: string): Promise<LookupAddress[]> {
   }
 }
 
+async function resolveRecordFamily(hostname: string, family: 4 | 6): Promise<LookupAddress[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const query = family === 4 ? dns.resolve4(hostname) : dns.resolve6(hostname);
+  try {
+    const values = await Promise.race([
+      query,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error(`Research hostname IPv${family} record lookup timed out`) as NodeJS.ErrnoException;
+          error.code = 'ETIMEDOUT';
+          reject(error);
+        }, dnsLookupTimeoutMs);
+      }),
+    ]);
+    return values.map((address) => ({ address, family }));
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function resolveWithDnsRecords(hostname: string): Promise<LookupAddress[]> {
+  // dns.lookup uses the OS/NSS resolver path. Querying A and AAAA records
+  // directly is a fallback for transient OS resolver stalls; both results still
+  // pass the exact same public-IP filter before any socket can connect.
+  const results = await Promise.allSettled([
+    resolveRecordFamily(hostname, 4),
+    resolveRecordFamily(hostname, 6),
+  ]);
+  const addresses = results
+    .filter((result): result is PromiseFulfilledResult<LookupAddress[]> => result.status === 'fulfilled')
+    .flatMap((result) => result.value);
+  const seen = new Set<string>();
+  const unique = addresses.filter((entry) => {
+    if (seen.has(entry.address)) return false;
+    seen.add(entry.address);
+    return true;
+  });
+  if (unique.length > 0) return unique;
+
+  const fallbackErrors = results
+    .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    .map((result) => result.reason);
+  const transientError = fallbackErrors.find((error) => {
+    const code = typeof (error as { code?: unknown })?.code === 'string' ? (error as { code: string }).code : '';
+    return transientDnsCodes.has(code);
+  });
+  if (transientError) throw transientError;
+  // ENODATA / ENOTFOUND in both families means there is no usable A/AAAA result.
+  return [];
+}
+
 async function resolveAllAddresses(hostname: string): Promise<LookupAddress[]> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -139,7 +190,12 @@ async function resolveAllAddresses(hostname: string): Promise<LookupAddress[]> {
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  try {
+    return await resolveWithDnsRecords(hostname);
+  } catch (fallbackError) {
+    // Preserve a retryable DNS failure if both resolver paths are unavailable.
+    throw fallbackError instanceof Error ? fallbackError : (lastError instanceof Error ? lastError : new Error(String(fallbackError)));
+  }
 }
 
 async function resolvePublicDns(hostname: string): Promise<DnsResolutionResult> {

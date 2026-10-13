@@ -6,8 +6,8 @@
 export const WEBSITE_SCAN_BUDGET_MS = 40_000;
 export const WEBSITE_SCAN_RESPONSE_RESERVE_MS = 4_000;
 export const WEBSITE_SCAN_AI_BUDGET_MS = 22_000;
-// Allow two bounded resolver attempts plus scheduler/queueing overhead before the protected fetch begins.
-export const WEBSITE_DNS_VALIDATION_BUDGET_MS = 12_000;
+// Allow the bounded system resolver retries plus an alternate A/AAAA record lookup.
+export const WEBSITE_DNS_VALIDATION_BUDGET_MS = 14_000;
 
 export function remainingWebsiteScanBudgetMs(elapsedMs: number): number {
   if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return 0;

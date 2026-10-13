@@ -932,6 +932,7 @@ export async function GET(request: Request) {
   const elapsed = () => Date.now() - scanStartedAt;
   const scanController = new AbortController();
   const scanDeadlineTimer = setTimeout(() => scanController.abort(new Error('The shared website scan deadline was reached')), WEBSITE_SCAN_BUDGET_MS);
+  let scanHostname: string | null = null;
   const runWithinBudget = async <T>(operation: (signal: AbortSignal) => Promise<T>, requestedMs: number, message: string): Promise<T> => {
     const stageBudgetMs = sharedWebsiteScanStageBudgetMs(elapsed(), requestedMs);
     if (stageBudgetMs <= 0) throw new Error(`${message}: shared website scan budget exhausted`);
@@ -951,6 +952,7 @@ export async function GET(request: Request) {
     if (!raw) return NextResponse.json({ error: 'Website URL is required.' }, { status: 400 });
 
     const root = assertPublicHttpUrl(raw);
+    scanHostname = root.hostname;
     await runWithinBudget(() => assertResolvablePublicHost(root.hostname), WEBSITE_DNS_VALIDATION_BUDGET_MS, 'Website DNS validation exceeded the shared scan budget');
 
     let outcome = await runWithinBudget((signal) => fetchHtml(root, 3, env().RESEARCH_USER_AGENT, false, signal), 8_000, 'Homepage recovery exceeded the shared website scan budget');
@@ -1014,16 +1016,20 @@ export async function GET(request: Request) {
         );
     let baseHtml = outcome.ok && !outcome.renderedFallback ? outcome.html : '';
     let baseUrl = outcome.ok ? outcome.finalUrl : raw;
+    let stylesheetUrls = baseHtml ? externalStylesheetUrls(baseHtml, baseUrl) : [];
     const scanNotices: string[] = [];
-    if (renderedFallbackText) {
+    const inlineCssAvailable = /<style\\b[^>]*>[\\s\\S]*?\\S[\\s\\S]*?<\\/style>/i.test(baseHtml);
+    const directMarkupLooksLikeShell = !baseHtml || shouldUseRenderedWebsiteFallback(baseHtml);
+    const directVisualStylesUnavailable = !baseHtml || (directMarkupLooksLikeShell && !inlineCssAvailable && stylesheetUrls.length === 0);
+    if (renderedFallbackText && directVisualStylesUnavailable) {
       if (!identity.brandName?.trim()) identity.brandName = brandNameFromWebsiteUrl(baseUrl);
-      // The synthetic reader wrapper contains text but not the real site's CSS.
-      // Avoid claiming the original website has no styles or declared colours.
+      // Filter notices caused only by the synthetic reader wrapper, and only
+      // when that wrapper was genuinely required because direct visuals were unavailable.
       identity.warnings = identity.warnings.filter((warning) =>
         !warning.includes('No embedded stylesheet found') &&
         !warning.includes('No usable colour declarations were found'),
       );
-      scanNotices.push('The public-page reader recovered text, but the original HTML/CSS was not directly available. Visual identity is limited to independently verified public assets.');
+      scanNotices.push('The public-page reader recovered text because the page markup or stylesheets were not directly readable. Visual identity uses independently verified public assets where available.');
     }
 
     // Start logo recovery while the optional homepage and child-page checks run.
@@ -1036,8 +1042,6 @@ export async function GET(request: Request) {
           'Rendered-reader logo verification exceeded its budget',
         ).catch(() => [] as Array<string | null>)
       : Promise.resolve([]);
-
-    let stylesheetUrls = baseHtml ? externalStylesheetUrls(baseHtml, baseUrl) : [];
 
     // If the scraper user-agent received a rendered-reader fallback or HTML
     // without discoverable CSS, retry the public page once with a normal browser
@@ -1343,6 +1347,19 @@ export async function GET(request: Request) {
     await aiTask;
 
     const warnings = [...new Set([...identity.warnings, ...aiWarnings])];
+    console.info(JSON.stringify({
+      ts: new Date().toISOString(),
+      level: 'info',
+      msg: 'Website identity scan completed',
+      hostname: scanHostname,
+      elapsedMs: elapsed(),
+      renderedReaderUsed: Boolean(renderedFallbackText),
+      directHtmlAvailable: Boolean(baseHtml),
+      evidencePageCount: evidencePages.length,
+      stylesheetCount: cssBlocks.length,
+      aiEnrichmentCompleted: Boolean(aiProfile),
+      warningCount: warnings.length,
+    }));
     const enriched = {
       ...identity,
       assets,
@@ -1365,6 +1382,17 @@ export async function GET(request: Request) {
     const message = error instanceof Error && error.message ? error.message : 'Could not inspect the website.';
     const status = /URL|hostname|protocol|port|resolve|public host/i.test(message) ? 400
       : /shared website scan budget exhausted|shared website scan deadline|exceeded the shared website scan budget/i.test(message) ? 504 : 500;
+    if (status >= 500) {
+      console.error(JSON.stringify({
+        ts: new Date().toISOString(),
+        level: 'error',
+        msg: 'Website identity scan failed',
+        hostname: scanHostname,
+        elapsedMs: elapsed(),
+        status,
+        error: message,
+      }));
+    }
     return NextResponse.json({ error: message, identity: null }, { status, headers: { 'Cache-Control': 'no-store' } });
   } finally {
     clearTimeout(scanDeadlineTimer);
