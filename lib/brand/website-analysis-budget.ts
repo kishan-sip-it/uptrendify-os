@@ -6,6 +6,8 @@
 export const WEBSITE_SCAN_BUDGET_MS = 40_000;
 export const WEBSITE_SCAN_RESPONSE_RESERVE_MS = 4_000;
 export const WEBSITE_SCAN_AI_BUDGET_MS = 22_000;
+// DNS gets one bounded transient retry before the protected fetch begins.
+export const WEBSITE_DNS_VALIDATION_BUDGET_MS = 9_000;
 
 export function remainingWebsiteScanBudgetMs(elapsedMs: number): number {
   if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return 0;

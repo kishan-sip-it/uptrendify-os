@@ -48,6 +48,7 @@ type IntakeIdentity = ExtractedIdentity & {
     evidence: { claim: string; sourceUrl: string }[];
   } | null;
   crawl?: { pages: string[]; pageCount: number; stylesheetCount: number } | null;
+  scanNotices?: string[];
 };
 
 type Phase = 'input' | 'scanning' | 'review' | 'saving' | 'error';
@@ -420,6 +421,11 @@ export function BrandIntake({
         </BrandSection>
 
         <BrandSection title="Visual Identity" hint="Declared colours and typography, including external stylesheets rather than only inline HTML.">
+          {identity.scanNotices?.length ? (
+            <p className="brand-section-hint" role="note" style={{ marginTop: 0 }}>
+              {identity.scanNotices.join(' ')}
+            </p>
+          ) : null}
           <div className="brand-fields">
             <BrandField label="Logo">
               {identity.logoUrl ? <div className="brand-identity"><img src={identity.logoUrl} alt="Detected brand logo" style={{ maxWidth: 220, maxHeight: 64, objectFit: 'contain' }} /></div> : <NotDetected label="No logo candidate detected" />}

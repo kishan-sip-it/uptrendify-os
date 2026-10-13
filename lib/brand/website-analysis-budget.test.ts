@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   aiEnrichmentBudgetMs, optionalAssetBudgetMs, optionalResearchPageLimit,
   remainingWebsiteScanBudgetMs, sharedWebsiteScanStageBudgetMs, shouldRetryHomepageForVisuals,
-  WEBSITE_SCAN_BUDGET_MS, WEBSITE_SCAN_RESPONSE_RESERVE_MS,
+  WEBSITE_DNS_VALIDATION_BUDGET_MS, WEBSITE_SCAN_BUDGET_MS, WEBSITE_SCAN_RESPONSE_RESERVE_MS,
 } from './website-analysis-budget';
 
 describe('website analysis shared deadline', () => {
   it('reserves response time before the platform timeout', () => {
     expect(WEBSITE_SCAN_BUDGET_MS).toBe(40_000);
     expect(WEBSITE_SCAN_RESPONSE_RESERVE_MS).toBe(4_000);
+    expect(WEBSITE_DNS_VALIDATION_BUDGET_MS).toBe(9_000);
     expect(remainingWebsiteScanBudgetMs(0)).toBe(36_000);
     expect(remainingWebsiteScanBudgetMs(20_000)).toBe(16_000);
     expect(remainingWebsiteScanBudgetMs(36_000)).toBe(0);

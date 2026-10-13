@@ -403,12 +403,10 @@ export function buildWebsiteBrandIntelligencePrompt(evidence: EvidenceFragment[]
   ].join('\n\n');
 }
 
-export function websiteEnrichmentModel(providerId: string, defaultModel: string): string {
-  // Prefer the already-supported faster Groq model for the interactive scan.
-  // The larger model remains the default for long-running research and strategy.
-  return providerId.startsWith('groq') && defaultModel.toLowerCase() === 'openai/gpt-oss-120b'
-    ? 'openai/gpt-oss-20b'
-    : defaultModel;
+export function websiteEnrichmentModel(_providerId: string, defaultModel: string): string {
+  // Preserve the configured extraction model. The Groq adapter still falls back
+  // to 20B automatically when the configured 120B model is rate-limited.
+  return defaultModel;
 }
 
 export type BrandIntelligenceOptions = {

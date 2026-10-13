@@ -7,9 +7,9 @@ import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, ext
 import { extractRasterPalette, type RasterColorSample } from '@/lib/brand/raster-color-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { AiProviderError } from '@/lib/ai/types';
-import { buildEvidenceContext, extractBrandIntelligence, websiteEnrichmentModel, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
+import { BrandIntelligenceValidationError, buildEvidenceContext, extractBrandIntelligence, websiteEnrichmentModel, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
 import { brandNameFromWebsiteUrl, normalizeWebsiteHostname } from '@/lib/brand/website-url';
-import { aiEnrichmentBudgetMs, optionalAssetBudgetMs, optionalResearchPageLimit, sharedWebsiteScanStageBudgetMs, shouldRetryHomepageForVisuals, WEBSITE_SCAN_BUDGET_MS } from '@/lib/brand/website-analysis-budget';
+import { aiEnrichmentBudgetMs, optionalAssetBudgetMs, optionalResearchPageLimit, sharedWebsiteScanStageBudgetMs, shouldRetryHomepageForVisuals, WEBSITE_DNS_VALIDATION_BUDGET_MS, WEBSITE_SCAN_BUDGET_MS } from '@/lib/brand/website-analysis-budget';
 
 export const maxDuration = 45;
 
@@ -951,7 +951,7 @@ export async function GET(request: Request) {
     if (!raw) return NextResponse.json({ error: 'Website URL is required.' }, { status: 400 });
 
     const root = assertPublicHttpUrl(raw);
-    await runWithinBudget(() => assertResolvablePublicHost(root.hostname), 3_000, 'Website DNS validation exceeded the shared scan budget');
+    await runWithinBudget(() => assertResolvablePublicHost(root.hostname), WEBSITE_DNS_VALIDATION_BUDGET_MS, 'Website DNS validation exceeded the shared scan budget');
 
     let outcome = await runWithinBudget((signal) => fetchHtml(root, 3, env().RESEARCH_USER_AGENT, false, signal), 8_000, 'Homepage recovery exceeded the shared website scan budget');
 
@@ -1014,15 +1014,16 @@ export async function GET(request: Request) {
         );
     let baseHtml = outcome.ok && !outcome.renderedFallback ? outcome.html : '';
     let baseUrl = outcome.ok ? outcome.finalUrl : raw;
+    const scanNotices: string[] = [];
     if (renderedFallbackText) {
-      identity.brandName = brandNameFromWebsiteUrl(baseUrl);
+      if (!identity.brandName?.trim()) identity.brandName = brandNameFromWebsiteUrl(baseUrl);
       // The synthetic reader wrapper contains text but not the real site's CSS.
       // Avoid claiming the original website has no styles or declared colours.
       identity.warnings = identity.warnings.filter((warning) =>
         !warning.includes('No embedded stylesheet found') &&
         !warning.includes('No usable colour declarations were found'),
       );
-      identity.warnings.push('The site HTML/CSS was not directly readable; visual identity is limited to independently verified public assets.');
+      scanNotices.push('The public-page reader recovered text, but the original HTML/CSS was not directly available. Visual identity is limited to independently verified public assets.');
     }
 
     // Start logo recovery while the optional homepage and child-page checks run.
@@ -1160,7 +1161,7 @@ export async function GET(request: Request) {
             if (aiBudgetMs <= 0) {
               aiWarnings.push('AI enrichment could not start because public-page recovery used the scan deadline.');
             } else {
-              const perProviderBudgetMs = providers.length > 1 ? Math.min(11_000, aiBudgetMs) : aiBudgetMs;
+              const perProviderBudgetMs = providers.length > 1 ? Math.min(12_000, aiBudgetMs) : aiBudgetMs;
               const extractionRun = await withTimeout(
                 runWithProviderFailover(
                   providers,
@@ -1177,15 +1178,18 @@ export async function GET(request: Request) {
                         extractBrandIntelligence(provider, evidence, websiteModel, {
                           signal: providerController.signal,
                           fastFail: true,
-                          websiteFastMode: true,
-                          maxEvidenceChars: 6_500,
-                          maxSources: 5,
-                          maxTokens: 1_200,
+                          maxEvidenceChars: 12_000,
+                          maxSources: 8,
+                          maxTokens: 2_000,
                         }),
                         perProviderBudgetMs,
                         providerTimeoutMessage,
                         () => providerController.abort(new Error(providerTimeoutMessage)),
                       ).catch((error: unknown) => {
+                        // Invalid JSON/schema is a provider failure; allow failover.
+                        if (error instanceof BrandIntelligenceValidationError) {
+                          throw new AiProviderError(provider.id, 'Structured Brand IQ output failed validation', 502);
+                        }
                         // A provider-local timeout is retryable by the registry.
                         // A scan-wide timeout must stop all fallback attempts.
                         if (!aiController.signal.aborted && error instanceof Error && error.message === providerTimeoutMessage) {
@@ -1197,9 +1201,7 @@ export async function GET(request: Request) {
                       aiController.signal.removeEventListener('abort', abortWithScan);
                     }
                   },
-                  (failed, next) => {
-                    aiWarnings.push(`AI enrichment switched from ${failed.id} to ${next.id} after a transient provider limit or availability error.`);
-                  },
+                  undefined,
                   aiController.signal,
                 ),
                 aiBudgetMs,
@@ -1344,6 +1346,7 @@ export async function GET(request: Request) {
       ...identity,
       assets,
       aiProfile,
+      scanNotices: [...new Set(scanNotices)],
       crawl: {
         pages: pageUrls.slice(0, 6),
         pageCount: evidencePages.length,

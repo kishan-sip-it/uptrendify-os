@@ -87,6 +87,21 @@ describe('provider failover', () => {
     expect(result.provider.id).toBe('gemini');
     expect(result.result.text).toBe('ok');
   });
+
+  it('fails over when one provider has invalid credentials', async () => {
+    const first = mockProvider('groq', true);
+    const second = mockProvider('gemini', true);
+    const error = new (class extends Error {
+      status = 401;
+    })('invalid API key');
+
+    vi.mocked(first.generate).mockRejectedValueOnce(error);
+    vi.mocked(second.generate).mockResolvedValueOnce({ text: 'ok', model: 'gemini-model' });
+
+    const result = await runWithProviderFailover([first, second], (provider) => provider.generate({ prompt: 'test' }));
+    expect(result.provider.id).toBe('gemini');
+    expect(result.result.text).toBe('ok');
+  });
 });
 
 describe('createDefaultRegistry', () => {
@@ -96,7 +111,7 @@ describe('createDefaultRegistry', () => {
 
   it('creates a registry with all provider IDs', () => {
     const registry = createDefaultRegistry();
-    expect(registry.ids()).toEqual(['groq', 'groq-2', 'groq-3', 'openai', 'anthropic']);
+    expect(registry.ids()).toEqual(['groq', 'gemini', 'groq-2', 'groq-3', 'openai', 'anthropic']);
   });
 
   it('registers separate primary and fallback Groq provider slots', () => {
@@ -104,14 +119,15 @@ describe('createDefaultRegistry', () => {
     expect(registry.get('groq')).toBeDefined();
     expect(registry.get('groq-2')).toBeDefined();
     expect(registry.get('groq-3')).toBeDefined();
-    expect(registry.ids()).toEqual(['groq', 'groq-2', 'groq-3', 'openai', 'anthropic']);
+    expect(registry.get('gemini')).toBeDefined();
+    expect(registry.ids()).toEqual(['groq', 'gemini', 'groq-2', 'groq-3', 'openai', 'anthropic']);
   });
 
   it('uses env-configured provider IDs', () => {
     const registry = createDefaultRegistry();
     const health = registry.list().map((p) => p.health());
     return Promise.all(health).then((all) => {
-      expect(all.every((h) => ['groq', 'groq-2', 'groq-3', 'openai', 'anthropic'].includes(h.id))).toBe(true);
+      expect(all.every((h) => ['groq', 'gemini', 'groq-2', 'groq-3', 'openai', 'anthropic'].includes(h.id))).toBe(true);
     });
   });
 });

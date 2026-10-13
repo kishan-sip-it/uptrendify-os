@@ -76,19 +76,32 @@ function isPrivateIp(ip: string) {
 
 export type LookupAddress = { address: string; family: number };
 
-const dnsLookupTimeoutMs = 5_000;
+const dnsLookupTimeoutMs = 3_500;
 const transientDnsCodes = new Set(['EAI_AGAIN', 'EBUSY', 'ECONNRESET', 'ETIMEDOUT']);
+
+async function lookupWithTimeout(hostname: string): Promise<LookupAddress[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      dns.lookup(hostname, { all: true, verbatim: true }),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error('Research hostname lookup timed out') as NodeJS.ErrnoException;
+          error.code = 'ETIMEDOUT';
+          reject(error);
+        }, dnsLookupTimeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 async function resolveAllAddresses(hostname: string): Promise<LookupAddress[]> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
-      const addresses = await Promise.race([
-        dns.lookup(hostname, { all: true, verbatim: true }),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('Research hostname lookup timed out')), dnsLookupTimeoutMs);
-        }),
-      ]);
+      const addresses = await lookupWithTimeout(hostname);
       const seen = new Set<string>();
       const unique: LookupAddress[] = [];
       for (const entry of addresses) {

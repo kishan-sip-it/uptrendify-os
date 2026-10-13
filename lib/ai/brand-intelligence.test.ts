@@ -131,9 +131,9 @@ describe('website fast extraction prompt', () => {
     expect(prompt.length).toBeLessThan(buildBrandIntelligencePrompt(evidence).length);
   });
 
-  it('uses the 20B Groq model only when 120B is configured', () => {
-    expect(websiteEnrichmentModel('groq', 'openai/gpt-oss-120b')).toBe('openai/gpt-oss-20b');
-    expect(websiteEnrichmentModel('groq-2', 'openai/gpt-oss-120b')).toBe('openai/gpt-oss-20b');
+  it('preserves the configured model for higher-quality website extraction', () => {
+    expect(websiteEnrichmentModel('groq', 'openai/gpt-oss-120b')).toBe('openai/gpt-oss-120b');
+    expect(websiteEnrichmentModel('groq-2', 'openai/gpt-oss-120b')).toBe('openai/gpt-oss-120b');
     expect(websiteEnrichmentModel('groq', 'llama-3.3-70b-versatile')).toBe('llama-3.3-70b-versatile');
     expect(websiteEnrichmentModel('openai', 'gpt-4o-mini')).toBe('gpt-4o-mini');
   });
