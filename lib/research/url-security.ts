@@ -186,8 +186,8 @@ async function resolveAllAddresses(hostname: string): Promise<LookupAddress[]> {
     } catch (error) {
       lastError = error;
       const code = typeof (error as { code?: unknown }).code === 'string' ? (error as { code: string }).code : '';
-      if (attempt >= 2 || !transientDnsCodes.has(code)) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (!transientDnsCodes.has(code)) throw error;
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 300));
     }
   }
   try {
