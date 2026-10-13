@@ -7,7 +7,7 @@ import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, ext
 import { extractRasterPalette, type RasterColorSample } from '@/lib/brand/raster-color-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { AiProviderError } from '@/lib/ai/types';
-import { buildEvidenceContext, extractBrandIntelligence, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
+import { buildEvidenceContext, extractBrandIntelligence, websiteEnrichmentModel, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
 import { brandNameFromWebsiteUrl, normalizeWebsiteHostname } from '@/lib/brand/website-url';
 import { aiEnrichmentBudgetMs, optionalAssetBudgetMs, optionalResearchPageLimit, sharedWebsiteScanStageBudgetMs, shouldRetryHomepageForVisuals, WEBSITE_SCAN_BUDGET_MS } from '@/lib/brand/website-analysis-budget';
 
@@ -1160,7 +1160,7 @@ export async function GET(request: Request) {
             if (aiBudgetMs <= 0) {
               aiWarnings.push('AI enrichment could not start because public-page recovery used the scan deadline.');
             } else {
-              const perProviderBudgetMs = providers.length > 1 ? Math.min(15_000, aiBudgetMs) : aiBudgetMs;
+              const perProviderBudgetMs = providers.length > 1 ? Math.min(11_000, aiBudgetMs) : aiBudgetMs;
               const extractionRun = await withTimeout(
                 runWithProviderFailover(
                   providers,
@@ -1172,13 +1172,15 @@ export async function GET(request: Request) {
 
                     const providerTimeoutMessage = `AI provider ${provider.id} exceeded its allocated website-enrichment budget`;
                     try {
+                      const websiteModel = websiteEnrichmentModel(provider.id, provider.defaultModel);
                       return await withTimeout(
-                        extractBrandIntelligence(provider, evidence, undefined, {
+                        extractBrandIntelligence(provider, evidence, websiteModel, {
                           signal: providerController.signal,
                           fastFail: true,
-                          maxEvidenceChars: 10_000,
-                          maxSources: 7,
-                          maxTokens: 2_200,
+                          websiteFastMode: true,
+                          maxEvidenceChars: 6_500,
+                          maxSources: 5,
+                          maxTokens: 1_200,
                         }),
                         perProviderBudgetMs,
                         providerTimeoutMessage,
