@@ -20,7 +20,7 @@ export default function ThemeHeroVideo() {
   const videoBRef = useRef<HTMLVideoElement | null>(null);
   const activeDeckRef = useRef<0 | 1>(0);
   const crossfadeRef = useRef(false);
-  const crossfadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const crossfadeTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
