@@ -421,7 +421,8 @@
 .landing-hero-video {
   z-index: 4;
   opacity: 0;
-  transition: opacity .7s ease;
+  will-change: opacity;
+  transition: opacity 700ms cubic-bezier(.22, .61, .36, 1);
 }
 
 .landing-hero-video.is-ready { opacity: 1; }
@@ -557,8 +558,13 @@ html[data-theme="light"] .landing-hero-visual {
     animation: none !important;
   }
   .landing-hero-still,
-  .landing-hero-video,
   .landing-hero-visual-art {
     transition: none !important;
+  }
+
+  /* The hero is intentionally double-buffered; keep its loop cross-fade even
+     when the OS requests reduced motion so there is no visible end-to-start cut. */
+  .landing-hero-video {
+    transition-duration: 700ms !important;
   }
 }
