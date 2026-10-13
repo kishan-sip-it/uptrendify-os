@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 
 type BrandWorkspaceNavProps = {
@@ -39,14 +40,14 @@ export function BrandWorkspaceNav({ brandId, current }: BrandWorkspaceNavProps) 
     <nav className="brand-workspace-nav" aria-label="Brand workspace">
       <div className="brand-workspace-nav-scroll">
         {tabs.map((tab) => (
-          <a
+          <Link
             key={tab.key}
             href={tab.href(brandId)}
             className={`brand-workspace-tab ${active === tab.key ? 'active' : ''}`}
             aria-current={active === tab.key ? 'page' : undefined}
           >
             {tab.label}
-          </a>
+          </Link>
         ))}
       </div>
     </nav>
