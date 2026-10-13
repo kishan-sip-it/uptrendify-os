@@ -420,12 +420,6 @@ export type BrandIntelligenceOptions = {
   maxSources?: number;
   maxTokens?: number;
 };
-  signal?: AbortSignal;
-  fastFail?: boolean;
-  maxEvidenceChars?: number;
-  maxSources?: number;
-  maxTokens?: number;
-};
 
 export async function extractBrandIntelligence(
   provider: AiProvider,
