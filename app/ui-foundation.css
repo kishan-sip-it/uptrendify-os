@@ -265,10 +265,6 @@ p {
   padding: var(--page-pad-block) var(--page-pad-inline) 56px;
 }
 
-html[data-theme='dark'] .main {
-  max-width: var(--page-max);
-}
-
 /* --------------------------------------------------------------------------
    8. CARDS AND PANELS
    One card definition, replacing five. Plus the small set of reusable
@@ -283,10 +279,6 @@ html[data-theme='dark'] .main {
   box-shadow: var(--shadow-card);
   color: var(--text);
   min-width: 0;
-}
-
-html[data-theme='dark'] .card {
-  box-shadow: var(--shadow-card);
 }
 
 /* Subtle panel - grouping without elevation. */
