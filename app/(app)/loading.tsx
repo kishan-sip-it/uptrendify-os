@@ -40,8 +40,19 @@ export default function WorkspaceLoading() {
           from { transform: translateX(-110%); }
           to { transform: translateX(270%); }
         }
+        @keyframes app-route-pending-soft-pulse {
+          0%, 100% { opacity: .5; }
+          50% { opacity: 1; }
+        }
         @media (prefers-reduced-motion: reduce) {
-          .app-route-pending-track span { animation-duration: 2.4s; }
+          .app-route-pending-track span {
+            animation: app-route-pending-soft-pulse 1.8s ease-in-out infinite !important;
+            transform: none !important;
+          }
+        }
+        html[data-reduced-motion="true"] .app-route-pending-track span {
+          animation: app-route-pending-soft-pulse 1.8s ease-in-out infinite !important;
+          transform: none !important;
         }
       `}</style>
     </main>
