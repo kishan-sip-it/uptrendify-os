@@ -183,7 +183,7 @@ describe('extractBrandIntelligence', () => {
     expect(outcome.model).toBe('fake-model');
   });
 
-  it('uses one fast JSON-only pass for website intake', async () => {
+  it('uses the configured model when fast mode is explicitly requested', async () => {
     const provider = fakeProvider([VALID_INTELLIGENCE], 'openai/gpt-oss-120b');
     const outcome = await extractBrandIntelligence(
       provider as any,
@@ -193,7 +193,7 @@ describe('extractBrandIntelligence', () => {
     );
     expect(outcome.result.identity.brandName).toBe('Aurora');
     expect(provider.__calls).toHaveLength(1);
-    expect(provider.__calls[0]?.model).toBe('openai/gpt-oss-20b');
+    expect(provider.__calls[0]?.model).toBe('openai/gpt-oss-120b');
     expect(provider.__calls[0]?.maxTokens).toBe(1_200);
     expect(provider.__calls[0]?.json).toBe(true);
     expect(provider.__calls[0]?.fastFail).toBe(true);
