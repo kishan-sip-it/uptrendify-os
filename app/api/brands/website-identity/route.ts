@@ -9,7 +9,7 @@ import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registr
 import { AiProviderError } from '@/lib/ai/types';
 import { buildEvidenceContext, extractBrandIntelligence, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
 import { brandNameFromWebsiteUrl, normalizeWebsiteHostname } from '@/lib/brand/website-url';
-import { aiEnrichmentBudgetMs, optionalAssetBudgetMs, optionalResearchPageLimit, shouldRetryHomepageForVisuals } from '@/lib/brand/website-analysis-budget';
+import { aiEnrichmentBudgetMs, optionalAssetBudgetMs, optionalResearchPageLimit, sharedWebsiteScanStageBudgetMs, shouldRetryHomepageForVisuals, WEBSITE_SCAN_BUDGET_MS } from '@/lib/brand/website-analysis-budget';
 
 export const maxDuration = 45;
 
@@ -55,7 +55,7 @@ async function withTimeout<T>(
   }
 }
 
-async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH_USER_AGENT, allowReaderFallback = true): Promise<FetchOutcome> {
+async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH_USER_AGENT, allowReaderFallback = true, sharedSignal?: AbortSignal): Promise<FetchOutcome> {
   let target = root.toString();
   let finalUrl: string | null = null;
 
@@ -64,7 +64,7 @@ async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH
     const timeout = setTimeout(() => controller.abort(), Math.min(env().RESEARCH_TIMEOUT_MS, 7000));
     try {
       const response = await fetchPublicHttp(target, {
-        signal: controller.signal,
+        signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
         redirect: 'manual',
         headers: {
           'user-agent': userAgent,
@@ -88,7 +88,7 @@ async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH
         // through a browser-backed reader. Give that reader one bounded chance
         // before reporting the site as unavailable.
         if (allowReaderFallback && [401, 403, 407, 408, 429, 451, 500, 502, 503, 504].includes(response.status)) {
-          const rendered = await fetchRenderedResearch(target);
+          const rendered = await fetchRenderedResearch(target, 9_000, sharedSignal);
           if (rendered) {
             return { ok: true, html: renderedPageHtml(rendered), finalUrl: target, renderedFallback: true };
           }
@@ -102,14 +102,15 @@ async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH
       const bounded = await readBoundedBody(response, Math.min(env().MAX_RESEARCH_BYTES, 900_000));
       if (isBlockedWebsiteResponse(bounded.content)) {
         if (allowReaderFallback) {
-          const rendered = await fetchRenderedResearch(target);
+          const rendered = await fetchRenderedResearch(target, 9_000, sharedSignal);
           if (rendered) return { ok: true, html: renderedPageHtml(rendered), finalUrl: target, renderedFallback: true };
         }
         return { ok: false, reason: 'The website returned a security/block page instead of its public homepage.', finalUrl: target };
       }
       return { ok: true, html: bounded.content, finalUrl: target };
     } catch {
-      const rendered = allowReaderFallback ? await fetchRenderedResearch(target) : null;
+      if (sharedSignal?.aborted) return { ok: false, reason: 'The shared website scan deadline was reached.', finalUrl: finalUrl ?? target };
+      const rendered = allowReaderFallback ? await fetchRenderedResearch(target, 9_000, sharedSignal) : null;
       if (rendered) {
         return {
           ok: true,
@@ -129,7 +130,7 @@ async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH
 
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-async function fetchFallbackFirstPartyPage(root: URL): Promise<FetchOutcome | null> {
+async function fetchFallbackFirstPartyPage(root: URL, sharedSignal?: AbortSignal): Promise<FetchOutcome | null> {
   // If the canonical root is blocked or only an app shell, try a small set of
   // conventional locale, company and product paths on the same public host.
   // Every candidate must return substantive first-party content; path names are
@@ -140,7 +141,7 @@ async function fetchFallbackFirstPartyPage(root: URL): Promise<FetchOutcome | nu
     try {
       const candidate = assertPublicHttpUrl(new URL(pathname, root).toString());
       await assertResolvablePublicHost(candidate.hostname);
-      const result = await fetchHtml(candidate, 2, BROWSER_USER_AGENT, false);
+      const result = await fetchHtml(candidate, 2, BROWSER_USER_AGENT, false, sharedSignal);
       if (result.ok) {
         const page = pageText(result.html);
         const opening = (page.title ?? '') + ' ' + page.text.slice(0, 800);
@@ -157,7 +158,7 @@ async function fetchFallbackFirstPartyPage(root: URL): Promise<FetchOutcome | nu
 
       // Some sites block ordinary requests or return only an app shell for every
       // locale path. Give each candidate one short rendered-reader attempt.
-      const rendered = await fetchRenderedResearch(candidate.toString(), 3_000);
+      const rendered = await fetchRenderedResearch(candidate.toString(), 3_000, sharedSignal);
       if (!rendered) {
         return result.ok
           ? { ok: false, reason: 'The regional homepage did not contain usable public website content.', finalUrl: result.finalUrl }
@@ -231,14 +232,14 @@ function externalScriptUrls(html: string, baseUrl: string): string[] {
   return [...urls].slice(0, 4);
 }
 
-async function fetchScriptText(url: string): Promise<string | null> {
+async function fetchScriptText(url: string, sharedSignal?: AbortSignal): Promise<string | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3500);
   try {
     const safe = assertPublicHttpUrl(url);
     await assertResolvablePublicHost(safe.hostname);
     const response = await fetchPublicHttp(safe.toString(), {
-      signal: controller.signal,
+      signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
       redirect: 'manual',
       headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'text/javascript,application/javascript,application/ecmascript,*/*;q=0.1' },
     });
@@ -291,14 +292,14 @@ function rasterLogoUrls(html: string, baseUrl: string, knownUrls: Array<string |
   return [...found].slice(0, 5);
 }
 
-async function fetchRasterColors(url: string): Promise<RasterColorSample[]> {
+async function fetchRasterColors(url: string, sharedSignal?: AbortSignal): Promise<RasterColorSample[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);
   try {
     const safe = assertPublicHttpUrl(url);
     await assertResolvablePublicHost(safe.hostname);
     const response = await fetchPublicHttp(safe.toString(), {
-      signal: controller.signal,
+      signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
       redirect: 'manual',
       headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'image/png,image/x-icon,image/vnd.microsoft.icon,image/*;q=0.5,*/*;q=0.1' },
     });
@@ -314,7 +315,7 @@ async function fetchRasterColors(url: string): Promise<RasterColorSample[]> {
   }
 }
 
-async function fetchCss(url: string): Promise<string> {
+async function fetchCss(url: string, sharedSignal?: AbortSignal): Promise<string> {
   let safe: URL;
   try {
     safe = assertPublicHttpUrl(url);
@@ -332,7 +333,7 @@ async function fetchCss(url: string): Promise<string> {
     const timeout = setTimeout(() => controller.abort(), 3500);
     try {
       const response = await fetchPublicHttp(safe.toString(), {
-        signal: controller.signal,
+        signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
         redirect: 'follow',
         headers: { 'user-agent': userAgent, accept: 'text/css,*/*;q=0.1' },
       });
@@ -356,14 +357,14 @@ async function fetchCss(url: string): Promise<string> {
 }
 
 
-async function verifyPublicLogoAsset(url: string): Promise<string | null> {
+async function verifyPublicLogoAsset(url: string, sharedSignal?: AbortSignal): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 2500);
   try {
     const safe = assertPublicHttpUrl(url);
     await assertResolvablePublicHost(safe.hostname);
     const response = await fetchPublicHttp(safe.toString(), {
-      signal: controller.signal,
+      signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
       redirect: 'manual',
       headers: {
         'user-agent': env().RESEARCH_USER_AGENT,
@@ -387,7 +388,7 @@ async function verifyPublicLogoAsset(url: string): Promise<string | null> {
   }
 }
 
-async function verifyConventionalIcon(baseUrl: string): Promise<string | null> {
+async function verifyConventionalIcon(baseUrl: string, sharedSignal?: AbortSignal): Promise<string | null> {
   // Prefer explicit logo assets when published at conventional first-party paths;
   // use favicon/app icons only as a final fallback. Every candidate is verified
   // by a successful image response before it is returned.
@@ -407,7 +408,7 @@ async function verifyConventionalIcon(baseUrl: string): Promise<string | null> {
       const candidate = assertPublicHttpUrl(new URL(path, baseUrl).toString());
       await assertResolvablePublicHost(candidate.hostname);
       const response = await fetchPublicHttp(candidate.toString(), {
-        signal: controller.signal,
+        signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
         redirect: 'manual',
         headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'image/*' },
       });
@@ -435,7 +436,7 @@ function absoluteUrl(value: string | undefined, base: string): string | null {
   }
 }
 
-async function fetchRenderedResearch(url: string, maxWaitMs = 9_000): Promise<RenderedResearch | null> {
+async function fetchRenderedResearch(url: string, maxWaitMs = 9_000, sharedSignal?: AbortSignal): Promise<RenderedResearch | null> {
   let source: URL;
   try {
     source = assertPublicHttpUrl(url);
@@ -460,7 +461,7 @@ async function fetchRenderedResearch(url: string, maxWaitMs = 9_000): Promise<Re
     const timer = setTimeout(() => controller.abort(), remaining);
     try {
       const response = await fetch('https://r.jina.ai/' + target, {
-        signal: controller.signal,
+        signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
         headers: {
           accept: 'text/plain',
           ...(env().JINA_API_KEY ? { authorization: 'Bearer ' + env().JINA_API_KEY } : {}),
@@ -682,7 +683,7 @@ function mergeExternalCss(
 
 type CssResource = { url: string; css: string };
 
-async function fetchCssTree(url: string, depth = 0, seen = new Set<string>()): Promise<CssResource[]> {
+async function fetchCssTree(url: string, depth = 0, seen = new Set<string>(), sharedSignal?: AbortSignal): Promise<CssResource[]> {
   let normalized: string;
   try {
     normalized = assertPublicHttpUrl(url).toString();
@@ -691,7 +692,7 @@ async function fetchCssTree(url: string, depth = 0, seen = new Set<string>()): P
   }
   if (seen.has(normalized)) return [];
   seen.add(normalized);
-  const css = await fetchCss(normalized);
+  const css = await fetchCss(normalized, sharedSignal);
   if (!css) return [];
   if (depth >= 1) return [{ url: normalized, css }];
 
@@ -703,7 +704,7 @@ async function fetchCssTree(url: string, depth = 0, seen = new Set<string>()): P
       // Ignore invalid or unsafe nested imports.
     }
   }
-  const children = await Promise.all([...imported].slice(0, 2).map((child) => fetchCssTree(child, depth + 1, seen)));
+  const children = await Promise.all([...imported].slice(0, 2).map((child) => fetchCssTree(child, depth + 1, seen, sharedSignal)));
   return [{ url: normalized, css }, ...children.flat()];
 }
 
@@ -781,14 +782,14 @@ async function attachSourceFontAssets(
     };
   });
 }
-async function fetchSvgAsset(url: string): Promise<string | null> {
+async function fetchSvgAsset(url: string, sharedSignal?: AbortSignal): Promise<string | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);
   try {
     const safe = assertPublicHttpUrl(url);
     await assertResolvablePublicHost(safe.hostname);
     const response = await fetchPublicHttp(safe.toString(), {
-      signal: controller.signal,
+      signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
       redirect: 'manual',
       headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'image/svg+xml,text/plain;q=0.8,*/*;q=0.2' },
     });
@@ -804,7 +805,7 @@ async function fetchSvgAsset(url: string): Promise<string | null> {
   }
 }
 
-async function fetchManifestVisuals(html: string, baseUrl: string): Promise<{ colors: string[]; icons: string[] }> {
+async function fetchManifestVisuals(html: string, baseUrl: string, sharedSignal?: AbortSignal): Promise<{ colors: string[]; icons: string[] }> {
   const $ = cheerio.load(html);
   const urls = new Set<string>();
   $('link[rel~="manifest"][href]').each((_i, el) => {
@@ -818,7 +819,7 @@ async function fetchManifestVisuals(html: string, baseUrl: string): Promise<{ co
       const safe = assertPublicHttpUrl(url);
       await assertResolvablePublicHost(safe.hostname);
       const response = await fetchPublicHttp(safe.toString(), {
-        signal: controller.signal,
+        signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
         redirect: 'manual',
         headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'application/manifest+json,application/json,*/*;q=0.2' },
       });
@@ -927,25 +928,38 @@ function buildAiProfile(intelligence: Awaited<ReturnType<typeof extractBrandInte
  * are not present in inline HTML.
  */
 export async function GET(request: Request) {
+  const scanStartedAt = Date.now();
+  const elapsed = () => Date.now() - scanStartedAt;
+  const scanController = new AbortController();
+  const scanDeadlineTimer = setTimeout(() => scanController.abort(new Error('The shared website scan deadline was reached')), WEBSITE_SCAN_BUDGET_MS);
+  const runWithinBudget = async <T>(operation: (signal: AbortSignal) => Promise<T>, requestedMs: number, message: string): Promise<T> => {
+    const stageBudgetMs = sharedWebsiteScanStageBudgetMs(elapsed(), requestedMs);
+    if (stageBudgetMs <= 0) throw new Error(`${message}: shared website scan budget exhausted`);
+    const stageController = new AbortController();
+    const signal = AbortSignal.any([scanController.signal, stageController.signal]);
+    try {
+      return await withTimeout(operation(signal), stageBudgetMs, message, () => stageController.abort(new Error(message)));
+    } finally {
+      if (!stageController.signal.aborted) stageController.abort(new Error('Website scan stage finished'));
+    }
+  };
   try {
-    const auth = await requireOrgRole(CAN_VIEW_DASHBOARD);
+    const auth = await runWithinBudget(async () => requireOrgRole(CAN_VIEW_DASHBOARD), 5_000, 'Workspace authorization exceeded the shared website scan budget');
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
-    const scanStartedAt = Date.now();
-    const elapsed = () => Date.now() - scanStartedAt;
 
     const raw = new URL(request.url).searchParams.get('url')?.trim();
     if (!raw) return NextResponse.json({ error: 'Website URL is required.' }, { status: 400 });
 
     const root = assertPublicHttpUrl(raw);
-    await assertResolvablePublicHost(root.hostname);
+    await runWithinBudget(() => assertResolvablePublicHost(root.hostname), 3_000, 'Website DNS validation exceeded the shared scan budget');
 
-    let outcome = await fetchHtml(root, 3, env().RESEARCH_USER_AGENT, false);
+    let outcome = await runWithinBudget((signal) => fetchHtml(root, 3, env().RESEARCH_USER_AGENT, false, signal), 8_000, 'Homepage recovery exceeded the shared website scan budget');
 
     // A second user-agent request is useful for ordinary HTTP failures, but
     // repeating a confirmed HTTP-200 block interstitial wastes the scan budget.
     if (!outcome.ok && !/(?:security\/block page|HTTP (?:401|403|407|429|451))/i.test(outcome.reason)) {
-      const browserOutcome = await fetchHtml(root, 3, BROWSER_USER_AGENT, false);
-      if (browserOutcome.ok) outcome = browserOutcome;
+      const browserOutcome = await runWithinBudget((signal) => fetchHtml(root, 3, BROWSER_USER_AGENT, false, signal), 8_000, 'Browser homepage retry exceeded the shared website scan budget').catch(() => null);
+      if (browserOutcome?.ok) outcome = browserOutcome;
     }
     let renderedFallbackText: string | null = null;
     let renderedFallbackTitle: string | null = null;
@@ -960,15 +974,15 @@ export async function GET(request: Request) {
       // server fetch, so attempt one bounded rendered read before building an
       // empty Brand IQ review.
       const directPage = pageText(outcome.html);
-      const rendered = await fetchRenderedResearch(outcome.finalUrl);
+      const rendered = await runWithinBudget((signal) => fetchRenderedResearch(outcome.finalUrl, 9_000, signal), 9_000, 'Rendered homepage recovery exceeded the shared website scan budget').catch(() => null);
       if (rendered && rendered.text.length >= 180 && rendered.text.length > directPage.text.length + 100) {
         renderedFallbackText = rendered.text;
         renderedFallbackTitle = rendered.title ?? directPage.title;
       }
     } else if (!outcome.ok) {
-      const rendered = await fetchRenderedResearch(outcome.finalUrl ?? root.toString());
+      const rendered = await runWithinBudget((signal) => fetchRenderedResearch(outcome.finalUrl ?? root.toString(), 9_000, signal), 9_000, 'Rendered fallback exceeded the shared website scan budget').catch(() => null);
       if (!rendered) {
-        const regional = await fetchFallbackFirstPartyPage(root);
+        const regional = await runWithinBudget((signal) => fetchFallbackFirstPartyPage(root, signal), 10_000, 'Regional fallback exceeded the shared website scan budget').catch(() => null);
         if (regional?.ok) {
           outcome = regional;
           if (regional.renderedFallback) {
@@ -1016,8 +1030,8 @@ export async function GET(request: Request) {
     // pages could be rejected even when their actual logo is recoverable.
     const readerLogoTask: Promise<Array<string | null>> = !identity.logoUrl && renderedFallbackText
       ? withTimeout(
-          Promise.all(extractRenderedLogoCandidates(renderedFallbackText, baseUrl).slice(0, 2).map(verifyPublicLogoAsset)),
-          2_800,
+          Promise.all(extractRenderedLogoCandidates(renderedFallbackText, baseUrl).slice(0, 2).map((url) => verifyPublicLogoAsset(url, scanController.signal))),
+          sharedWebsiteScanStageBudgetMs(elapsed(), 2_800),
           'Rendered-reader logo verification exceeded its budget',
         ).catch(() => [] as Array<string | null>)
       : Promise.resolve([]);
@@ -1028,13 +1042,14 @@ export async function GET(request: Request) {
     // without discoverable CSS, retry the public page once with a normal browser
     // user-agent. This does not bypass URL/DNS safety and never runs unbounded.
     if (shouldRetryHomepageForVisuals(elapsed(), Boolean(renderedFallbackText), Boolean(baseHtml), stylesheetUrls.length)) {
-      const browserPage = await fetchHtml(
+      const browserPage = await runWithinBudget((signal) => fetchHtml(
         root,
         3,
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         false,
-      );
-      if (browserPage.ok && !browserPage.renderedFallback) {
+        signal,
+      ), 7_500, 'Visual homepage retry exceeded the shared website scan budget').catch(() => null);
+      if (browserPage?.ok && !browserPage.renderedFallback) {
         const browserStyles = externalStylesheetUrls(browserPage.html, browserPage.finalUrl);
         if (!baseHtml || browserStyles.length > stylesheetUrls.length || browserPage.html.length > baseHtml.length + 250) {
           baseHtml = browserPage.html;
@@ -1067,17 +1082,17 @@ export async function GET(request: Request) {
     const readerOnlyFallback = Boolean(renderedFallbackText && !baseHtml);
     const pageLimit = optionalResearchPageLimit(elapsed());
     const researchPageCandidates = pageCandidates.slice(0, readerOnlyFallback ? Math.min(2, pageLimit) : pageLimit);
-    const pageFetchBudgetMs = optionalAssetBudgetMs(elapsed(), 5_000);
+    const pageFetchBudgetMs = sharedWebsiteScanStageBudgetMs(elapsed(), optionalAssetBudgetMs(elapsed(), 5_000));
     const extraPages = pageFetchBudgetMs > 0 && researchPageCandidates.length > 0
-      ? await withTimeout(Promise.all(researchPageCandidates.map(async (url, index) => {
+      ? await runWithinBudget((signal) => Promise.all(researchPageCandidates.map(async (url, index) => {
       if (readerOnlyFallback) {
-        const rendered = await fetchRenderedResearch(url, 3_500);
+        const rendered = await fetchRenderedResearch(url, 3_500, signal);
         return rendered && rendered.text.trim().length >= 180
           ? { url, title: rendered.title, text: rendered.text }
           : null;
       }
 
-      const page = await fetchHtml(new URL(url), 1);
+      const page = await fetchHtml(new URL(url), 1, env().RESEARCH_USER_AGENT, true, signal);
       if (page.ok === false) return null;
       const direct = pageText(page.html);
       if (page.ok === true && page.renderedFallback) return { url: page.finalUrl, ...direct };
@@ -1086,13 +1101,13 @@ export async function GET(request: Request) {
       // can contribute real evidence without turning one scan into an
       // unbounded set of third-party rendering requests.
       if (index < 3 && shouldUseRenderedWebsiteFallback(page.html)) {
-        const rendered = await fetchRenderedResearch(page.finalUrl, 5_500);
+        const rendered = await fetchRenderedResearch(page.finalUrl, 5_500, signal);
         if (rendered && rendered.text.length > direct.text.length + 100) {
           return { url: page.finalUrl, title: rendered.title ?? direct.title, text: rendered.text };
         }
       }
       return { url: page.finalUrl, ...direct };
-    })), pageFetchBudgetMs, 'Optional first-party page crawl exceeded its budget')
+    })), pageFetchBudgetMs, 'Optional first-party page crawl exceeded its shared deadline')
         .catch(() => [] as Array<{ url: string; title: string | null; text: string } | null>)
       : [];
     for (const page of extraPages) if (page?.text?.trim()) evidencePages.push(page);
@@ -1123,6 +1138,9 @@ export async function GET(request: Request) {
     let aiProfile: Record<string, unknown> | null = null;
     const aiWarnings: string[] = [];
     const aiController = new AbortController();
+    const abortAiWithScan = () => aiController.abort(scanController.signal.reason);
+    if (scanController.signal.aborted) abortAiWithScan();
+    else scanController.signal.addEventListener('abort', abortAiWithScan, { once: true });
     // Start structured extraction as soon as the text evidence is ready. The
     // optional stylesheet/icon work below runs concurrently instead of stealing
     // all the time before AI gets a chance to start.
@@ -1142,7 +1160,7 @@ export async function GET(request: Request) {
             if (aiBudgetMs <= 0) {
               aiWarnings.push('AI enrichment could not start because public-page recovery used the scan deadline.');
             } else {
-              const perProviderBudgetMs = providers.length > 1 ? Math.min(9_000, aiBudgetMs) : aiBudgetMs;
+              const perProviderBudgetMs = providers.length > 1 ? Math.min(15_000, aiBudgetMs) : aiBudgetMs;
               const extractionRun = await withTimeout(
                 runWithProviderFailover(
                   providers,
@@ -1207,10 +1225,10 @@ export async function GET(request: Request) {
 
     // Some sites publish only an app manifest, or an SVG logo contains the
     // brand palette when the HTML has no authored CSS.
-    const manifestBudgetMs = baseHtml ? optionalAssetBudgetMs(elapsed(), 3_000) : 0;
+    const manifestBudgetMs = baseHtml ? sharedWebsiteScanStageBudgetMs(elapsed(), optionalAssetBudgetMs(elapsed(), 3_000)) : 0;
     const manifestVisuals = baseHtml && manifestBudgetMs > 0
       ? await withTimeout(
-          fetchManifestVisuals(baseHtml, baseUrl),
+          fetchManifestVisuals(baseHtml, baseUrl, scanController.signal),
           manifestBudgetMs,
           'Optional manifest inspection exceeded its budget',
         ).catch(() => ({ colors: [], icons: [] }))
@@ -1221,7 +1239,7 @@ export async function GET(request: Request) {
     // A blocked homepage can still expose its own verified favicon/icon paths.
     // Use only a successful same-origin image response; never infer a logo URL.
     if (!identity.logoUrl || !identity.faviconUrl) {
-      const conventionalIcon = await withTimeout(verifyConventionalIcon(baseUrl), 2_800, 'Optional icon fallback exceeded its budget').catch(() => null);
+      const conventionalIcon = await withTimeout(verifyConventionalIcon(baseUrl, scanController.signal), sharedWebsiteScanStageBudgetMs(elapsed(), 2_800), 'Optional icon fallback exceeded its budget').catch(() => null);
       if (conventionalIcon) {
         identity.logoUrl = identity.logoUrl ?? conventionalIcon;
         identity.faviconUrl = identity.faviconUrl ?? conventionalIcon;
@@ -1241,7 +1259,7 @@ export async function GET(request: Request) {
     const cssBudgetMs = elapsed() < 28_000 ? optionalAssetBudgetMs(elapsed(), 4_000) : 0;
     const cssResources = cssBudgetMs > 0
       ? await withTimeout(
-          Promise.all(stylesheetUrls.slice(0, 6).map((url) => fetchCssTree(url, 0, visitedCssUrls)))
+          Promise.all(stylesheetUrls.slice(0, 6).map((url) => fetchCssTree(url, 0, visitedCssUrls, scanController.signal)))
             .then((resources) => resources.flat()),
           cssBudgetMs,
           'Optional stylesheet inspection exceeded its budget',
@@ -1258,7 +1276,7 @@ export async function GET(request: Request) {
     const svgBudgetMs = elapsed() < 30_000 ? optionalAssetBudgetMs(elapsed(), 2_500) : 0;
     const svgResults = svgBudgetMs > 0
       ? await withTimeout(
-          Promise.all(svgUrls.slice(0, 2).map(fetchSvgAsset)),
+          Promise.all(svgUrls.slice(0, 2).map((url) => fetchSvgAsset(url, scanController.signal))),
           svgBudgetMs,
           'Optional logo SVG inspection exceeded its budget',
         ).catch(() => [])
@@ -1273,7 +1291,7 @@ export async function GET(request: Request) {
     const scriptBudgetMs = canFetchOptionalAssets ? optionalAssetBudgetMs(elapsed(), 2_500) : 0;
     const externalScripts = baseHtml && scriptBudgetMs > 0
       ? (await withTimeout(
-          Promise.all(externalScriptUrls(baseHtml, baseUrl).slice(0, 2).map(fetchScriptText)),
+          Promise.all(externalScriptUrls(baseHtml, baseUrl).slice(0, 2).map((url) => fetchScriptText(url, scanController.signal))),
           scriptBudgetMs,
           'Optional design-token script inspection exceeded its budget',
         ).catch(() => []))
@@ -1286,7 +1304,7 @@ export async function GET(request: Request) {
     const rasterBudgetMs = canFetchOptionalAssets ? optionalAssetBudgetMs(elapsed(), 1_800) : 0;
     const rasterColors: RasterColorSample[] = rasterBudgetMs > 0
       ? (await withTimeout(
-          Promise.all(rasterUrls.map(fetchRasterColors)).then((samples) => samples.flat()),
+          Promise.all(rasterUrls.map((url) => fetchRasterColors(url, scanController.signal))).then((samples) => samples.flat()),
           rasterBudgetMs,
           'Optional raster colour inspection exceeded its budget',
         ).catch(() => []))
@@ -1339,6 +1357,11 @@ export async function GET(request: Request) {
     );
   } catch (error) {
     const message = error instanceof Error && error.message ? error.message : 'Could not inspect the website.';
-    return NextResponse.json({ error: message, identity: null }, { status: /URL|hostname|protocol|port|resolve|public host/i.test(message) ? 400 : 500, headers: { 'Cache-Control': 'no-store' } });
+    const status = /URL|hostname|protocol|port|resolve|public host/i.test(message) ? 400
+      : /shared website scan budget exhausted|shared website scan deadline|exceeded the shared website scan budget/i.test(message) ? 504 : 500;
+    return NextResponse.json({ error: message, identity: null }, { status, headers: { 'Cache-Control': 'no-store' } });
+  } finally {
+    clearTimeout(scanDeadlineTimer);
+    if (!scanController.signal.aborted) scanController.abort(new Error('Website scan request finished'));
   }
 }
