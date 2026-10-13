@@ -2,18 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { deriveWorkflowState } from './derive';
 
 const base = {
-  researchActive: false,
-  researchDone: true,
-  brandBrainReady: true,
-  strategyReady: true,
-  contentCount: 1,
-  pendingApproval: false,
-  readyToPublish: false,
-  campaignCount: 1,
+  researchActive: false, researchDone: true, brandBrainReady: true, strategyReady: true,
+  contentCount: 1, pendingApproval: false, readyToPublish: false, campaignCount: 1,
 };
 
 describe('deriveWorkflowState', () => {
-  it('starts with research when there is no completed run', () => {
+  it('starts at research when no completed run exists', () => {
     expect(deriveWorkflowState({ ...base, researchDone: false })).toEqual({ currentKey: 'research', nextAction: 'Start research' });
   });
   it('waits for active research', () => {
@@ -26,15 +20,21 @@ describe('deriveWorkflowState', () => {
     expect(deriveWorkflowState({ ...base, strategyReady: false })).toEqual({ currentKey: 'strategy', nextAction: 'Generate strategy' });
   });
   it('asks for first content before campaign setup', () => {
-    expect(deriveWorkflowState({ ...base, contentCount: 0 })).toEqual({ currentKey: 'content', nextAction: 'Create your first content' });
+    expect(deriveWorkflowState({ ...base, contentCount: 0, campaignCount: 0 })).toEqual({ currentKey: 'content', nextAction: 'Create your first content' });
   });
-  it('prioritizes publishing readiness', () => {
-    expect(deriveWorkflowState({ ...base, readyToPublish: true })).toEqual({ currentKey: 'publishing', nextAction: 'Publish approved content' });
+  it('does not skip Campaigns while content awaits approval', () => {
+    expect(deriveWorkflowState({ ...base, campaignCount: 0, pendingApproval: true })).toEqual({ currentKey: 'campaigns', nextAction: 'Create a campaign' });
   });
-  it('prioritizes approval over creating a campaign', () => {
-    expect(deriveWorkflowState({ ...base, pendingApproval: true, campaignCount: 0 })).toEqual({ currentKey: 'approval', nextAction: 'Review content awaiting approval' });
+  it('does not skip Campaigns while content is ready to publish', () => {
+    expect(deriveWorkflowState({ ...base, campaignCount: 0, readyToPublish: true })).toEqual({ currentKey: 'campaigns', nextAction: 'Create a campaign' });
   });
-  it('asks for a campaign when content exists but no campaign does', () => {
-    expect(deriveWorkflowState({ ...base, campaignCount: 0 })).toEqual({ currentKey: 'campaigns', nextAction: 'Create a campaign' });
+  it('moves to approval after a campaign exists', () => {
+    expect(deriveWorkflowState({ ...base, campaignCount: 1, pendingApproval: true })).toEqual({ currentKey: 'approval', nextAction: 'Review content awaiting approval' });
+  });
+  it('moves to publishing after campaign setup', () => {
+    expect(deriveWorkflowState({ ...base, campaignCount: 1, readyToPublish: true })).toEqual({ currentKey: 'publishing', nextAction: 'Publish approved content' });
+  });
+  it('keeps Campaigns current while organizing campaign work', () => {
+    expect(deriveWorkflowState(base)).toEqual({ currentKey: 'campaigns', nextAction: 'Review campaign performance and add content' });
   });
 });
