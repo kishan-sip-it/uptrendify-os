@@ -974,7 +974,7 @@ export async function GET(request: Request) {
       // server fetch, so attempt one bounded rendered read before building an
       // empty Brand IQ review.
       const directPage = pageText(outcome.html);
-      const rendered = await runWithinBudget((signal) => fetchRenderedResearch(outcome.finalUrl, 9_000, signal), 9_000, 'Rendered homepage recovery exceeded the shared website scan budget').catch(() => null);
+      const rendered = await runWithinBudget((signal) => fetchRenderedResearch(outcome.finalUrl ?? root.toString(), 9_000, signal), 9_000, 'Rendered homepage recovery exceeded the shared website scan budget').catch(() => null);
       if (rendered && rendered.text.length >= 180 && rendered.text.length > directPage.text.length + 100) {
         renderedFallbackText = rendered.text;
         renderedFallbackTitle = rendered.title ?? directPage.title;
