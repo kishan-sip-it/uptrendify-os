@@ -77,6 +77,15 @@ export function ApprovalsQueue() {
   return (
     <div>
       <div className="card" style={{ padding: '14px 18px', marginBottom: 14 }}><div className="eyebrow">How content reaches this queue</div><p className="activity-meta" style={{ margin: '5px 0 0', lineHeight: 1.5 }}>Generate a version in Content Studio, then choose <strong style={{ color: 'var(--text)' }}>Send to approval queue</strong>. After approval, move it to the publishing queue; a publisher can preview the selected channel before attempting delivery.</p></div>
+      <div className="card" style={{ padding: '14px 18px', marginBottom: 14, borderColor: 'color-mix(in srgb, var(--status-warning, #d97706) 35%, var(--border))' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span className="badge tone-warn">Publishing · Beta / Coming Soon</span>
+          <strong style={{ fontSize: 13 }}>Live channel connectors are a separate milestone.</strong>
+        </div>
+        <p className="activity-meta" style={{ margin: '6px 0 0', lineHeight: 1.5 }}>
+          Approval and queueing are available. External delivery will remain unavailable until the appropriate OAuth connection and a registered platform connector are implemented and verified.
+        </p>
+      </div>
       <div className="card" style={{ padding: '14px 18px' }}><div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}><div style={{ position: 'relative', flex: 1, minWidth: 220 }}><Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} /><input className="content-filter-input" style={{ paddingLeft: 30, width: '100%' }} placeholder="Search titles…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') applyFilters(); }} /></div><select className="content-filter-input" value={status} onChange={(event) => { setStatus(event.target.value); load(true, 1, query, event.target.value); }} style={{ minWidth: 180 }}><option value="">All statuses</option>{QUEUE_STATUSES.map((value) => <option key={value} value={value}>{labelFor(value)}</option>)}</select><button type="button" className="badge" onClick={applyFilters} style={{ border: 0, cursor: 'pointer', padding: '8px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}><RefreshCw size={13} /> Apply</button><span className="metric-label">{data ? `${data.total} ${data.total === 1 ? 'item' : 'items'}` : ''}</span></div></div>
 
       {actionNotice ? <div className="card" role="status" aria-live="polite" style={{ marginTop: 14, borderColor: 'color-mix(in srgb, var(--accent) 40%, var(--border))' }}><p style={{ margin: 0, color: 'var(--text)' }}>{actionNotice}</p></div> : null}
