@@ -78,6 +78,20 @@ export type LookupAddress = { address: string; family: number };
 
 const dnsLookupTimeoutMs = 3_500;
 const transientDnsCodes = new Set(['EAI_AGAIN', 'EBUSY', 'ECONNRESET', 'ETIMEDOUT']);
+const PUBLIC_DNS_CACHE_TTL_MS = 15_000;
+const PUBLIC_DNS_CACHE_MAX_ENTRIES = 256;
+
+type CachedPublicDnsEntry = { expiresAt: number; addresses: LookupAddress[] };
+
+// Cache only IP addresses already checked against the public-address policy.
+// Reuse them for validation and socket lookup so one scan doesn't repeatedly
+// consume resolver time, and pin the socket lookup to the address we validated.
+const publicDnsCache = new Map<string, CachedPublicDnsEntry>();
+const publicDnsInFlight = new Map<string, Promise<LookupAddress[]>>();
+
+function dnsCacheKey(hostname: string): string {
+  return hostname.trim().toLowerCase().replace(/\.$/, '');
+}
 
 async function lookupWithTimeout(hostname: string): Promise<LookupAddress[]> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -121,8 +135,44 @@ async function resolveAllAddresses(hostname: string): Promise<LookupAddress[]> {
 }
 
 export async function resolvePublicAddresses(hostname: string): Promise<LookupAddress[]> {
-  const unique = await resolveAllAddresses(hostname);
-  return orderPublicAddresses(unique.filter((entry) => !isPrivateIp(entry.address)));
+  const key = dnsCacheKey(hostname);
+  const now = Date.now();
+  const cached = publicDnsCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    // Refresh insertion order so recently used entries survive bounded eviction.
+    publicDnsCache.delete(key);
+    publicDnsCache.set(key, cached);
+    return cached.addresses.map((entry) => ({ ...entry }));
+  }
+  if (cached) publicDnsCache.delete(key);
+
+  const existing = publicDnsInFlight.get(key);
+  if (existing) return (await existing).map((entry) => ({ ...entry }));
+
+  const lookup = (async () => {
+    const allAddresses = await resolveAllAddresses(hostname);
+    const addresses = orderPublicAddresses(allAddresses.filter((entry) => !isPrivateIp(entry.address)));
+    if (addresses.length === 0) {
+      if (allAddresses.length > 0) {
+        throw new Error(`Research hostname resolves to a non-public address (${allAddresses[0]!.address})`);
+      }
+      throw new Error('Unable to resolve research hostname');
+    }
+
+    while (publicDnsCache.size >= PUBLIC_DNS_CACHE_MAX_ENTRIES) {
+      const oldestKey = publicDnsCache.keys().next().value;
+      if (!oldestKey) break;
+      publicDnsCache.delete(oldestKey);
+    }
+    publicDnsCache.set(key, { expiresAt: Date.now() + PUBLIC_DNS_CACHE_TTL_MS, addresses });
+    return addresses;
+  })();
+  publicDnsInFlight.set(key, lookup);
+  try {
+    return (await lookup).map((entry) => ({ ...entry }));
+  } finally {
+    if (publicDnsInFlight.get(key) === lookup) publicDnsInFlight.delete(key);
+  }
 }
 
 export function orderPublicAddresses(addresses: LookupAddress[]): LookupAddress[] {
@@ -177,14 +227,9 @@ export function fetchPublicHttp(url: string, init: RequestInit = {}): Promise<Re
 }
 
 export async function assertResolvablePublicHost(hostname: string) {
-  const addresses = await resolveAllAddresses(hostname);
-  const publicAddresses = addresses.filter((entry) => !isPrivateIp(entry.address));
-  if (publicAddresses.length > 0) return;
-
-  if (addresses.length > 0) {
-    throw new Error(`Research hostname resolves to a non-public address (${addresses[0].address})`);
-  }
-  throw new Error('Unable to resolve research hostname');
+  // Shares the same short-lived, public-only result used by the HTTP dispatcher.
+  // The validation preflight and socket connect therefore don't each perform DNS.
+  await resolvePublicAddresses(hostname);
 }
 
 export function readBoundedBody(response: Response, maxBytes: number): Promise<{ content: string; truncated: boolean }> {

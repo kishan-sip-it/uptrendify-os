@@ -102,6 +102,21 @@ describe('provider failover', () => {
     expect(result.provider.id).toBe('gemini');
     expect(result.result.text).toBe('ok');
   });
+
+  it('fails over on transient upstream server errors', async () => {
+    const first = mockProvider('groq', true);
+    const second = mockProvider('gemini', true);
+    const error = new (class extends Error {
+      status = 503;
+    })('provider overloaded');
+
+    vi.mocked(first.generate).mockRejectedValueOnce(error);
+    vi.mocked(second.generate).mockResolvedValueOnce({ text: 'recovered', model: 'gemini-model' });
+
+    const result = await runWithProviderFailover([first, second], (provider) => provider.generate({ prompt: 'test' }));
+    expect(result.provider.id).toBe('gemini');
+    expect(result.result.text).toBe('recovered');
+  });
 });
 
 describe('createDefaultRegistry', () => {

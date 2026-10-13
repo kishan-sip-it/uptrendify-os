@@ -5,6 +5,12 @@ import { postJson } from '../http';
 const MAX_GROQ_RATE_LIMIT_WAIT_MS = 35_000;
 const DEFAULT_GROQ_RATE_LIMIT_WAIT_MS = 1_500;
 
+const GROQ_TRANSIENT_STATUSES = new Set([408, 429, 500, 502, 503, 504, 520, 522, 524, 529]);
+
+function isGroqTransientError(error: unknown): error is AiProviderError {
+  return error instanceof AiProviderError && GROQ_TRANSIENT_STATUSES.has(error.status);
+}
+
 async function waitForGroqRateLimit(error: AiProviderError): Promise<void> {
   const requested = error.retryAfterMs ?? DEFAULT_GROQ_RATE_LIMIT_WAIT_MS;
   const delay = Math.max(250, Math.min(MAX_GROQ_RATE_LIMIT_WAIT_MS, requested));
@@ -86,23 +92,22 @@ export function createOpenAiCompatibleProvider(
     try {
       return await send(model);
     } catch (error) {
-      if (!id.startsWith('groq') || !(error instanceof AiProviderError) || error.status !== 429) {
+      if (!id.startsWith('groq') || !isGroqTransientError(error) || input.signal?.aborted) {
         throw error;
       }
 
-      // A separate Groq model can have available TPM even when 120B is
-      // throttled. Try it immediately in latency-sensitive website scans.
+      // Try the smaller supported model after a rate-limit OR a transient upstream
+      // outage. Keep this inside the same provider budget; never sleep on scan paths.
       if (model === 'openai/gpt-oss-120b') {
         const fallbackTokens = groqFallbackTokenBudget(input);
         try {
           return await send('openai/gpt-oss-20b', fallbackTokens);
         } catch (fallbackError) {
-          if (!(fallbackError instanceof AiProviderError) || fallbackError.status !== 429) {
+          if (!isGroqTransientError(fallbackError) || input.signal?.aborted) {
             throw fallbackError;
           }
-          // Interactive scans must not sleep through their entire request
-          // deadline. Non-interactive AI jobs retain the existing retry policy.
-          if (input.fastFail) throw fallbackError;
+          // Do not sleep/retry an upstream outage, and never sleep through a scan deadline.
+          if (fallbackError.status !== 429 || input.fastFail) throw fallbackError;
           await waitForGroqRateLimit(fallbackError);
           return send('openai/gpt-oss-20b', fallbackTokens);
         }
@@ -110,7 +115,9 @@ export function createOpenAiCompatibleProvider(
 
       // If this request has a hard user-facing deadline, let provider failover
       // happen now rather than sleeping for a long Retry-After interval.
-      if (input.fastFail) throw error;
+      // Only rate limits provide a useful retry delay. Other transient failures
+      // should flow to the cross-provider registry without wasting the scan budget.
+      if (input.fastFail || error.status !== 429 || input.signal?.aborted) throw error;
       await waitForGroqRateLimit(error);
       return send(model);
     }

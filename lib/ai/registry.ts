@@ -55,7 +55,8 @@ export function shouldFailoverAiProvider(error: unknown): boolean {
   const candidate = error as { status?: unknown; retryable?: unknown };
   if (candidate.retryable === true) return true;
   if (typeof candidate.status === 'number') {
-    return candidate.status === 0 || candidate.status === 401 || candidate.status === 403 || candidate.status === 429 || candidate.status === 502 || candidate.status === 503 || candidate.status === 504;
+    // Provider overloads and transient upstream outages should advance to the next configured provider.
+    return [0, 401, 403, 408, 425, 429, 500, 502, 503, 504, 520, 522, 524, 529].includes(candidate.status);
   }
   return false;
 }

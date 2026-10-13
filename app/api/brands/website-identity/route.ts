@@ -1178,6 +1178,7 @@ export async function GET(request: Request) {
                         extractBrandIntelligence(provider, evidence, websiteModel, {
                           signal: providerController.signal,
                           fastFail: true,
+                          websiteFastMode: true,
                           maxEvidenceChars: 12_000,
                           maxSources: 8,
                           maxTokens: 2_000,

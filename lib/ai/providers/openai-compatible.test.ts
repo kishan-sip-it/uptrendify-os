@@ -79,6 +79,27 @@ describe('createGroqProvider', () => {
     }
   });
 
+  it('falls back to 20B after a transient 503 from the primary model', async () => {
+    mockedPostJson
+      .mockRejectedValueOnce(new AiProviderError('groq', 'upstream unavailable', 503))
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: '{"ok":true}' } }],
+        usage: { prompt_tokens: 10, completion_tokens: 20 },
+      });
+
+    const provider = createGroqProvider('test-key', 'openai/gpt-oss-120b');
+    const result = await provider.generate({
+      prompt: 'Return JSON.',
+      json: true,
+      maxTokens: 1500,
+      model: 'openai/gpt-oss-120b',
+      fastFail: true,
+    });
+
+    expect(result.model).toBe('openai/gpt-oss-20b');
+    expect(mockedPostJson).toHaveBeenCalledTimes(2);
+  });
+
   it('uses the fast 20B fallback for website scans without rate-limit sleeps', async () => {
     const controller = new AbortController();
     mockedPostJson
