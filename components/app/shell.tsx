@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
   ArrowUpRight, BookOpen, Boxes, CheckCircle2, ChevronDown, FileText, Globe2, LayoutGrid, LogOut, Menu, Network, Plus, Settings, Sparkles, Target, Trash2, Users, X,
@@ -354,7 +355,7 @@ export function AppShell({
                     : false;
 
         return (
-          <a
+          <Link
             className={'nav-item' + (active ? ' active' : '')}
             href={item.href}
             key={item.label}
@@ -362,13 +363,13 @@ export function AppShell({
             aria-current={active ? 'page' : undefined}
           >
             <Icon size={17} /> {item.label}
-          </a>
+          </Link>
         );
       })}
-      <a className={'nav-item' + (pathname.startsWith('/settings') ? ' active' : '')} href="/settings" aria-current={pathname.startsWith('/settings') ? 'page' : undefined} onClick={() => setMobileOpen(false)}><Settings size={17}/> <span>Settings</span></a>
-      <a className="nav-item nav-item-accent" href="/brands/new" onClick={() => setMobileOpen(false)}>
+      <Link className={'nav-item' + (pathname.startsWith('/settings') ? ' active' : '')} href="/settings" aria-current={pathname.startsWith('/settings') ? 'page' : undefined} onClick={() => setMobileOpen(false)}><Settings size={17}/> <span>Settings</span></Link>
+      <Link className="nav-item nav-item-accent" href="/brands/new" onClick={() => setMobileOpen(false)}>
         <Plus size={17} /> Add brand
-      </a>
+      </Link>
     </nav>
   );
 
@@ -376,9 +377,9 @@ export function AppShell({
     <main className={`shell${mobileOpen ? ' shell-mobile-open' : ''}`}>
       <aside className="sidebar">
         <div className="brand-mark">
-          <a className="brand-mark-link" href="/landing" aria-label="Go to the UpTrendifyOS landing page">
+          <Link className="brand-mark-link" href="/landing" aria-label="Go to the UpTrendifyOS landing page">
             <span className="logo" aria-hidden="true" /> UpTrendifyOS
-          </a>
+          </Link>
           <button type="button" className="sidebar-close" aria-label="Close navigation" onClick={() => setMobileOpen(false)}>
             <X size={18} />
           </button>
@@ -421,9 +422,9 @@ export function AppShell({
                 ) : orgError ? (
                   <div className="switch-hint switch-error">{orgError}</div>
                 ) : null}
-                <a className="switch-link" href="/settings/workspace/new" onClick={close}>
+                <Link className="switch-link" href="/settings/workspace/new" onClick={close}>
                   <Plus size={13} /> Create workspace
-                </a>
+                </Link>
               </div>
             )}
           </SwitchMenu>
@@ -465,14 +466,14 @@ export function AppShell({
                     <div className="switch-hint">No brands yet in {organization.name}.</div>
                   ) : (
                     brands.map((brand) => (
-                      <a className="switch-option" href={`/brands/${brand.id}`} key={brand.id} onClick={close}>
+                      <Link className="switch-option" href={`/brands/${brand.id}`} key={brand.id} onClick={close}>
                         <span className="switch-brand-dot" />
                         <span className="org-meta">
                           <span className="org-name">{brand.name}</span>
                           <span className="org-role">{brand.website_url?.replace(/^https?:\/\//, '') || 'Browse'}</span>
                         </span>
                         <ArrowUpRight size={13} className="switch-arrow" />
-                      </a>
+                      </Link>
                     ))
                   )}
                 </div>
@@ -522,12 +523,12 @@ export function AppShell({
                       <span className="org-role">{userEmail}</span>
                     </span>
                   </div>
-                  <a className="switch-option" href="/dashboard" onClick={close}>
+                  <Link className="switch-option" href="/dashboard" onClick={close}>
                     <LayoutGrid size={13} /> Dashboard
-                  </a>
-                  <a className="switch-option" href="/brands" onClick={close}>
+                  </Link>
+                  <Link className="switch-option" href="/brands" onClick={close}>
                     <Users size={13} /> Brands
-                  </a>
+                  </Link>
                   <button type="button" className="switch-option" onClick={() => { close(); logout(); }}>
                     <LogOut size={13} /> Sign out
                   </button>
