@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_GENERATE_STRATEGY, CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
@@ -251,16 +251,36 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       );
     }
 
-    const outcome = await scheduleStrategyExecution({
-      supabase,
-      organizationId: auth.context.organizationId,
-      brandId,
-      strategyId,
-      createdBy: auth.context.userId,
+    // Do not hold the browser request open while the AI model generates the
+    // full strategy. The row already exists as QUEUED, so the client can show
+    // progress immediately and poll GET until the strategy reaches a terminal state.
+    after(async () => {
+      try {
+        const outcome = await scheduleStrategyExecution({
+          supabase,
+          organizationId: auth.context.organizationId,
+          brandId,
+          strategyId,
+          createdBy: auth.context.userId,
+        });
+        if (outcome.status === 'FAILED') {
+          obs.warn('Background strategy execution completed with a failure', {
+            strategyId,
+            brandId,
+            errorCode: outcome.errorCode,
+          });
+        }
+      } catch (error) {
+        obs.error('Background strategy execution crashed', {
+          strategyId,
+          brandId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     return NextResponse.json(
-      { ok: true, strategyId, status: outcome.status, version: inserted.data.version, errorCode: outcome.errorCode, errorMessage: outcome.errorMessage },
+      { ok: true, strategyId, status: inserted.data.status ?? 'QUEUED', version: inserted.data.version },
       { status: 201 },
     );
   } catch (error) {
