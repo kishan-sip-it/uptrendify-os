@@ -421,8 +421,7 @@
 .landing-hero-video {
   z-index: 4;
   opacity: 0;
-  will-change: opacity;
-  transition: opacity 700ms cubic-bezier(.22, .61, .36, 1);
+  transition: opacity .7s ease;
 }
 
 .landing-hero-video.is-ready { opacity: 1; }
