@@ -15,7 +15,12 @@ export default function ThemeHeroVideo() {
   const [videoUnavailable, setVideoUnavailable] = useState(false);
   const [stillUnavailable, setStillUnavailable] = useState(false);
   const [showMotionFallback, setShowMotionFallback] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [activeDeck, setActiveDeck] = useState<0 | 1>(0);
+  const videoARef = useRef<HTMLVideoElement | null>(null);
+  const videoBRef = useRef<HTMLVideoElement | null>(null);
+  const activeDeckRef = useRef<0 | 1>(0);
+  const crossfadeRef = useRef(false);
+  const crossfadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -34,39 +39,149 @@ export default function ThemeHeroVideo() {
   const webmSrc = isDark ? '/assets/hero/dark-video.webm' : '/assets/hero/light-video.webm';
   const mp4Src = isDark ? '/assets/hero/dark-video.mp4' : '/assets/hero/light-video.mp4';
 
+  const videoForDeck = (deck: 0 | 1) => deck === 0 ? videoARef.current : videoBRef.current;
+
+  const beginCrossfade = (fromDeck: 0 | 1) => {
+    if (crossfadeRef.current || activeDeckRef.current !== fromDeck) return;
+    const nextDeck: 0 | 1 = fromDeck === 0 ? 1 : 0;
+    const incoming = videoForDeck(nextDeck);
+    if (!incoming) return;
+
+    crossfadeRef.current = true;
+    incoming.pause();
+    try { incoming.currentTime = 0; } catch { /* Metadata may still be loading. */ }
+    void incoming.play().catch(() => {
+      // If the secondary decoder cannot start, keep the current frame and let
+      // its error handler try WebM before falling back to the animated artwork.
+      window.setTimeout(() => {
+        if (crossfadeRef.current && activeDeckRef.current === fromDeck && incoming.paused) {
+          crossfadeRef.current = false;
+          if (incoming.error) {
+            setVideoUnavailable(true);
+            setShowMotionFallback(true);
+          }
+        }
+      }, 300);
+    });
+  };
+
+  const renderVideoDeck = (deck: 0 | 1) => {
+    const videoRef = deck === 0 ? videoARef : videoBRef;
+    return (
+      <video
+        key={mp4Src + '|' + webmSrc + '|' + deck}
+        ref={videoRef}
+        src={mp4Src}
+        className={'landing-hero-video' + (videoReady && activeDeck === deck ? ' is-ready' : '')}
+        autoPlay={deck === 0}
+        muted
+        playsInline
+        preload="auto"
+        aria-hidden="true"
+        tabIndex={-1}
+        onLoadedData={() => {
+          const video = videoRef.current;
+          if (deck === 0 && video && video.paused) {
+            void video.play().catch(() => {});
+          }
+        }}
+        onPlaying={() => {
+          if (deck === activeDeckRef.current) {
+            setVideoReady(true);
+            setShowMotionFallback(false);
+            return;
+          }
+          if (!crossfadeRef.current) return;
+
+          const outgoingDeck = activeDeckRef.current;
+          activeDeckRef.current = deck;
+          setActiveDeck(deck);
+          setVideoReady(true);
+          setShowMotionFallback(false);
+
+          if (crossfadeTimerRef.current) window.clearTimeout(crossfadeTimerRef.current);
+          crossfadeTimerRef.current = window.setTimeout(() => {
+            const outgoing = videoForDeck(outgoingDeck);
+            if (outgoing) {
+              outgoing.pause();
+              try { outgoing.currentTime = 0; } catch { /* Keep playback resilient. */ }
+            }
+            crossfadeRef.current = false;
+            crossfadeTimerRef.current = null;
+          }, 700);
+        }}
+        onTimeUpdate={() => {
+          const video = videoRef.current;
+          if (deck !== activeDeckRef.current || crossfadeRef.current || !video) return;
+          if (Number.isFinite(video.duration) && video.duration > 1.5 && video.duration - video.currentTime <= 1.0) {
+            beginCrossfade(deck);
+          }
+        }}
+        onEnded={() => {
+          // Fallback if timeupdate didn't fire close enough to the final frame.
+          if (deck === activeDeckRef.current && !crossfadeRef.current) beginCrossfade(deck);
+        }}
+        onError={() => {
+          const video = videoRef.current;
+          if (video && !video.dataset.webmFallbackTried) {
+            video.dataset.webmFallbackTried = 'true';
+            video.src = webmSrc;
+            video.load();
+            if (deck === activeDeckRef.current || crossfadeRef.current) {
+              void video.play().catch(() => {});
+            }
+            return;
+          }
+          if (deck === activeDeckRef.current || crossfadeRef.current) {
+            crossfadeRef.current = false;
+            setVideoUnavailable(true);
+            setShowMotionFallback(true);
+          }
+        }}
+      />
+    );
+  };
+
   useEffect(() => {
     setVideoReady(false);
     setVideoUnavailable(false);
     setStillUnavailable(false);
     setShowMotionFallback(false);
+    setActiveDeck(0);
+    activeDeckRef.current = 0;
+    crossfadeRef.current = false;
 
-    const video = videoRef.current;
-    if (!video) return;
+    if (crossfadeTimerRef.current) {
+      window.clearTimeout(crossfadeTimerRef.current);
+      crossfadeTimerRef.current = null;
+    }
+
+    const primaryVideo = videoARef.current;
+    const secondaryVideo = videoBRef.current;
+    primaryVideo?.pause();
+    secondaryVideo?.pause();
+    if (!primaryVideo) return;
 
     let active = true;
-    // The still is only a short loading cover. Do not leave a static image on
-    // screen indefinitely if a codec/CDN/autoplay failure prevents the video.
     const fallbackTimer = window.setTimeout(() => {
       if (!active) return;
-      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !video.paused) {
+      if (primaryVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !primaryVideo.paused) {
         setVideoReady(true);
         setShowMotionFallback(false);
       } else {
-        // A decoded first frame is not animation. Keep the moving fallback when
-        // autoplay was blocked and the video is still paused.
         setShowMotionFallback(true);
       }
     }, 1800);
 
-    video.load();
-    void video.play().catch(() => {
-      // Autoplay policy can reject play() even while the muted video is loading.
-      // onLoadedData/onPlaying or the bounded animated fallback handles the UI.
-    });
+    primaryVideo.load();
+    void primaryVideo.play().catch(() => {});
 
     return () => {
       active = false;
       window.clearTimeout(fallbackTimer);
+      if (crossfadeTimerRef.current) window.clearTimeout(crossfadeTimerRef.current);
+      primaryVideo.pause();
+      secondaryVideo?.pause();
     };
   }, [webmSrc, mp4Src]);
 
@@ -143,40 +258,10 @@ export default function ThemeHeroVideo() {
       )}
 
       {!videoUnavailable && (
-        <video
-          key={webmSrc + '|' + mp4Src}
-          ref={videoRef}
-          src={mp4Src}
-          className={'landing-hero-video' + (videoReady ? ' is-ready' : '')}
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="auto"
-          aria-hidden="true"
-          tabIndex={-1}
-          onLoadedData={() => {
-            if (videoRef.current && !videoRef.current.paused) {
-              setVideoReady(true);
-              setShowMotionFallback(false);
-            }
-          }}
-          onPlaying={() => { setVideoReady(true); setShowMotionFallback(false); }}
-          onError={() => {
-            const video = videoRef.current;
-            // The MP4 was directly verified. If its embedded playback fails,
-            // explicitly retry the WebM asset before switching to the artwork.
-            if (video && !video.dataset.webmFallbackTried) {
-              video.dataset.webmFallbackTried = 'true';
-              video.src = webmSrc;
-              video.load();
-              void video.play().catch(() => {});
-              return;
-            }
-            setVideoUnavailable(true);
-            setShowMotionFallback(true);
-          }}
-        />
+        <>
+          {renderVideoDeck(0)}
+          {renderVideoDeck(1)}
+        </>
       )}
 
       <div className="landing-hero-visual-topline" aria-hidden="true">
