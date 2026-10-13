@@ -1018,7 +1018,7 @@ export async function GET(request: Request) {
     let baseUrl = outcome.ok ? outcome.finalUrl : raw;
     let stylesheetUrls = baseHtml ? externalStylesheetUrls(baseHtml, baseUrl) : [];
     const scanNotices: string[] = [];
-    const inlineCssAvailable = /<style\\b[^>]*>[\\s\\S]*?\\S[\\s\\S]*?<\\/style>/i.test(baseHtml);
+    const inlineCssAvailable = /<style\b[^>]*>[\s\S]*?\S[\s\S]*?<\/style>/i.test(baseHtml);
     const directMarkupLooksLikeShell = !baseHtml || shouldUseRenderedWebsiteFallback(baseHtml);
     const directVisualStylesUnavailable = !baseHtml || (directMarkupLooksLikeShell && !inlineCssAvailable && stylesheetUrls.length === 0);
     if (renderedFallbackText && directVisualStylesUnavailable) {

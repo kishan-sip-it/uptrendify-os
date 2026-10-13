@@ -336,7 +336,7 @@ export function BrandIntake({
   // Missing inline CSS / colour declarations are normal on many sites and do not
   // mean Brand IQ failed; empty visual fields already explain what was not found.
   const actionableWarnings = identity.warnings.filter((warning) =>
-    !/^(?:No embedded stylesheet found; linked stylesheets and declared theme colours are checked separately\\.|No usable colour declarations were found on the page\\.)$/i.test(warning.trim()),
+    !/^(?:No embedded stylesheet found; linked stylesheets and declared theme colours are checked separately\.|No usable colour declarations were found on the page\.)$/i.test(warning.trim()),
   );
 
   if (!reviewAfterScan) return null;
