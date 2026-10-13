@@ -61,7 +61,7 @@ export default function ThemeHeroVideo() {
             setShowMotionFallback(true);
           }
         }
-      }, 300);
+      }, 1_500);
     });
   };
 
