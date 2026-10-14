@@ -352,31 +352,37 @@ export function isNeutral(hex: string): boolean {
   return saturation <= NEUTRAL_SATURATION_MAX || extremeLuminanceNeutral;
 }
 
+function relativeRgbSpread(hex: string): number {
+  const normalized = normalizeHex(hex);
+  if (!normalized) return 1;
+  const channels = [1, 3, 5].map((offset) => Number.parseInt(normalized.slice(offset, offset + 2), 16));
+  const maximum = Math.max(...channels);
+  const minimum = Math.min(...channels);
+  return maximum === 0 ? 0 : (maximum - minimum) / maximum;
+}
+
+function isNearWhiteSurfaceTint(hex: string): boolean {
+  return relativeLuminance(hex) >= 0.78 && relativeRgbSpread(hex) < 0.13;
+}
+
 const DELIBERATE_COLOUR_SOURCES = new Set([
-  // These sources demonstrate actual use outside a token's own name.
-  // Token-only and raster-pixel evidence should not establish the primary role.
   'header-ui',
   'nav-ui',
   'primary-control',
   'link-accent',
   'logo-svg-color',
+  'primary-logo-raster-color',
   'meta-theme-color',
   'manifest-theme-color',
   'js-style-tokens',
 ]);
 
-/**
- * A high-luminance, low-to-mid-saturation colour found only as an incidental
- * declaration or raster sample is more likely a page surface/tint than the
- * brand's main colour. Explicit semantic, UI, theme, SVG or JS-token evidence
- * can still establish a real pastel brand.
- */
 function isPaletteNeutral(hex: string, sources: string[]): boolean {
   if (isNeutral(hex)) return true;
+  // Near-white warm tints are usually page surfaces or reverse text. Do not let
+  // a --primary token name or white icon background turn them into brand colour.
+  if (isNearWhiteSurfaceTint(hex)) return true;
   const hasDeliberateEvidence = sources.some((source) => DELIBERATE_COLOUR_SOURCES.has(source));
-  // HSL saturation exaggerates the apparent colourfulness of very light cream
-  // and pastel tones. High-luminance colours need real use evidence to rank as
-  // brand colours instead of page surfaces.
   return !hasDeliberateEvidence && relativeLuminance(hex) >= 0.78;
 }
 
@@ -486,7 +492,7 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
   // Avoid boosting partner/customer logos and status/notification colours.
   const lowSignalSelector = /(partner|sponsor|testimonial|customer-logo|social-share|avatar|badge|alert|error|success|warning|status|tooltip|notification|toast|rating|review-star)/i;
   const rules = /([^{}]+)\{([^{}]*)\}/g;
-  const colorProperty = /\b(?:color|background(?:-color)?|border(?:-[a-z]+)?-color|fill|stroke)\s*:\s*([^;]+)(?:;|$)/gi;
+  const colorProperty = /\b(color|background(?:-color)?|border(?:-[a-z]+)?-color|fill|stroke)\s*:\s*([^;]+)(?:;|$)/gi;
   for (const rule of cleaned.matchAll(rules)) {
     const selector = (rule[1] ?? '').trim().toLowerCase();
     const declarations = rule[2] ?? '';
@@ -494,22 +500,43 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
 
     const headerSignal = /(^|[\s,>])(?:header|nav|banner|\.site-header|\.navbar|\.navigation|#header|#nav)(?=$|[\s,>:#.\[])/i.test(selector);
     const controlSignal = /(?:primary|brand|cta|accent|action|button|btn|(?:^|[\s,>])a(?:$|[\s,:>#.]))/i.test(selector);
+    const isAnchorSelector = /(?:^|[\s,>])a(?:$|[\s,:>#.])/i.test(selector);
     const weight = headerSignal ? 4 : controlSignal ? 3 : 0;
     if (!weight) continue;
 
-    const signal = headerSignal ? 'header-ui' : /(?:^|[\s,>])a(?:$|[\s,:>#.])/i.test(selector) ? 'link-accent' : 'primary-control';
     for (const declaration of declarations.matchAll(colorProperty)) {
-      const value = (declaration[1] ?? '').trim();
+      const property = (declaration[1] ?? '').toLowerCase();
+      const value = (declaration[2] ?? '').trim();
       const resolved = resolveCssColor(value);
-      if (resolved) add(resolved, weight, signal);
+      if (!resolved) continue;
+      const nearWhiteTint = isNearWhiteSurfaceTint(resolved);
+      const saturation = saturationOf(resolved);
+      const isForeground = property === 'color';
+      const isBackground = property.startsWith('background');
+      const signal = nearWhiteTint
+        ? 'control-foreground'
+        : headerSignal
+          ? 'header-ui'
+          : isBackground && saturation > 0.20
+            ? 'primary-control'
+            : isAnchorSelector && isForeground && saturation > 0.20
+              ? 'link-accent'
+              : isForeground
+                ? 'control-foreground'
+                : saturation > 0.20
+                  ? 'primary-control'
+                  : 'control-foreground';
+      const declarationWeight = nearWhiteTint ? 1 : weight;
+      add(resolved, declarationWeight, signal);
       for (const token of value.matchAll(COLOR_TOKEN)) {
         const hex = resolveCssColor(token[0]);
-        if (hex) add(hex, weight, signal);
+        if (hex) add(hex, declarationWeight, signal);
       }
     }
   }
 }
-export function collectJavaScriptDesignTokens(
+
+export function collectJavaScriptDesignTokensexport function collectJavaScriptDesignTokens(
   scriptText: string,
   sink: Map<string, { count: number; sources: Set<string> }>,
 ): void {
@@ -578,19 +605,20 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     const semantic = sources.some((source) => source === 'semantic-css' || source.startsWith('semantic-') || themeSignal);
     const uiSignal = sources.some((source) => source === 'header-ui' || source === 'nav-ui' || source === 'primary-control' || source === 'link-accent');
     const logoSignal = sources.includes('logo-svg-color');
-    const rasterLogoSignal = sources.includes('logo-raster-color');
+    const primaryLogoRasterSignal = sources.includes('primary-logo-raster-color');
+    const rasterLogoSignal = sources.includes('favicon-raster-color') || sources.includes('logo-raster-color');
     const scriptStyleSignal = sources.includes('js-style-tokens');
-    const corroborated = uiSignal || logoSignal || themeSignal || scriptStyleSignal;
+    const corroborated = uiSignal || logoSignal || primaryLogoRasterSignal || themeSignal || scriptStyleSignal;
     const neutralPenalty = isPaletteNeutral(hex, sources) ? 0.18 : 1;
-    // A semantic token is useful evidence, but its name alone is not proof that
-    // it is the public-facing brand colour. Independent usage in the site chrome,
-    // controls, logo or theme metadata can confirm that role.
-    const deliberateBoost = semanticPrimary ? (corroborated ? 7 : 3.2)
-      : semanticBrand ? (corroborated ? 6 : 2.8)
-        : semanticSecondary ? (corroborated ? 4.8 : 2.3)
-          : semanticAccent ? (corroborated ? 4.2 : 2)
-            : semantic ? (corroborated ? 3.2 : 2)
-              : uiSignal ? 2.5 : logoSignal ? 2.1 : rasterLogoSignal ? 1.9 : scriptStyleSignal ? 1.7 : 1;
+    // Semantic token names are weak unless corroborated by actual brand use.
+    // Favicon pixels are weak because their backgrounds/masks can dominate.
+    const deliberateBoost = semanticPrimary ? (corroborated ? 7 : 1.4)
+      : semanticBrand ? (corroborated ? 6 : 1.7)
+        : semanticSecondary ? (corroborated ? 4.8 : 1.35)
+          : semanticAccent ? (corroborated ? 4.2 : 1.25)
+            : semantic ? (corroborated ? 3.2 : 1.15)
+              : uiSignal ? 3.5 : logoSignal ? 3.2 : primaryLogoRasterSignal ? 3
+                : rasterLogoSignal ? 1.15 : scriptStyleSignal ? 1.8 : 1;
     const sourceDiversity = 1 + Math.min(sources.length, 5) * 0.06;
     const prominence = round(
       Math.log2(1 + entry.count) *
@@ -787,9 +815,25 @@ function sameSiteUrl(base: string | null, candidate: string): boolean {
   }
 }
 
+function normalizeBrandLabel(value: string): string {
+  return value.toLowerCase()
+    .replace(/\b(?:incorporated|inc|corp(?:oration)?|ltd|limited|llc|plc|gmbh|company|co)\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+}
+
+function labelMatchesWebsite(value: string, siteName: string, rootToken: string): boolean {
+  const candidate = normalizeBrandLabel(value);
+  if (!candidate) return false;
+  const aliases = [normalizeBrandLabel(siteName), normalizeBrandLabel(rootToken)].filter((alias) => alias.length >= 3);
+  return aliases.some((alias) => candidate === alias || candidate.includes(alias) || alias.includes(candidate));
+}
+
 function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string | null; favicon: string | null } {
   const rootHost = base ? (() => { try { return new URL(base).hostname.toLowerCase().replace(/^www\./, ''); } catch { return ''; } })() : '';
   const rootToken = rootHost.split('.')[0] ?? '';
+  const declaredSiteName = cleanMetaText($('meta[property="og:site_name"]').first().attr('content')) ??
+    cleanMetaText($('meta[name="application-name"]').first().attr('content')) ??
+    cleanMetaText($('title').first().text().split(/\s+(?:\||—|–|:)\s+/)[0] ?? '') ?? rootToken;
   const candidates: Array<{ url: string; score: number }> = [];
   let faviconUrl: string | null = null;
   let faviconScore = -1;
@@ -883,11 +927,9 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     if (/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail)/i.test(path + ' ' + alt + ' ' + classes + ' ' + parentText)) score -= 60;
     if (/(^|\s)(logo|wordmark)(\s|$)/i.test(alt)) score += 15;
 
-    const declaredSiteName = cleanMetaText($('meta[property="og:site_name"]').first().attr('content')) ?? cleanMetaText($('meta[name="application-name"]').first().attr('content')) ?? rootToken;
-    const normalizedAlt = alt.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const normalizedSiteName = declaredSiteName.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const genericLogoAlt = /^(?:company |brand )?(?:logo|wordmark|brandmark)$/i.test(normalizedAlt);
-    const altMatchesSite = !normalizedAlt || genericLogoAlt || (normalizedSiteName.length > 2 && normalizedAlt.includes(normalizedSiteName)) || (rootToken.length > 2 && normalizedAlt.includes(rootToken));
+    const normalizedAlt = normalizeBrandLabel(alt);
+    const genericLogoAlt = /^(?:(?:company|brand|site|website) )?(?:logo|wordmark|brandmark|icon)$/i.test(normalizedAlt);
+    const altMatchesSite = !normalizedAlt || genericLogoAlt || labelMatchesWebsite(alt, declaredSiteName, rootToken);
     const linksToSite = Boolean(href && rootHost && sameSiteUrl(base, href));
     const linksToSiteRoot = Boolean(href && rootHost && (() => {
       try {
@@ -903,8 +945,23 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     // plus a same-site link is strong first-party evidence when the alt is blank
     // or unhelpful. Explicit customer/partner text and social-image exclusions
     // below still disqualify unrelated marks.
+    const explicitOtherBrandLogo = /(?:logo|wordmark|brandmark)/i.test(alt) &&
+      !genericLogoAlt && !altMatchesSite;
+    const logoPathTokens = path.toLowerCase().split('/').pop()?.replace(/\.[^.]+$/, '')
+      .split(/[^a-z0-9]+/).filter((token) => token.length >= 3) ?? [];
+    const genericLogoPathTokens = new Set(['logo', 'wordmark', 'brandmark', 'brand', 'mark', 'full', 'light', 'dark', 'white', 'black', 'color', 'colour', 'horizontal', 'vertical', 'primary', 'secondary', 'icon', 'image', 'asset', 'min']);
+    const namedLogoTokens = /(logo|wordmark|brandmark)/i.test(path)
+      ? logoPathTokens.filter((token) => !genericLogoPathTokens.has(token) && !/^\d+$/.test(token))
+      : [];
+    const pathNamesDifferentBrand = namedLogoTokens.length > 0 &&
+      !namedLogoTokens.some((token) => labelMatchesWebsite(token, declaredSiteName, rootToken));
+    const personAssetContext = /(?:^|[\/_ .-])(?:team|people|person|profile|avatar|headshot|portrait|employee|leadership|founders?|staff|authors?|speakers?)(?:$|[\/_ .-])/i.test(path + ' ' + classes) ||
+      /\b(?:profile photo|headshot|portrait|avatar|team member|team photo|employee photo)\b/i.test(alt);
     const headerSiteMatch = inBrandHeader && altMatchesSite &&
       (Boolean(normalizedAlt) || linksToSite || pathSuggestsWordmark);
+    if (explicitOtherBrandLogo && !(inBrandHeader && linksToSiteRoot)) return;
+    if (pathNamesDifferentBrand) return;
+    if (personAssetContext && !altMatchesSite) return;
     if (headerSiteMatch) score += 65;
     // Let aggregate confidence decide. The external-CDN gate above still
     // requires strong evidence, while negative-context penalties prevent
@@ -926,8 +983,8 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     void score;
   });
 
-  // Organization metadata may be a top-level object, an array, or nested in @graph.
-  // Walk only structured objects and keep organization/logo evidence stronger than OG cards.
+  // JSON-LD can list partners/customers as well as the publisher. Only trust the
+  // logo from an entity whose name matches this site or whose URL is same-site.
   const collectStructuredLogos = (value: unknown, depth = 0): void => {
     if (depth > 5 || value == null) return;
     if (Array.isArray(value)) {
@@ -939,13 +996,21 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const rawType = node['@type'];
     const type = Array.isArray(rawType) ? rawType.join(' ') : String(rawType ?? '');
     if (/(Organization|Corporation|Brand|WebSite)/i.test(type)) {
-      const rawLogo = node.logo;
-      const logo = typeof rawLogo === 'string'
-        ? rawLogo
-        : rawLogo && typeof rawLogo === 'object'
-          ? String((rawLogo as Record<string, unknown>).url ?? (rawLogo as Record<string, unknown>).contentUrl ?? '')
-          : '';
-      addCandidate(absoluteUrl(logo, base), 80);
+      const entityName = typeof node.name === 'string' ? node.name : '';
+      const entityUrl = typeof node.url === 'string' ? node.url : typeof node['@id'] === 'string' ? String(node['@id']) : '';
+      let entityUrlMatches = false;
+      if (entityUrl && base) {
+        try { entityUrlMatches = sameSiteUrl(base, new URL(entityUrl, base).toString()); } catch { entityUrlMatches = false; }
+      }
+      if (labelMatchesWebsite(entityName, declaredSiteName, rootToken) || entityUrlMatches) {
+        const rawLogo = node.logo;
+        const logo = typeof rawLogo === 'string'
+          ? rawLogo
+          : rawLogo && typeof rawLogo === 'object'
+            ? String((rawLogo as Record<string, unknown>).url ?? (rawLogo as Record<string, unknown>).contentUrl ?? '')
+            : '';
+        addCandidate(absoluteUrl(logo, base), 82);
+      }
     }
     if (node['@graph']) collectStructuredLogos(node['@graph'], depth + 1);
     if (node.mainEntity) collectStructuredLogos(node.mainEntity, depth + 1);

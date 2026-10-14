@@ -222,9 +222,28 @@ describe('semantic colour role ordering', () => {
 });
 
 describe('raster and pastel colour evidence', () => {
-  it('does not let a pale primary token with raster-only corroboration outrank maroon used in site UI', () => {
+  it('ranks dark chromatic brand UI above reverse-text cream and favicon pixels', () => {
     const sink = new Map<string, { count: number; sources: Set<string> }>([
-      ['#fff5e0', { count: 18, sources: new Set(['css-color-declaration', 'semantic-css', 'semantic-primary-css', 'logo-raster-color']) }],
+      ['#fff5e0', { count: 18, sources: new Set(['css-color-declaration', 'semantic-css', 'semantic-primary-css', 'control-foreground']) }],
+      ['#ff00b8', { count: 8, sources: new Set(['favicon-raster-color']) }],
+      ['#590707', { count: 8, sources: new Set(['css-color-declaration', 'header-ui', 'primary-control']) }],
+    ]);
+    const palette = rankPalette(sink, 8);
+    expect(palette[0]?.hex).toBe('#590707');
+    expect(palette.find((color) => color.hex === '#fff5e0')?.role).toBe('neutral');
+  });
+
+  it('prefers a chromatic primary-logo sample over an unused green primary token', () => {
+    const sink = new Map<string, { count: number; sources: Set<string> }>([
+      ['#22c55e', { count: 12, sources: new Set(['css-color-declaration', 'semantic-css', 'semantic-primary-css']) }],
+      ['#ff4d00', { count: 5, sources: new Set(['primary-logo-raster-color']) }],
+    ]);
+    expect(rankPalette(sink, 8)[0]?.hex).toBe('#ff4d00');
+  });
+
+  it('does not let a pale primary token with favicon-only corroboration outrank maroon used in site UI', () => {
+    const sink = new Map<string, { count: number; sources: Set<string> }>([
+      ['#fff5e0', { count: 18, sources: new Set(['css-color-declaration', 'semantic-css', 'semantic-primary-css', 'favicon-raster-color']) }],
       ['#70152d', { count: 8, sources: new Set(['semantic-css', 'semantic-brand-css', 'header-ui', 'primary-control']) }],
     ]);
     const palette = rankPalette(sink, 8);
@@ -345,7 +364,43 @@ describe('extractBrandIdentity hardening', () => {
   });
 
 
-  it('does not let social-preview imagery outrank a semantic first-party logo', () => {
+  it('ignores customer logos in structured data when choosing the website owner logo', () => {
+    const html = `
+      <html><head>
+        <title>Notion</title><meta property="og:site_name" content="Notion" />
+        <script type="application/ld+json">${JSON.stringify({
+          '@graph': [
+            { '@type': 'Organization', name: 'Ramp', url: 'https://ramp.com/', logo: 'https://assets.example/ramp-logo.svg' },
+            { '@type': 'Organization', name: 'Notion, Inc.', url: 'https://www.notion.com/', logo: 'https://assets.example/notion-logo.svg' },
+          ],
+        })}</script>
+      </head><body>
+        <section class="customer-logo-strip"><img src="https://assets.example/ramp-logo.svg" alt="Ramp logo" width="220" height="70" /></section>
+        <header><a href="/"><img src="https://assets.example/notion-logo.svg" alt="Notion logo" width="190" height="42" /></a></header>
+      </body></html>`;
+    const identity = extractBrandIdentity(html, 'https://www.notion.com/');
+    expect(identity.logoUrl).toBe('https://assets.example/notion-logo.svg');
+    expect(identity.logoUrl).not.toContain('ramp');
+  });
+
+  it('rejects a team portrait as a logo even if it is a large page image', () => {
+    const html = `
+      <html><head>
+        <title>Cognichip</title><meta property="og:site_name" content="Cognichip" />
+        <script type="application/ld+json">${JSON.stringify({
+          '@type': 'Organization', name: 'Cognichip', url: 'https://www.cognichip.ai/',
+          logo: 'https://cdn.example/Cognichip-icon-color-600-min.jpg',
+        })}</script>
+      </head><body>
+        <header><a href="/"><img src="https://cdn.example/Cognichip-icon-color-600-min.jpg" alt="Cognichip logo" /></a></header>
+        <section class="team-member-card"><img src="https://cdn.example/team/satoshi-profile.jpg" alt="Satoshi" width="480" height="480" /></section>
+      </body></html>`;
+    const identity = extractBrandIdentity(html, 'https://www.cognichip.ai/');
+    expect(identity.logoUrl).toBe('https://cdn.example/Cognichip-icon-color-600-min.jpg');
+    expect(identity.logoUrl).not.toContain('satoshi');
+  });
+
+  it('does not let social-preview imagery outrank a semantic first-party logo',
     const html = `
       <html>
         <head>
