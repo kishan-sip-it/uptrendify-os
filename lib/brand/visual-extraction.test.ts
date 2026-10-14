@@ -400,7 +400,7 @@ describe('extractBrandIdentity hardening', () => {
     expect(identity.logoUrl).not.toContain('satoshi');
   });
 
-  it('does not let social-preview imagery outrank a semantic first-party logo',
+  it('does not let social-preview imagery outrank a semantic first-party logo', () => {
     const html = `
       <html>
         <head>
