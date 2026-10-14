@@ -445,10 +445,20 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
     if (hex) add(hex);
   }
 
+  // Error/toast/sponsor/customer styles remain low-signal even in the first
+  // declaration-frequency pass. Filtering only the later selector-boost pass
+  // still allowed repeated error-red declarations to dominate the palette.
+  const lowSignalSelector = /(partner|sponsor|testimonial|customer-logo|social-share|avatar|badge|alert|error|success|warning|status|tooltip|notification|toast|rating|review-star)/i;
+
   // Parse complete colour declarations as well as tokens. This captures named
   // CSS colours and values that reference custom properties.
   const declaredColorProperty = /\b(?:color|background(?:-color)?|border(?:-[a-z]+)?(?:-color)?|outline(?:-color)?|text-decoration-color|caret-color|fill|stroke)\s*:\s*([^;{}]+)/gi;
   for (const declaration of cleaned.matchAll(declaredColorProperty)) {
+    const declarationIndex = declaration.index ?? 0;
+    const openingBrace = cleaned.lastIndexOf('{', declarationIndex);
+    const closingBrace = cleaned.lastIndexOf('}', declarationIndex);
+    const selector = openingBrace > closingBrace ? cleaned.slice(closingBrace + 1, openingBrace).trim().toLowerCase() : '';
+    if (selector && lowSignalSelector.test(selector)) continue;
     const value = (declaration[1] ?? '').trim();
     const hex = resolveCssColor(value);
     if (hex) add(hex, 2, 'css-color-declaration');
@@ -490,7 +500,6 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
 
   // Selector-level evidence is shared by inline and external stylesheets.
   // Avoid boosting partner/customer logos and status/notification colours.
-  const lowSignalSelector = /(partner|sponsor|testimonial|customer-logo|social-share|avatar|badge|alert|error|success|warning|status|tooltip|notification|toast|rating|review-star)/i;
   const rules = /([^{}]+)\{([^{}]*)\}/g;
   const colorProperty = /\b(color|background(?:-color)?|border(?:-[a-z]+)?-color|fill|stroke)\s*:\s*([^;]+)(?:;|$)/gi;
   for (const rule of cleaned.matchAll(rules)) {
@@ -884,6 +893,10 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
 
     const alt = [node.attr('alt'), node.attr('aria-label'), node.attr('title')].filter(Boolean).join(' ');
     const classes = [node.attr('class'), node.attr('id')].filter(Boolean).join(' ');
+    const ancestorHints = node.parents().toArray().slice(0, 6).map((ancestor) => {
+      const item = $(ancestor);
+      return [item.attr('class'), item.attr('id'), item.attr('aria-label'), item.attr('data-testid')].filter(Boolean).join(' ');
+    }).join(' ');
     const parent = $(el).closest('a,header,nav,[role="banner"]').first();
     const parentText = parent.text().replace(/\s+/g, ' ').trim().slice(0, 180);
     const href = parent.is('a') ? absoluteUrl(parent.attr('href'), base) : null;
@@ -958,13 +971,17 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
       : [];
     const pathNamesDifferentBrand = namedLogoTokens.length > 0 &&
       !namedLogoTokens.some((token) => labelMatchesWebsite(token, declaredSiteName, rootToken));
-    const personAssetContext = /(?:^|[\/_ .-])(?:team|people|person|profile|avatar|headshot|portrait|employee|leadership|founders?|staff|authors?|speakers?)(?:$|[\/_ .-])/i.test(path + ' ' + classes) ||
-      /\b(?:profile photo|headshot|portrait|avatar|team member|team photo|employee photo)\b/i.test(alt);
+    const assetContext = path + ' ' + classes + ' ' + ancestorHints + ' ' + alt;
+    const personAssetContext = /(?:^|[\/_ .-])(?:team|people|person|profile|avatar|headshot|portrait|employee|leadership|founders?|staff|authors?|speakers?)(?:$|[\/_ .-])/i.test(assetContext) ||
+      /\b(?:profile photo|headshot|portrait|avatar|team member|team photo|employee photo|(?:team|leadership|founder) member)\b/i.test(assetContext);
+    const thirdPartyLogoSlot = /(?:partner|sponsor|testimonial|customer|client|integration|case[-_ ]?study|customer[-_ ]?logo)/i.test(ancestorHints) &&
+      !inBrandHeader;
     const headerSiteMatch = inBrandHeader && altMatchesSite &&
       (Boolean(normalizedAlt) || linksToSite || pathSuggestsWordmark);
     if (explicitOtherBrandLogo && !(inBrandHeader && linksToSiteRoot)) return;
     if (pathNamesDifferentBrand) return;
     if (personAssetContext && !altMatchesSite) return;
+    if (thirdPartyLogoSlot && !altMatchesSite) return;
     if (headerSiteMatch) score += 65;
     // Let aggregate confidence decide. The external-CDN gate above still
     // requires strong evidence, while negative-context penalties prevent

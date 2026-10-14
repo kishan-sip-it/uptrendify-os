@@ -285,6 +285,19 @@ describe('semantic colour evidence conflicts', () => {
     expect(palette.find((color) => color.hex === '#0f766e')?.sources).toContain('primary-control');
   });
 
+  it('ignores repeated toast/error colours as primary-palette evidence', () => {
+    const css = [
+      ':root { --primary: #e11d48; --accent: #0f766e; }',
+      'header nav a { color: var(--accent); }',
+      '.btn-primary { background-color: var(--accent); }',
+      '.toast.error { background: #e11d48; border-color: #e11d48; color: #e11d48; }',
+    ].join('\\n');
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    collectColors(css, 'external-stylesheet', sink);
+    expect(rankPalette(sink, 8)[0]?.hex).toBe('#0f766e');
+    expect(sink.get('#e11d48')?.count).toBeLessThan(sink.get('#0f766e')?.count ?? 0);
+  });
+
   it('resolves nested variables in compound colour expressions and preserves semantic roles', () => {
     const css = [
       ':root { --brand-base: #0f766e; --primary: var(--brand-base); --surface: color-mix(in srgb, var(--missing, var(--brand-base)) 86%, white); }',
@@ -381,6 +394,23 @@ describe('extractBrandIdentity hardening', () => {
     const identity = extractBrandIdentity(html, 'https://www.notion.com/');
     expect(identity.logoUrl).toBe('https://assets.example/notion-logo.svg');
     expect(identity.logoUrl).not.toContain('ramp');
+  });
+
+  it('rejects an ambiguously named portrait inside a team card even when the CDN path is hashed', () => {
+    const html = `
+      <html><head>
+        <title>Cognichip</title><meta property="og:site_name" content="Cognichip" />
+        <script type="application/ld+json">${JSON.stringify({
+          '@type': 'Organization', name: 'Cognichip', url: 'https://www.cognichip.ai/',
+          logo: 'https://cdn.example/Cognichip-icon-color-600-min.jpg',
+        })}</script>
+      </head><body>
+        <header><a href="/"><img src="https://cdn.example/Cognichip-icon-color-600-min.jpg" alt="Cognichip logo" /></a></header>
+        <section class="team-member-card"><img src="https://img-cdn.example/ab/93f0a6c.jpg" alt="Satoshi" width="480" height="480" /></section>
+      </body></html>`;
+    const identity = extractBrandIdentity(html, 'https://www.cognichip.ai/');
+    expect(identity.logoUrl).toBe('https://cdn.example/Cognichip-icon-color-600-min.jpg');
+    expect(identity.logoUrl).not.toContain('93f0a6c');
   });
 
   it('rejects a team portrait as a logo even if it is a large page image', () => {
