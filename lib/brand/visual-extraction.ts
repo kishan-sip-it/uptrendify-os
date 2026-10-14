@@ -501,6 +501,7 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
     const headerSignal = /(^|[\s,>])(?:header|nav|banner|\.site-header|\.navbar|\.navigation|#header|#nav)(?=$|[\s,>:#.\[])/i.test(selector);
     const controlSignal = /(?:primary|brand|cta|accent|action|button|btn|(?:^|[\s,>])a(?:$|[\s,:>#.]))/i.test(selector);
     const isAnchorSelector = /(?:^|[\s,>])a(?:$|[\s,:>#.])/i.test(selector);
+    const isNamedBrandSelector = /(?:^|[\s.#:_-])(?:brand|logo|wordmark|brandmark)(?:$|[\s.#:_-])/i.test(selector);
     const weight = headerSignal ? 4 : controlSignal ? 3 : 0;
     if (!weight) continue;
 
@@ -517,15 +518,17 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
         ? 'control-foreground'
         : headerSignal
           ? 'header-ui'
-          : isBackground && saturation > 0.20
+          : isNamedBrandSelector && isForeground && saturation > 0.20
             ? 'primary-control'
-            : isAnchorSelector && isForeground && saturation > 0.20
-              ? 'link-accent'
-              : isForeground
-                ? 'control-foreground'
-                : saturation > 0.20
-                  ? 'primary-control'
-                  : 'control-foreground';
+            : isBackground && saturation > 0.20
+              ? 'primary-control'
+              : isAnchorSelector && isForeground && saturation > 0.20
+                ? 'link-accent'
+                : isForeground
+                  ? 'control-foreground'
+                  : saturation > 0.20
+                    ? 'primary-control'
+                    : 'control-foreground';
       const declarationWeight = nearWhiteTint ? 1 : weight;
       add(resolved, declarationWeight, signal);
       for (const token of value.matchAll(COLOR_TOKEN)) {
@@ -612,11 +615,11 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     const neutralPenalty = isPaletteNeutral(hex, sources) ? 0.18 : 1;
     // Semantic token names are weak unless corroborated by actual brand use.
     // Favicon pixels are weak because their backgrounds/masks can dominate.
-    const deliberateBoost = semanticPrimary ? (corroborated ? 7 : 1.4)
-      : semanticBrand ? (corroborated ? 6 : 1.7)
-        : semanticSecondary ? (corroborated ? 4.8 : 1.35)
-          : semanticAccent ? (corroborated ? 4.2 : 1.25)
-            : semantic ? (corroborated ? 3.2 : 1.15)
+    const deliberateBoost = semanticPrimary ? (corroborated ? 7 : 0.6)
+      : semanticBrand ? (corroborated ? 6 : 1.1)
+        : semanticSecondary ? (corroborated ? 4.8 : 1.0)
+          : semanticAccent ? (corroborated ? 4.2 : 1.1)
+            : semantic ? (corroborated ? 3.2 : 0.95)
               : uiSignal ? 3.5 : logoSignal ? 3.2 : primaryLogoRasterSignal ? 3
                 : rasterLogoSignal ? 1.15 : scriptStyleSignal ? 1.8 : 1;
     const sourceDiversity = 1 + Math.min(sources.length, 5) * 0.06;
