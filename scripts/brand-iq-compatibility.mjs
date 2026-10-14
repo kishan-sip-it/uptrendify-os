@@ -146,9 +146,16 @@ function classify({ httpStatus, payload, error }) {
     if (httpStatus >= 500) return 'SERVER_ERROR';
     return 'NO_IDENTITY';
   }
-  if (identity.aiFallbackUsed === true || identity.aiModelCompleted === false || identity.aiStatus === 'fallback') return 'AI_FALLBACK';
-  if (!identity.logoUrl) return 'NO_LOGO';
-  if (!identity.primaryColor) return 'NO_PRIMARY_COLOR';
+  const aiFallback = identity.aiFallbackUsed === true || identity.aiModelCompleted === false || identity.aiStatus === 'fallback';
+  const noLogo = !identity.logoUrl;
+  const noPrimaryColor = !identity.primaryColor;
+  if (aiFallback && noLogo && noPrimaryColor) return 'AI_FALLBACK_AND_NO_LOGO_AND_NO_PRIMARY_COLOR';
+  if (aiFallback && noLogo) return 'AI_FALLBACK_AND_NO_LOGO';
+  if (aiFallback && noPrimaryColor) return 'AI_FALLBACK_AND_NO_PRIMARY_COLOR';
+  if (noLogo && noPrimaryColor) return 'NO_LOGO_AND_NO_PRIMARY_COLOR';
+  if (aiFallback) return 'AI_FALLBACK';
+  if (noLogo) return 'NO_LOGO';
+  if (noPrimaryColor) return 'NO_PRIMARY_COLOR';
   if ((identity.warnings?.length ?? 0) > 0 || (identity.scanNotices?.length ?? 0) > 0) return 'COMPLETED_WITH_WARNINGS';
   return 'COMPLETED';
 }
@@ -210,6 +217,8 @@ async function scanDomain(domain, index, baseUrl, cookie, timeoutMs) {
     brandName: identity?.brandName ?? null,
     finalUrl: identity?.finalUrl ?? null,
     logoUrl,
+    hasLogo: Boolean(logoUrl),
+    hasPrimaryColor: Boolean(identity?.primaryColor),
     logoHost: safeHostname(logoUrl),
     logoHostMatchesDomain: siteLogoRelation(domain, logoUrl),
     faviconUrl: identity?.faviconUrl ?? null,
@@ -253,8 +262,12 @@ async function main() {
   const limitRaw = Number(argValue('--limit', String(DOMAINS.length)));
   const limit = Math.max(1, Math.min(DOMAINS.length, Number.isFinite(limitRaw) ? Math.floor(limitRaw) : DOMAINS.length));
   const onlyArg = argValue('--only', '');
-  const only = onlyArg ? new Set(onlyArg.split(',').map(normalizeHost).filter(Boolean)) : null;
-  const selected = DOMAINS.filter(domain => !only || only.has(normalizeHost(domain))).slice(0, limit);
+  // --only may include ad-hoc targets outside the standard benchmark (e.g. a
+  // reported Cognichip failure) so regressions can be reproduced immediately.
+  const selected = (onlyArg
+    ? [...new Set(onlyArg.split(',').map(normalizeHost).filter(Boolean))]
+    : DOMAINS
+  ).slice(0, limit);
   if (selected.length === 0) throw new Error('No domains selected; check --only or --limit.');
 
   const results = new Array(selected.length);
@@ -290,7 +303,7 @@ async function main() {
 
   const columns = [
     'index','domain','outcome','httpStatus','elapsedMs','brandName','logoUrl','logoHost',
-    'logoHostMatchesDomain','faviconUrl','primaryColor','aiStatus','aiModelCompleted','aiFallbackUsed',
+    'logoHostMatchesDomain','faviconUrl','primaryColor','hasLogo','hasPrimaryColor','aiStatus','aiModelCompleted','aiFallbackUsed',
     'pageCount','stylesheetCount','warningCount','firstWarning','error',
   ];
   const csv = [
