@@ -536,7 +536,7 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
   }
 }
 
-export function collectJavaScriptDesignTokensexport function collectJavaScriptDesignTokens(
+export function collectJavaScriptDesignTokens(
   scriptText: string,
   sink: Map<string, { count: number; sources: Set<string> }>,
 ): void {
