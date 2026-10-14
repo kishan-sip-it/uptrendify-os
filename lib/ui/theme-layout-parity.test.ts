@@ -11,6 +11,14 @@ function findStylesheets(directory: string): string[] {
 }
 
 describe('theme layout parity', () => {
+  it('wraps authenticated page content in a shared width-bounded container', () => {
+    const shell = readFileSync(resolve(process.cwd(), 'components/app/shell.tsx'), 'utf8');
+    const responsive = readFileSync(resolve(process.cwd(), 'app/responsive-system.css'), 'utf8');
+    expect(shell).toContain('<div className="workspace-content-container">');
+    expect(responsive).toContain('max-width: var(--workspace-content-max, 1680px)');
+    expect(responsive).toContain('container: workspace-page / inline-size');
+  });
+
   it('keeps dark theme overrides limited to visual tokens, not geometry or typography', () => {
     const appDirectory = resolve(process.cwd(), 'app');
     const stylesheetPaths = findStylesheets(appDirectory);

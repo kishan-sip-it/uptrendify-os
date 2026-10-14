@@ -25,6 +25,9 @@ type FetchOutcome =
   | { ok: false; reason: string; finalUrl: string | null };
 
 type RenderedResearch = { title: string | null; text: string };
+type WebsiteRasterColorSample = RasterColorSample & {
+  evidenceSource?: 'primary-logo-raster-color' | 'favicon-raster-color';
+};
 
 function renderedPageHtml(rendered: RenderedResearch): string {
   const title = (rendered.title ?? '').replace(/[<>]/g, '');
@@ -623,7 +626,7 @@ function mergeExternalCss(
   cssBlocks: string[],
   assetBlocks: string[] = [],
   manifestColors: string[] = [],
-  rasterColors: RasterColorSample[] = [],
+  rasterColors: WebsiteRasterColorSample[] = [],
   scriptBlocks: string[] = [],
 ): ExtractedIdentity {
   if (cssBlocks.length === 0 && assetBlocks.length === 0 && manifestColors.length === 0 && rasterColors.length === 0 && scriptBlocks.length === 0) return identity;
@@ -641,7 +644,7 @@ function mergeExternalCss(
   for (const sample of rasterColors) {
     const entry = sink.get(sample.hex) ?? { count: 0, sources: new Set<string>() };
     entry.count += rasterColorEvidenceWeight(sample.count);
-    entry.sources.add('logo-raster-color');
+    entry.sources.add(sample.evidenceSource ?? 'favicon-raster-color');
     sink.set(sample.hex, entry);
   }
   for (const rawColor of manifestColors) {
@@ -1591,9 +1594,15 @@ export async function GET(request: Request) {
       ? rasterLogoUrls(baseHtml, baseUrl, [identity.logoUrl, identity.faviconUrl, ...manifestVisuals.icons]).slice(0, 3)
       : [identity.logoUrl, identity.faviconUrl].filter((url): url is string => Boolean(url)).slice(0, 2));
     const rasterBudgetMs = canFetchOptionalAssets ? optionalAssetBudgetMs(elapsed(), 1_800) : 0;
-    const rasterColors: RasterColorSample[] = rasterBudgetMs > 0
+    const rasterColors: WebsiteRasterColorSample[] = rasterBudgetMs > 0
       ? (await withTimeout(
-          Promise.all(rasterUrls.map((url) => fetchRasterColors(url, scanController.signal))).then((samples) => samples.flat()),
+          Promise.all(rasterUrls.map(async (url): Promise<WebsiteRasterColorSample[]> => {
+            const samples = await fetchRasterColors(url, scanController.signal);
+            const evidenceSource = identity.logoUrl && identity.logoUrl === url && identity.logoUrl !== identity.faviconUrl
+              ? 'primary-logo-raster-color'
+              : 'favicon-raster-color';
+            return samples.map((sample) => ({ ...sample, evidenceSource }));
+          })).then((samples) => samples.flat()),
           rasterBudgetMs,
           'Optional raster colour inspection exceeded its budget',
         ).catch(() => []))
@@ -1649,6 +1658,17 @@ export async function GET(request: Request) {
       aiFallbackUsed,
       aiFailureCount: aiWarnings.length,
       aiFailureSummary: aiWarnings.map((warning) => warning.slice(0, 180)),
+      logoAsset: identity.logoUrl ? (() => {
+        try { const url = new URL(identity.logoUrl); return { host: url.hostname, path: url.pathname }; } catch { return null; }
+      })() : null,
+      faviconAsset: identity.faviconUrl ? (() => {
+        try { const url = new URL(identity.faviconUrl); return { host: url.hostname, path: url.pathname }; } catch { return null; }
+      })() : null,
+      primaryColor: identity.primaryColor,
+      paletteEvidence: identity.palette.slice(0, 8).map((color) => ({
+        hex: color.hex, role: color.role, occurrences: color.occurrences,
+        prominence: color.prominence, sources: color.sources,
+      })),
       warningCount: warnings.length,
     }));
     const enriched = {

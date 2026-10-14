@@ -445,6 +445,7 @@ export function AppShell({
       </aside>
 
       <section className="main">
+        <div className="workspace-content-container">
         <div className="topbar topbar-compact">
           <button type="button" className="sidebar-open" aria-label="Open navigation" onClick={() => setMobileOpen(true)}>
             <Menu size={18} />
@@ -567,6 +568,7 @@ export function AppShell({
         ) : null}
         {children}
         {guideStage && guideSteps.length ? <GuidedTour stageKey={guideStage} steps={guideSteps} /> : null}
+        </div>
       </section>
 
       {deleteOpen ? (
