@@ -903,6 +903,7 @@ export async function GET(request: Request) {
     }
     let renderedFallbackText: string | null = null;
     let renderedFallbackTitle: string | null = null;
+    let supplementalReaderEvidence: { url: string; title: string | null; text: string } | null = null;
 
     if (outcome.ok && outcome.renderedFallback) {
       const fallbackPage = pageText(outcome.html);
@@ -920,36 +921,61 @@ export async function GET(request: Request) {
         renderedFallbackTitle = rendered.title ?? directPage.title;
       }
     } else if (!outcome.ok) {
-      const rendered = await runWithinBudget((signal) => fetchRenderedResearch(outcome.finalUrl ?? root.toString(), 9_000, signal), 9_000, 'Rendered fallback exceeded the shared website scan budget').catch(() => null);
-      if (!rendered) {
-        const regional = await runWithinBudget((signal) => fetchFallbackFirstPartyPage(root, signal), 10_000, 'Regional fallback exceeded the shared website scan budget').catch(() => null);
-        if (regional?.ok) {
+      const readerSourceUrl = outcome.finalUrl ?? root.toString();
+      const rendered = await runWithinBudget((signal) => fetchRenderedResearch(readerSourceUrl, 9_000, signal), 9_000, 'Rendered fallback exceeded the shared website scan budget').catch(() => null);
+
+      // A text reader can return only a short shell/policy page while a public
+      // company/product page remains available directly. Try those first-party
+      // paths for absent or thin reader results, and preserve the homepage text
+      // as a separately attributed evidence source if a direct page wins.
+      let regional: FetchOutcome | null = null;
+      if (!rendered || rendered.text.trim().length < 900) {
+        regional = await runWithinBudget((signal) => fetchFallbackFirstPartyPage(root, signal), 10_000, 'Regional fallback exceeded the shared website scan budget').catch(() => null);
+      }
+      if (regional?.ok) {
+        const regionalPage = pageText(regional.html);
+        const preferRegional = !rendered || !regional.renderedFallback ||
+          regionalPage.text.trim().length > rendered.text.trim().length + 120;
+        if (preferRegional) {
           outcome = regional;
           if (regional.renderedFallback) {
-            const regionalPage = pageText(regional.html);
             renderedFallbackText = regionalPage.text;
             renderedFallbackTitle = regionalPage.title;
+          } else {
+            renderedFallbackText = null;
+            renderedFallbackTitle = null;
+            if (rendered) {
+              supplementalReaderEvidence = {
+                url: readerSourceUrl,
+                title: rendered.title,
+                text: rendered.text,
+              };
+            }
           }
-        } else {
-          console.warn(JSON.stringify({
-            ts: new Date().toISOString(),
-            level: 'warn',
-            msg: 'Website identity scan could not recover a public page',
-            hostname: scanHostname,
-            elapsedMs: elapsed(),
-            stage: 'homepage-recovery',
-            fetchReason: outcome.reason,
-            renderedReaderUsed: false,
-            regionalFallbackTried: true,
-          }));
-          return NextResponse.json(
-            { error: outcome.reason + ' The public-page reader could not recover enough real first-party content from the homepage or common company/product pages, so no Brand IQ was created. Retry later, or enter a public About/Product page URL directly.', identity: null },
-            { status: 422, headers: { 'Cache-Control': 'no-store' } },
-          );
         }
-      } else {
+      }
+
+      if (!outcome.ok && rendered) {
         renderedFallbackText = rendered.text;
         renderedFallbackTitle = rendered.title;
+      }
+      if (!outcome.ok && !renderedFallbackText) {
+        console.warn(JSON.stringify({
+          ts: new Date().toISOString(),
+          level: 'warn',
+          msg: 'Website identity scan could not recover a public page',
+          hostname: scanHostname,
+          elapsedMs: elapsed(),
+          stage: 'homepage-recovery',
+          fetchReason: outcome.reason,
+          renderedReaderUsed: Boolean(rendered),
+          readerTextChars: rendered?.text.trim().length ?? 0,
+          regionalFallbackTried: Boolean(regional),
+        }));
+        return NextResponse.json(
+          { error: outcome.reason + ' The public-page reader could not recover enough real first-party content from the homepage or common company/product pages, so no Brand IQ was created. Retry later, or enter a public About/Product page URL directly.', identity: null },
+          { status: 422, headers: { 'Cache-Control': 'no-store' } },
+        );
       }
     }
 
@@ -1030,11 +1056,14 @@ export async function GET(request: Request) {
     }
 
     const directLinks = baseHtml ? prioritizedLinks(baseHtml, baseUrl) : [];
-    const readerLinks = renderedFallbackText ? renderedResearchLinks(renderedFallbackText, baseUrl) : [];
+    const readerLinks = [
+      ...(renderedFallbackText ? renderedResearchLinks(renderedFallbackText, baseUrl) : []),
+      ...(supplementalReaderEvidence ? renderedResearchLinks(supplementalReaderEvidence.text, supplementalReaderEvidence.url) : []),
+    ];
     const pageCandidates = [...new Set([...directLinks, ...readerLinks])]
       .filter((url) => sameSite(baseUrl, url))
       .slice(0, 9);
-    const pageUrls = [baseUrl, ...pageCandidates];
+    const pageUrls = [...new Set([baseUrl, ...(supplementalReaderEvidence ? [supplementalReaderEvidence.url] : []), ...pageCandidates])];
     const evidencePages: Array<{ url: string; title: string | null; text: string }> = [];
 
     const directHomepage = outcome.ok ? pageText(outcome.html) : null;
@@ -1043,6 +1072,9 @@ export async function GET(request: Request) {
       ? { title: renderedFallbackTitle ?? directHomepage?.title ?? null, text: renderedFallbackText }
       : directHomepage ?? { title: renderedFallbackTitle, text: renderedFallbackText ?? '' };
     evidencePages.push({ url: baseUrl, ...homepage });
+    if (supplementalReaderEvidence && supplementalReaderEvidence.url !== baseUrl) {
+      evidencePages.push(supplementalReaderEvidence);
+    }
 
     // When the homepage could only be read through the text reader, avoid
     // re-fetching the blocked host directly and then retrying the reader for
