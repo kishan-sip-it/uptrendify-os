@@ -286,6 +286,59 @@ export const publicLookupDispatcher = new Agent({
   },
 });
 
+export type PublicHttpRedirectResult = { response: Response; url: string };
+
+/**
+ * Fetches a public asset while validating every redirect target before connecting.
+ * This supports public CDNs that redirect logos/stylesheets to asset hosts without
+ * relying on automatic redirects that could evade URL/port/SSRF policy checks.
+ */
+export async function fetchPublicHttpFollowingRedirects(
+  rawUrl: string,
+  init: RequestInit = {},
+  maxRedirects = 3,
+): Promise<PublicHttpRedirectResult> {
+  let target = assertPublicHttpUrl(rawUrl);
+  const visited = new Set<string>([target.toString()]);
+  const redirectStatuses = new Set([301, 302, 303, 307, 308]);
+
+  for (let redirects = 0; ; redirects += 1) {
+    // Re-check both the URL policy and DNS before every hop, including CDN hops.
+    target = assertPublicHttpUrl(target.toString());
+    await assertResolvablePublicHost(target.hostname);
+    const response = await fetchPublicHttp(target.toString(), {
+      ...init,
+      redirect: 'manual',
+    });
+    if (!redirectStatuses.has(response.status)) {
+      return { response, url: target.toString() };
+    }
+
+    const location = response.headers.get('location');
+    if (!location) return { response, url: target.toString() };
+    if (redirects >= Math.max(0, Math.min(maxRedirects, 5))) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error('Public asset exceeded the safe redirect limit');
+    }
+
+    let next: URL;
+    try {
+      next = assertPublicHttpUrl(new URL(location, target).toString());
+    } catch (error) {
+      await response.body?.cancel().catch(() => undefined);
+      throw error;
+    }
+    const normalizedNext = next.toString();
+    if (visited.has(normalizedNext)) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error('Public asset redirect loop detected');
+    }
+    await response.body?.cancel().catch(() => undefined);
+    visited.add(normalizedNext);
+    target = next;
+  }
+}
+
 export function fetchPublicHttp(url: string, init: RequestInit = {}): Promise<Response> {
   return fetch(url, {
     ...init,
