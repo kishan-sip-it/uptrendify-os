@@ -2,9 +2,11 @@ import { GoogleGenAI } from '@google/genai';
 import { env } from '@/lib/env';
 
 export type GeminiJsonOptions = {
+  model?: string;
   systemInstruction?: string;
   temperature?: number;
   maxOutputTokens?: number;
+  signal?: AbortSignal;
 };
 
 function getClient() {
@@ -24,7 +26,7 @@ export async function generateGeminiText(
   const ai = getClient();
 
   const response = await ai.models.generateContent({
-    model: config.GEMINI_MODEL,
+    model: options.model ?? config.GEMINI_MODEL,
     contents: prompt,
     config: {
       ...(options.systemInstruction
@@ -36,6 +38,7 @@ export async function generateGeminiText(
       ...(options.maxOutputTokens !== undefined
         ? { maxOutputTokens: options.maxOutputTokens }
         : {}),
+      ...(options.signal ? { abortSignal: options.signal } : {}),
     },
   });
 
@@ -55,7 +58,7 @@ export async function generateGeminiJson<T>(
   const ai = getClient();
 
   const response = await ai.models.generateContent({
-    model: config.GEMINI_MODEL,
+    model: options.model ?? config.GEMINI_MODEL,
     contents: prompt,
     config: {
       responseMimeType: 'application/json',
@@ -68,6 +71,7 @@ export async function generateGeminiJson<T>(
       ...(options.maxOutputTokens !== undefined
         ? { maxOutputTokens: options.maxOutputTokens }
         : {}),
+      ...(options.signal ? { abortSignal: options.signal } : {}),
     },
   });
 

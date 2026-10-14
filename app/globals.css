@@ -113,6 +113,16 @@ h1 { font-size: clamp(28px, 4vw, 44px); margin: 6px 0 10px; }
 .progress { height:7px; border-radius:999px; background:var(--surface-progress); overflow:hidden; }
 .progress > span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--accent),var(--accent-2)); }
 .activity-list { display:grid; gap:12px; margin-top:4px; }
+/* Strategy version history is a compact horizontal rail, independent of other activity lists. */
+.strategy-version-list { display:flex; align-items:stretch; gap:12px; overflow-x:hidden; overflow-y:hidden; padding:2px 2px 8px; margin:4px -2px 0; scroll-snap-type:x mandatory; scroll-padding-inline:2px; overscroll-behavior-inline:contain; scrollbar-width:thin; }
+.strategy-version-list.is-scrollable { overflow-x:auto; }
+/* Show one readable strategy card per rail viewport instead of clipping a second card. */
+.strategy-version-item { display:flex; flex:0 0 100%; width:100%; flex-direction:column; min-width:0; min-height:112px; scroll-snap-align:start; }
+.strategy-version-item .activity-body { width:100%; min-width:0; }
+.strategy-version-item .activity-title { display:flex; flex-wrap:wrap; align-items:flex-start; gap:6px; line-height:1.45; overflow-wrap:anywhere; word-break:break-word; }
+.strategy-version-item .activity-title .chip { margin-left:0 !important; flex:0 0 auto; }
+.strategy-version-item .activity-meta .ui-status-badge { flex:0 0 auto; white-space:nowrap; }
+
 .activity-item { display:flex; gap:12px; align-items:flex-start; padding:11px 12px; border:1px solid var(--line); border-radius:12px; background:var(--surface-muted); }
 .activity-item:hover { border-color: rgba(183,148,246,.28); background:var(--surface-hover); }
 .activity-title { font-weight:600; font-size:14px; }
@@ -2765,3 +2775,36 @@ html[data-theme="system"]:not(.theme-dark) {
   .landing-footer-bottom { flex-direction: column; align-items: flex-start; }
   .landing-footer-bottom span:last-child { text-align: left; }
 }
+
+ 
+.source-item { min-width: 0; flex-wrap: wrap; align-items: flex-start; }
+.source-item > a { flex: 1 1 240px; min-width: 0; max-width: 100%; }
+.source-item > .badge { flex: 0 0 auto; max-width: 100%; white-space: nowrap; }
+.source-item .activity-title { max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
+.portfolio-card { position: relative; min-width: 0; align-self: start; height: fit-content; }
+/* Keep every brand status pill in its own stable, single-line flex slot. */
+.brand-card-header { display:grid; grid-template-columns:minmax(0, 1fr) max-content; align-items:center; gap:12px; min-width:0; }
+.brand-card-copy { flex:1 1 0%; min-width:0; overflow-wrap:anywhere; }
+.brand-card-copy h3 { margin:0; min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+.brand-card-copy .metric-label { min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+.brand-card-status, .portfolio-drawer-status { display:inline-flex; flex:0 0 auto; flex-shrink:0; width:max-content; max-width:100%; white-space:nowrap; }
+.brand-card-status { align-self:center; justify-self:end; line-height:1; min-height:26px; }
+.portfolio-drawer-status { align-self:center; }
+.portfolio-drawer { position: relative; z-index: 80; width: auto; }
+.portfolio-drawer-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; max-width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-card); color: var(--text); cursor: pointer; list-style: none; white-space: nowrap; }
+.portfolio-drawer-trigger::-webkit-details-marker { display: none; }
+.portfolio-drawer[open] .portfolio-drawer-trigger { border-color: var(--accent); }
+.portfolio-drawer-content { position: absolute; z-index: 80; top: calc(100% + 8px); right: 0; width: min(440px, calc(100vw - 48px)); display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; margin-top: 0; padding: 13px; height: min(420px, 62vh); max-height: min(420px, 62vh); border: 1px solid var(--line); border-radius: 15px; background: var(--surface-overlay, var(--surface-card)); box-shadow: 0 22px 60px color-mix(in srgb, var(--text) 16%, transparent); backdrop-filter: blur(18px); }
+.portfolio-drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.portfolio-drawer-heading strong { color: var(--text-strong); font-size: 13px; }
+.portfolio-drawer-heading span { color: var(--text-muted); font-size: 11px; }
+.portfolio-drawer-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; align-content: start; gap: 6px; padding-right: 2px; }
+.portfolio-drawer-brand { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-card); color: var(--text); text-decoration: none; }
+.portfolio-drawer-brand .portfolio-drawer-brand-copy { flex:1 1 0%; min-width:0; }
+.portfolio-drawer-arrow { flex:0 0 auto; margin-left:2px; color:var(--muted); }
+.portfolio-drawer-brand:hover { border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); background: var(--surface-hover); }
+.portfolio-drawer-brand-copy { display: grid; flex: 1 1 auto; gap: 3px; min-width: 0; }
+.portfolio-drawer-brand-copy strong, .portfolio-drawer-brand-copy span { overflow-wrap: anywhere; word-break: break-word; }
+.portfolio-drawer-brand-copy strong { color: var(--text-strong); font-size: 12px; }
+.portfolio-drawer-brand-copy span { color: var(--text-muted); font-size: 10px; }
+@media (max-width: 620px) { .portfolio-drawer { position: relative; width: auto; } .portfolio-drawer-content { right: -6px; width: min(360px, calc(100vw - 36px)); height: min(360px, 60vh); max-height: 360px; } }

@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Globe2, LoaderCircle, RefreshCw, Sparkles } from 'lucide-react';
 import type { ExtractedIdentity } from '@/lib/brand/visual-extraction';
-import { toVisualIdentity } from '@/lib/brand/identity-mapping';
+import { preferredPreviewFontFamily, toVisualIdentity } from '@/lib/brand/identity-mapping';
+import { brandNameFromWebsiteUrl } from '@/lib/brand/website-url';
+import { mergeExistingBrandScanPatch } from '@/lib/brand/scan-merge';
 import { brandInitials, BrandField, BrandPanel, BrandSection, NotDetected } from './brand-profile-primitives';
 
 type IntakeIdentity = ExtractedIdentity & {
@@ -46,6 +48,11 @@ type IntakeIdentity = ExtractedIdentity & {
     evidence: { claim: string; sourceUrl: string }[];
   } | null;
   crawl?: { pages: string[]; pageCount: number; stylesheetCount: number } | null;
+  scanNotices?: string[];
+  aiModelCompleted?: boolean;
+  aiFallbackUsed?: boolean;
+  aiStatus?: 'completed' | 'fallback';
+  aiWarnings?: string[];
 };
 
 type Phase = 'input' | 'scanning' | 'review' | 'saving' | 'error';
@@ -80,6 +87,35 @@ export function BrandIntake({
   const [website, setWebsite] = useState(initialWebsite);
   const [name, setName] = useState(initialBrandName);
   const [identity, setIdentity] = useState<IntakeIdentity | null>(null);
+  useEffect(() => {
+    // Prefer font files declared by the inspected website itself; use Google Fonts
+    // only when no source-hosted face was discovered for an explicitly linked family.
+    const families = [...new Map((identity?.fonts ?? []).map((font) => [font.family.toLowerCase(), font])).values()]
+      .filter((font) => Boolean(font.fontAssetUrl) || font.source === 'google-fonts')
+      .slice(0, 3);
+    const nodes = families.map((font) => {
+      if (font.fontAssetUrl) {
+        const style = document.createElement('style');
+        const safeFamily = font.family.replace(/["\\\r\n]/g, '');
+        const safeUrl = font.fontAssetUrl.replace(/["\\\r\n]/g, '');
+        const format = font.fontAssetFormat ? ' format("' + font.fontAssetFormat + '")' : '';
+        const weight = font.fontWeight ?? '400';
+        const fontStyle = font.fontStyle ?? 'normal';
+        style.dataset.brandIntakeFont = font.family;
+        style.textContent = '@font-face{font-family:"' + safeFamily + '";src:url("' + safeUrl + '")' + format + ';font-weight:' + weight + ';font-style:' + fontStyle + ';font-display:swap;}';
+        document.head.appendChild(style);
+        return style;
+      }
+
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(font.family).replace(/%20/g, '+') + '&display=swap';
+      link.dataset.brandIntakeFont = font.family;
+      document.head.appendChild(link);
+      return link;
+    });
+    return () => nodes.forEach((node) => node.remove());
+  }, [identity?.fonts]);
   const [stepIndex, setStepIndex] = useState(0);
   const [scanElapsed, setScanElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -87,13 +123,18 @@ export function BrandIntake({
   const reviewAfterScan = showReview !== false;
 
   const scan = useCallback(async () => {
-    const value = website.trim();
-    if (!/^https?:\/\//i.test(value)) {
-      setError('Enter a full website URL, starting with https://');
+    const entered = website.trim();
+    const value = /^https?:\/\//i.test(entered) ? entered : `https://${entered.replace(/^\/+/g, '')}`;
+    try {
+      const parsed = new URL(value);
+      if (!parsed.hostname.includes('.') || !['http:', 'https:'].includes(parsed.protocol)) throw new Error('Enter a valid public website domain or URL.');
+    } catch {
+      setError('Enter a valid public website domain or URL, such as salesforce.com');
       setPhase('error');
       return;
     }
 
+    setWebsite(value);
     setError(null);
     setPhase('scanning');
     setStepIndex(0);
@@ -108,14 +149,16 @@ export function BrandIntake({
       const response = await fetch(`/api/brands/website-identity?url=${encodeURIComponent(value)}`, { cache: 'no-store' });
       const body = await response.json().catch(() => null);
       if (response.status === 401) { window.location.href = '/login'; return; }
-      if (!response.ok || !body?.identity) throw new Error(body?.error || 'Could not read that website.');
+      if (!response.ok || !body?.identity) {
+        if (!body?.error && response.status >= 500) {
+          throw new Error('Website analysis hit a server-side timeout or temporary failure before enough public content could be recovered. Retry once, or enter a public About/Products page URL. No brand was created.');
+        }
+        throw new Error(body?.error || 'The website did not return enough readable public content to create a reliable Brand IQ.');
+      }
 
       const next = body.identity as IntakeIdentity;
       setIdentity(next);
-      const host = new URL(next.finalUrl ?? value).hostname.replace(/^www\\./i, '');
-      const hostLabel = (host.split('.')[0] || 'Brand')
-        .replace(/[-_]+/g, ' ')
-        .replace(/\\b\\w/g, (letter) => letter.toUpperCase());
+      const hostLabel = brandNameFromWebsiteUrl(next.finalUrl ?? value);
       setName(next.brandName || name.trim() || hostLabel);
       setPhase('review');
     } catch (err) {
@@ -124,7 +167,7 @@ export function BrandIntake({
     } finally {
       window.clearInterval(ticker);
     }
-  }, [website]);
+  }, [website, name]);
 
   const create = useCallback(async () => {
     if (!identity || createInFlightRef.current) return;
@@ -152,47 +195,59 @@ export function BrandIntake({
       }
 
       const brandId = String(created.brand.id);
+      const scannedPatch = {
+        description: identity.description ?? null,
+        primaryColor: identity.primaryColor,
+        secondaryColors: identity.secondaryColors,
+        industry: identity.aiProfile?.industry ?? null,
+        targetAudience: identity.aiProfile?.audience ?? null,
+        positioning: {
+          valueProposition: identity.aiProfile?.valueProposition ?? null,
+          differentiators: identity.aiProfile?.differentiators ?? [],
+          positioningThemes: identity.aiProfile?.positioningThemes ?? [],
+          competitiveContext: identity.aiProfile?.competition ?? null,
+          seoResearch: identity.aiProfile?.seo ?? null,
+        },
+        offerDetails: {
+          products: identity.aiProfile?.products ?? [],
+          services: identity.aiProfile?.services ?? [],
+          keyFeatures: identity.aiProfile?.keyFeatures ?? [],
+          benefits: identity.aiProfile?.benefits ?? [],
+          pricingSignals: identity.aiProfile?.pricingSignals ?? [],
+          productCategories: identity.aiProfile?.productCategories ?? [],
+          callsToAction: identity.aiProfile?.callsToAction ?? [],
+          painPoints: identity.aiProfile?.painPoints ?? [],
+          useCases: identity.aiProfile?.useCases ?? [],
+        },
+        audienceDetails: {
+          summary: identity.aiProfile?.audience ?? null,
+          personas: identity.aiProfile?.personas ?? [],
+          customerTypes: identity.aiProfile?.customerTypes ?? [],
+        },
+        messaging: {
+          toneOfVoice: identity.aiProfile?.tone ?? [],
+          terminology: identity.aiProfile?.terminology ?? [],
+          recurringClaims: identity.aiProfile?.recurringClaims ?? [],
+          messagingThemes: identity.aiProfile?.messagingThemes ?? [],
+          brandMessaging: identity.aiProfile?.valueProposition ?? null,
+        },
+        visualIdentity: toVisualIdentity(identity),
+      };
+
+      let patchPayload: Record<string, unknown> = scannedPatch;
+      if (created.existing === true) {
+        const existingResponse = await fetch(`/api/brands/${brandId}`, { cache: 'no-store' });
+        const existingBody = await existingResponse.json().catch(() => null);
+        if (!existingResponse.ok || !existingBody?.brand) {
+          throw new Error(existingBody?.error || 'Could not load the saved brand before merging this scan.');
+        }
+        patchPayload = mergeExistingBrandScanPatch(existingBody.brand, scannedPatch);
+      }
+
       const patchResponse = await fetch(`/api/brands/${brandId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          description: identity.description ?? null,
-          primaryColor: identity.primaryColor,
-          secondaryColors: identity.secondaryColors,
-          industry: identity.aiProfile?.industry ?? null,
-          targetAudience: identity.aiProfile?.audience ?? null,
-          positioning: {
-            valueProposition: identity.aiProfile?.valueProposition ?? null,
-            differentiators: identity.aiProfile?.differentiators ?? [],
-            positioningThemes: identity.aiProfile?.positioningThemes ?? [],
-            competitiveContext: identity.aiProfile?.competition ?? null,
-            seoResearch: identity.aiProfile?.seo ?? null,
-          },
-          offerDetails: {
-            products: identity.aiProfile?.products ?? [],
-            services: identity.aiProfile?.services ?? [],
-            keyFeatures: identity.aiProfile?.keyFeatures ?? [],
-            benefits: identity.aiProfile?.benefits ?? [],
-            pricingSignals: identity.aiProfile?.pricingSignals ?? [],
-            productCategories: identity.aiProfile?.productCategories ?? [],
-            callsToAction: identity.aiProfile?.callsToAction ?? [],
-            painPoints: identity.aiProfile?.painPoints ?? [],
-            useCases: identity.aiProfile?.useCases ?? [],
-          },
-          audienceDetails: {
-            summary: identity.aiProfile?.audience ?? null,
-            personas: identity.aiProfile?.personas ?? [],
-            customerTypes: identity.aiProfile?.customerTypes ?? [],
-          },
-          messaging: {
-            toneOfVoice: identity.aiProfile?.tone ?? [],
-            terminology: identity.aiProfile?.terminology ?? [],
-            recurringClaims: identity.aiProfile?.recurringClaims ?? [],
-            messagingThemes: identity.aiProfile?.messagingThemes ?? [],
-            brandMessaging: identity.aiProfile?.valueProposition ?? null,
-          },
-          visualIdentity: toVisualIdentity(identity),
-        }),
+        body: JSON.stringify(patchPayload),
       });
       const patched = await patchResponse.json().catch(() => null);
       if (!patchResponse.ok) throw new Error(patched?.error || 'Brand was created, but the imported Brand IQ could not be saved.');
@@ -281,17 +336,24 @@ export function BrandIntake({
   if (!identity) return null;
   const ai = identity.aiProfile;
   const assets = identity.assets ?? [];
+  const previewFont = preferredPreviewFontFamily(identity.fonts);
+  // Missing inline CSS / colour declarations are normal on many sites and do not
+  // mean Brand IQ failed; empty visual fields already explain what was not found.
+  const actionableWarnings = identity.warnings.filter((warning) =>
+    !/^(?:No embedded stylesheet found; linked stylesheets and declared theme colours are checked separately\.|No usable colour declarations were found on the page\.)$/i.test(warning.trim()),
+  );
+  const aiFallbackUsed = identity.aiFallbackUsed === true || identity.aiModelCompleted === false;
 
   if (!reviewAfterScan) return null;
 
   return (
     <div>
       <BrandPanel icon={<Sparkles size={17} />} title="Brand IQ review" subtitle="Everything the website scan found, grouped into the same working contexts your content and strategy use.">
-        {identity.warnings.length || !ai ? (
+        {actionableWarnings.length || !ai || aiFallbackUsed ? (
           <div className="brand-scan-warning" role="status" aria-live="polite">
-            <strong>{!ai ? 'Structured Brand IQ needs attention' : 'Some parts of the scan need review'}</strong>
-            <p>{!ai ? 'We recovered the public page, but the AI could not complete every structured field. You can retry the scan; do not treat missing values as verified facts.' : 'The scan recovered usable information, but one or more sources or enrichment steps were incomplete.'}</p>
-            {identity.warnings.length ? <ul>{identity.warnings.slice(0, 4).map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+            <strong>{aiFallbackUsed ? 'AI enrichment fallback used' : !ai ? 'Structured Brand IQ needs attention' : 'Some parts of the scan need review'}</strong>
+            <p>{aiFallbackUsed ? 'We recovered public website evidence, but structured AI enrichment did not complete. The profile below uses a website-evidence fallback; treat missing facts as unknown and retry when providers are available.' : !ai ? 'We recovered the public page, but the AI could not complete every structured field. You can retry the scan; do not treat missing values as verified facts.' : 'The scan recovered usable information, but one or more sources or enrichment steps were incomplete.'}</p>
+            {actionableWarnings.length ? <ul>{actionableWarnings.slice(0, 4).map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
             <button type="button" className="brand-btn" onClick={() => void scan()} disabled={phase === 'saving'}><RefreshCw size={14} /> Retry website analysis</button>
           </div>
         ) : null}
@@ -369,6 +431,11 @@ export function BrandIntake({
         </BrandSection>
 
         <BrandSection title="Visual Identity" hint="Declared colours and typography, including external stylesheets rather than only inline HTML.">
+          {identity.scanNotices?.length ? (
+            <p className="brand-section-hint" role="note" style={{ marginTop: 0 }}>
+              {identity.scanNotices.join(' ')}
+            </p>
+          ) : null}
           <div className="brand-fields">
             <BrandField label="Logo">
               {identity.logoUrl ? <div className="brand-identity"><img src={identity.logoUrl} alt="Detected brand logo" style={{ maxWidth: 220, maxHeight: 64, objectFit: 'contain' }} /></div> : <NotDetected label="No logo candidate detected" />}
@@ -387,7 +454,7 @@ export function BrandIntake({
         </BrandSection>
 
         <BrandSection title="Live Preview" hint="A small brand-context preview using the imported identity, not generated placeholder data.">
-          <div className="brand-voice-summary" style={{ background: 'color-mix(in srgb, var(--brand-primary, var(--accent)) 12%, var(--surface))' }}>
+          <div className="brand-voice-summary" style={{ background: 'color-mix(in srgb, var(--brand-primary, var(--accent)) 12%, var(--surface))', ...(previewFont ? { fontFamily: `"${previewFont.replace(/["\\]/g, '')}", sans-serif` } : {}) }}>
             <strong>{name || identity.brandName || 'Your brand'}</strong>{ai?.valueProposition ? ` — ${ai.valueProposition}` : identity.description ? ` — ${identity.description}` : ''}
             {ai?.tone?.length ? <span style={{ display: 'block', marginTop: 6, opacity: .78 }}>Voice: {ai.tone.join(' · ')}</span> : null}
           </div>
@@ -399,7 +466,7 @@ export function BrandIntake({
             <BrandField label="External stylesheets"><span>{identity.crawl?.stylesheetCount ?? 0}</span></BrandField>
             <BrandField label="Evidence used">{tags(identity.inspected)}</BrandField>
             {ai?.evidence?.length ? <BrandField label="Evidence claims"><div className="brand-evidence-list">{ai.evidence.slice(0, 8).map((item) => <div className="brand-evidence-item" key={item.sourceUrl + item.claim}><span>{item.claim}</span><a href={item.sourceUrl} target="_blank" rel="noreferrer">{new URL(item.sourceUrl).hostname}</a></div>)}</div></BrandField> : null}
-            {identity.warnings.length ? <BrandField label="Warnings"><ul style={{ margin: 0, paddingLeft: 18 }}>{identity.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></BrandField> : null}
+            {actionableWarnings.length ? <BrandField label="Warnings"><ul style={{ margin: 0, paddingLeft: 18 }}>{actionableWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></BrandField> : null}
           </div>
         </BrandSection>
 

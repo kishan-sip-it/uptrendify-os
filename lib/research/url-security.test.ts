@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { assertPublicHttpUrl } from './url-security';
+import dns from 'node:dns/promises';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { assertPublicHttpUrl, assertResolvablePublicHost, resolvePublicAddresses } from './url-security';
 
 describe('assertPublicHttpUrl', () => {
   it('allows valid public http/https URLs', () => {
@@ -105,5 +106,38 @@ describe('assertPublicHttpUrl', () => {
 
   it('allows valid public IPv6 addresses', () => {
     expect(() => assertPublicHttpUrl('http://[2607:f8b0:4004:800::200e]')).not.toThrow();
+  });
+});
+
+describe('public DNS resolution caching', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('reuses a validated public resolution for socket lookup and concurrent scans', async () => {
+    const hostname = 'cache-hit-public.example.test';
+    const lookup = vi.spyOn(dns, 'lookup').mockResolvedValue([
+      { address: '93.184.216.34', family: 4 },
+    ] as never);
+
+    await Promise.all([
+      assertResolvablePublicHost(hostname),
+      assertResolvablePublicHost(hostname),
+    ]);
+    await expect(resolvePublicAddresses(hostname)).resolves.toEqual([
+      { address: '93.184.216.34', family: 4 },
+    ]);
+    expect(lookup).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache private-only DNS answers as public', async () => {
+    const hostname = 'private-only-not-cached.example.test';
+    const lookup = vi.spyOn(dns, 'lookup').mockResolvedValue([
+      { address: '127.0.0.1', family: 4 },
+    ] as never);
+
+    await expect(assertResolvablePublicHost(hostname)).rejects.toThrow('non-public address');
+    await expect(assertResolvablePublicHost(hostname)).rejects.toThrow('non-public address');
+    expect(lookup).toHaveBeenCalledTimes(2);
   });
 });

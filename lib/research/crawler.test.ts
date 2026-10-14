@@ -27,7 +27,7 @@ function htmlPage(title: string, links = '<a href="/about">About</a>') {
   return `<!DOCTYPE html><html><head><title>${title}</title><meta name="description" content="desc"/></head><body><h1>Hello</h1><p>Brand content here.</p>${links}</body></html>`;
 }
 
-function mockSupabase() {
+function mockSupabase(existingSource: Record<string, unknown> | null = null) {
   const updates: string[] = [];
   const updatesPayload: Array<Record<string, unknown>> = [];
   const sourceUpserts: Array<Record<string, unknown>> = [];
@@ -45,6 +45,26 @@ function mockSupabase() {
       }
       if (table === 'brand_sources') {
         return {
+          select: vi.fn(() => {
+            const filters: Record<string, unknown> = {};
+            type SourceQuery = {
+              eq: (column: string, value: unknown) => SourceQuery;
+              maybeSingle: () => Promise<{ data: Record<string, unknown> | null; error: null }>;
+            };
+            const query: SourceQuery = {
+              eq: (column, value) => { filters[column] = value; return query; },
+              maybeSingle: async () => {
+                const canonical = String(existingSource?.canonical_url ?? '').replace(/\/$/, '');
+                const requested = String(filters.canonical_url ?? '').replace(/\/$/, '');
+                const matches = existingSource &&
+                  Object.entries(filters).every(([column, value]) => column === 'canonical_url'
+                    ? canonical === requested
+                    : existingSource[column] === value);
+                return { data: matches ? existingSource : null, error: null };
+              },
+            };
+            return query;
+          }),
           upsert: vi.fn((payload: Record<string, unknown>) => {
             sourceUpserts.push(payload);
             return {
@@ -190,6 +210,149 @@ describe('crawlBrand', () => {
     expect(result.status).toBe('COMPLETED');
     expect(result.processedPages[0].title).toBe('Aurora');
     expect(result.processedPages[0].text).toContain('rendered content from the client application');
+  });
+
+  it('retries a bot-protected public page with a browser user-agent before rendered fallback', async () => {
+    const calls: Array<{ url: string; userAgent: string }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, opts: RequestInit) => {
+      const headers = new Headers(opts.headers);
+      calls.push({ url, userAgent: headers.get('user-agent') ?? '' });
+      if (calls.length === 1) {
+        return new Response('blocked', { status: 403, headers: { 'content-type': 'text/html' } });
+      }
+      return new Response(htmlPage('Microsoft', ''), { status: 200, headers: { 'content-type': 'text/html' } });
+    }));
+
+    const client = mockSupabase() as any;
+    const result = await crawlBrand(client, {
+      organizationId: ORG_ID,
+      brandId: BRAND_ID,
+      websiteUrl: 'http://8.8.8.8',
+      researchRunId: RUN_ID,
+    });
+
+    expect(result.pagesProcessed).toBeGreaterThanOrEqual(1);
+    expect(result.status).toBe('COMPLETED');
+    expect(calls[0]?.userAgent).toBe('TestBot/1.0');
+    expect(calls[1]?.userAgent).toContain('Mozilla/5.0');
+  });
+
+  it('reuses the last successful source if a repeat crawl gets a transient 404', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response('not found', { status: 404, headers: { 'content-type': 'text/html' } })
+    ));
+
+    const previousText = 'Previously verified public source content for Canva and its design tools. '.repeat(8);
+    const client = mockSupabase({
+      id: SOURCE_ID,
+      organization_id: ORG_ID,
+      brand_id: BRAND_ID,
+      canonical_url: 'http://8.8.8.8',
+      title: 'Previously verified page',
+      status: 'ACTIVE',
+      extracted_text: previousText,
+      content_hash: 'previous-hash',
+      metadata: { research_external: true, source_provider: 'verified-search' },
+    }) as any;
+
+    const result = await crawlBrand(client, {
+      organizationId: ORG_ID,
+      brandId: BRAND_ID,
+      websiteUrl: 'http://8.8.8.8',
+      researchRunId: RUN_ID,
+    });
+
+    expect(result.status).toBe('PARTIAL');
+    expect(result.pagesProcessed).toBe(1);
+    expect(result.processedPages[0]).toMatchObject({
+      id: SOURCE_ID,
+      title: 'Previously verified page',
+      text: previousText,
+    });
+    expect(client.__sourceUpserts).toEqual([]);
+    expect(client.__researchSourceUpserts).toContainEqual(expect.objectContaining({
+      research_run_id: RUN_ID,
+      source_id: SOURCE_ID,
+      status: 'PROCESSED',
+    }));
+  });
+
+  it('does not save an HTTP-200 security interstitial returned to the browser user-agent', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL, opts?: RequestInit) => {
+      calls.push(String(url));
+      const headers = new Headers(opts?.headers);
+      const userAgent = headers.get('user-agent') ?? '';
+      if (calls.length === 1) {
+        return new Response('forbidden', { status: 403, headers: { 'content-type': 'text/html' } });
+      }
+      if (userAgent.includes('Mozilla/5.0')) {
+        return new Response(
+          '<html><head><title>Your request has been blocked</title></head><body><h1>Your request has been blocked</h1><p>Automated requests are not allowed.</p></body></html>',
+          { status: 200, headers: { 'content-type': 'text/html' } },
+        );
+      }
+      return new Response(
+        'Warning: Target URL returned error 403' + String.fromCharCode(10) + 'The requested page is blocked by an upstream security service. '.repeat(8),
+        { status: 200, headers: { 'content-type': 'text/plain' } },
+      );
+    }));
+
+    const client = mockSupabase() as any;
+    const result = await crawlBrand(client, {
+      organizationId: ORG_ID,
+      brandId: BRAND_ID,
+      websiteUrl: 'http://8.8.8.8',
+      researchRunId: RUN_ID,
+    });
+
+    expect(result.status).toBe('FAILED');
+    expect(result.pagesProcessed).toBe(0);
+    expect(client.__sourceUpserts).toHaveLength(1);
+    expect(client.__sourceUpserts[0]).toMatchObject({
+      status: 'FAILED',
+      metadata: { error_code: 'HTTP_403' },
+      extracted_text: '',
+    });
+    expect(client.__sourceUpserts[0].extracted_text).not.toContain('Your request has been blocked');
+  });
+
+  it('preserves prior source metadata when refreshed page content succeeds', async () => {
+    const usefulText = 'Canva helps teams create presentations, graphics and marketing material. '.repeat(24);
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(
+        '<html><head><title>Canva</title><meta name="description" content="Design workspace"></head><body><h1>Canva design platform</h1><p>' + usefulText + '</p></body></html>',
+        { status: 200, headers: { 'content-type': 'text/html' } },
+      )
+    ));
+
+    const client = mockSupabase({
+      id: SOURCE_ID,
+      organization_id: ORG_ID,
+      brand_id: BRAND_ID,
+      canonical_url: 'http://8.8.8.8',
+      title: 'Canva',
+      status: 'ACTIVE',
+      extracted_text: 'Previous text',
+      content_hash: 'old-hash',
+      metadata: { research_external: true, source_provider: 'verified-search', custom_note: 'keep-me', error_code: 'HTTP_403', error: 'old security challenge' },
+    }) as any;
+    const result = await crawlBrand(client, {
+      organizationId: ORG_ID,
+      brandId: BRAND_ID,
+      websiteUrl: 'http://8.8.8.8',
+      researchRunId: RUN_ID,
+    });
+
+    expect(result.pagesProcessed).toBeGreaterThanOrEqual(1);
+    expect(client.__sourceUpserts[0]?.metadata).toMatchObject({
+      research_external: true,
+      source_provider: 'verified-search',
+      custom_note: 'keep-me',
+    });
+    expect(client.__sourceUpserts[0]?.metadata).not.toHaveProperty('error_code');
+    expect(client.__sourceUpserts[0]?.metadata).not.toHaveProperty('error');
+    expect(client.__sourceUpserts[0]?.metadata?.description).toBe('Design workspace');
   });
 
   it('returns FAILED when no pages can be processed (all 404)', async () => {

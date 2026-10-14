@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BookOpen, Image as ImageIcon, Megaphone, Palette, Quote, Sparkles, Target, Type, Users } from 'lucide-react';
 import { BrandField, BrandIdentityRow, BrandPanel, BrandSection, NotDetected, brandInitials } from './brand-profile-primitives';
 import { EditableBrandRules, EditableColorPalette, EditableLogo, EditablePersonas, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText, useBrandIdentityEditor } from './brand-identity-editors';
-import { readIdentity, type BrandIdentity, type BrandIdentityRow as BrandIdentityDbRow } from '@/lib/brand/identity-mapping';
-import { readableTextOn } from '@/lib/brand/visual-extraction';
+import { readIdentity, resolveFontRoles, type BrandIdentity, type BrandIdentityRow as BrandIdentityDbRow } from '@/lib/brand/identity-mapping';
+import { readableTextOn, rankExtractedFonts, type ExtractedFont } from '@/lib/brand/visual-extraction';
 import { TONE_OPTIONS, VOICE_AXES, describeVoice, voiceAxisValues } from '@/lib/brand/voice';
 
 type ProfileTab = 'identity' | 'visuals' | 'voice' | 'audience' | 'offer' | 'rules' | 'assets' | 'evidence';
@@ -40,6 +40,47 @@ function BrandLivePreview({
   ai: NonNullable<BrandIdentity['aiProfile']> | null;
 }) {
   const [logoFailed, setLogoFailed] = useState(false);
+
+  useEffect(() => {
+    const candidates = identity.fonts
+      .filter((font) => Boolean(font.fontAssetUrl) || font.source === 'google-fonts')
+      .slice(0, 4);
+    const nodes = candidates.map((font) => {
+      const family = font.family.replace(/["\\\r\n;]/g, '').trim();
+      if (!family) return null;
+
+      if (font.fontAssetUrl) {
+        try {
+          const url = new URL(font.fontAssetUrl);
+          // Font files came from the source site's public stylesheets. Validate
+          // again because saved brand data can outlive its original scan.
+          if (url.protocol !== 'https:' || url.username || url.password) return null;
+          const weight = /^(?:normal|bold|[1-9]00(?:\s+[1-9]00)?)$/i.test(font.fontWeight ?? '') ? font.fontWeight : '400';
+          const fontStyle = /^(?:normal|italic|oblique(?:\s+-?\d+(?:deg)?)?)$/i.test(font.fontStyle ?? '') ? font.fontStyle : 'normal';
+          const format = ['woff2', 'woff', 'opentype', 'truetype'].includes(font.fontAssetFormat ?? '')
+            ? ' format("' + font.fontAssetFormat + '")'
+            : '';
+          const style = document.createElement('style');
+          style.dataset.brandPreviewFont = family;
+          style.textContent = '@font-face{font-family:"' + family + '";src:url("' + url.href + '")' + format + ';font-weight:' + weight + ';font-style:' + fontStyle + ';font-display:swap;}';
+          document.head.appendChild(style);
+          return style;
+        } catch {
+          return null;
+        }
+      }
+
+      if (font.source !== 'google-fonts') return null;
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(family).replace(/%20/g, '+') + '&display=swap';
+      link.dataset.brandPreviewFont = family;
+      document.head.appendChild(link);
+      return link;
+    }).filter((node): node is HTMLStyleElement | HTMLLinkElement => node !== null);
+
+    return () => nodes.forEach((node) => node.remove());
+  }, [identity.fonts]);
   const primary = /^#[0-9a-f]{6}$/i.test(identity.primaryColor ?? '')
     ? identity.primaryColor!
     : identity.palette[0]?.hex ?? 'var(--accent)';
@@ -176,7 +217,7 @@ function BrandLivePreview({
         </div>
         <div className="brand-live-preview-type">
           <span className="brand-live-preview-system-label">Typography</span>
-          <strong style={{ fontFamily: 'var(--preview-heading-font)' }}>{headingFont || 'Application type'}</strong>
+          <strong style={{ fontFamily: 'var(--preview-heading-font)' }}>{headingFont || 'Source font not detected'}</strong>
           {bodyFont && bodyFont !== headingFont ? <span style={{ fontFamily: 'var(--preview-body-font)' }}>{bodyFont}</span> : null}
         </div>
       </div>
@@ -201,6 +242,8 @@ export function BrandProfileWorkspace({
   const [identity, setIdentity] = useState<BrandIdentity>(initialIdentity);
   const [activeWebsiteUrl, setActiveWebsiteUrl] = useState<string | null>(websiteUrl);
   const [activeProfileTab, setActiveProfileTab] = useState<ProfileTab>('identity');
+  const [fontRefreshState, setFontRefreshState] = useState<'idle' | 'running'>('idle');
+  const [fontRefreshMessage, setFontRefreshMessage] = useState<string | null>(null);
 
   const onSaved = useCallback((brand: unknown) => {
     if (!brand || typeof brand !== 'object') return;
@@ -246,6 +289,47 @@ export function BrandProfileWorkspace({
       ...next,
     },
   }), [save, identity]);
+
+  const refreshSourceFonts = useCallback(async () => {
+    if (!activeWebsiteUrl || saving || fontRefreshState === 'running') return;
+    setFontRefreshState('running');
+    setFontRefreshMessage(null);
+    try {
+      const response = await fetch('/api/brands/website-identity?url=' + encodeURIComponent(activeWebsiteUrl), { cache: 'no-store' });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.identity) {
+        throw new Error(typeof body?.error === 'string' ? body.error : 'The website font scan could not be completed.');
+      }
+
+      const rawFonts: unknown[] = Array.isArray(body.identity.fonts) ? body.identity.fonts : [];
+      const validFonts = rawFonts.filter((raw): raw is ExtractedFont => {
+        if (!raw || typeof raw !== 'object') return false;
+        const font = raw as Record<string, unknown>;
+        return typeof font.family === 'string' && font.family.trim().length > 1 &&
+          (font.source === 'css-declaration' || font.source === 'google-fonts' || font.source === 'theme-font');
+      });
+      const fonts = rankExtractedFonts(validFonts).slice(0, 10);
+      if (fonts.length === 0) {
+        throw new Error('No usable source-font declarations were found. Your saved identity was left unchanged.');
+      }
+
+      const roles = resolveFontRoles(fonts);
+      const saved = await saveVisualIdentity({
+        fonts,
+        headingFont: roles.headingFont,
+        bodyFont: roles.bodyFont,
+        inspected: Array.isArray(body.identity.inspected) ? body.identity.inspected : identity.inspected,
+        warnings: Array.isArray(body.identity.warnings) ? body.identity.warnings : identity.warnings,
+        detectedAt: new Date().toISOString(),
+      });
+      if (!saved) throw new Error('The source fonts were detected, but could not be saved. Your previous identity remains unchanged.');
+      setFontRefreshMessage('Source fonts updated from ' + new URL(activeWebsiteUrl).hostname.replace(/^www\./, '') + '.');
+    } catch (error) {
+      setFontRefreshMessage(error instanceof Error ? error.message : 'Source font refresh failed. The saved identity was left unchanged.');
+    } finally {
+      setFontRefreshState('idle');
+    }
+  }, [activeWebsiteUrl, fontRefreshState, identity.inspected, identity.warnings, saving, saveVisualIdentity]);
 
   const removeCustomLogo = useCallback(async () => {
     const response = await fetch(`/api/brands/${brandId}/logo`, { method: 'DELETE' });
@@ -321,8 +405,9 @@ export function BrandProfileWorkspace({
           icon={<Sparkles size={17} />}
           title="Brand Profile"
           subtitle={identity.detectedAt ? 'Imported from the website. Human edits are authoritative and become the active brand context.' : 'Brand identity for this workspace.'}
-          actions={onRescan ? <button type="button" className="brand-btn" onClick={onRescan} disabled={rescanState === 'running' || saving}><Sparkles size={13} /> {rescanState === 'running' ? 'Scanning…' : 'Re-scan website'}</button> : null}
+          actions={<button type="button" className="brand-btn" onClick={() => { if (onRescan) onRescan(); else void refreshSourceFonts(); }} disabled={Boolean(saving || fontRefreshState === 'running' || rescanState === 'running')}><Sparkles size={13} /> {rescanState === 'running' || fontRefreshState === 'running' ? 'Refreshing…' : onRescan ? 'Re-scan website' : 'Refresh source fonts'}</button>}
         >
+          {fontRefreshMessage ? <p className="brand-section-hint" role="status" aria-live="polite" style={{ margin: '0 0 10px', overflowWrap: 'anywhere' }}>{fontRefreshMessage}</p> : null}
           <div
             className="brand-profile-brand-hero"
             style={{

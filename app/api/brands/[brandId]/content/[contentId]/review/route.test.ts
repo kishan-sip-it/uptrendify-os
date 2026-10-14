@@ -61,7 +61,19 @@ function makeClient(overrides: Array<[string, unknown]> = []) {
   };
 
   const from = vi.fn((table: string) => chain(String(table)));
-  return { from, inserts };
+  const statusByAction: Record<string, string> = {
+    submit: 'IN_REVIEW', approve: 'APPROVED', reject: 'REJECTED',
+    changes_requested: 'CHANGES_REQUESTED', return_to_draft: 'DRAFT',
+    archive: 'ARCHIVED', queue_for_publish: 'READY_TO_PUBLISH', back_to_approved: 'APPROVED',
+  };
+  const rpc = vi.fn(async (_name: string, args: Record<string, unknown>): Promise<{
+    data: Array<{ status: string; review_id: string }> | null;
+    error: null | { code?: string; message: string };
+  }> => ({
+    data: [{ status: statusByAction[String(args.p_action)] ?? 'IN_REVIEW', review_id: 'review-1' }],
+    error: null,
+  }));
+  return { from, inserts, rpc };
 }
 
 function contentRow(status: string) {
@@ -183,9 +195,21 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ status: 'DRAFT' });
-    const reviewInsert = client.inserts.find((entry) => entry.table === 'content_reviews');
-    expect((reviewInsert!.payload as { decision: string }).decision).toBe('return_to_draft');
-    expect((reviewInsert!.payload as { content_version_id: string }).content_version_id).toBe(VERSION_ID);
+    expect(client.rpc).toHaveBeenCalledWith('apply_content_review_transition', expect.objectContaining({
+      p_action: 'return_to_draft', p_expected_version_id: VERSION_ID, p_expected_status: 'APPROVED',
+    }));
+  });
+
+  it('returns 409 when the status or version changed concurrently', async () => {
+    mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'APPROVER', userId: USER_ID } });
+    const client = makeClient([['content_items', contentRow('IN_REVIEW')]]);
+    client.rpc.mockResolvedValue({ data: null, error: { code: '40001', message: 'CONTENT_STATUS_CHANGED_CONCURRENTLY' } });
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+    const res = await POST(new NextRequest('http://localhost/api/review', { method: 'POST', body: JSON.stringify({ action: 'approve' }) }), {
+      params: Promise.resolve({ brandId: BRAND_ID, contentId: CONTENT_ID }),
+    });
+    expect(res.status).toBe(409);
+    expect(client.rpc).toHaveBeenCalledTimes(1);
   });
 
   it('requires the reviewer role for approve', async () => {
@@ -224,11 +248,10 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ status: 'READY_TO_PUBLISH' });
-    const reviewInsert = client.inserts.find((entry) => entry.table === 'content_reviews');
-    expect(reviewInsert).toBeDefined();
-    expect((reviewInsert!.payload as { decision: string; content_version_id: string }).decision).toBe('queue_for_publish');
-    expect((reviewInsert!.payload as { content_version_id: string }).content_version_id).toBe(VERSION_ID);
-    expect((reviewInsert!.payload as { organization_id: string }).organization_id).toBe(ORG_ID);
+    expect(client.rpc).toHaveBeenCalledWith('apply_content_review_transition', expect.objectContaining({
+      p_organization_id: ORG_ID, p_action: 'queue_for_publish',
+      p_expected_version_id: VERSION_ID, p_expected_status: 'APPROVED',
+    }));
   });
 
   it('returns a queued item back to APPROVED', async () => {

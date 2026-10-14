@@ -40,7 +40,6 @@ const TRANSITIONS: Record<ReviewAction, { from: string[]; to: string }> = {
 };
 
 const REVIEWER_ACTIONS: ReviewAction[] = ['approve', 'reject', 'changes_requested', 'queue_for_publish', 'back_to_approved'];
-const GENERATOR_ACTIONS: ReviewAction[] = ['submit', 'return_to_draft', 'archive'];
 
 async function loadItem(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
@@ -63,7 +62,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     const body = bodySchema.parse(await request.json().catch(() => ({})));
 
     const reviewerRole = REVIEWER_ACTIONS.includes(body.action);
-    const generatorRole = GENERATOR_ACTIONS.includes(body.action);
     const auth = await requireOrgRole(reviewerRole ? CAN_REVIEW_CONTENT : CAN_GENERATE_CONTENT);
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
 
@@ -87,50 +85,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       );
     }
 
-    const now = new Date().toISOString();
-    const itemUpdate = await supabase
-      .from('content_items')
-      .update({ status: transition.to, updated_at: now })
-      .eq('id', contentId)
-      .eq('organization_id', auth.context.organizationId)
-      .eq('status', item.status)
-      .select('id,status')
-      .maybeSingle();
-    if (itemUpdate.error) throw itemUpdate.error;
-    if (!itemUpdate.data) {
-      return NextResponse.json(
-        { error: 'Content status changed concurrently. Reload and try again.' },
-        { status: 409 },
-      );
-    }
-
-    const reviewInsert = await supabase
-      .from('content_reviews')
-      .insert({
-        organization_id: auth.context.organizationId,
-        content_item_id: contentId,
-        reviewer_id: auth.context.userId,
-        content_version_id: item.current_version_id ?? null,
-        decision: body.action,
-        comment: body.comment ?? null,
-      })
-      .select('id')
-      .single();
-    if (reviewInsert.error) throw reviewInsert.error;
-
-    await supabase.from('audit_logs').insert({
-      organization_id: auth.context.organizationId,
-      actor_user_id: auth.context.userId,
-      action: `content.${body.action}`,
-      entity_type: 'content',
-      entity_id: contentId,
-      metadata: {
-        from: item.status,
-        to: transition.to,
-        comment: body.comment ?? null,
-        contentVersionId: item.current_version_id ?? null,
-      },
+    // Postgres commits the state change, review ledger and audit event atomically.
+    const transitionResult = await supabase.rpc('apply_content_review_transition', {
+      p_organization_id: auth.context.organizationId,
+      p_brand_id: brandId,
+      p_content_id: contentId,
+      p_expected_status: item.status,
+      p_expected_version_id: item.current_version_id,
+      p_action: body.action,
+      p_comment: body.comment ?? null,
     });
+    if (transitionResult.error) {
+      const message = transitionResult.error.message ?? '';
+      if (transitionResult.error.code === '40001' || /CONTENT_STATUS_CHANGED_CONCURRENTLY|CONTENT_TRANSITION_NOT_ALLOWED/i.test(message)) {
+        return NextResponse.json({ error: 'Content status or version changed concurrently. Reload and try again.' }, { status: 409 });
+      }
+      if (/CONTENT_REVIEW_ROLE_REQUIRED|CONTENT_GENERATOR_ROLE_REQUIRED/i.test(message)) {
+        return NextResponse.json({ error: 'Insufficient permissions for this content action.' }, { status: 403 });
+      }
+      throw transitionResult.error;
+    }
+    const transitionRow = Array.isArray(transitionResult.data) ? transitionResult.data[0] : transitionResult.data;
+    if (!transitionRow || transitionRow.status !== transition.to || !transitionRow.review_id) {
+      throw new Error('The atomic content review transition returned an unexpected result.');
+    }
 
     obs.info('Content status changed', {
       contentId,
@@ -142,7 +120,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       actorId: auth.context.userId,
     });
 
-    return NextResponse.json({ ok: true, status: transition.to, reviewId: reviewInsert.data.id });
+    return NextResponse.json({ ok: true, status: transitionRow.status, reviewId: transitionRow.review_id });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid review request' }, { status: 400 });
     obs.error('Content review failed', { error: error instanceof Error ? error.message : String(error) });
