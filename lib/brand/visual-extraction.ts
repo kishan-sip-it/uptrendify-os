@@ -615,7 +615,7 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     const neutralPenalty = isPaletteNeutral(hex, sources) ? 0.18 : 1;
     // Semantic token names are weak unless corroborated by actual brand use.
     // Favicon pixels are weak because their backgrounds/masks can dominate.
-    const deliberateBoost = semanticPrimary ? (corroborated ? 7 : 0.6)
+    const deliberateBoost = semanticPrimary ? (corroborated ? 7 : 0.05)
       : semanticBrand ? (corroborated ? 6 : 1.1)
         : semanticSecondary ? (corroborated ? 4.8 : 1.0)
           : semanticAccent ? (corroborated ? 4.2 : 1.1)
