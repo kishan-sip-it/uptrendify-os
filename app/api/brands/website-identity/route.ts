@@ -347,6 +347,364 @@ async function fetchCss(url: string, sharedSignal?: AbortSignal): Promise<{ url:
   return null;
 }
 
+async function verifyPublicLogoAsset(url: string, sharedSignal?: AbortSignal): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2_800);
+  try {
+    const safe = assertPublicHttpUrl(url);
+    const userAgents = [...new Set([env().RESEARCH_USER_AGENT, BROWSER_USER_AGENT])];
+    for (const userAgent of userAgents) {
+      let fetched: Awaited<ReturnType<typeof fetchPublicHttpFollowingRedirects>>;
+      try {
+        fetched = await fetchPublicHttpFollowingRedirects(safe.toString(), {
+          signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
+          headers: { 'user-agent': userAgent, accept: 'image/svg+xml,image/png,image/jpeg,image/webp,image/avif,image/gif,*/*;q=0.1' },
+        }, 3);
+      } catch { continue; }
+      const response = fetched.response;
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+        if ([401, 403, 406, 408, 429, 500, 502, 503, 504].includes(response.status)) continue;
+        break;
+      }
+      const type = (response.headers.get('content-type') ?? '').toLowerCase();
+      const finalUrl = fetched.url;
+      const isSvgUrl = /\.svg(?:[?#]|$)/i.test(finalUrl);
+      const length = Number(response.headers.get('content-length') ?? 0);
+      if (length > 1_500_000) return null;
+      if (type.startsWith('image/')) {
+        if (type.includes('svg') || isSvgUrl) {
+          const body = await readBoundedBody(response, 180_000);
+          if (/<svg[\s>]/i.test(body.content)) return finalUrl;
+          continue;
+        }
+        return finalUrl;
+      }
+      if (isSvgUrl && (!type || /text\/plain|application\/octet-stream/i.test(type))) {
+        const body = await readBoundedBody(response, 180_000);
+        if (/<svg[\s>]/i.test(body.content)) return finalUrl;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function verifyConventionalIcon(baseUrl: string, sharedSignal?: AbortSignal): Promise<string | null> {
+  const candidates = [
+    '/logo.svg', '/assets/logo.svg', '/assets/brand/logo.svg', '/images/logo.svg',
+    '/logo.png', '/images/logo.png', '/apple-touch-icon.png', '/android-chrome-512x512.png',
+    '/favicon.svg', '/favicon.png', '/favicon-32x32.png', '/favicon.ico',
+  ];
+  const results = await Promise.all(candidates.map(async (path) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2_800);
+    try {
+      const candidate = assertPublicHttpUrl(new URL(path, baseUrl).toString());
+      const fetched = await fetchPublicHttpFollowingRedirects(candidate.toString(), {
+        signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
+        headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'image/*' },
+      }, 3);
+      const response = fetched.response;
+      if (!response.ok) return null;
+      const type = (response.headers.get('content-type') ?? '').toLowerCase();
+      const finalUrl = fetched.url;
+      if (type.startsWith('image/')) {
+        if (type.includes('svg') || /\.svg(?:[?#]|$)/i.test(finalUrl)) {
+          const body = await readBoundedBody(response, 180_000);
+          return /<svg[\s>]/i.test(body.content) ? finalUrl : null;
+        }
+        return finalUrl;
+      }
+      if (/\.svg(?:[?#]|$)/i.test(finalUrl) && (!type || /text\/plain|application\/octet-stream/i.test(type))) {
+        const body = await readBoundedBody(response, 180_000);
+        return /<svg[\s>]/i.test(body.content) ? finalUrl : null;
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }));
+  return results.find((url): url is string => Boolean(url)) ?? null;
+}
+
+function absoluteUrl(value: string | undefined, base: string): string | null {
+  if (!value || value.startsWith('data:') || value.startsWith('javascript:')) return null;
+  try {
+    const url = new URL(value, base);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchRenderedResearch(url: string, maxWaitMs = 9_000, sharedSignal?: AbortSignal): Promise<RenderedResearch | null> {
+  let source: URL;
+  try {
+    source = assertPublicHttpUrl(url);
+    source.hash = '';
+  } catch {
+    return null;
+  }
+
+  // Keep reader recovery generic. Some public hosts behave differently when
+  // their page is fetched through an HTTPS- or HTTP-origin reader URL.
+  const targets = [source.toString()];
+  const alternateProtocol = new URL(source);
+  alternateProtocol.protocol = source.protocol === 'https:' ? 'http:' : 'https:';
+  if (!targets.includes(alternateProtocol.toString())) targets.push(alternateProtocol.toString());
+
+  const deadline = Date.now() + Math.min(Math.max(env().RESEARCH_TIMEOUT_MS, 6_000), maxWaitMs);
+  for (const target of targets) {
+    const remaining = deadline - Date.now();
+    if (remaining < 1_000) break;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), remaining);
+    try {
+      const response = await fetch('https://r.jina.ai/' + target, {
+        signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
+        headers: {
+          accept: 'text/plain',
+          ...(env().JINA_API_KEY ? { authorization: 'Bearer ' + env().JINA_API_KEY } : {}),
+        },
+      });
+      if (!response.ok) continue;
+      const text = (await response.text()).trim();
+      if (text.length < 180 || isRenderedReaderError(text)) continue;
+      const lines = text.split('\n').map((line) => line.trim());
+      const title = lines.find((line) => line.startsWith('# '))?.slice(2).trim()
+        || lines.find((line) => /^title:\s*\S/i.test(line))?.replace(/^title:\s*/i, '').trim()
+        || null;
+      return { title, text: text.slice(0, 50_000) };
+    } catch {
+      // Retry the same public page through the alternate scheme within the shared deadline.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
+function renderedResearchLinks(text: string, baseUrl: string): string[] {
+  const found = new Set<string>();
+  const add = (raw: string) => {
+    try {
+      const candidate = assertPublicHttpUrl(new URL(raw, baseUrl).toString());
+      if (!sameSite(baseUrl, candidate.toString())) return;
+      candidate.hash = '';
+      if (/\.(?:png|jpe?g|gif|svg|webp|pdf|zip|xml|css|js|mp4|webm)$/i.test(candidate.pathname)) return;
+      found.add(candidate.toString());
+    } catch {
+      // Reader links are untrusted input; invalid/private/non-HTTP URLs are ignored.
+    }
+  };
+  for (const match of text.matchAll(/\]\((https?:\/\/[^)\s]+|\/[^)\s]+)\)/g)) {
+    if (match[1]) add(match[1]);
+  }
+  for (const match of text.matchAll(/https?:\/\/[^\s<>"')]+/g)) {
+    if (match[0]) add(match[0].replace(/[.,;:!?]+$/, ''));
+  }
+  return [...found].slice(0, 8);
+}
+function pageText(html: string): { title: string | null; text: string } {
+  const $ = cheerio.load(html);
+  $('script,style,noscript,svg,template,header,nav,footer,aside,[role="banner"],[role="navigation"],[role="contentinfo"],[aria-label*="navigation"],[id*="cookie"],[class*="cookie"]').remove();
+  const title = $('title').first().text().replace(/\s+/g, ' ').trim() || null;
+  // Prefer substantive page content over repeated navigation and footer links.
+  // Fall back to cleaned body text for sites without semantic content landmarks.
+  const main = $('main, [role="main"], article').first();
+  const content = main.length ? main : $('body');
+  const ctaLabels = new Set<string>();
+  content.find('a,button,[role="button"]').each((_index, element) => {
+    const node = $(element);
+    const label = node.text().replace(/\s+/g, ' ').trim();
+    if (!isWebsiteActionLabel(label) || isGenericWebsiteNavLabel(label)) return;
+    // Preserve real card headings and image alt text; only remove the standalone
+    // short action label from the prose provided to structured extraction.
+    if (node.find('h1,h2,h3,h4,img').length) return;
+    ctaLabels.add(label);
+    node.empty();
+  });
+  const primaryText = content.text();
+  const readableText = primaryText.replace(/\s+/g, ' ').trim();
+  const actionText = ctaLabels.size ? ' Visible calls to action: ' + [...ctaLabels].slice(0, 16).join(' · ') : '';
+  const text = (readableText + actionText).trim().slice(0, 16_000);
+  return { title, text };
+}
+
+function prioritizedLinks(html: string, rootUrl: string): string[] {
+  const $ = cheerio.load(html);
+  const root = new URL(rootUrl);
+  const rootHost = normalizeWebsiteHostname(root.hostname);
+  const scored = new Map<string, number>();
+  const highSignal = [
+    ['mission', 18], ['science', 18], ['research', 17], ['technology', 16], ['program', 15],
+    ['product', 15], ['service', 15], ['solution', 14], ['about', 14], ['company', 12],
+    ['audience', 11], ['customer', 11], ['industry', 10], ['education', 10], ['learning', 10],
+    ['offer', 9], ['pricing', 8], ['feature', 8], ['use-case', 8], ['who-we-are', 8],
+    ['team', 7], ['contact', 2], ['work', 4], ['portfolio', 4],
+  ] as const;
+  const lowSignal = [
+    'news', 'press', 'blog', 'podcast', 'event', 'media', 'social', 'newsletter',
+  ] as const;
+
+  $('a[href]').each((_i, el) => {
+    const href = absoluteUrl($(el).attr('href'), rootUrl);
+    if (!href) return;
+    let parsed: URL;
+    try { parsed = new URL(href); } catch { return; }
+    if (normalizeWebsiteHostname(parsed.hostname) !== rootHost) return;
+    if (parsed.hash) return;
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (/^(?:utm_.+|icid|bc|source|campaign|cmp|ref|_gl|gclid|fbclid)$/i.test(key)) parsed.searchParams.delete(key);
+    }
+
+    const pathText = parsed.pathname + ' ' + ($(el).text() || '');
+    const normalized = pathText.toLowerCase();
+    let score = parsed.pathname === '/' || parsed.pathname === '' ? 4 : 0;
+
+    for (const [keyword, weight] of highSignal) {
+      if (normalized.includes(keyword)) score += weight;
+    }
+    for (const keyword of lowSignal) {
+      if (normalized.includes(keyword)) score -= 10;
+    }
+
+    if (score > 0) {
+      scored.set(parsed.toString(), Math.max(score, scored.get(parsed.toString()) ?? 0));
+    }
+  });
+
+  return [...scored.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([url]) => url);
+}
+
+function externalStylesheetUrls(html: string, baseUrl: string): string[] {
+  const $ = cheerio.load(html);
+  const scores = new Map<string, number>();
+  const add = (raw: string | undefined, priority: number) => {
+    const href = absoluteUrl(raw, baseUrl);
+    if (!href) return;
+    try {
+      const parsed = assertPublicHttpUrl(href);
+      const url = parsed.toString();
+      const path = (parsed.pathname + parsed.search).toLowerCase();
+      // Prefer explicitly linked stylesheets and likely site-wide design tokens
+      // over unrelated preloads when a page declares many CSS resources.
+      const assetSignal = /(?:^|[-_/.])(core|base|theme|global|main|style|styles|design|brand|token)(?:[-_/.]|$)/i.test(path) ? 8 : 0;
+      const sameOriginSignal = parsed.origin === new URL(baseUrl).origin ? 2 : 0;
+      scores.set(url, Math.max(scores.get(url) ?? 0, priority + assetSignal + sameOriginSignal));
+    } catch {
+      // Invalid schemes, credentials and non-standard ports are rejected.
+    }
+  };
+  $('link[href]').each((_i, el) => {
+    const node = $(el);
+    const rel = (node.attr('rel') ?? '').toLowerCase().split(/\s+/);
+    const as = (node.attr('as') ?? '').toLowerCase();
+    const href = node.attr('href') ?? '';
+    if (rel.includes('stylesheet')) add(href, 30);
+    else if (rel.includes('preload') && as === 'style') add(href, 20);
+    else if (/\.css(?:[?#]|$)/i.test(href)) add(href, 15);
+  });
+  $('style').each((_i, el) => {
+    const css = $(el).text();
+    for (const match of css.matchAll(/@import\s+(?:url\()?\s*["']?([^"')\s;]+)["']?\s*\)?/gi)) {
+      if (match[1]) add(match[1], 10);
+    }
+  });
+  return [...scores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([url]) => url);
+}
+function mergeExternalCss(
+  identity: ExtractedIdentity,
+  cssBlocks: string[],
+  assetBlocks: string[] = [],
+  manifestColors: string[] = [],
+  rasterColors: WebsiteRasterColorSample[] = [],
+  scriptBlocks: string[] = [],
+): ExtractedIdentity {
+  if (cssBlocks.length === 0 && assetBlocks.length === 0 && manifestColors.length === 0 && rasterColors.length === 0 && scriptBlocks.length === 0) return identity;
+  const sink = new Map<string, { count: number; sources: Set<string> }>();
+  for (const css of cssBlocks) collectColors(css, 'external-stylesheet', sink);
+  // Analyse CSS together so font variables defined in one bundle can resolve
+  // font-family declarations in another. Body/heading assignments outrank an
+  // incidental @font-face declaration or a linked font that is never used.
+  const fonts = rankExtractedFonts([
+    ...identity.fonts,
+    ...extractDeclaredFonts(cssBlocks.join('\n')),
+  ]).slice(0, 10);
+  for (const asset of assetBlocks) collectColors(asset, 'logo-svg-color', sink);
+  for (const script of scriptBlocks) collectJavaScriptDesignTokens(script, sink);
+  for (const sample of rasterColors) {
+    const entry = sink.get(sample.hex) ?? { count: 0, sources: new Set<string>() };
+    entry.count += rasterColorEvidenceWeight(sample.count);
+    entry.sources.add(sample.evidenceSource ?? 'favicon-raster-color');
+    sink.set(sample.hex, entry);
+  }
+  for (const rawColor of manifestColors) {
+    const hex = parseCssColor(rawColor);
+    if (!hex) continue;
+    const entry = sink.get(hex) ?? { count: 0, sources: new Set<string>() };
+    entry.count += 10;
+    entry.sources.add('manifest-theme-color');
+    sink.set(hex, entry);
+  }
+
+  const externalPalette = rankPalette(sink, 8);
+  const paletteMap = new Map(identity.palette.map((color) => [color.hex, color]));
+  for (const color of externalPalette) {
+    const previous = paletteMap.get(color.hex);
+    paletteMap.set(color.hex, previous ? {
+      ...color,
+      occurrences: previous.occurrences + color.occurrences,
+      sources: [...new Set([...previous.sources, ...color.sources])],
+    } : color);
+  }
+  const mergedPalette = rankPalette(
+    new Map([...paletteMap.entries()].map(([hex, color]) => [hex, { count: color.occurrences, sources: new Set(color.sources) }])) ,
+    10,
+  );
+  const chromatic = mergedPalette.filter((c) => c.role !== 'neutral');
+
+  return {
+    ...identity,
+    palette: mergedPalette,
+    primaryColor: chromatic[0]?.hex ?? identity.primaryColor,
+    secondaryColors: chromatic.slice(1, 5).map((c) => c.hex),
+    accentColors: chromatic.slice(5, 9).map((c) => c.hex),
+    fonts,
+    inspected: [
+      ...identity.inspected,
+      ...(cssBlocks.length ? [`${cssBlocks.length} external stylesheet(s)`] : []),
+      ...(assetBlocks.length ? [`${assetBlocks.length} SVG visual asset(s)`] : []),
+      ...(manifestColors.length ? ['web-app manifest theme colour'] : []),
+      ...(rasterColors.length ? [String(rasterColors.length) + ' logo/favicon raster colour sample(s)'] : []),
+      ...(scriptBlocks.length ? [String(scriptBlocks.length) + ' inline/script bundle(s) inspected for design tokens'] : []),
+      ...([...sink.values()].some((entry) => entry.sources.has('js-style-tokens')) ? ['JavaScript/CSS-in-JS design tokens'] : []),
+    ],
+    warnings: identity.warnings.filter((warning) =>
+      !((cssBlocks.length > 0 || assetBlocks.length > 0 || manifestColors.length > 0 || rasterColors.length > 0 || scriptBlocks.length > 0) &&
+        (warning.includes('inline stylesheet') || warning.includes('embedded stylesheet'))) &&
+      !((cssBlocks.length > 0 || assetBlocks.length > 0 || manifestColors.length > 0 || rasterColors.length > 0 || scriptBlocks.length > 0) &&
+        (externalPalette.length > 0 || mergedPalette.some((color) => color.role !== 'neutral')) &&
+        warning.includes('No usable colour declarations')),
+    ),
+  };
+}
+
+type CssResource = { url: string; css: string };
+
+
 async function fetchCssTree(url: string, depth = 0, seen = new Set<string>(), sharedSignal?: AbortSignal): Promise<CssResource[]> {
   let normalized: string;
   try {
