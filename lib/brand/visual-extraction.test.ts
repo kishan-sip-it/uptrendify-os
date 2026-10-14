@@ -153,6 +153,8 @@ describe('colour classification', () => {
     expect(isNeutral('#6b7280')).toBe(true);
     expect(isNeutral('#b0352f')).toBe(false);
     expect(isNeutral('#adc35d')).toBe(false);
+    expect(isNeutral('#70152d')).toBe(false);
+    expect(isNeutral('#fff2a8')).toBe(false);
   });
 
   it('measures saturation and luminance', () => {

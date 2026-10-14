@@ -345,7 +345,11 @@ export function saturationOf(hex: string): number {
 export function isNeutral(hex: string): boolean {
   const saturation = saturationOf(hex);
   const luminance = relativeLuminance(hex);
-  return saturation <= NEUTRAL_SATURATION_MAX || luminance >= NEUTRAL_LIGHT_MIN || luminance <= NEUTRAL_DARK_MAX;
+  // Extreme lightness alone does not make a saturated colour neutral. In
+  // particular, dark burgundy/maroon and bright pastel/yellow brand colours
+  // must not be discarded just because their luminance is near an endpoint.
+  const extremeLuminanceNeutral = (luminance >= NEUTRAL_LIGHT_MIN || luminance <= NEUTRAL_DARK_MAX) && saturation <= 0.20;
+  return saturation <= NEUTRAL_SATURATION_MAX || extremeLuminanceNeutral;
 }
 
 const DELIBERATE_COLOUR_SOURCES = new Set([
