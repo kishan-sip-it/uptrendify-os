@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import { requireOrgRole, CAN_VIEW_DASHBOARD } from '@/lib/auth/roles';
 import { env } from '@/lib/env';
-import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from '@/lib/research/url-security';
+import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, fetchPublicHttpFollowingRedirects, readBoundedBody } from '@/lib/research/url-security';
 import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, extractRenderedLogoCandidates, extractDeclaredFonts, rankExtractedFonts, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, isBlockedWebsiteResponse, isRenderedReaderError, shouldRejectInsufficientWebsiteEvidence, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
 import { extractRasterPalette, rasterColorEvidenceWeight, type RasterColorSample } from '@/lib/brand/raster-color-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
@@ -240,15 +240,14 @@ async function fetchScriptText(url: string, sharedSignal?: AbortSignal): Promise
   const timeout = setTimeout(() => controller.abort(), 3500);
   try {
     const safe = assertPublicHttpUrl(url);
-    await assertResolvablePublicHost(safe.hostname);
-    const response = await fetchPublicHttp(safe.toString(), {
+    const fetched = await fetchPublicHttpFollowingRedirects(safe.toString(), {
       signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
-      redirect: 'manual',
       headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'text/javascript,application/javascript,application/ecmascript,*/*;q=0.1' },
-    });
+    }, 3);
+    const response = fetched.response;
     if (!response.ok) return null;
     const type = (response.headers.get('content-type') ?? '').toLowerCase();
-    if (!/(?:javascript|ecmascript|text\/plain)/i.test(type) && !/\.(?:m?js)(?:[?#]|$)/i.test(safe.toString())) return null;
+    if (!/(?:javascript|ecmascript|text\/plain)/i.test(type) && !/\.(?:m?js)(?:[?#]|$)/i.test(fetched.url)) return null;
     const bounded = await readBoundedBody(response, 280_000);
     return bounded.content.slice(0, 280_000);
   } catch {
@@ -300,12 +299,11 @@ async function fetchRasterColors(url: string, sharedSignal?: AbortSignal): Promi
   const timeout = setTimeout(() => controller.abort(), 3000);
   try {
     const safe = assertPublicHttpUrl(url);
-    await assertResolvablePublicHost(safe.hostname);
-    const response = await fetchPublicHttp(safe.toString(), {
+    const fetched = await fetchPublicHttpFollowingRedirects(safe.toString(), {
       signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
-      redirect: 'manual',
       headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'image/png,image/x-icon,image/vnd.microsoft.icon,image/*;q=0.5,*/*;q=0.1' },
-    });
+    }, 3);
+    const response = fetched.response;
     if (!response.ok) return [];
     const type = (response.headers.get('content-type') ?? '').toLowerCase();
     if (type.includes('text/html') || type.includes('application/json') || type.includes('javascript')) return [];
@@ -318,387 +316,36 @@ async function fetchRasterColors(url: string, sharedSignal?: AbortSignal): Promi
   }
 }
 
-async function fetchCss(url: string, sharedSignal?: AbortSignal): Promise<string> {
+async function fetchCss(url: string, sharedSignal?: AbortSignal): Promise<{ url: string; css: string } | null> {
   let safe: URL;
   try {
     safe = assertPublicHttpUrl(url);
     await assertResolvablePublicHost(safe.hostname);
-  } catch {
-    return '';
-  }
-
-  // Some public CDNs serve a block/error interstitial to the crawler identity.
-  // Retry only that stylesheet with a standard browser user-agent, keeping each
-  // attempt bounded and accepting only real CSS rather than an HTML error page.
+  } catch { return null; }
   const agents = [...new Set([env().RESEARCH_USER_AGENT, BROWSER_USER_AGENT])];
   for (const userAgent of agents) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3500);
     try {
-      const response = await fetchPublicHttp(safe.toString(), {
+      const fetched = await fetchPublicHttpFollowingRedirects(safe.toString(), {
         signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
-        redirect: 'follow',
         headers: { 'user-agent': userAgent, accept: 'text/css,*/*;q=0.1' },
-      });
+      }, 3);
+      const response = fetched.response;
       if (!response.ok) continue;
       const type = (response.headers.get('content-type') || '').toLowerCase();
       if (type.includes('text/html') || type.includes('application/json') || type.includes('javascript') || type.startsWith('image/')) continue;
-      const bounded = await readBoundedBody(response, 350_000);
-      const content = bounded.content;
-      // Some hosts serve declared stylesheets as text/plain or omit content-type
-      // on hashed CSS routes. Validate response content before accepting it.
+      const content = (await readBoundedBody(response, 350_000)).content;
+      const finalUrl = fetched.url;
       const looksLikeCss = /(?:--[\w-]+\s*:|(?:^|[;{\s])(?:color|background(?:-color)?|font-family|@import)\s*:?)|[^{}]+\{[^{}]*\}/i.test(content);
-      if (!content.trim() || (!type.includes('css') && !/\.css(?:[?#]|$)/i.test(safe.toString()) && !looksLikeCss)) continue;
-      return content;
+      if (!content.trim() || (!type.includes('css') && !/\.css(?:[?#]|$)/i.test(finalUrl) && !looksLikeCss)) continue;
+      return { url: finalUrl, css: content };
     } catch {
-      // A failed request can be retried once with the alternate user-agent.
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-  return '';
-}
-
-
-async function verifyPublicLogoAsset(url: string, sharedSignal?: AbortSignal): Promise<string | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2500);
-  try {
-    const safe = assertPublicHttpUrl(url);
-    await assertResolvablePublicHost(safe.hostname);
-    const response = await fetchPublicHttp(safe.toString(), {
-      signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
-      redirect: 'manual',
-      headers: {
-        'user-agent': env().RESEARCH_USER_AGENT,
-        accept: 'image/svg+xml,image/png,image/jpeg,image/webp,image/avif,image/gif,*/*;q=0.1',
-      },
-    });
-    if (!response.ok) return null;
-    const type = (response.headers.get('content-type') ?? '').toLowerCase();
-    if (!type.startsWith('image/')) return null;
-    const length = Number(response.headers.get('content-length') ?? 0);
-    if (length > 1_500_000) return null;
-    if (type.includes('svg')) {
-      const body = await readBoundedBody(response, 180_000);
-      if (!/<svg[\s>]/i.test(body.content)) return null;
-    }
-    return safe.toString();
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function verifyConventionalIcon(baseUrl: string, sharedSignal?: AbortSignal): Promise<string | null> {
-  // Prefer explicit logo assets when published at conventional first-party paths;
-  // use favicon/app icons only as a final fallback. Every candidate is verified
-  // by a successful image response before it is returned.
-  const candidates = [
-    '/logo.svg',
-    '/assets/logo.svg',
-    '/logo.png',
-    '/images/logo.svg',
-    '/apple-touch-icon.png',
-    '/favicon.svg',
-    '/favicon.ico',
-  ];
-  const results = await Promise.all(candidates.map(async (path) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2500);
-    try {
-      const candidate = assertPublicHttpUrl(new URL(path, baseUrl).toString());
-      await assertResolvablePublicHost(candidate.hostname);
-      const response = await fetchPublicHttp(candidate.toString(), {
-        signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
-        redirect: 'manual',
-        headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'image/*' },
-      });
-      if (!response.ok) return null;
-      const type = (response.headers.get('content-type') ?? '').toLowerCase();
-      if (type.startsWith('image/')) return candidate.toString();
-      if (/(?:html|json|javascript)/i.test(type)) return null;
-      if (/\.(?:svg|png|ico)$/i.test(path) && !type) return candidate.toString();
-      return null;
-    } catch {
-      return null;
-    } finally {
-      clearTimeout(timer);
-    }
-  }));
-  return results.find((url): url is string => Boolean(url)) ?? null;
-}
-function absoluteUrl(value: string | undefined, base: string): string | null {
-  if (!value || value.startsWith('data:') || value.startsWith('javascript:')) return null;
-  try {
-    const url = new URL(value, base);
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchRenderedResearch(url: string, maxWaitMs = 9_000, sharedSignal?: AbortSignal): Promise<RenderedResearch | null> {
-  let source: URL;
-  try {
-    source = assertPublicHttpUrl(url);
-    source.hash = '';
-  } catch {
-    return null;
-  }
-
-  // Keep reader recovery generic. Some public hosts behave differently when
-  // their page is fetched through an HTTPS- or HTTP-origin reader URL.
-  const targets = [source.toString()];
-  const alternateProtocol = new URL(source);
-  alternateProtocol.protocol = source.protocol === 'https:' ? 'http:' : 'https:';
-  if (!targets.includes(alternateProtocol.toString())) targets.push(alternateProtocol.toString());
-
-  const deadline = Date.now() + Math.min(Math.max(env().RESEARCH_TIMEOUT_MS, 6_000), maxWaitMs);
-  for (const target of targets) {
-    const remaining = deadline - Date.now();
-    if (remaining < 1_000) break;
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), remaining);
-    try {
-      const response = await fetch('https://r.jina.ai/' + target, {
-        signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
-        headers: {
-          accept: 'text/plain',
-          ...(env().JINA_API_KEY ? { authorization: 'Bearer ' + env().JINA_API_KEY } : {}),
-        },
-      });
-      if (!response.ok) continue;
-      const text = (await response.text()).trim();
-      if (text.length < 180 || isRenderedReaderError(text)) continue;
-      const lines = text.split('\n').map((line) => line.trim());
-      const title = lines.find((line) => line.startsWith('# '))?.slice(2).trim()
-        || lines.find((line) => /^title:\s*\S/i.test(line))?.replace(/^title:\s*/i, '').trim()
-        || null;
-      return { title, text: text.slice(0, 50_000) };
-    } catch {
-      // Retry the same public page through the alternate scheme within the shared deadline.
-    } finally {
-      clearTimeout(timer);
-    }
+      // Retry once with the browser user-agent if the first public request fails.
+    } finally { clearTimeout(timeout); }
   }
   return null;
 }
-function renderedResearchLinks(text: string, baseUrl: string): string[] {
-  const found = new Set<string>();
-  const add = (raw: string) => {
-    try {
-      const candidate = assertPublicHttpUrl(new URL(raw, baseUrl).toString());
-      if (!sameSite(baseUrl, candidate.toString())) return;
-      candidate.hash = '';
-      if (/\.(?:png|jpe?g|gif|svg|webp|pdf|zip|xml|css|js|mp4|webm)$/i.test(candidate.pathname)) return;
-      found.add(candidate.toString());
-    } catch {
-      // Reader links are untrusted input; invalid/private/non-HTTP URLs are ignored.
-    }
-  };
-  for (const match of text.matchAll(/\]\((https?:\/\/[^)\s]+|\/[^)\s]+)\)/g)) {
-    if (match[1]) add(match[1]);
-  }
-  for (const match of text.matchAll(/https?:\/\/[^\s<>"')]+/g)) {
-    if (match[0]) add(match[0].replace(/[.,;:!?]+$/, ''));
-  }
-  return [...found].slice(0, 8);
-}
-function pageText(html: string): { title: string | null; text: string } {
-  const $ = cheerio.load(html);
-  $('script,style,noscript,svg,template,header,nav,footer,aside,[role="banner"],[role="navigation"],[role="contentinfo"],[aria-label*="navigation"],[id*="cookie"],[class*="cookie"]').remove();
-  const title = $('title').first().text().replace(/\s+/g, ' ').trim() || null;
-  // Prefer substantive page content over repeated navigation and footer links.
-  // Fall back to cleaned body text for sites without semantic content landmarks.
-  const main = $('main, [role="main"], article').first();
-  const content = main.length ? main : $('body');
-  const ctaLabels = new Set<string>();
-  content.find('a,button,[role="button"]').each((_index, element) => {
-    const node = $(element);
-    const label = node.text().replace(/\s+/g, ' ').trim();
-    if (!isWebsiteActionLabel(label) || isGenericWebsiteNavLabel(label)) return;
-    // Preserve real card headings and image alt text; only remove the standalone
-    // short action label from the prose provided to structured extraction.
-    if (node.find('h1,h2,h3,h4,img').length) return;
-    ctaLabels.add(label);
-    node.empty();
-  });
-  const primaryText = content.text();
-  const readableText = primaryText.replace(/\s+/g, ' ').trim();
-  const actionText = ctaLabels.size ? ' Visible calls to action: ' + [...ctaLabels].slice(0, 16).join(' · ') : '';
-  const text = (readableText + actionText).trim().slice(0, 16_000);
-  return { title, text };
-}
-
-function prioritizedLinks(html: string, rootUrl: string): string[] {
-  const $ = cheerio.load(html);
-  const root = new URL(rootUrl);
-  const rootHost = normalizeWebsiteHostname(root.hostname);
-  const scored = new Map<string, number>();
-  const highSignal = [
-    ['mission', 18], ['science', 18], ['research', 17], ['technology', 16], ['program', 15],
-    ['product', 15], ['service', 15], ['solution', 14], ['about', 14], ['company', 12],
-    ['audience', 11], ['customer', 11], ['industry', 10], ['education', 10], ['learning', 10],
-    ['offer', 9], ['pricing', 8], ['feature', 8], ['use-case', 8], ['who-we-are', 8],
-    ['team', 7], ['contact', 2], ['work', 4], ['portfolio', 4],
-  ] as const;
-  const lowSignal = [
-    'news', 'press', 'blog', 'podcast', 'event', 'media', 'social', 'newsletter',
-  ] as const;
-
-  $('a[href]').each((_i, el) => {
-    const href = absoluteUrl($(el).attr('href'), rootUrl);
-    if (!href) return;
-    let parsed: URL;
-    try { parsed = new URL(href); } catch { return; }
-    if (normalizeWebsiteHostname(parsed.hostname) !== rootHost) return;
-    if (parsed.hash) return;
-    for (const key of [...parsed.searchParams.keys()]) {
-      if (/^(?:utm_.+|icid|bc|source|campaign|cmp|ref|_gl|gclid|fbclid)$/i.test(key)) parsed.searchParams.delete(key);
-    }
-
-    const pathText = parsed.pathname + ' ' + ($(el).text() || '');
-    const normalized = pathText.toLowerCase();
-    let score = parsed.pathname === '/' || parsed.pathname === '' ? 4 : 0;
-
-    for (const [keyword, weight] of highSignal) {
-      if (normalized.includes(keyword)) score += weight;
-    }
-    for (const keyword of lowSignal) {
-      if (normalized.includes(keyword)) score -= 10;
-    }
-
-    if (score > 0) {
-      scored.set(parsed.toString(), Math.max(score, scored.get(parsed.toString()) ?? 0));
-    }
-  });
-
-  return [...scored.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([url]) => url);
-}
-
-function externalStylesheetUrls(html: string, baseUrl: string): string[] {
-  const $ = cheerio.load(html);
-  const scores = new Map<string, number>();
-  const add = (raw: string | undefined, priority: number) => {
-    const href = absoluteUrl(raw, baseUrl);
-    if (!href) return;
-    try {
-      const parsed = assertPublicHttpUrl(href);
-      const url = parsed.toString();
-      const path = (parsed.pathname + parsed.search).toLowerCase();
-      // Prefer explicitly linked stylesheets and likely site-wide design tokens
-      // over unrelated preloads when a page declares many CSS resources.
-      const assetSignal = /(?:^|[-_/.])(core|base|theme|global|main|style|styles|design|brand|token)(?:[-_/.]|$)/i.test(path) ? 8 : 0;
-      const sameOriginSignal = parsed.origin === new URL(baseUrl).origin ? 2 : 0;
-      scores.set(url, Math.max(scores.get(url) ?? 0, priority + assetSignal + sameOriginSignal));
-    } catch {
-      // Invalid schemes, credentials and non-standard ports are rejected.
-    }
-  };
-  $('link[href]').each((_i, el) => {
-    const node = $(el);
-    const rel = (node.attr('rel') ?? '').toLowerCase().split(/\s+/);
-    const as = (node.attr('as') ?? '').toLowerCase();
-    const href = node.attr('href') ?? '';
-    if (rel.includes('stylesheet')) add(href, 30);
-    else if (rel.includes('preload') && as === 'style') add(href, 20);
-    else if (/\.css(?:[?#]|$)/i.test(href)) add(href, 15);
-  });
-  $('style').each((_i, el) => {
-    const css = $(el).text();
-    for (const match of css.matchAll(/@import\s+(?:url\()?\s*["']?([^"')\s;]+)["']?\s*\)?/gi)) {
-      if (match[1]) add(match[1], 10);
-    }
-  });
-  return [...scores.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 12)
-    .map(([url]) => url);
-}
-function mergeExternalCss(
-  identity: ExtractedIdentity,
-  cssBlocks: string[],
-  assetBlocks: string[] = [],
-  manifestColors: string[] = [],
-  rasterColors: WebsiteRasterColorSample[] = [],
-  scriptBlocks: string[] = [],
-): ExtractedIdentity {
-  if (cssBlocks.length === 0 && assetBlocks.length === 0 && manifestColors.length === 0 && rasterColors.length === 0 && scriptBlocks.length === 0) return identity;
-  const sink = new Map<string, { count: number; sources: Set<string> }>();
-  for (const css of cssBlocks) collectColors(css, 'external-stylesheet', sink);
-  // Analyse CSS together so font variables defined in one bundle can resolve
-  // font-family declarations in another. Body/heading assignments outrank an
-  // incidental @font-face declaration or a linked font that is never used.
-  const fonts = rankExtractedFonts([
-    ...identity.fonts,
-    ...extractDeclaredFonts(cssBlocks.join('\n')),
-  ]).slice(0, 10);
-  for (const asset of assetBlocks) collectColors(asset, 'logo-svg-color', sink);
-  for (const script of scriptBlocks) collectJavaScriptDesignTokens(script, sink);
-  for (const sample of rasterColors) {
-    const entry = sink.get(sample.hex) ?? { count: 0, sources: new Set<string>() };
-    entry.count += rasterColorEvidenceWeight(sample.count);
-    entry.sources.add(sample.evidenceSource ?? 'favicon-raster-color');
-    sink.set(sample.hex, entry);
-  }
-  for (const rawColor of manifestColors) {
-    const hex = parseCssColor(rawColor);
-    if (!hex) continue;
-    const entry = sink.get(hex) ?? { count: 0, sources: new Set<string>() };
-    entry.count += 10;
-    entry.sources.add('manifest-theme-color');
-    sink.set(hex, entry);
-  }
-
-  const externalPalette = rankPalette(sink, 8);
-  const paletteMap = new Map(identity.palette.map((color) => [color.hex, color]));
-  for (const color of externalPalette) {
-    const previous = paletteMap.get(color.hex);
-    paletteMap.set(color.hex, previous ? {
-      ...color,
-      occurrences: previous.occurrences + color.occurrences,
-      sources: [...new Set([...previous.sources, ...color.sources])],
-    } : color);
-  }
-  const mergedPalette = rankPalette(
-    new Map([...paletteMap.entries()].map(([hex, color]) => [hex, { count: color.occurrences, sources: new Set(color.sources) }])) ,
-    10,
-  );
-  const chromatic = mergedPalette.filter((c) => c.role !== 'neutral');
-
-  return {
-    ...identity,
-    palette: mergedPalette,
-    primaryColor: chromatic[0]?.hex ?? identity.primaryColor,
-    secondaryColors: chromatic.slice(1, 5).map((c) => c.hex),
-    accentColors: chromatic.slice(5, 9).map((c) => c.hex),
-    fonts,
-    inspected: [
-      ...identity.inspected,
-      ...(cssBlocks.length ? [`${cssBlocks.length} external stylesheet(s)`] : []),
-      ...(assetBlocks.length ? [`${assetBlocks.length} SVG visual asset(s)`] : []),
-      ...(manifestColors.length ? ['web-app manifest theme colour'] : []),
-      ...(rasterColors.length ? [String(rasterColors.length) + ' logo/favicon raster colour sample(s)'] : []),
-      ...(scriptBlocks.length ? [String(scriptBlocks.length) + ' inline/script bundle(s) inspected for design tokens'] : []),
-      ...([...sink.values()].some((entry) => entry.sources.has('js-style-tokens')) ? ['JavaScript/CSS-in-JS design tokens'] : []),
-    ],
-    warnings: identity.warnings.filter((warning) =>
-      !((cssBlocks.length > 0 || assetBlocks.length > 0 || manifestColors.length > 0 || rasterColors.length > 0 || scriptBlocks.length > 0) &&
-        (warning.includes('inline stylesheet') || warning.includes('embedded stylesheet'))) &&
-      !((cssBlocks.length > 0 || assetBlocks.length > 0 || manifestColors.length > 0 || rasterColors.length > 0 || scriptBlocks.length > 0) &&
-        (externalPalette.length > 0 || mergedPalette.some((color) => color.role !== 'neutral')) &&
-        warning.includes('No usable colour declarations')),
-    ),
-  };
-}
-
-type CssResource = { url: string; css: string };
 
 async function fetchCssTree(url: string, depth = 0, seen = new Set<string>(), sharedSignal?: AbortSignal): Promise<CssResource[]> {
   let normalized: string;
@@ -709,20 +356,23 @@ async function fetchCssTree(url: string, depth = 0, seen = new Set<string>(), sh
   }
   if (seen.has(normalized)) return [];
   seen.add(normalized);
-  const css = await fetchCss(normalized, sharedSignal);
-  if (!css) return [];
-  if (depth >= 1) return [{ url: normalized, css }];
+  const fetched = await fetchCss(normalized, sharedSignal);
+  if (!fetched) return [];
+  const resourceUrl = fetched.url;
+  const css = fetched.css;
+  if (resourceUrl !== normalized) seen.add(resourceUrl);
+  if (depth >= 1) return [{ url: resourceUrl, css }];
 
   const imported = new Set<string>();
   for (const match of css.matchAll(/@import\s+(?:url\()?\s*["']?([^"')\s;]+)["']?\s*\)?/gi)) {
     try {
-      imported.add(assertPublicHttpUrl(new URL(match[1]!, normalized).toString()).toString());
+      imported.add(assertPublicHttpUrl(new URL(match[1]!, resourceUrl).toString()).toString());
     } catch {
       // Ignore invalid or unsafe nested imports.
     }
   }
   const children = await Promise.all([...imported].slice(0, 2).map((child) => fetchCssTree(child, depth + 1, seen, sharedSignal)));
-  return [{ url: normalized, css }, ...children.flat()];
+  return [{ url: resourceUrl, css }, ...children.flat()];
 }
 
 async function attachSourceFontAssets(
@@ -804,15 +454,14 @@ async function fetchSvgAsset(url: string, sharedSignal?: AbortSignal): Promise<s
   const timeout = setTimeout(() => controller.abort(), 3000);
   try {
     const safe = assertPublicHttpUrl(url);
-    await assertResolvablePublicHost(safe.hostname);
-    const response = await fetchPublicHttp(safe.toString(), {
+    const fetched = await fetchPublicHttpFollowingRedirects(safe.toString(), {
       signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
-      redirect: 'manual',
       headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'image/svg+xml,text/plain;q=0.8,*/*;q=0.2' },
-    });
+    }, 3);
+    const response = fetched.response;
     if (!response.ok) return null;
     const type = (response.headers.get('content-type') ?? '').toLowerCase();
-    if (!type.includes('svg') && !/\.svg(?:[?#]|$)/i.test(safe.toString())) return null;
+    if (!type.includes('svg') && !/\.svg(?:[?#]|$)/i.test(fetched.url)) return null;
     const body = await readBoundedBody(response, 180_000);
     return /<svg[\s>]/i.test(body.content) ? body.content : null;
   } catch {
@@ -829,43 +478,52 @@ async function fetchManifestVisuals(html: string, baseUrl: string, sharedSignal?
     const href = absoluteUrl($(el).attr('href'), baseUrl);
     if (href) urls.add(href);
   });
-  for (const url of [...urls].slice(0, 2)) {
+  if (urls.size === 0) {
+    // The homepage may be blocked/text-reader-only, hiding its manifest link.
+    for (const path of ['/site.webmanifest', '/manifest.json', '/manifest.webmanifest']) {
+      const candidate = absoluteUrl(path, baseUrl);
+      if (candidate) urls.add(candidate);
+    }
+  }
+  for (const url of [...urls].slice(0, 3)) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
     try {
       const safe = assertPublicHttpUrl(url);
-      await assertResolvablePublicHost(safe.hostname);
-      const response = await fetchPublicHttp(safe.toString(), {
+      const fetched = await fetchPublicHttpFollowingRedirects(safe.toString(), {
         signal: sharedSignal ? AbortSignal.any([controller.signal, sharedSignal]) : controller.signal,
-        redirect: 'manual',
         headers: { 'user-agent': env().RESEARCH_USER_AGENT, accept: 'application/manifest+json,application/json,*/*;q=0.2' },
-      });
+      }, 3);
+      const response = fetched.response;
       if (!response.ok) continue;
+      const type = (response.headers.get('content-type') ?? '').toLowerCase();
+      if (type.includes('text/html') || type.includes('javascript')) continue;
       const bounded = await readBoundedBody(response, 100_000);
       const manifest = JSON.parse(bounded.content) as {
         theme_color?: unknown;
         background_color?: unknown;
-        icons?: Array<{ src?: unknown; sizes?: unknown }>;
+        icons?: Array<{ src?: unknown; sizes?: unknown; purpose?: unknown }>;
       };
       const colors = [manifest.theme_color, manifest.background_color]
         .filter((value): value is string => typeof value === 'string' && Boolean(parseCssColor(value)));
+      const iconSize = (icon: { sizes?: unknown; purpose?: unknown }) => {
+        const sizes = String(icon.sizes ?? '').split(/\s+/);
+        const maxSize = Math.max(0, ...sizes.map((size) => Number(size.split('x')[0]) || 0));
+        return maxSize + (String(icon.purpose ?? '').toLowerCase().includes('maskable') ? -32 : 0);
+      };
       const icons = (Array.isArray(manifest.icons) ? manifest.icons : [])
         .filter((icon) => typeof icon.src === 'string')
-        .sort((a, b) => Number(String(b.sizes ?? '').split('x')[0]) - Number(String(a.sizes ?? '').split('x')[0]))
+        .sort((a, b) => iconSize(b) - iconSize(a))
         .slice(0, 4)
-        .map((icon) => absoluteUrl(String(icon.src), safe.toString()))
+        .map((icon) => absoluteUrl(String(icon.src), fetched.url))
         .filter((value): value is string => Boolean(value));
       return { colors, icons };
     } catch {
       // A malformed or blocked manifest must not invalidate the website scan.
-    } finally {
-      clearTimeout(timeout);
-    }
+    } finally { clearTimeout(timeout); }
   }
   return { colors: [], icons: [] };
-}
-
-function mergeVisualIdentity(identity: ExtractedIdentity, visual: ExtractedIdentity): ExtractedIdentity {
+}function mergeVisualIdentity(identity: ExtractedIdentity, visual: ExtractedIdentity): ExtractedIdentity {
   const palette = new Map<string, { count: number; sources: Set<string> }>();
   for (const item of [...identity.palette, ...visual.palette]) {
     const entry = palette.get(item.hex) ?? { count: 0, sources: new Set<string>() };
@@ -1273,6 +931,17 @@ export async function GET(request: Request) {
             renderedFallbackTitle = regionalPage.title;
           }
         } else {
+          console.warn(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: 'warn',
+            msg: 'Website identity scan could not recover a public page',
+            hostname: scanHostname,
+            elapsedMs: elapsed(),
+            stage: 'homepage-recovery',
+            fetchReason: outcome.reason,
+            renderedReaderUsed: false,
+            regionalFallbackTried: true,
+          }));
           return NextResponse.json(
             { error: outcome.reason + ' The public-page reader could not recover enough real first-party content from the homepage or common company/product pages, so no Brand IQ was created. Retry later, or enter a public About/Product page URL directly.', identity: null },
             { status: 422, headers: { 'Cache-Control': 'no-store' } },
@@ -1295,7 +964,22 @@ export async function GET(request: Request) {
           raw,
         );
     let baseHtml = outcome.ok && !outcome.renderedFallback ? outcome.html : '';
-    let baseUrl = outcome.ok ? outcome.finalUrl : raw;
+    let baseUrl = outcome.ok ? outcome.finalUrl : (outcome.finalUrl ?? raw);
+    const initialLogoUrl = identity.logoUrl;
+    const initialFaviconUrl = identity.faviconUrl;
+    const initialVisualUrls = [...new Set([initialLogoUrl, initialFaviconUrl].filter((url): url is string => Boolean(url)))];
+    const initialVisualBudgetMs = initialVisualUrls.length ? sharedWebsiteScanStageBudgetMs(elapsed(), 3_200) : 0;
+    if (initialVisualBudgetMs > 0) {
+      const checkedVisuals = await withTimeout(
+        Promise.all(initialVisualUrls.map(async (url) => ({ original: url, verified: await verifyPublicLogoAsset(url, scanController.signal) }))),
+        initialVisualBudgetMs,
+        'Initial logo verification exceeded the shared website scan budget',
+      ).catch(() => [] as Array<{ original: string; verified: string | null }>);
+      const verifiedByOriginal = new Map(checkedVisuals.map((item) => [item.original, item.verified]));
+      identity.logoUrl = initialLogoUrl ? (verifiedByOriginal.get(initialLogoUrl) ?? null) : null;
+      identity.faviconUrl = initialFaviconUrl ? (verifiedByOriginal.get(initialFaviconUrl) ?? null) : null;
+      if (initialLogoUrl && !identity.logoUrl) identity.warnings.push('The strongest logo reference did not return a verifiable public image; verified icon fallbacks will be tried.');
+    }
     let stylesheetUrls = baseHtml ? externalStylesheetUrls(baseHtml, baseUrl) : [];
     const scanNotices: string[] = [];
     const inlineCssAvailable = /<style\b[^>]*>[\s\S]*?\S[\s\S]*?<\/style>/i.test(baseHtml);
@@ -1407,8 +1091,24 @@ export async function GET(request: Request) {
     }
 
     const accessibleTextChars = evidencePages.reduce((total, page) => total + page.text.trim().length, 0);
-    const hasVisualEvidence = Boolean(identity.logoUrl || identity.faviconUrl || identity.palette.length);
+    let hasVisualEvidence = Boolean(identity.logoUrl || identity.faviconUrl || identity.palette.length);
+    if (!hasVisualEvidence && shouldRejectInsufficientWebsiteEvidence(accessibleTextChars, false)) {
+      const iconBudgetMs = sharedWebsiteScanStageBudgetMs(elapsed(), 2_800);
+      const conventionalIcon = iconBudgetMs > 0
+        ? await withTimeout(verifyConventionalIcon(baseUrl, scanController.signal), iconBudgetMs, 'Low-evidence icon recovery exceeded its budget').catch(() => null)
+        : null;
+      if (conventionalIcon) {
+        identity.logoUrl = conventionalIcon;
+        identity.faviconUrl = identity.faviconUrl ?? conventionalIcon;
+        identity.inspected.push('verified conventional icon recovered before the evidence gate');
+        hasVisualEvidence = true;
+      }
+    }
     if (shouldRejectInsufficientWebsiteEvidence(accessibleTextChars, hasVisualEvidence)) {
+      console.warn(JSON.stringify({
+        ts: new Date().toISOString(), level: 'warn', msg: 'Website identity scan rejected for insufficient evidence',
+        hostname: scanHostname, elapsedMs: elapsed(), stage: 'evidence-gate', accessibleTextChars, hasVisualEvidence,
+      }));
       return NextResponse.json(
         {
           error: 'The website was reached, but the scan could not verify enough readable first-party content to build a reliable Brand IQ. The site may require JavaScript rendering or block automated readers. Try its canonical homepage URL or retry later; no guessed company profile was created.',
@@ -1517,16 +1217,25 @@ export async function GET(request: Request) {
 
     // Some sites publish only an app manifest, or an SVG logo contains the
     // brand palette when the HTML has no authored CSS.
-    const manifestBudgetMs = baseHtml ? sharedWebsiteScanStageBudgetMs(elapsed(), optionalAssetBudgetMs(elapsed(), 3_000)) : 0;
-    const manifestVisuals = baseHtml && manifestBudgetMs > 0
+    const manifestBudgetMs = sharedWebsiteScanStageBudgetMs(elapsed(), optionalAssetBudgetMs(elapsed(), 3_000));
+    const manifestVisuals = manifestBudgetMs > 0
       ? await withTimeout(
           fetchManifestVisuals(baseHtml, baseUrl, scanController.signal),
           manifestBudgetMs,
           'Optional manifest inspection exceeded its budget',
         ).catch(() => ({ colors: [], icons: [] }))
       : { colors: [], icons: [] };
-    if (!identity.logoUrl && manifestVisuals.icons[0]) identity.logoUrl = manifestVisuals.icons[0];
-    if (!identity.faviconUrl && manifestVisuals.icons[0]) identity.faviconUrl = manifestVisuals.icons[0];
+    if (manifestVisuals.icons.length > 0 && (!identity.logoUrl || !identity.faviconUrl)) {
+      const verifiedManifestIcons = await Promise.all(
+        manifestVisuals.icons.slice(0, 3).map((url) => verifyPublicLogoAsset(url, scanController.signal)),
+      ).catch(() => [] as Array<string | null>);
+      const verifiedManifestIcon = verifiedManifestIcons.find((url): url is string => Boolean(url));
+      if (verifiedManifestIcon) {
+        identity.logoUrl = identity.logoUrl ?? verifiedManifestIcon;
+        identity.faviconUrl = identity.faviconUrl ?? verifiedManifestIcon;
+        if (!identity.inspected.includes('verified manifest icon fallback')) identity.inspected.push('verified manifest icon fallback');
+      }
+    }
 
     // A blocked homepage can still expose its own verified favicon/icon paths.
     // Use only a successful same-origin image response; never infer a logo URL.
