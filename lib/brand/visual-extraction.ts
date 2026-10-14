@@ -450,9 +450,15 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
   for (const match of cleaned.matchAll(COLOR_TOKEN)) {
     const position = match.index ?? 0;
     const context = selectorForPosition(position);
-    if (context && lowSignalSelector.test(context)) continue;
     const hex = parseCssColor(match[0]);
-    if (hex) add(hex);
+    if (!hex) continue;
+    if (context && lowSignalSelector.test(context)) {
+      // Preserve a weak palette record for debugging/secondary colors, but don't
+      // let UI error/toast/customer assets establish brand palette prominence.
+      add(hex, 0.25, 'low-signal-css');
+      continue;
+    }
+    add(hex);
   }
 
   // Parse complete colour declarations as well as tokens. This captures named
@@ -461,19 +467,21 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
   for (const declaration of cleaned.matchAll(declaredColorProperty)) {
     const declarationIndex = declaration.index ?? 0;
     const selector = selectorForPosition(declarationIndex);
-    if (selector && lowSignalSelector.test(selector)) continue;
     const value = (declaration[1] ?? '').trim();
+    const lowSignal = Boolean(selector && lowSignalSelector.test(selector));
+    const evidenceSource = lowSignal ? 'low-signal-css' : 'css-color-declaration';
+    const weight = lowSignal ? 0.25 : 2;
     const hex = resolveCssColor(value);
-    if (hex) add(hex, 2, 'css-color-declaration');
+    if (hex) add(hex, weight, evidenceSource);
     // Named colours may occur inside compound declarations such as
     // "border: 1px solid tomato" rather than as the complete value.
     for (const word of value.match(/[a-z]{3,20}/gi) ?? []) {
       const named = BASIC_CSS_COLORS[word.toLowerCase()];
-      if (named) add(named, 2, 'css-color-declaration');
+      if (named) add(named, weight, evidenceSource);
     }
     for (const token of value.matchAll(COLOR_TOKEN)) {
       const tokenHex = resolveCssColor(token[0]);
-      if (tokenHex) add(tokenHex, 1, 'css-color-declaration');
+      if (tokenHex) add(tokenHex, lowSignal ? 0.1 : 1, evidenceSource);
     }
   }
 
@@ -627,7 +635,7 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     const neutralPenalty = isPaletteNeutral(hex, sources) ? 0.18 : 1;
     // Semantic token names are weak unless corroborated by actual brand use.
     // Favicon pixels are weak because their backgrounds/masks can dominate.
-    const deliberateBoost = semanticPrimary ? (corroborated ? 7 : 0.05)
+    const deliberateBoost = semanticPrimary ? (corroborated ? 7 : 1.4)
       : semanticBrand ? (corroborated ? 6 : 1.1)
         : semanticSecondary ? (corroborated ? 4.8 : 1.0)
           : semanticAccent ? (corroborated ? 4.2 : 1.1)
