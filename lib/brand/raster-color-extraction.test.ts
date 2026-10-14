@@ -1,6 +1,6 @@
 import { deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { extractRasterPalette } from './raster-color-extraction';
+import { extractRasterPalette, rasterColorEvidenceWeight } from './raster-color-extraction';
 
 function crc32(bytes: Uint8Array): number {
   let crc = 0xffffffff;
@@ -34,6 +34,18 @@ function tinyRgbaPng(pixels: number[][]): Uint8Array {
     chunk('IEND', Buffer.alloc(0)),
   ]);
 }
+
+describe('raster colour evidence weight', () => {
+  it('compresses large flat areas and safely rejects invalid pixel counts', () => {
+    expect(rasterColorEvidenceWeight(0)).toBe(0);
+    expect(rasterColorEvidenceWeight(-1)).toBe(0);
+    expect(rasterColorEvidenceWeight(Number.NaN)).toBe(0);
+    expect(rasterColorEvidenceWeight(1)).toBeLessThan(2);
+    expect(rasterColorEvidenceWeight(500)).toBeLessThanOrEqual(8);
+    expect(rasterColorEvidenceWeight(500)).toBeLessThan(10);
+    expect(rasterColorEvidenceWeight(1_000_000)).toBe(8);
+  });
+});
 
 describe('raster colour extraction', () => {
   it('extracts prominent non-transparent PNG colours', () => {

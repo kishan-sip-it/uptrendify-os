@@ -4,14 +4,14 @@ import { requireOrgRole, CAN_VIEW_DASHBOARD } from '@/lib/auth/roles';
 import { env } from '@/lib/env';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from '@/lib/research/url-security';
 import { collectColors, collectJavaScriptDesignTokens, extractBrandIdentity, extractRenderedLogoCandidates, extractDeclaredFonts, rankExtractedFonts, parseCssColor, rankPalette, shouldUseRenderedWebsiteFallback, isBlockedWebsiteResponse, isRenderedReaderError, shouldRejectInsufficientWebsiteEvidence, type ExtractedColor, type ExtractedIdentity } from '@/lib/brand/visual-extraction';
-import { extractRasterPalette, type RasterColorSample } from '@/lib/brand/raster-color-extraction';
+import { extractRasterPalette, rasterColorEvidenceWeight, type RasterColorSample } from '@/lib/brand/raster-color-extraction';
 import { createDefaultRegistry, runWithProviderFailover } from '@/lib/ai/registry';
 import { AiProviderError } from '@/lib/ai/types';
 import { BrandIntelligenceValidationError, buildEvidenceContext, extractBrandIntelligence, websiteEnrichmentModel, type EvidenceFragment } from '@/lib/ai/brand-intelligence';
 import { brandNameFromWebsiteUrl, normalizeWebsiteHostname } from '@/lib/brand/website-url';
 import { aiEnrichmentBudgetMs, optionalAssetBudgetMs, optionalResearchPageLimit, sharedWebsiteScanStageBudgetMs, shouldRetryHomepageForVisuals, WEBSITE_DNS_VALIDATION_BUDGET_MS, WEBSITE_SCAN_BUDGET_MS } from '@/lib/brand/website-analysis-budget';
 
-export const maxDuration = 45;
+export const maxDuration = 90;
 
 function sameSite(a: string, b: string): boolean {
   const host = (value: string) => new URL(value).hostname.toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
@@ -626,7 +626,7 @@ function mergeExternalCss(
   for (const script of scriptBlocks) collectJavaScriptDesignTokens(script, sink);
   for (const sample of rasterColors) {
     const entry = sink.get(sample.hex) ?? { count: 0, sources: new Set<string>() };
-    entry.count += Math.min(sample.count, 500);
+    entry.count += rasterColorEvidenceWeight(sample.count);
     entry.sources.add('logo-raster-color');
     sink.set(sample.hex, entry);
   }
@@ -919,6 +919,138 @@ function buildAiProfile(intelligence: Awaited<ReturnType<typeof extractBrandInte
   };
 }
 
+
+type WebsiteEvidencePage = { url: string; title: string | null; text: string };
+
+function buildWebsiteEvidenceFallbackProfile(
+  pages: WebsiteEvidencePage[],
+  identity: ExtractedIdentity,
+  homepageHtml: string,
+): Record<string, unknown> {
+  const uniqueText = (values: string[], limit = 12, minLength = 2): string[] => {
+    const result: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of values) {
+      const value = raw.replace(/\s+/g, ' ').trim();
+      const key = value.toLowerCase();
+      if (value.length < minLength || value.length > 320 || seen.has(key)) continue;
+      if (/^(?:home|menu|search|skip to content|read more|learn more|privacy|privacy policy|terms|terms of use|cookie settings|accept all|reject all|sign in|log in)$/i.test(value)) continue;
+      if (/^(?:©|all rights reserved|privacy choices|do not sell or share)/i.test(value)) continue;
+      seen.add(key);
+      result.push(value);
+      if (result.length >= limit) break;
+    }
+    return result;
+  };
+
+  const headings: string[] = [];
+  const paragraphs: string[] = [];
+  const callsToAction: string[] = [];
+  const productLinks: string[] = [];
+  const serviceLinks: string[] = [];
+
+  if (homepageHtml.trim()) {
+    const $ = cheerio.load(homepageHtml);
+    $('h1,h2,h3,h4,[role="heading"]').each((_index, element) => {
+      const node = $(element);
+      if (node.closest('nav,footer,[role="navigation"],[role="contentinfo"]').length) return;
+      const value = node.text().replace(/\s+/g, ' ').trim();
+      if (value.length >= 3 && value.length <= 140) headings.push(value);
+    });
+    $('main p,article p,[role="main"] p,section p').each((_index, element) => {
+      const node = $(element);
+      if (node.closest('nav,footer,[role="navigation"],[role="contentinfo"]').length) return;
+      const value = node.text().replace(/\s+/g, ' ').trim();
+      if (value.length >= 24 && value.length <= 520) paragraphs.push(value);
+    });
+    $('a[href],button,[role="button"]').each((_index, element) => {
+      const node = $(element);
+      if (node.closest('nav,footer,[role="navigation"],[role="contentinfo"]').length) return;
+      const label = node.text().replace(/\s+/g, ' ').trim();
+      if (label.length < 2 || label.length > 80) return;
+      if (/^(?:home|search|menu|privacy|terms|cookie settings|accept all|reject all|sign in|log in)$/i.test(label)) return;
+      callsToAction.push(label);
+      const href = node.attr('href') ?? '';
+      if (/\/(?:products?|platforms?|apps?|games?|devices?|plans?)(?:[/?#-]|$)/i.test(href) ||
+          /\b(?:products?|platforms?|apps?|games?|devices?)\b/i.test(label)) productLinks.push(label);
+      if (/\/(?:services?|solutions?|experiences?|events?|bookings?|pricing)(?:[/?#-]|$)/i.test(href) ||
+          /\b(?:services?|experiences?|events?|bookings?|reservations?)\b/i.test(label)) serviceLinks.push(label);
+    });
+  }
+
+  const sentences = pages.flatMap((page) =>
+    page.text
+      .replace(/\s+/g, ' ')
+      .split(/(?<=[.!?])\s+(?=[A-Z0-9"'“‘])/)
+      .map((text) => text.trim())
+      .filter((text) => text.length >= 24 && text.length <= 520)
+      .map((claim) => ({ claim, sourceUrl: page.url })),
+  );
+  const sectionHeadings = uniqueText([
+    ...headings,
+    ...pages.map((page) => (page.title ?? '').replace(/\s+[|—–:]\s+.*$/, '').trim()),
+  ], 16, 3);
+  const statements = uniqueText([...paragraphs, ...sentences.map((item) => item.claim)], 24, 24);
+  const evidence = sentences
+    .filter(({ claim }) => !/^(?:home|about|products|services|contact|menu|search)\b/i.test(claim))
+    .filter(({ claim }) => !/cookie policy|privacy policy|terms of use|all rights reserved/i.test(claim))
+    .slice(0, 16);
+
+  const benefitSignals = statements.filter((value) =>
+    /\b(?:helps?|enables?|designed to|built to|make it easier|save time|enjoy|discover|create|build|manage|connect|experience|faster|simpler|powerful|seamless|unforgettable)\b/i.test(value),
+  );
+  const pricingSignals = statements.filter((value) =>
+    /(?:[$₹€£]\s?\d|\b(?:pricing|price|per month|monthly|annual plan|free trial|free plan|starting at|from \d+)\b)/i.test(value),
+  );
+  const audienceSignal = statements.find((value) =>
+    /\bfor (?:teams|businesses|developers|students|families|creators|gamers|schools|teachers|professionals|organisations|organizations|customers|players|members|everyone)\b/i.test(value),
+  ) ?? null;
+  const differentiatedClaims = statements.filter((value) =>
+    /\b(?:only|first|unique|largest|award[- ]winning|leading|fastest|exclusive|unlike|number one|no\. 1)\b/i.test(value),
+  );
+  const useCases = statements.filter((value) =>
+    /\b(?:book|host|play|create|design|build|stream|watch|learn|shop|order|collaborate|travel|manage|explore|discover)\b/i.test(value),
+  );
+
+  return {
+    // Copy or classify only first-party website evidence. Unknown facts stay null.
+    products: uniqueText(productLinks, 12),
+    services: uniqueText(serviceLinks, 12),
+    keyFeatures: uniqueText([...sectionHeadings, ...benefitSignals], 16, 8),
+    benefits: uniqueText(benefitSignals, 12, 12),
+    pricingSignals: uniqueText(pricingSignals, 12, 8),
+    audience: audienceSignal,
+    personas: [],
+    customerTypes: [],
+    painPoints: uniqueText(statements.filter((value) =>
+      /\b(?:challenge|problem|struggle|pain point|time-consuming|complex|difficult|frustrat|need to|tired of)\b/i.test(value),
+    ), 10, 12),
+    useCases: uniqueText(useCases, 12, 12),
+    tone: [],
+    terminology: [],
+    recurringClaims: [],
+    messagingThemes: uniqueText(sectionHeadings, 12, 3),
+    valueProposition: identity.description ?? sectionHeadings[0] ?? null,
+    differentiators: uniqueText(differentiatedClaims, 10, 12),
+    positioningThemes: uniqueText(sectionHeadings, 12, 3),
+    callsToAction: uniqueText(callsToAction, 12),
+    productCategories: uniqueText(productLinks, 12),
+    industry: null,
+    businessModel: null,
+    primaryMarket: null,
+    geography: null,
+    seo: {
+      importantTopics: uniqueText(sectionHeadings, 12, 3),
+      keywordThemes: [],
+      contentGaps: [],
+      searchIntentOpportunities: [],
+    },
+    competition: { namedCompetitors: [], alternatives: [], differentiationClaims: [] },
+    evidence,
+    profileSource: 'first-party-website-copy',
+  };
+}
+
 /**
  * Website-first Brand IQ extraction.
  *
@@ -1141,6 +1273,8 @@ export async function GET(request: Request) {
 
 
     let aiProfile: Record<string, unknown> | null = null;
+    let aiModelCompleted = false;
+    let aiFallbackUsed = false;
     const aiWarnings: string[] = [];
     const aiController = new AbortController();
     const abortAiWithScan = () => aiController.abort(scanController.signal.reason);
@@ -1165,7 +1299,7 @@ export async function GET(request: Request) {
             if (aiBudgetMs <= 0) {
               aiWarnings.push('AI enrichment could not start because public-page recovery used the scan deadline.');
             } else {
-              const perProviderBudgetMs = providers.length > 1 ? Math.min(12_000, aiBudgetMs) : aiBudgetMs;
+              const perProviderBudgetMs = providers.length > 1 ? Math.min(24_000, aiBudgetMs) : aiBudgetMs;
               const extractionRun = await withTimeout(
                 runWithProviderFailover(
                   providers,
@@ -1214,6 +1348,7 @@ export async function GET(request: Request) {
                 () => aiController.abort(new Error('AI enrichment deadline reached')),
               );
               aiProfile = buildAiProfile(extractionRun.result.result);
+              aiModelCompleted = true;
               if (!identity.brandName && extractionRun.result.result.identity.brandName) identity.brandName = extractionRun.result.result.identity.brandName;
               if (!identity.description && extractionRun.result.result.identity.companyDescription) identity.description = extractionRun.result.result.identity.companyDescription;
             }
@@ -1265,7 +1400,7 @@ export async function GET(request: Request) {
     // those imports repeatedly wastes the small serverless scan budget.
     const visitedCssUrls = new Set<string>();
     // Stylesheets enrich colours/fonts, but must never consume the whole website scan.
-    const cssBudgetMs = elapsed() < 28_000 ? optionalAssetBudgetMs(elapsed(), 4_000) : 0;
+    const cssBudgetMs = elapsed() < 54_000 ? optionalAssetBudgetMs(elapsed(), 4_000) : 0;
     const cssResources = cssBudgetMs > 0
       ? await withTimeout(
           Promise.all(stylesheetUrls.slice(0, 6).map((url) => fetchCssTree(url, 0, visitedCssUrls, scanController.signal)))
@@ -1282,7 +1417,7 @@ export async function GET(request: Request) {
       .filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
       .filter((url) => !/\.(?:png|jpe?g|gif|ico|webp|avif)(?:[?#]|$)/i.test(url))
       .slice(0, 3);
-    const svgBudgetMs = elapsed() < 30_000 ? optionalAssetBudgetMs(elapsed(), 2_500) : 0;
+    const svgBudgetMs = elapsed() < 56_000 ? optionalAssetBudgetMs(elapsed(), 2_500) : 0;
     const svgResults = svgBudgetMs > 0
       ? await withTimeout(
           Promise.all(svgUrls.slice(0, 2).map((url) => fetchSvgAsset(url, scanController.signal))),
@@ -1295,7 +1430,7 @@ export async function GET(request: Request) {
     // Modern frameworks frequently keep theme colours in JS/CSS-in-JS bundles
     // instead of HTML or standalone CSS. Read only explicitly declared public
     // scripts, with strict time and byte caps.
-    const canFetchOptionalAssets = elapsed() < 30_000;
+    const canFetchOptionalAssets = elapsed() < 56_000;
     const inlineScripts = baseHtml && canFetchOptionalAssets ? inlineScriptBlocks(baseHtml) : [];
     const scriptBudgetMs = canFetchOptionalAssets ? optionalAssetBudgetMs(elapsed(), 2_500) : 0;
     const externalScripts = baseHtml && scriptBudgetMs > 0
@@ -1320,7 +1455,7 @@ export async function GET(request: Request) {
       : [];
 
     identity = mergeExternalCss(identity, cssBlocks, svgBlocks, manifestVisuals.colors, rasterColors, scriptBlocks);
-    const fontAssetBudgetMs = elapsed() < 31_000 ? optionalAssetBudgetMs(elapsed(), 1_000) : 0;
+    const fontAssetBudgetMs = elapsed() < 57_000 ? optionalAssetBudgetMs(elapsed(), 1_000) : 0;
     const fontsWithAssets = fontAssetBudgetMs > 0
       ? await withTimeout(
           attachSourceFontAssets(identity.fonts, cssResources),
@@ -1346,7 +1481,15 @@ export async function GET(request: Request) {
 
     await aiTask;
 
-    const warnings = [...new Set([...identity.warnings, ...aiWarnings])];
+    // Provider failures are handled internally. Keep Brand IQ usable by falling
+    // back to real copy, headings, CTAs and URLs from the public site. Unknown
+    // structured facts remain null or empty instead of being fabricated.
+    if (!aiProfile) {
+      aiProfile = buildWebsiteEvidenceFallbackProfile(evidencePages, identity, baseHtml);
+      aiFallbackUsed = true;
+    }
+
+    const warnings = [...new Set(identity.warnings)];
     console.info(JSON.stringify({
       ts: new Date().toISOString(),
       level: 'info',
@@ -1357,7 +1500,9 @@ export async function GET(request: Request) {
       directHtmlAvailable: Boolean(baseHtml),
       evidencePageCount: evidencePages.length,
       stylesheetCount: cssBlocks.length,
-      aiEnrichmentCompleted: Boolean(aiProfile),
+      aiModelCompleted,
+      aiFallbackUsed,
+      aiFailureCount: aiWarnings.length,
       warningCount: warnings.length,
     }));
     const enriched = {

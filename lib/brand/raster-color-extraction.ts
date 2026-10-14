@@ -2,6 +2,17 @@ import { inflateSync } from 'node:zlib';
 
 export type RasterColorSample = { hex: string; count: number };
 
+/**
+ * Compress raw pixel frequency before mixing raster samples with stylesheet
+ * evidence. A flat icon/background can occupy hundreds of pixels, but that is
+ * not hundreds of independent declarations of a brand colour.
+ */
+export function rasterColorEvidenceWeight(pixelCount: number): number {
+  if (!Number.isFinite(pixelCount) || pixelCount <= 0) return 0;
+  const boundedPixels = Math.min(pixelCount, 1_000_000);
+  return Math.min(8, 1 + Math.log2(1 + boundedPixels / 4));
+}
+
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 
 function isPng(bytes: Uint8Array): boolean {

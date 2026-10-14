@@ -348,6 +348,36 @@ export function isNeutral(hex: string): boolean {
   return saturation <= NEUTRAL_SATURATION_MAX || luminance >= NEUTRAL_LIGHT_MIN || luminance <= NEUTRAL_DARK_MAX;
 }
 
+const DELIBERATE_COLOUR_SOURCES = new Set([
+  'semantic-css',
+  'semantic-primary-css',
+  'semantic-brand-css',
+  'semantic-secondary-css',
+  'semantic-accent-css',
+  'header-ui',
+  'nav-ui',
+  'primary-control',
+  'link-accent',
+  'logo-svg-color',
+  'meta-theme-color',
+  'manifest-theme-color',
+  'js-style-tokens',
+]);
+
+/**
+ * A high-luminance, low-to-mid-saturation colour found only as an incidental
+ * declaration or raster sample is more likely a page surface/tint than the
+ * brand's main colour. Explicit semantic, UI, theme, SVG or JS-token evidence
+ * can still establish a real pastel brand.
+ */
+function isPaletteNeutral(hex: string, sources: string[]): boolean {
+  if (isNeutral(hex)) return true;
+  const hasDeliberateEvidence = sources.some((source) => DELIBERATE_COLOUR_SOURCES.has(source));
+  return !hasDeliberateEvidence &&
+    relativeLuminance(hex) >= 0.78 &&
+    saturationOf(hex) <= 0.52;
+}
+
 /** Pick whichever of black/white keeps text readable on the given brand colour. */
 export function readableTextOn(hex: string): '#0f172a' | '#ffffff' {
   return relativeLuminance(hex) > 0.45 ? '#0f172a' : '#ffffff';
@@ -549,7 +579,7 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     const rasterLogoSignal = sources.includes('logo-raster-color');
     const scriptStyleSignal = sources.includes('js-style-tokens');
     const corroborated = uiSignal || logoSignal || rasterLogoSignal || themeSignal || scriptStyleSignal;
-    const neutralPenalty = isNeutral(hex) ? 0.18 : 1;
+    const neutralPenalty = isPaletteNeutral(hex, sources) ? 0.18 : 1;
     // A semantic token is useful evidence, but its name alone is not proof that
     // it is the public-facing brand colour. Independent usage in the site chrome,
     // controls, logo or theme metadata can confirm that role.
@@ -578,14 +608,14 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     };
   });
 
-  const chromatic = scored.filter((c) => !isNeutral(c.hex)).sort((a, b) => b.prominence - a.prominence);
-  const neutral = scored.filter((c) => isNeutral(c.hex)).sort((a, b) => b.prominence - a.prominence);
+  const chromatic = scored.filter((c) => !isPaletteNeutral(c.hex, c.sources)).sort((a, b) => b.prominence - a.prominence);
+  const neutral = scored.filter((c) => isPaletteNeutral(c.hex, c.sources)).sort((a, b) => b.prominence - a.prominence);
   const ordered = [...chromatic, ...neutral].slice(0, limit);
   const chromaticCount = chromatic.length;
 
   return ordered.map((color, index) => {
     let role: ExtractedColor['role'] = 'neutral';
-    if (!isNeutral(color.hex)) {
+    if (!isPaletteNeutral(color.hex, color.sources)) {
       if (index === 0) role = 'primary';
       else if (index < chromaticCount) role = 'secondary';
       else role = 'accent';

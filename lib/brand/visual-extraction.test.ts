@@ -218,6 +218,25 @@ describe('semantic colour role ordering', () => {
   });
 });
 
+describe('raster and pastel colour evidence', () => {
+  it('does not let a pale raster background outrank semantic maroon brand styling', () => {
+    const sink = new Map<string, { count: number; sources: Set<string> }>([
+      ['#f4e6eb', { count: 500, sources: new Set(['logo-raster-color']) }],
+      ['#70152d', { count: 8, sources: new Set(['semantic-css', 'semantic-primary-css', 'header-ui', 'primary-control']) }],
+    ]);
+    const palette = rankPalette(sink, 8);
+    expect(palette[0]?.hex).toBe('#70152d');
+    expect(palette.find((color) => color.hex === '#f4e6eb')?.role).toBe('neutral');
+  });
+
+  it('preserves an explicitly declared pastel primary brand colour', () => {
+    const sink = new Map<string, { count: number; sources: Set<string> }>([
+      ['#f0c7d5', { count: 2, sources: new Set(['semantic-css', 'semantic-primary-css']) }],
+    ]);
+    expect(rankPalette(sink, 8)[0]).toMatchObject({ hex: '#f0c7d5', role: 'primary' });
+  });
+});
+
 describe('semantic colour evidence conflicts', () => {
   it('does not let an unused primary token override a stronger colour used in the header and primary control', () => {
     const css = [
