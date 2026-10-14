@@ -406,7 +406,7 @@ describe('extractBrandIdentity hardening', () => {
         })}</script>
       </head><body>
         <header><a href="/"><img src="https://cdn.example/Cognichip-icon-color-600-min.jpg" alt="Cognichip logo" /></a></header>
-        <section class="team-member-card"><img src="https://img-cdn.example/ab/93f0a6c.jpg" alt="Satoshi" width="480" height="480" /></section>
+        <section class="team-member-card"><img src="/assets/ab/93f0a6c.jpg" alt="Satoshi" width="720" height="240" /></section>
       </body></html>`;
     const identity = extractBrandIdentity(html, 'https://www.cognichip.ai/');
     expect(identity.logoUrl).toBe('https://cdn.example/Cognichip-icon-color-600-min.jpg');

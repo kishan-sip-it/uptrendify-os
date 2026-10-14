@@ -395,6 +395,12 @@ const COLOR_TOKEN = /(#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)|oklab\([
 
 export function collectColors(cssText: string, source: string, sink: Map<string, { count: number; sources: Set<string> }>): void {
   const cleaned = cssText.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const lowSignalSelector = /(partner|sponsor|testimonial|customer-logo|social-share|avatar|badge|alert|error|success|warning|status|tooltip|notification|toast|rating|review-star)/i;
+  const selectorForPosition = (position: number): string => {
+    const openingBrace = cleaned.lastIndexOf('{', position);
+    const closingBrace = cleaned.lastIndexOf('}', position);
+    return openingBrace > closingBrace ? cleaned.slice(closingBrace + 1, openingBrace).trim().toLowerCase() : '';
+  };
   const add = (hex: string, weight = 1, evidenceSource = source) => {
     const entry = sink.get(hex) ?? { count: 0, sources: new Set<string>() };
     entry.count += weight;
@@ -439,25 +445,22 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
   };
 
   // Keep broad frequency evidence as a fallback for unusual frameworks, but
-  // rank semantic variables and actual brand controls above incidental colors.
+  // ignore errors/toasts/partners before they affect raw occurrence counts.
+  // Filtering only later selector boosts lets a repeated error red win by volume.
   for (const match of cleaned.matchAll(COLOR_TOKEN)) {
+    const position = match.index ?? 0;
+    const context = selectorForPosition(position);
+    if (context && lowSignalSelector.test(context)) continue;
     const hex = parseCssColor(match[0]);
     if (hex) add(hex);
   }
-
-  // Error/toast/sponsor/customer styles remain low-signal even in the first
-  // declaration-frequency pass. Filtering only the later selector-boost pass
-  // still allowed repeated error-red declarations to dominate the palette.
-  const lowSignalSelector = /(partner|sponsor|testimonial|customer-logo|social-share|avatar|badge|alert|error|success|warning|status|tooltip|notification|toast|rating|review-star)/i;
 
   // Parse complete colour declarations as well as tokens. This captures named
   // CSS colours and values that reference custom properties.
   const declaredColorProperty = /\b(?:color|background(?:-color)?|border(?:-[a-z]+)?(?:-color)?|outline(?:-color)?|text-decoration-color|caret-color|fill|stroke)\s*:\s*([^;{}]+)/gi;
   for (const declaration of cleaned.matchAll(declaredColorProperty)) {
     const declarationIndex = declaration.index ?? 0;
-    const openingBrace = cleaned.lastIndexOf('{', declarationIndex);
-    const closingBrace = cleaned.lastIndexOf('}', declarationIndex);
-    const selector = openingBrace > closingBrace ? cleaned.slice(closingBrace + 1, openingBrace).trim().toLowerCase() : '';
+    const selector = selectorForPosition(declarationIndex);
     if (selector && lowSignalSelector.test(selector)) continue;
     const value = (declaration[1] ?? '').trim();
     const hex = resolveCssColor(value);
