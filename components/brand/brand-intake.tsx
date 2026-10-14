@@ -49,6 +49,10 @@ type IntakeIdentity = ExtractedIdentity & {
   } | null;
   crawl?: { pages: string[]; pageCount: number; stylesheetCount: number } | null;
   scanNotices?: string[];
+  aiModelCompleted?: boolean;
+  aiFallbackUsed?: boolean;
+  aiStatus?: 'completed' | 'fallback';
+  aiWarnings?: string[];
 };
 
 type Phase = 'input' | 'scanning' | 'review' | 'saving' | 'error';
@@ -338,16 +342,17 @@ export function BrandIntake({
   const actionableWarnings = identity.warnings.filter((warning) =>
     !/^(?:No embedded stylesheet found; linked stylesheets and declared theme colours are checked separately\.|No usable colour declarations were found on the page\.)$/i.test(warning.trim()),
   );
+  const aiFallbackUsed = identity.aiFallbackUsed === true || identity.aiModelCompleted === false;
 
   if (!reviewAfterScan) return null;
 
   return (
     <div>
       <BrandPanel icon={<Sparkles size={17} />} title="Brand IQ review" subtitle="Everything the website scan found, grouped into the same working contexts your content and strategy use.">
-        {actionableWarnings.length || !ai ? (
+        {actionableWarnings.length || !ai || aiFallbackUsed ? (
           <div className="brand-scan-warning" role="status" aria-live="polite">
-            <strong>{!ai ? 'Structured Brand IQ needs attention' : 'Some parts of the scan need review'}</strong>
-            <p>{!ai ? 'We recovered the public page, but the AI could not complete every structured field. You can retry the scan; do not treat missing values as verified facts.' : 'The scan recovered usable information, but one or more sources or enrichment steps were incomplete.'}</p>
+            <strong>{aiFallbackUsed ? 'AI enrichment fallback used' : !ai ? 'Structured Brand IQ needs attention' : 'Some parts of the scan need review'}</strong>
+            <p>{aiFallbackUsed ? 'We recovered public website evidence, but structured AI enrichment did not complete. The profile below uses a website-evidence fallback; treat missing facts as unknown and retry when providers are available.' : !ai ? 'We recovered the public page, but the AI could not complete every structured field. You can retry the scan; do not treat missing values as verified facts.' : 'The scan recovered usable information, but one or more sources or enrichment steps were incomplete.'}</p>
             {actionableWarnings.length ? <ul>{actionableWarnings.slice(0, 4).map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
             <button type="button" className="brand-btn" onClick={() => void scan()} disabled={phase === 'saving'}><RefreshCw size={14} /> Retry website analysis</button>
           </div>

@@ -1742,7 +1742,11 @@ export async function GET(request: Request) {
       aiFallbackUsed = true;
     }
 
-    const warnings = [...new Set(identity.warnings)];
+    const userAiWarnings = aiWarnings.map((warning) => {
+      if (/daily organization quota is exhausted|no configured AI provider|needs more readable first-party page text|could not start because public-page recovery used the scan deadline/i.test(warning)) return warning;
+      return 'AI enrichment did not complete; a website-evidence fallback was used. Retry analysis or check configured AI providers.';
+    });
+    const warnings = [...new Set([...identity.warnings, ...userAiWarnings])];
     console.info(JSON.stringify({
       ts: new Date().toISOString(),
       level: 'info',
@@ -1774,6 +1778,10 @@ export async function GET(request: Request) {
       ...identity,
       assets,
       aiProfile,
+      aiModelCompleted,
+      aiFallbackUsed,
+      aiStatus: aiModelCompleted ? 'completed' as const : 'fallback' as const,
+      aiWarnings: userAiWarnings,
       scanNotices: [...new Set(scanNotices)],
       crawl: {
         pages: pageUrls.slice(0, 6),
