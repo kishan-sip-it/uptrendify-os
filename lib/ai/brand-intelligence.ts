@@ -407,10 +407,11 @@ export function buildWebsiteBrandIntelligencePrompt(evidence: EvidenceFragment[]
   ].join('\n\n');
 }
 
-export function websiteEnrichmentModel(providerId: string, defaultModel: string): string {
-  // Website intake is latency-sensitive. The supported GPT-OSS 20B model is a
-  // much faster structured-extraction pass; cross-provider failover remains on.
-  return /^groq(?:-\d+)?$/i.test(providerId) ? 'openai/gpt-oss-20b' : defaultModel;
+export function websiteEnrichmentModel(_providerId: string, defaultModel: string): string {
+  // Preserve the configured high-capacity model for the primary extraction.
+  // The Groq adapter falls back to 20B on transient failures; cross-provider
+  // failover remains enabled so a larger model never blocks the whole scan.
+  return defaultModel;
 }
 
 export type BrandIntelligenceOptions = {

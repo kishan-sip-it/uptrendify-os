@@ -133,10 +133,10 @@ describe('website fast extraction prompt', () => {
     expect(prompt.length).toBeLessThan(buildBrandIntelligencePrompt(evidence).length);
   });
 
-  it('selects a supported low-latency model for Groq website intake', () => {
-    expect(websiteEnrichmentModel('groq', 'openai/gpt-oss-120b')).toBe('openai/gpt-oss-20b');
-    expect(websiteEnrichmentModel('groq-2', 'openai/gpt-oss-120b')).toBe('openai/gpt-oss-20b');
-    expect(websiteEnrichmentModel('groq-3', 'llama-3.3-70b-versatile')).toBe('openai/gpt-oss-20b');
+  it('preserves the configured high-capacity model and provider-specific fallbacks', () => {
+    expect(websiteEnrichmentModel('groq', 'openai/gpt-oss-120b')).toBe('openai/gpt-oss-120b');
+    expect(websiteEnrichmentModel('groq-2', 'openai/gpt-oss-120b')).toBe('openai/gpt-oss-120b');
+    expect(websiteEnrichmentModel('groq-3', 'llama-3.3-70b-versatile')).toBe('llama-3.3-70b-versatile');
     expect(websiteEnrichmentModel('openai', 'gpt-4o-mini')).toBe('gpt-4o-mini');
   });
 });
@@ -195,7 +195,7 @@ describe('extractBrandIntelligence', () => {
     );
     expect(outcome.result.identity.brandName).toBe('Aurora');
     expect(provider.__calls).toHaveLength(1);
-    expect(provider.__calls[0]?.model).toBe('openai/gpt-oss-20b');
+    expect(provider.__calls[0]?.model).toBe('openai/gpt-oss-120b');
     expect(provider.__calls[0]?.maxTokens).toBe(1_200);
     expect(provider.__calls[0]?.json).toBe(true);
     expect(provider.__calls[0]?.fastFail).toBe(true);

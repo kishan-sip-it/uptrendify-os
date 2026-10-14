@@ -1444,7 +1444,7 @@ export async function GET(request: Request) {
             if (aiBudgetMs <= 0) {
               aiWarnings.push('AI enrichment could not start because public-page recovery used the scan deadline.');
             } else {
-              const perProviderBudgetMs = providers.length > 1 ? Math.min(14_000, aiBudgetMs) : aiBudgetMs;
+              const perProviderBudgetMs = providers.length > 1 ? Math.min(24_000, aiBudgetMs) : aiBudgetMs;
               const extractionRun = await withTimeout(
                 runWithProviderFailover(
                   providers,
