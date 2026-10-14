@@ -10,6 +10,7 @@ import {
   isRenderedReaderError,
   rankPalette,
   isNeutral,
+  rankExtractedFonts,
   normalizeHex,
   parseCssColor,
   readableTextOn,
