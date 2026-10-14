@@ -506,13 +506,27 @@ function renderedResearchLinks(text: string, baseUrl: string): string[] {
 }
 function pageText(html: string): { title: string | null; text: string } {
   const $ = cheerio.load(html);
-  $('script,style,noscript,svg,template,nav,footer,[role="navigation"],[role="contentinfo"]').remove();
+  $('script,style,noscript,svg,template,header,nav,footer,aside,[role="banner"],[role="navigation"],[role="contentinfo"],[aria-label*="navigation"],[id*="cookie"],[class*="cookie"]').remove();
   const title = $('title').first().text().replace(/\s+/g, ' ').trim() || null;
   // Prefer substantive page content over repeated navigation and footer links.
   // Fall back to cleaned body text for sites without semantic content landmarks.
   const main = $('main, [role="main"], article').first();
-  const primaryText = main.length ? main.text() : $('body').text();
-  const text = primaryText.replace(/\s+/g, ' ').trim().slice(0, 16_000);
+  const content = main.length ? main : $('body');
+  const ctaLabels = new Set<string>();
+  content.find('a,button,[role="button"]').each((_index, element) => {
+    const node = $(element);
+    const label = node.text().replace(/\s+/g, ' ').trim();
+    if (!isWebsiteActionLabel(label) || isGenericWebsiteNavLabel(label)) return;
+    // Preserve real card headings and image alt text; only remove the standalone
+    // short action label from the prose provided to structured extraction.
+    if (node.find('h1,h2,h3,h4,img').length) return;
+    ctaLabels.add(label);
+    node.empty();
+  });
+  const primaryText = content.text();
+  const readableText = primaryText.replace(/\s+/g, ' ').trim();
+  const actionText = ctaLabels.size ? ' Visible calls to action: ' + [...ctaLabels].slice(0, 16).join(' · ') : '';
+  const text = (readableText + actionText).trim().slice(0, 16_000);
   return { title, text };
 }
 
@@ -876,46 +890,99 @@ function mergeVisualIdentity(identity: ExtractedIdentity, visual: ExtractedIdent
   };
 }
 
+
+const GENERIC_WEBSITE_NAV_LABELS = new Set([
+  'home', 'menu', 'search', 'about', 'about us', 'all products', 'products', 'services',
+  'support', 'help', 'back to top', 'skip to main content', 'privacy', 'privacy policy',
+  'privacy choices', 'terms', 'terms of use', 'cookie settings', 'account', 'account profile',
+  'sign in', 'log in', 'login', 'careers', 'news', 'blog', 'language', 'settings',
+]);
+
+function isGenericWebsiteNavLabel(value: string): boolean {
+  return GENERIC_WEBSITE_NAV_LABELS.has(value.replace(/\s+/g, ' ').trim().toLowerCase()) ||
+    /^skip to (?:main )?content\b/i.test(value.trim());
+}
+
+function isWebsiteActionLabel(value: string): boolean {
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (!text || text.length > 90 || /^skip to (?:main )?content\b/i.test(text)) return false;
+  if (text.split(/\s+/).length > 9) return false;
+  return /^(?:learn more|read more|shop now|buy now|pre[- ]?order(?: now)?|book now|quick book|event enquiry|discover more|find out more|see all|view all|sign up|sign in|log in|join now|start now|start free|try free|try now|contact sales|contact us|request a demo|get started|download|explore|discover|learn|read|shop|buy|book|join|start|try|get|find|contact|request|register|subscribe|watch|play|see|view|order|open|create|ask|help me|compare|choose|check|continue|submit|enquire|reserve|schedule|apply|select|claim|browse|talk to|meet with)\b/i.test(text);
+}
+
+function cleanWebsiteProfileList(
+  values: string[],
+  limit: number,
+  mode: 'content' | 'offering' | 'cta' = 'content',
+): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const value = raw.replace(/\s+/g, ' ').trim();
+    const key = value.toLowerCase();
+    if (value.length < 2 || value.length > 320 || seen.has(key)) continue;
+    if (isGenericWebsiteNavLabel(value)) continue;
+    if (mode === 'cta' ? !isWebsiteActionLabel(value) : mode === 'offering' && isWebsiteActionLabel(value)) continue;
+    if (/^(?:©|all rights reserved|privacy choices|do not sell or share)/i.test(value)) continue;
+    seen.add(key);
+    result.push(value);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
 function buildAiProfile(intelligence: Awaited<ReturnType<typeof extractBrandIntelligence>>['result']) {
-  const combinedOfferings = intelligence.offer.productsAndServices.slice(0, 20);
+  const combinedOfferings = intelligence.offer.productsAndServices;
+  const products = cleanWebsiteProfileList(
+    intelligence.offer.products.length ? intelligence.offer.products : combinedOfferings,
+    20,
+    'offering',
+  );
+  const productKeys = new Set(products.map((value) => value.toLowerCase()));
+  const services = cleanWebsiteProfileList(intelligence.offer.services, 20, 'offering');
+  const cleanContent = (values: string[], limit: number, stripActions = false) =>
+    cleanWebsiteProfileList(values, limit, 'content')
+      .filter((value) => !productKeys.has(value.toLowerCase()))
+      .filter((value) => !stripActions || !isWebsiteActionLabel(value))
+      .slice(0, limit);
   return {
-    // Keep offerings distinct. The previous mapping duplicated every combined
-    // offering into both UI fields, creating false product/service classifications.
-    products: (intelligence.offer.products.length ? intelligence.offer.products : combinedOfferings).slice(0, 20),
-    services: intelligence.offer.services.slice(0, 20),
-    keyFeatures: intelligence.offer.keyFeatures.slice(0, 16),
-    benefits: intelligence.offer.benefits.slice(0, 16),
-    pricingSignals: intelligence.offer.pricingSignals.slice(0, 12),
+    products,
+    services,
+    keyFeatures: cleanContent(intelligence.offer.keyFeatures, 16, true),
+    benefits: cleanContent(intelligence.offer.benefits, 16, true),
+    pricingSignals: cleanContent(intelligence.offer.pricingSignals, 12, true),
     audience: intelligence.audience.targetAudience,
     personas: intelligence.audience.buyerPersonas.slice(0, 8),
-    customerTypes: intelligence.audience.customerTypes.slice(0, 12),
-    painPoints: intelligence.audience.painPoints.slice(0, 12),
-    useCases: intelligence.audience.useCases.slice(0, 12),
-    tone: intelligence.messaging.toneOfVoice.slice(0, 6),
-    terminology: intelligence.messaging.terminology.slice(0, 20),
-    recurringClaims: intelligence.messaging.recurringClaims.slice(0, 12),
-    messagingThemes: intelligence.messaging.messagingThemes.slice(0, 12),
+    customerTypes: cleanContent(intelligence.audience.customerTypes, 12),
+    painPoints: cleanContent(intelligence.audience.painPoints, 12),
+    useCases: cleanContent(intelligence.audience.useCases, 12),
+    tone: cleanContent(intelligence.messaging.toneOfVoice, 6),
+    terminology: cleanContent(intelligence.messaging.terminology, 20),
+    recurringClaims: cleanContent(intelligence.messaging.recurringClaims, 12),
+    messagingThemes: cleanContent(intelligence.messaging.messagingThemes, 12),
     valueProposition: intelligence.positioning.valueProposition,
-    differentiators: intelligence.positioning.differentiators.slice(0, 12),
-    positioningThemes: intelligence.positioning.positioningThemes.slice(0, 12),
-    callsToAction: intelligence.offer.callsToAction.slice(0, 12),
-    productCategories: intelligence.identity.productCategories.slice(0, 12),
+    differentiators: cleanContent(intelligence.positioning.differentiators, 12),
+    positioningThemes: cleanContent(intelligence.positioning.positioningThemes, 12),
+    callsToAction: cleanWebsiteProfileList(intelligence.offer.callsToAction, 12, 'cta'),
+    productCategories: cleanWebsiteProfileList(intelligence.identity.productCategories, 12, 'offering'),
     industry: intelligence.identity.industry,
     businessModel: intelligence.identity.businessModel,
     primaryMarket: intelligence.identity.primaryMarket,
     geography: intelligence.identity.geography,
     seo: {
-      importantTopics: intelligence.seo.importantTopics.slice(0, 12),
-      keywordThemes: intelligence.seo.keywordThemes.slice(0, 12),
-      contentGaps: intelligence.seo.contentGaps.slice(0, 12),
-      searchIntentOpportunities: intelligence.seo.searchIntentOpportunities.slice(0, 12),
+      importantTopics: cleanContent(intelligence.seo.importantTopics, 12),
+      keywordThemes: cleanContent(intelligence.seo.keywordThemes, 12),
+      contentGaps: cleanContent(intelligence.seo.contentGaps, 12),
+      searchIntentOpportunities: cleanContent(intelligence.seo.searchIntentOpportunities, 12),
     },
     competition: {
-      namedCompetitors: intelligence.competition.namedCompetitors.slice(0, 12),
-      alternatives: intelligence.competition.alternatives.slice(0, 12),
-      differentiationClaims: intelligence.competition.differentiationClaims.slice(0, 12),
+      namedCompetitors: cleanContent(intelligence.competition.namedCompetitors, 12),
+      alternatives: cleanContent(intelligence.competition.alternatives, 12),
+      differentiationClaims: cleanContent(intelligence.competition.differentiationClaims, 12),
     },
-    evidence: intelligence.evidence.slice(0, 20),
+    evidence: intelligence.evidence
+      .filter((item) => !isGenericWebsiteNavLabel(item.claim))
+      .slice(0, 12),
   };
 }
 
@@ -927,22 +994,6 @@ function buildWebsiteEvidenceFallbackProfile(
   identity: ExtractedIdentity,
   homepageHtml: string,
 ): Record<string, unknown> {
-  const uniqueText = (values: string[], limit = 12, minLength = 2): string[] => {
-    const result: string[] = [];
-    const seen = new Set<string>();
-    for (const raw of values) {
-      const value = raw.replace(/\s+/g, ' ').trim();
-      const key = value.toLowerCase();
-      if (value.length < minLength || value.length > 320 || seen.has(key)) continue;
-      if (/^(?:home|menu|search|skip to content|read more|learn more|privacy|privacy policy|terms|terms of use|cookie settings|accept all|reject all|sign in|log in)$/i.test(value)) continue;
-      if (/^(?:©|all rights reserved|privacy choices|do not sell or share)/i.test(value)) continue;
-      seen.add(key);
-      result.push(value);
-      if (result.length >= limit) break;
-    }
-    return result;
-  };
-
   const headings: string[] = [];
   const paragraphs: string[] = [];
   const callsToAction: string[] = [];
@@ -951,30 +1002,44 @@ function buildWebsiteEvidenceFallbackProfile(
 
   if (homepageHtml.trim()) {
     const $ = cheerio.load(homepageHtml);
-    $('h1,h2,h3,h4,[role="heading"]').each((_index, element) => {
-      const node = $(element);
-      if (node.closest('nav,footer,[role="navigation"],[role="contentinfo"]').length) return;
-      const value = node.text().replace(/\s+/g, ' ').trim();
-      if (value.length >= 3 && value.length <= 140) headings.push(value);
+    $('script,style,noscript,svg,template,header,nav,footer,aside,[role="banner"],[role="navigation"],[role="contentinfo"],[id*="cookie"],[class*="cookie"]').remove();
+    const main = $('main,[role="main"],article').first();
+    const content = main.length ? main : $('body');
+
+    content.find('h1,h2,h3,h4,[role="heading"]').each((_index, element) => {
+      const value = $(element).text().replace(/\s+/g, ' ').trim();
+      if (value.length >= 3 && value.length <= 140 &&
+          !isGenericWebsiteNavLabel(value) && !/^(?:skip to|back to top)\b/i.test(value)) {
+        headings.push(value);
+      }
     });
-    $('main p,article p,[role="main"] p,section p').each((_index, element) => {
-      const node = $(element);
-      if (node.closest('nav,footer,[role="navigation"],[role="contentinfo"]').length) return;
-      const value = node.text().replace(/\s+/g, ' ').trim();
+    content.find('p').each((_index, element) => {
+      const value = $(element).text().replace(/\s+/g, ' ').trim();
       if (value.length >= 24 && value.length <= 520) paragraphs.push(value);
     });
-    $('a[href],button,[role="button"]').each((_index, element) => {
+
+    content.find('a[href],button,[role="button"]').each((_index, element) => {
       const node = $(element);
-      if (node.closest('nav,footer,[role="navigation"],[role="contentinfo"]').length) return;
       const label = node.text().replace(/\s+/g, ' ').trim();
-      if (label.length < 2 || label.length > 80) return;
-      if (/^(?:home|search|menu|privacy|terms|cookie settings|accept all|reject all|sign in|log in)$/i.test(label)) return;
-      callsToAction.push(label);
+      if (label.length < 2 || label.length > 90 || isGenericWebsiteNavLabel(label)) return;
+      if (isWebsiteActionLabel(label)) {
+        callsToAction.push(label);
+        return; // An action verb is not the product/service name.
+      }
       const href = node.attr('href') ?? '';
-      if (/\/(?:products?|platforms?|apps?|games?|devices?|plans?)(?:[/?#-]|$)/i.test(href) ||
-          /\b(?:products?|platforms?|apps?|games?|devices?)\b/i.test(label)) productLinks.push(label);
-      if (/\/(?:services?|solutions?|experiences?|events?|bookings?|pricing)(?:[/?#-]|$)/i.test(href) ||
-          /\b(?:services?|experiences?|events?|bookings?|reservations?)\b/i.test(label)) serviceLinks.push(label);
+      const parentCard = node.closest('article,li,[class*="card"],[class*="product"],[class*="service"],[class*="tile"]');
+      const parentHeading = parentCard.find('h1,h2,h3,h4,[role="heading"]').first().text().replace(/\s+/g, ' ').trim();
+      const productPath = /\/(?:products?|platforms?|apps?|games?|devices?|plans?|store)(?:[/?#-]|$)/i.test(href);
+      const servicePath = /\/(?:services?|solutions?|experiences?|events?|bookings?|pricing)(?:[/?#-]|$)/i.test(href);
+      if (productPath) {
+        productLinks.push(parentHeading.length >= 3 && parentHeading.length <= 140 ? parentHeading : label);
+      } else if (servicePath) {
+        serviceLinks.push(parentHeading.length >= 3 && parentHeading.length <= 140 ? parentHeading : label);
+      } else if (/\b(?:product|platform|app|application|game|device|laptop|tablet|console|software|plan|subscription|database|tool|suite|productivity|cloud)\b/i.test(label)) {
+        productLinks.push(label);
+      } else if (/\b(?:service|solution|booking|event|experience|membership|support plan)\b/i.test(label)) {
+        serviceLinks.push(label);
+      }
     });
   }
 
@@ -982,46 +1047,126 @@ function buildWebsiteEvidenceFallbackProfile(
     page.text
       .replace(/\s+/g, ' ')
       .split(/(?<=[.!?])\s+(?=[A-Z0-9"'“‘])/)
-      .map((text) => text.trim())
-      .filter((text) => text.length >= 24 && text.length <= 520)
+      .map((claim) => claim.trim())
+      .filter((claim) => claim.length >= 24 && claim.length <= 520 &&
+        !isGenericWebsiteNavLabel(claim) &&
+        !/cookie policy|privacy policy|terms of use|all rights reserved|skip to main content/i.test(claim))
       .map((claim) => ({ claim, sourceUrl: page.url })),
   );
+  const uniqueText = (values: string[], limit = 12, minLength = 2, mode: 'content' | 'offering' | 'cta' = 'content'): string[] => {
+    const result: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of values) {
+      const value = raw.replace(/\s+/g, ' ').trim();
+      const key = value.toLowerCase();
+      if (value.length < minLength || value.length > 320 || seen.has(key)) continue;
+      if (isGenericWebsiteNavLabel(value)) continue;
+      if (mode === 'cta' ? !isWebsiteActionLabel(value) : mode === 'offering' && isWebsiteActionLabel(value)) continue;
+      if (/^(?:©|all rights reserved|privacy choices|do not sell or share)/i.test(value)) continue;
+      seen.add(key);
+      result.push(value);
+      if (result.length >= limit) break;
+    }
+    return result;
+  };
+
   const sectionHeadings = uniqueText([
     ...headings,
     ...pages.map((page) => (page.title ?? '').replace(/\s+[|—–:]\s+.*$/, '').trim()),
   ], 16, 3);
   const statements = uniqueText([...paragraphs, ...sentences.map((item) => item.claim)], 24, 24);
-  const evidence = sentences
-    .filter(({ claim }) => !/^(?:home|about|products|services|contact|menu|search)\b/i.test(claim))
-    .filter(({ claim }) => !/cookie policy|privacy policy|terms of use|all rights reserved/i.test(claim))
-    .slice(0, 16);
+  const evidence = sentences.slice(0, 12);
+  const evidenceText = [identity.description ?? '', ...sectionHeadings, ...statements].join(' ');
+  const lowerEvidence = evidenceText.toLowerCase();
 
   const benefitSignals = statements.filter((value) =>
-    /\b(?:helps?|enables?|designed to|built to|make it easier|save time|enjoy|discover|create|build|manage|connect|experience|faster|simpler|powerful|seamless|unforgettable)\b/i.test(value),
+    /\b(?:helps?|enables?|designed to|built to|make it easier|save time|faster|simpler|powerful|seamless|unforgettable|access from any device|battery life|all-day|cloud storage|productivity apps|AI features|secure|collaborate|connect|automate)\b/i.test(value),
+  );
+  const featureSignals = statements.filter((value) =>
+    /\b(?:powered by|includes?|features?|with built-in|supports?|compatible with|cloud storage|AI features|battery life|security|collaboration|productivity|performance|portability|flexibility|access from any device|manage|automate|connect|integrate|stream|sync)\b/i.test(value),
   );
   const pricingSignals = statements.filter((value) =>
-    /(?:[$₹€£]\s?\d|\b(?:pricing|price|per month|monthly|annual plan|free trial|free plan|starting at|from \d+)\b)/i.test(value),
+    /(?:[$₹€£]\s?\d|\b(?:pricing|price|per month|monthly|annual plan|free trial|free plan|starting at|from \d+|subscription|discount|save \d+%|% off)\b)/i.test(value),
   );
-  const audienceSignal = statements.find((value) =>
-    /\bfor (?:teams|businesses|developers|students|families|creators|gamers|schools|teachers|professionals|organisations|organizations|customers|players|members|everyone)\b/i.test(value),
-  ) ?? null;
+
+  let audience: string | null = null;
+  let customerTypes: string[] = [];
+  if (/\bfor (?:your )?home or business\b/i.test(evidenceText)) {
+    audience = 'Home users and businesses';
+    customerTypes = ['Home users', 'Businesses'];
+  } else if (/\bfor (?:consumers and businesses|individuals and businesses)\b/i.test(evidenceText)) {
+    audience = 'Consumers and businesses';
+    customerTypes = ['Consumers', 'Businesses'];
+  } else {
+    const audiencePatterns: Array<{ pattern: RegExp; label: string }> = [
+      { pattern: /\bfor (?:small and medium[- ]sized businesses|SMBs)\b/i, label: 'Small and medium-sized businesses' },
+      { pattern: /\bfor (?:developers|software teams)\b/i, label: 'Developers and software teams' },
+      { pattern: /\bfor (?:students|teachers|schools|educators)\b/i, label: 'Students and educators' },
+      { pattern: /\bfor (?:families|parents|children|kids)\b/i, label: 'Families' },
+      { pattern: /\bfor (?:gamers|players)\b/i, label: 'Gamers and players' },
+      { pattern: /\bfor (?:teams|businesses|enterprises|organizations|organisations|professionals)\b/i, label: 'Teams and businesses' },
+    ];
+    for (const item of audiencePatterns) {
+      if (item.pattern.test(evidenceText)) {
+        audience = item.label;
+        customerTypes = [item.label];
+        break;
+      }
+    }
+  }
+
+  const technologySignals = lowerEvidence.match(/\b(?:software|cloud|apps?|applications?|operating system|computing|devices?|laptop|tablet|console|digital platform|AI features|productivity|database|developer tools|cybersecurity)\b/g) ?? [];
+  let industry: string | null = technologySignals.length >= 3 ? 'Technology and software' : null;
+  if (!industry && /\b(?:restaurant|bar|hotel|hospitality|food and drink|venue bookings|party venue|leisure experience)\b/i.test(evidenceText)) {
+    industry = 'Hospitality and leisure';
+  } else if (!industry && /\b(?:banking|insurance|financial services|payments|investment platform)\b/i.test(evidenceText)) {
+    industry = 'Financial services';
+  } else if (!industry && /\b(?:healthcare|clinical|patient care|medical services)\b/i.test(evidenceText)) {
+    industry = 'Healthcare';
+  } else if (!industry && /\b(?:courses|curriculum|school|learning platform|education services)\b/i.test(evidenceText)) {
+    industry = 'Education and learning';
+  } else if (!industry && /\b(?:online shop|e-commerce|retail store|shop online)\b/i.test(evidenceText)) {
+    industry = 'Retail and e-commerce';
+  }
+
+  const hasSubscriptionSignal = /\b(?:subscription|subscription-based|monthly|annual plan|per month|membership)\b/i.test(evidenceText);
+  const hasPlanSignal = /\b(?:plan|pricing|price|trial)\b/i.test(evidenceText);
+  const hasSalesSignal = /\b(?:shop|buy|purchase|pre-order|order now|product sales|available to buy)\b/i.test(evidenceText);
+  const businessModel = hasSubscriptionSignal && hasSalesSignal
+    ? 'Product sales and subscriptions'
+    : hasPlanSignal && hasSalesSignal
+      ? 'Product sales and paid plans'
+      : hasSubscriptionSignal
+        ? 'Subscription-based services or plans'
+        : hasSalesSignal
+          ? 'Direct product sales'
+          : null;
+
   const differentiatedClaims = statements.filter((value) =>
     /\b(?:only|first|unique|largest|award[- ]winning|leading|fastest|exclusive|unlike|number one|no\. 1)\b/i.test(value),
   );
   const useCases = statements.filter((value) =>
-    /\b(?:book|host|play|create|design|build|stream|watch|learn|shop|order|collaborate|travel|manage|explore|discover)\b/i.test(value),
+    /\b(?:book|host|play|create|design|build|stream|watch|learn|shop|order|collaborate|travel|manage|explore|discover|access|automate|work smarter|save your files)\b/i.test(value) &&
+    !isWebsiteActionLabel(value),
   );
+  const products = uniqueText(productLinks, 12, 2, 'offering');
+  const services = uniqueText(serviceLinks, 12, 2, 'offering');
+  const productKeys = new Set(products.map((value) => value.toLowerCase()));
+  const cleanFeatures = uniqueText([...featureSignals, ...benefitSignals], 16, 18)
+    .filter((value) => !productKeys.has(value.toLowerCase()) && !isWebsiteActionLabel(value));
+  const cleanBenefits = uniqueText(benefitSignals, 12, 18)
+    .filter((value) => !productKeys.has(value.toLowerCase()) && !isWebsiteActionLabel(value));
+  const cleanThemes = sectionHeadings.filter((heading) => !productKeys.has(heading.toLowerCase()));
 
   return {
-    // Copy or classify only first-party website evidence. Unknown facts stay null.
-    products: uniqueText(productLinks, 12),
-    services: uniqueText(serviceLinks, 12),
-    keyFeatures: uniqueText([...sectionHeadings, ...benefitSignals], 16, 8),
-    benefits: uniqueText(benefitSignals, 12, 12),
+    products,
+    services,
+    keyFeatures: cleanFeatures,
+    benefits: cleanBenefits,
     pricingSignals: uniqueText(pricingSignals, 12, 8),
-    audience: audienceSignal,
+    audience,
     personas: [],
-    customerTypes: [],
+    customerTypes,
     painPoints: uniqueText(statements.filter((value) =>
       /\b(?:challenge|problem|struggle|pain point|time-consuming|complex|difficult|frustrat|need to|tired of)\b/i.test(value),
     ), 10, 12),
@@ -1029,18 +1174,18 @@ function buildWebsiteEvidenceFallbackProfile(
     tone: [],
     terminology: [],
     recurringClaims: [],
-    messagingThemes: uniqueText(sectionHeadings, 12, 3),
+    messagingThemes: uniqueText(cleanThemes, 12, 3),
     valueProposition: identity.description ?? sectionHeadings[0] ?? null,
     differentiators: uniqueText(differentiatedClaims, 10, 12),
-    positioningThemes: uniqueText(sectionHeadings, 12, 3),
-    callsToAction: uniqueText(callsToAction, 12),
-    productCategories: uniqueText(productLinks, 12),
-    industry: null,
-    businessModel: null,
-    primaryMarket: null,
+    positioningThemes: uniqueText(cleanThemes, 12, 3),
+    callsToAction: uniqueText(callsToAction, 12, 2, 'cta'),
+    productCategories: products,
+    industry,
+    businessModel,
+    primaryMarket: audience ? (customerTypes.includes('Businesses') || /businesses|teams/i.test(audience) ? 'Consumer and business markets' : null) : null,
     geography: null,
     seo: {
-      importantTopics: uniqueText(sectionHeadings, 12, 3),
+      importantTopics: uniqueText(cleanThemes, 12, 3),
       keywordThemes: [],
       contentGaps: [],
       searchIntentOpportunities: [],
@@ -1299,7 +1444,7 @@ export async function GET(request: Request) {
             if (aiBudgetMs <= 0) {
               aiWarnings.push('AI enrichment could not start because public-page recovery used the scan deadline.');
             } else {
-              const perProviderBudgetMs = providers.length > 1 ? Math.min(24_000, aiBudgetMs) : aiBudgetMs;
+              const perProviderBudgetMs = providers.length > 1 ? Math.min(14_000, aiBudgetMs) : aiBudgetMs;
               const extractionRun = await withTimeout(
                 runWithProviderFailover(
                   providers,
@@ -1319,7 +1464,7 @@ export async function GET(request: Request) {
                           websiteFastMode: true,
                           maxEvidenceChars: 12_000,
                           maxSources: 8,
-                          maxTokens: 2_000,
+                          maxTokens: 3_200,
                         }),
                         perProviderBudgetMs,
                         providerTimeoutMessage,
@@ -1503,6 +1648,7 @@ export async function GET(request: Request) {
       aiModelCompleted,
       aiFallbackUsed,
       aiFailureCount: aiWarnings.length,
+      aiFailureSummary: aiWarnings.map((warning) => warning.slice(0, 180)),
       warningCount: warnings.length,
     }));
     const enriched = {

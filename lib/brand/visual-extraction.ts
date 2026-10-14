@@ -353,11 +353,8 @@ export function isNeutral(hex: string): boolean {
 }
 
 const DELIBERATE_COLOUR_SOURCES = new Set([
-  'semantic-css',
-  'semantic-primary-css',
-  'semantic-brand-css',
-  'semantic-secondary-css',
-  'semantic-accent-css',
+  // These sources demonstrate actual use outside a token's own name.
+  // Token-only and raster-pixel evidence should not establish the primary role.
   'header-ui',
   'nav-ui',
   'primary-control',
@@ -377,9 +374,10 @@ const DELIBERATE_COLOUR_SOURCES = new Set([
 function isPaletteNeutral(hex: string, sources: string[]): boolean {
   if (isNeutral(hex)) return true;
   const hasDeliberateEvidence = sources.some((source) => DELIBERATE_COLOUR_SOURCES.has(source));
-  return !hasDeliberateEvidence &&
-    relativeLuminance(hex) >= 0.78 &&
-    saturationOf(hex) <= 0.52;
+  // HSL saturation exaggerates the apparent colourfulness of very light cream
+  // and pastel tones. High-luminance colours need real use evidence to rank as
+  // brand colours instead of page surfaces.
+  return !hasDeliberateEvidence && relativeLuminance(hex) >= 0.78;
 }
 
 /** Pick whichever of black/white keeps text readable on the given brand colour. */
@@ -582,7 +580,7 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
     const logoSignal = sources.includes('logo-svg-color');
     const rasterLogoSignal = sources.includes('logo-raster-color');
     const scriptStyleSignal = sources.includes('js-style-tokens');
-    const corroborated = uiSignal || logoSignal || rasterLogoSignal || themeSignal || scriptStyleSignal;
+    const corroborated = uiSignal || logoSignal || themeSignal || scriptStyleSignal;
     const neutralPenalty = isPaletteNeutral(hex, sources) ? 0.18 : 1;
     // A semantic token is useful evidence, but its name alone is not proof that
     // it is the public-facing brand colour. Independent usage in the site chrome,
@@ -647,6 +645,10 @@ const GENERIC_FONT_FAMILIES = new Set([
   'math', 'fangsong', 'inherit', 'initial', 'unset', 'revert', 'normal',
 ]);
 
+function isIconFontFamily(value: string): boolean {
+  return /(?:font\s*awesome|fabricmdl2icons|mwf[-_ ]fluent[-_ ]icons|material\s+(?:icons|symbols)|bootstrap[-_ ]icons|glyphicons|ionicons|webdings|wingdings|remixicon|lucide[-_ ]icons|phosphor[-_ ]icons|feather[-_ ]icons)/i.test(value);
+}
+
 function resolveFontFamilyValue(raw: string, variables: Map<string, string>): string | null {
   let value = raw.trim().replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\s*!important\s*$/i, '');
   for (let depth = 0; depth < 8; depth += 1) {
@@ -662,6 +664,7 @@ function resolveFontFamilyValue(raw: string, variables: Map<string, string>): st
   const firstFamily = value.split(',')[0]?.trim().replace(/^["']|["']$/g, '').replace(/\s+/g, ' ');
   if (!firstFamily || firstFamily.length < 2 || firstFamily.length > 80) return null;
   if (GENERIC_FONT_FAMILIES.has(firstFamily.toLowerCase())) return null;
+  if (isIconFontFamily(firstFamily)) return null;
   if (/^(?:[\d.]+(?:px|pt|em|rem|%|vh|vw)?|bold|bolder|lighter|italic|oblique|normal|small-caps)$/i.test(firstFamily)) return null;
   if (/^(?:url|local|format|var|calc|min|max|clamp)\s*\(/i.test(firstFamily)) return null;
   if (/[;{}<>]/.test(firstFamily)) return null;
@@ -681,6 +684,7 @@ function fontEvidencePriority(font: ExtractedFont): number {
 
 export function rankExtractedFonts(fonts: ExtractedFont[]): ExtractedFont[] {
   return fonts
+    .filter((font) => !isIconFontFamily(font.family))
     .map((font, index) => ({ font, index }))
     .sort((a, b) => fontEvidencePriority(a.font) - fontEvidencePriority(b.font) || a.index - b.index)
     .reduce<ExtractedFont[]>((ranked, item) => {

@@ -221,21 +221,30 @@ describe('semantic colour role ordering', () => {
 });
 
 describe('raster and pastel colour evidence', () => {
-  it('does not let a pale raster background outrank semantic maroon brand styling', () => {
+  it('does not let a pale primary token with raster-only corroboration outrank maroon used in site UI', () => {
     const sink = new Map<string, { count: number; sources: Set<string> }>([
-      ['#f4e6eb', { count: 500, sources: new Set(['logo-raster-color']) }],
-      ['#70152d', { count: 8, sources: new Set(['semantic-css', 'semantic-primary-css', 'header-ui', 'primary-control']) }],
+      ['#fff5e0', { count: 18, sources: new Set(['css-color-declaration', 'semantic-css', 'semantic-primary-css', 'logo-raster-color']) }],
+      ['#70152d', { count: 8, sources: new Set(['semantic-css', 'semantic-brand-css', 'header-ui', 'primary-control']) }],
     ]);
     const palette = rankPalette(sink, 8);
     expect(palette[0]?.hex).toBe('#70152d');
-    expect(palette.find((color) => color.hex === '#f4e6eb')?.role).toBe('neutral');
+    expect(palette.find((color) => color.hex === '#fff5e0')?.role).toBe('neutral');
   });
 
-  it('preserves an explicitly declared pastel primary brand colour', () => {
+  it('preserves a pastel primary colour when the primary UI actually uses it', () => {
     const sink = new Map<string, { count: number; sources: Set<string> }>([
-      ['#f0c7d5', { count: 2, sources: new Set(['semantic-css', 'semantic-primary-css']) }],
+      ['#f0c7d5', { count: 2, sources: new Set(['semantic-css', 'semantic-primary-css', 'primary-control']) }],
     ]);
     expect(rankPalette(sink, 8)[0]).toMatchObject({ hex: '#f0c7d5', role: 'primary' });
+  });
+
+  it('does not return icon fonts as brand typography', () => {
+    const fonts = rankExtractedFonts([
+      { family: `normal 900 1em/1 "Font Awesome 7 Free"`, source: 'css-declaration', evidence: 'CSS font token --fa-font-solid' },
+      { family: 'FabricMDL2Icons', source: 'css-declaration', evidence: 'CSS font token --icon-font' },
+      { family: 'Segoe UI Variable Text', source: 'css-declaration', evidence: 'font-family from body/html selector' },
+    ]);
+    expect(fonts.map((font) => font.family)).toEqual(['Segoe UI Variable Text']);
   });
 });
 
