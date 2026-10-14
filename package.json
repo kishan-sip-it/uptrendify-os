@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "brand:compat": "node scripts/brand-iq-compatibility.mjs"
   },
   "dependencies": {
     "@google/genai": "2.22.0",

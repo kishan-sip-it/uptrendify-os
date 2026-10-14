@@ -12,3 +12,4 @@ supabase/.temp
 tsconfig.tsbuildinfo
 next-env.d.ts
 opencode.json
+artifacts/brand-iq-compatibility/
