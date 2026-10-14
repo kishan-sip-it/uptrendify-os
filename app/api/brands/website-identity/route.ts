@@ -134,44 +134,48 @@ async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 async function fetchFallbackFirstPartyPage(root: URL, sharedSignal?: AbortSignal): Promise<FetchOutcome | null> {
-  // If the canonical root is blocked or only an app shell, try a small set of
-  // conventional locale, company and product paths on the same public host.
-  // Every candidate must return substantive first-party content; path names are
-  // discovery hints only and are never treated as evidence by themselves.
   if (root.pathname !== '/' && root.pathname !== '/index.html') return null;
-  const candidates = ['/in/', '/us/', '/about/', '/products/'];
-  const results = await Promise.all(candidates.map(async (pathname): Promise<FetchOutcome | null> => {
+
+  // Try several common first-party paths directly before spending reader budget.
+  // Enterprise SaaS sites often put canonical information under /company/,
+  // /about-us/, /platform/ or /solutions/ instead of /about/ and /products/.
+  const candidates = [
+    '/in/', '/us/', '/en/', '/en-us/', '/about/', '/about-us/',
+    '/company/', '/company/about-us/', '/products/', '/product/',
+    '/platform/', '/solutions/',
+  ];
+  const directResults = await Promise.all(candidates.map(async (pathname): Promise<FetchOutcome | null> => {
     try {
       const candidate = assertPublicHttpUrl(new URL(pathname, root).toString());
       await assertResolvablePublicHost(candidate.hostname);
       const result = await fetchHtml(candidate, 2, BROWSER_USER_AGENT, false, sharedSignal);
-      if (result.ok) {
-        const page = pageText(result.html);
-        const opening = (page.title ?? '') + ' ' + page.text.slice(0, 800);
-        const $ = cheerio.load(result.html);
-        const mainHeading = $('main h1, article h1, [role="main"] h1, h1').first().text().replace(/\s+/g, ' ').trim();
-        const hasReaderError = /(?:\b404\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening);
-        // The global shell heuristic is intentionally conservative for roots.
-        // A short About/Product page with a real H1 and substantive body text is
-        // still valid evidence and should not be discarded just for being concise.
-        if (page.text.length >= 180 && (!shouldUseRenderedWebsiteFallback(result.html) || mainHeading.length >= 3) && !hasReaderError) {
-          return result;
-        }
-      }
+      if (!result.ok) return null;
+      const page = pageText(result.html);
+      const opening = (page.title ?? '') + ' ' + page.text.slice(0, 800);
+      const $ = cheerio.load(result.html);
+      const mainHeading = $('main h1, article h1, [role="main"] h1, h1').first().text().replace(/\s+/g, ' ').trim();
+      const hasReaderError = /(?:\b404\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening);
+      // A short About/Product page can be valid when it has a real heading and body.
+      if (page.text.length >= 180 && (!shouldUseRenderedWebsiteFallback(result.html) || mainHeading.length >= 3) && !hasReaderError) return result;
+      return null;
+    } catch {
+      return null;
+    }
+  }));
+  const directSuccess = directResults.find((result): result is FetchOutcome & { ok: true } => result?.ok === true);
+  if (directSuccess) return directSuccess;
 
-      // Some sites block ordinary requests or return only an app shell for every
-      // locale path. Give each candidate one short rendered-reader attempt.
+  // Reader requests are deliberately limited to a smaller set so a blocked
+  // root cannot turn into a fan-out crawler or exhaust the shared scan budget.
+  const readerPaths = ['/about/', '/about-us/', '/company/', '/products/', '/platform/'];
+  const renderedResults = await Promise.all(readerPaths.map(async (pathname): Promise<FetchOutcome | null> => {
+    try {
+      const candidate = assertPublicHttpUrl(new URL(pathname, root).toString());
       const rendered = await fetchRenderedResearch(candidate.toString(), 3_000, sharedSignal);
-      if (!rendered) {
-        return result.ok
-          ? { ok: false, reason: 'The regional homepage did not contain usable public website content.', finalUrl: result.finalUrl }
-          : result;
-      }
+      if (!rendered) return null;
       const page = pageText(renderedPageHtml(rendered));
       const opening = (page.title ?? '') + ' ' + page.text.slice(0, 800);
-      if (page.text.length < 180 || /(?:\b404\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening)) {
-        return { ok: false, reason: 'The rendered regional homepage did not contain usable public website content.', finalUrl: candidate.toString() };
-      }
+      if (page.text.length < 180 || /(?:\b404\b|page not found|page does not exist|site is experiencing technical difficulty|access denied)/i.test(opening)) return null;
       return {
         ok: true,
         html: renderedPageHtml(rendered),
@@ -182,8 +186,14 @@ async function fetchFallbackFirstPartyPage(root: URL, sharedSignal?: AbortSignal
       return null;
     }
   }));
-  return results.find((result): result is FetchOutcome & { ok: true } => result?.ok === true) ?? null;
+  const renderedSuccesses = renderedResults.filter((result): result is FetchOutcome & { ok: true } => result?.ok === true);
+  renderedSuccesses.sort((a, b) => {
+    const length = (result: FetchOutcome & { ok: true }) => pageText(result.html).text.trim().length;
+    return length(b) - length(a);
+  });
+  return renderedSuccesses[0] ?? null;
 }
+
 async function readBoundedBytes(response: Response, maxBytes: number): Promise<Uint8Array | null> {
   const contentLength = Number(response.headers.get('content-length') ?? 0);
   if (contentLength > maxBytes) return null;
