@@ -69,6 +69,29 @@ const SOCIAL_HOSTS: { platform: string; test: (host: string) => boolean }[] = [
 const LOGO_HINT = /(logo|wordmark|brandmark|brand-logo)/i;
 const FAVICON_HINT = /(favicon|apple-touch-icon|icon)/i;
 
+// Contexts that describe somebody else's brand, not the website owner: customer
+// proof strips, integration/ecosystem marketplaces, partner and sponsor grids,
+// country-switcher flags and generic avatar/author imagery. These never qualify
+// as the requested brand's logo even when the markup places them in a header.
+const THIRD_PARTY_BRAND_CONTEXT = /(?:^|[^a-z])(?:integration|integrations|ecosystem|marketplace|apps?[-_ ]?(?:market|directory)|connectors?|partner|partners|sponsor|sponsors|trusted[-_ ]?by|logo[-_ ]?bar|logo[-_ ]?strip|logo[-_ ]?wall|client[-_ ]?logo|customer[-_ ]?logo|customer[-_ ]?stories?|case[-_ ]?studies?|case[-_ ]?study|testimonial|review|reviews|pricing|promo[-_ ]?banner|advertisement|screenshot|thumbnail|swiper|carousel|country[-_ ]?switcher|language[-_ ]?switcher|locale[-_ ]?switcher|flags?|flag)(?:[^a-z]|$)/i;
+const THIRD_PARTY_BRAND_URL_PATH = /(?:\/(?:flags?|country[-_ ]?switcher|countries|assets\/flags|avatars?|authors?|people|team|speakers?)(?:\/|$))/i;
+
+// Common web, UI and technology tokens that appear in filenames but do not name
+// a company. Used to decide whether a filename's leading token is a distinctive
+// brand name worth treating as a cross-brand signal.
+const GENERIC_ASSET_TOKENS = new Set([
+  'logo', 'wordmark', 'brandmark', 'brand', 'mark', 'icon', 'image', 'img', 'asset', 'assets',
+  'header', 'footer', 'nav', 'navbar', 'menu', 'hero', 'banner', 'mobile', 'desktop', 'preview',
+  'light', 'dark', 'white', 'black', 'color', 'colour', 'primary', 'secondary', 'accent',
+  'full', 'horizontal', 'vertical', 'square', 'wide', 'small', 'large', 'thumb', 'thumbnail',
+  'svg', 'png', 'jpg', 'jpeg', 'webp', 'avif', 'gif', 'web', 'static', 'public', 'shared',
+  'default', 'main', 'site', 'home', 'page', 'hero', 'cover', 'group', 'icon', 'featured',
+  'integration', 'integrations', 'partner', 'partners', 'sponsor', 'customer', 'client',
+  'customer', 'trusted', 'review', 'reviews', 'testimonial', 'quote', 'card', 'tile',
+  'logo', 'logo1', 'logo2', 'com', 'www', 'http', 'https', 'aws', 'azure', 'cloud',
+  'app', 'apps', 'new', 'all', 'top', 'one', 'side', 'left', 'right', 'promo', 'ads',
+]);
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -396,6 +419,11 @@ const COLOR_TOKEN = /(#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)|oklab\([
 export function collectColors(cssText: string, source: string, sink: Map<string, { count: number; sources: Set<string> }>): void {
   const cleaned = cssText.replace(/\/\*[\s\S]*?\*\//g, ' ');
   const lowSignalSelector = /(partner|sponsor|testimonial|customer-logo|social-share|avatar|badge|alert|error|success|warning|status|tooltip|notification|toast|rating|review-star)/i;
+  // Colours scoped to a sub-brand or content product (a company podcast page,
+  // an academy, a conference microsite, ...) describe that sub-property's
+  // identity, not the site brand. They stay in the sink as weak evidence but
+  // never earn control/header prominence.
+  const subBrandScopeSelector = /(?:^|[\s.#_:-])(?:podcasts?|webinars?|academy|university|glossar(?:y|ies)|newsletters?|communit(?:y|ies)|forums?|conferences?|knowledge[-_]?base|magazines?|labs)(?:$|[\s.#_:-])/i;
   const selectorForPosition = (position: number): string => {
     const openingBrace = cleaned.lastIndexOf('{', position);
     const closingBrace = cleaned.lastIndexOf('}', position);
@@ -417,7 +445,7 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
     const value = (match[2] ?? '').trim();
     if (name && value) variableValues.set(name, value);
   }
-  const resolveCssColor = (rawValue: string): string | null => {
+  const resolveCssText = (rawValue: string): string => {
     let value = rawValue.replace(/\\s*!important\\s*$/i, '').trim();
     for (let depth = 0; depth < 8; depth += 1) {
       const next = value.replace(/var\(\s*(--[a-z0-9_-]+)\s*(?:,\s*([^()]+))?\)/gi, (original, rawName: string, fallback?: string) => {
@@ -426,6 +454,10 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
       if (next === value) break;
       value = next;
     }
+    return value;
+  };
+  const resolveCssColor = (rawValue: string): string | null => {
+    const value = resolveCssText(rawValue);
     const direct = parseCssColor(value) ?? parseBareHslTriplet(value);
     if (direct) return direct;
 
@@ -437,7 +469,9 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
       const parsed = parseCssColor(token[0]);
       if (parsed) return parsed;
     }
-    for (const word of value.match(/[a-z]{3,20}/gi) ?? []) {
+    // Named-colour fallback must ignore words inside var(--...) references:
+    // var(--color-red-600) is a token reference, not a red declaration.
+    for (const word of value.replace(/var\([^()]*\)/gi, ' ').match(/[a-z]{3,20}/gi) ?? []) {
       const named = BASIC_CSS_COLORS[word.toLowerCase()];
       if (named) return named;
     }
@@ -452,10 +486,10 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
     const context = selectorForPosition(position);
     const hex = parseCssColor(match[0]);
     if (!hex) continue;
-    if (context && lowSignalSelector.test(context)) {
+    if (context && (lowSignalSelector.test(context) || subBrandScopeSelector.test(context))) {
       // Preserve a weak palette record for debugging/secondary colors, but don't
       // let UI error/toast/customer assets establish brand palette prominence.
-      add(hex, 0.25, 'low-signal-css');
+      add(hex, 0.25, lowSignalSelector.test(context) ? 'low-signal-css' : 'sub-brand-scope-css');
       continue;
     }
     add(hex);
@@ -469,19 +503,26 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
     const selector = selectorForPosition(declarationIndex);
     const value = (declaration[1] ?? '').trim();
     const lowSignal = Boolean(selector && lowSignalSelector.test(selector));
-    const evidenceSource = lowSignal ? 'low-signal-css' : 'css-color-declaration';
-    const weight = lowSignal ? 0.25 : 2;
+    const subBrandScope = Boolean(selector && subBrandScopeSelector.test(selector));
+    // Gradient fills are decorative artwork on the page, not a solid brand
+    // control colour: their stops must not inherit declaration prominence.
+    const gradientValue = /gradient\(/i.test(resolveCssText(value));
+    const evidenceSource = lowSignal ? 'low-signal-css' : subBrandScope ? 'sub-brand-scope-css' : gradientValue ? 'gradient-css' : 'css-color-declaration';
+    const weight = lowSignal || subBrandScope ? 0.25 : gradientValue ? 0.5 : 2;
     const hex = resolveCssColor(value);
     if (hex) add(hex, weight, evidenceSource);
     // Named colours may occur inside compound declarations such as
     // "border: 1px solid tomato" rather than as the complete value.
-    for (const word of value.match(/[a-z]{3,20}/gi) ?? []) {
+    // var(--color-red-600) is a reference, not a red declaration: colour words
+    // inside the variable NAME must not count as named-colour evidence.
+    const namedWordValue = value.replace(/var\([^()]*\)/gi, ' ');
+    for (const word of namedWordValue.match(/[a-z]{3,20}/gi) ?? []) {
       const named = BASIC_CSS_COLORS[word.toLowerCase()];
       if (named) add(named, weight, evidenceSource);
     }
     for (const token of value.matchAll(COLOR_TOKEN)) {
       const tokenHex = resolveCssColor(token[0]);
-      if (tokenHex) add(tokenHex, lowSignal ? 0.1 : 1, evidenceSource);
+      if (tokenHex) add(tokenHex, lowSignal || subBrandScope ? 0.1 : gradientValue ? 0.2 : 1, evidenceSource);
     }
   }
 
@@ -511,12 +552,19 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
 
   // Selector-level evidence is shared by inline and external stylesheets.
   // Avoid boosting partner/customer logos and status/notification colours.
+  // A stylesheet fetched with a byte cap can end mid-rule (even mid data-URI
+  // string); an unterminated tail makes /([^{}]+)\{([^{}]*)\}/g backtrack
+  // quadratically across the whole bundle (a truncated 350KB Microsoft UHF
+  // stylesheet took ~90s in this loop). Dropping everything after the last
+  // complete rule removes that fuel without losing any parseable evidence.
   const rules = /([^{}]+)\{([^{}]*)\}/g;
+  const lastCompleteBrace = cleaned.lastIndexOf('}');
+  const ruleScanText = lastCompleteBrace === -1 ? '' : cleaned.slice(0, lastCompleteBrace + 1);
   const colorProperty = /\b(color|background(?:-color)?|border(?:-[a-z]+)?-color|fill|stroke)\s*:\s*([^;]+)(?:;|$)/gi;
-  for (const rule of cleaned.matchAll(rules)) {
+  for (const rule of ruleScanText.matchAll(rules)) {
     const selector = (rule[1] ?? '').trim().toLowerCase();
     const declarations = rule[2] ?? '';
-    if (!selector || selector.startsWith('@') || lowSignalSelector.test(selector)) continue;
+    if (!selector || selector.startsWith('@') || lowSignalSelector.test(selector) || subBrandScopeSelector.test(selector)) continue;
 
     const headerSignal = /(^|[\s,>])(?:header|nav|banner|\.site-header|\.navbar|\.navigation|#header|#nav)(?=$|[\s,>:#.\[])/i.test(selector);
     const controlSignal = /(?:primary|brand|cta|accent|action|button|btn|(?:^|[\s,>])a(?:$|[\s,:>#.]))/i.test(selector);
@@ -534,22 +582,28 @@ export function collectColors(cssText: string, source: string, sink: Map<string,
       const saturation = saturationOf(resolved);
       const isForeground = property === 'color';
       const isBackground = property.startsWith('background');
-      const signal = nearWhiteTint
-        ? 'control-foreground'
-        : headerSignal
-          ? 'header-ui'
-          : isNamedBrandSelector && isForeground && saturation > 0.20
-            ? 'primary-control'
-            : isBackground && saturation > 0.20
+      // A gradient fill is page decoration; its stops are artwork colours, not
+      // the solid colour of a brand control, so they never earn control/header
+      // evidence no matter which selector they appear in.
+      const gradientValue = /gradient\(/i.test(resolveCssText(value));
+      const signal = gradientValue
+        ? 'gradient-css'
+        : nearWhiteTint
+          ? 'control-foreground'
+          : headerSignal
+            ? 'header-ui'
+            : isNamedBrandSelector && isForeground && saturation > 0.20
               ? 'primary-control'
-              : isAnchorSelector && isForeground && saturation > 0.20
-                ? 'link-accent'
-                : isForeground
-                  ? 'control-foreground'
-                  : saturation > 0.20
-                    ? 'primary-control'
-                    : 'control-foreground';
-      const declarationWeight = nearWhiteTint ? 1 : weight;
+              : isBackground && saturation > 0.20
+                ? 'primary-control'
+                : isAnchorSelector && isForeground && saturation > 0.20
+                  ? 'link-accent'
+                  : isForeground
+                    ? 'control-foreground'
+                    : saturation > 0.20
+                      ? 'primary-control'
+                      : 'control-foreground';
+      const declarationWeight = gradientValue ? 0.5 : nearWhiteTint ? 1 : weight;
       add(resolved, declarationWeight, signal);
       for (const token of value.matchAll(COLOR_TOKEN)) {
         const hex = resolveCssColor(token[0]);
@@ -643,12 +697,20 @@ export function rankPalette(sink: Map<string, { count: number; sources: Set<stri
               : uiSignal ? 3.5 : logoSignal ? 3.2 : primaryLogoRasterSignal ? 3
                 : rasterLogoSignal ? 1.15 : scriptStyleSignal ? 1.8 : 1;
     const sourceDiversity = 1 + Math.min(sources.length, 5) * 0.06;
+    // A colour with no attribution signal at all (no brand-token name, no
+    // control/header/link usage, no logo/theme/script corroboration) can only
+    // reach the palette through raw repetition — animation keyframes and
+    // utility placeholders repeat one literal colour hundreds of times. Damp
+    // volume-only evidence so it cannot outrank attributed brand colours,
+    // while still ranking above noise when a site genuinely paints with it.
+    const unattributedVolumeOnly = !corroborated && !semantic;
     const prominence = round(
       Math.log2(1 + entry.count) *
       (0.35 + saturation) *
       deliberateBoost *
       sourceDiversity *
       neutralPenalty *
+      (unattributedVolumeOnly ? 0.5 : 1) *
       (luminance > 0.985 || luminance < 0.015 ? 0.25 : 1),
     );
     return {
@@ -776,7 +838,11 @@ export function extractDeclaredFonts(cssText: string): ExtractedFont[] {
   }
 
   const rules = /([^{}]+)\{([^{}]*)\}/g;
-  for (const rule of cleaned.matchAll(rules)) {
+  // Same unterminated-tail guard as collectColors: a byte-capped stylesheet
+  // that ends mid-rule otherwise makes this loop backtrack quadratically.
+  const fontLastCompleteBrace = cleaned.lastIndexOf('}');
+  const fontRuleScanText = fontLastCompleteBrace === -1 ? '' : cleaned.slice(0, fontLastCompleteBrace + 1);
+  for (const rule of fontRuleScanText.matchAll(rules)) {
     const selector = (rule[1] ?? '').trim();
     const declarations = rule[2] ?? '';
     if (!selector) continue;
@@ -838,6 +904,22 @@ function sameSiteUrl(base: string | null, candidate: string): boolean {
   }
 }
 
+/**
+ * Shared asset/CDN infrastructure carries no brand identity of its own, so a
+ * page-declared icon hosted there keeps the declaring page's provenance. A
+ * host that looks like a distinct brand (duolingo.example behind a github.com
+ * page) must never be adopted this way.
+ */
+function isGenericAssetHost(candidate: string): boolean {
+  try {
+    const host = new URL(candidate).hostname.toLowerCase();
+    if (/^(?:cdn\d*|assets?|static\d?|media|img|images|files|storage|icons?|assets2)\./.test(host)) return true;
+    return /(?:^|\.)(?:website-files\.com|ctfassets\.net|contentful\.com|cloudfront\.net|akamaized\.net|storage\.googleapis\.com|amazonaws\.com|azureedge\.net|blob\.core\.windows\.net|fastly\.net|stackpathcdn\.com|b-cdn\.net|imgix\.net|wp\.com|wpengine\.com|kinsta\.com|squarespace\.com|shopify\.com|githubusercontent\.com|gitlab\.io|vercel\.app|netlify\.app|pages\.dev|fly\.dev|herokuapp\.com|firebaseio\.com|firebasestorage\.googleapis\.com|hubspot\.com|hsstatic\.net|hsforms\.net|hs-sites\.com)$/.test(host);
+  } catch {
+    return false;
+  }
+}
+
 function normalizeBrandLabel(value: string): string {
   return value.toLowerCase()
     .replace(/\b(?:incorporated|inc|corp(?:oration)?|ltd|limited|llc|plc|gmbh|company|co)\b/g, ' ')
@@ -848,7 +930,19 @@ function labelMatchesWebsite(value: string, siteName: string, rootToken: string)
   const candidate = normalizeBrandLabel(value);
   if (!candidate) return false;
   const aliases = [normalizeBrandLabel(siteName), normalizeBrandLabel(rootToken)].filter((alias) => alias.length >= 3);
-  return aliases.some((alias) => candidate === alias || candidate.includes(alias) || alias.includes(candidate));
+  // Compare whole label tokens instead of raw substrings. Bidirectional
+  // `alias.includes(candidate)` made short tokens match an unrelated brand:
+  // a country code ("in") looked like part of "moveinsync", and a slogan token
+  // ("ai") looked like part of "openai". Require both the candidate token and the
+  // alias token to be long enough before allowing a substring comparison.
+  const aliasTokens = aliases.flatMap((alias) => alias.split(' ').filter(Boolean));
+  const candidateTokens = candidate.split(' ').filter(Boolean);
+  if (aliases.some((alias) => alias === candidate)) return true;
+  if (candidateTokens.some((token) => token.length >= 3 && aliasTokens.includes(token))) return true;
+  if (candidateTokens.some((token) => token.length >= 4 && aliasTokens.some((aliasToken) =>
+    aliasToken.length >= 4 && (aliasToken === token || aliasToken.includes(token) || token.includes(aliasToken))))) return true;
+  if (aliasTokens.some((aliasToken) => aliasToken.length >= 4 && candidate.includes(aliasToken))) return true;
+  return false;
 }
 
 function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string | null; favicon: string | null } {
@@ -951,7 +1045,7 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     if (rootToken && path.includes(rootToken)) score += 8;
     if (pathSuggestsWordmark) score += 35;
     if (aspectRatio >= 2.2 && aspectRatio <= 10 && measuredWidth <= 900 && measuredHeight <= 240) score += 42;
-    if (/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail)/i.test(path + ' ' + alt + ' ' + classes + ' ' + parentText)) score -= 60;
+    if (/(stripe|paypal|visa|mastercard|partner|sponsor|customer|testimonial|case-study|twitter-card|og-image|social-share|hero|screenshot|thumbnail|promo[-_ ]?banner|advertisement)/i.test(path + ' ' + alt + ' ' + classes + ' ' + parentText)) score -= 60;
     if (/(^|\s)(logo|wordmark)(\s|$)/i.test(alt)) score += 15;
 
     const normalizedAlt = normalizeBrandLabel(alt);
@@ -978,21 +1072,77 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
       .split(/[^a-z0-9]+/).filter((token) => token.length >= 3) ?? [];
     const genericLogoPathTokens = new Set(['logo', 'wordmark', 'brandmark', 'brand', 'mark', 'full', 'light', 'dark', 'white', 'black', 'color', 'colour', 'horizontal', 'vertical', 'primary', 'secondary', 'icon', 'image', 'asset', 'min']);
     const namedLogoTokens = /(logo|wordmark|brandmark)/i.test(path)
-      ? logoPathTokens.filter((token) => !genericLogoPathTokens.has(token) && !/^\d+$/.test(token))
+      ? logoPathTokens.filter((token) => !GENERIC_ASSET_TOKENS.has(token) && !genericLogoPathTokens.has(token) && !/^\d+$/.test(token))
       : [];
     const pathNamesDifferentBrand = namedLogoTokens.length > 0 &&
       !namedLogoTokens.some((token) => labelMatchesWebsite(token, declaredSiteName, rootToken));
+    // Asset filenames such as `salesforce-icon-light.svg` or `Coupang-logo.png`
+    // name a partner or customer brand without necessarily containing the word
+    // "logo". Treat a distinctive leading filename token that matches neither the
+    // site name nor the host as a cross-brand signal, so integration, ecosystem,
+    // customer and logo-strip assets cannot win the owner's logo slot.
+    const distinctivePathTokens = logoPathTokens.filter((token) =>
+      token.length >= 4 && !genericLogoPathTokens.has(token) && !GENERIC_ASSET_TOKENS.has(token) &&
+      !/^\d+$/.test(token) && !/^[0-9a-f]{5,}$/i.test(token));
+    const pathNamesUnrelatedBrand = distinctivePathTokens.length > 0 &&
+      !distinctivePathTokens.some((token) => labelMatchesWebsite(token, declaredSiteName, rootToken)) &&
+      !rootToken.includes(distinctivePathTokens[0]) &&
+      !sameSiteUrl(base, url);
     const assetContext = path + ' ' + classes + ' ' + ancestorHints + ' ' + alt;
-    const personAssetContext = /(?:^|[\/_ .-])(?:team|people|person|profile|avatar|headshot|portrait|employee|leadership|founders?|staff|authors?|speakers?)(?:$|[\/_ .-])/i.test(assetContext) ||
-      /\b(?:profile photo|headshot|portrait|avatar|team member|team photo|employee photo|(?:team|leadership|founder) member)\b/i.test(assetContext);
+    const personAssetContext = /(?:^|[\/_ .-])(?:team|people|person|profile|avatar|headshot|portrait|employee|leadership|founders?|staff|authors?|speakers?|workers?|colleagues?|coworkers?|professionals?)(?:$|[\/_ .-])/i.test(assetContext) ||
+      /\b(?:profile photo|headshot|portrait|avatar|team member|team photo|employee photo|office worker|(?:team|leadership|founder) member)\b/i.test(assetContext);
+    // A photograph of a person can only be the owner's mark when the asset
+    // itself carries explicit brand-mark wording; a caption that merely starts
+    // with the site name ("Acme founder speaking at a conference") is not
+    // evidence that the photo is the brand's logo.
+    const brandMarkWording = LOGO_HINT.test(path) || LOGO_HINT.test(alt) || LOGO_HINT.test(classes) ||
+      pathSuggestsWordmark || /(brand|wordmark|masthead)/i.test(classes);
     const thirdPartyLogoSlot = /(?:partner|sponsor|testimonial|customer|client|integration|case[-_ ]?study|customer[-_ ]?logo)/i.test(ancestorHints) &&
       !inBrandHeader;
+    // Mega-menu / dropdown / submenu / flyout link icons are navigation chrome
+    // that decorate a product or integration link, not the site owner's logo.
+    // Only an alt text that establishes this site's brand (plus a home link)
+    // can rescue such an asset.
+    const megaMenuIconSlot = /(?:mega[-_ ]?menu|dropdown|submenu|flyout|popout)/i.test(assetContext) &&
+      /(?:^|[^a-z])(?:icon|glyph)(?:[^a-z]|$)/i.test(assetContext);
+    // Flag, country-switcher, integration, ecosystem and avatar assets describe
+    // other entities (a country, a partner product, a person) and must not be
+    // mistaken for the website owner's logo, even when placed in the header.
+    const thirdPartyAssetContext = THIRD_PARTY_BRAND_CONTEXT.test(assetContext) ||
+      THIRD_PARTY_BRAND_URL_PATH.test(path);
+    // An empty-alt image cannot prove first-party identity on its own. Header
+    // placement still helps, but only when the asset does not name another brand.
+    const altEstablishesSite = Boolean(normalizedAlt) && altMatchesSite;
     const headerSiteMatch = inBrandHeader && altMatchesSite &&
-      (Boolean(normalizedAlt) || linksToSite || pathSuggestsWordmark);
+      (altEstablishesSite || linksToSite || pathSuggestsWordmark) &&
+      !(pathNamesUnrelatedBrand && !linksToSiteRoot);
     if (explicitOtherBrandLogo && !(inBrandHeader && linksToSiteRoot)) return;
     if (pathNamesDifferentBrand) return;
-    if (personAssetContext && !altMatchesSite) return;
+    if (pathNamesUnrelatedBrand) return;
+    if (personAssetContext && !brandMarkWording) return;
+    if (megaMenuIconSlot && !(altEstablishesSite && linksToSiteRoot)) return;
+    if (thirdPartyAssetContext && !(altEstablishesSite && linksToSiteRoot)) return;
     if (thirdPartyLogoSlot && !altMatchesSite) return;
+    // Navigation chrome: an image inside a nav element or wrapped in a link to
+    // a same-site page earns placement points but is not the site owner's logo
+    // unless it shows explicit logo semantics — a logo/wordmark filename or
+    // class, an alt that establishes this site's brand, or a link to the home
+    // page. Without one of those it is a decorative icon such as a feature-link
+    // glyph (Group.svg), and an honest favicon fallback must win. A bare image
+    // directly inside a header (no nav, no link) stays eligible: sites commonly
+    // place an unadorned first-party wordmark there.
+    const hasExplicitLogoSemantics = LOGO_HINT.test(path) || LOGO_HINT.test(alt) ||
+      pathSuggestsWordmark || /(brand|wordmark|masthead)/i.test(classes);
+    const inNav = node.closest('nav').length > 0;
+    const decorativeNavIcon = !hasExplicitLogoSemantics && !altEstablishesSite && !linksToSiteRoot;
+    if (decorativeNavIcon && (inNav || linksToSite)) return;
+    // A nav image wrapped in a same-site link to a non-root page illustrates
+    // that link (a topic, product or community entry). Such captions routinely
+    // start with the site name, so a brand-word mention in the caption is not
+    // owner-logo evidence: only explicit logo/wordmark/brandmark wording or a
+    // link to the site root keeps a nav link illustration eligible.
+    const navTopicLinkIllustration = inNav && linksToSite && !linksToSiteRoot && !brandMarkWording;
+    if (navTopicLinkIllustration) return;
     if (headerSiteMatch) score += 65;
     // Let aggregate confidence decide. The external-CDN gate above still
     // requires strong evidence, while negative-context penalties prevent
@@ -1077,14 +1227,19 @@ function detectLogo($: cheerio.CheerioAPI, base: string | null): { logo: string 
     const node = $(el);
     const rel = (node.attr('rel') ?? '').toLowerCase();
     const href = absoluteUrl(node.attr('href'), base);
-    if (!href || !sameSiteUrl(base, href)) return;
+    if (!href) return;
+    // Icons declared by the page itself are first-party evidence even when
+    // hosted on shared CDN infrastructure; a cross-brand host is not.
+    const declaredIconTrust = sameSiteUrl(base, href) || isGenericAssetHost(href);
     if (rel.includes('apple-touch-icon')) {
+      if (!declaredIconTrust) return;
       const score = 32;
       if (!faviconUrl || score > faviconScore) { faviconUrl = href; faviconScore = score; }
     } else if (rel.split(/\s+/).some((value) => value === 'icon' || value === 'shortcut')) {
+      if (!declaredIconTrust) return;
       const score = 26;
       if (!faviconUrl || score > faviconScore) { faviconUrl = href; faviconScore = score; }
-    } else if (rel.includes('mask-icon')) {
+    } else if (rel.includes('mask-icon') && sameSiteUrl(base, href)) {
       addCandidate(href, 28);
     }
   });
@@ -1129,6 +1284,26 @@ function cleanMetaText(value: string | undefined | null): string | null {
   const cleaned = value.replace(/\s+/g, ' ').trim();
   if (cleaned.length < 2) return null;
   return cleaned.slice(0, 400);
+}
+
+/**
+ * A rebranding page declares its current corporate name inside its own title:
+ * "Kandji Device Management and Security | Now Iru", "Iru (formerly Kandji)",
+ * "Acme — formerly known as WidgetCo". Returns the declared CURRENT name, or
+ * null when the title carries no rebrand marker. This is generic evidence from
+ * the page itself, not a per-domain rule.
+ */
+export function rebrandDeclaredName(titleText: string | null | undefined): string | null {
+  if (!titleText) return null;
+  const suffix = titleText.match(
+    /(?:^|[\s|—–:([])\s*(?:now|(?:formerly|previously|fka)(?:\s+known\s+as)?)\s+([A-Za-z0-9][A-Za-z0-9&'.\- ]{1,39})\s*[)\]]?\s*$/i,
+  );
+  if (suffix) return cleanMetaText(suffix[1]) ?? null;
+  const leader = titleText.match(
+    /^\s*([A-Za-z0-9][A-Za-z0-9&'.\- ]{1,39}?)\s*\((?:formerly|previously|fka)(?:\s+known\s+as)?\b/i,
+  );
+  if (leader) return cleanMetaText(leader[1]) ?? null;
+  return null;
 }
 
 function detectStructuredBrandName($: cheerio.CheerioAPI): string | null {
@@ -1207,6 +1382,13 @@ export function extractBrandIdentity(html: string, finalUrl: string | null): Ext
   const { logo, favicon } = detectLogo($, finalUrl);
   if (logo) inspected.push('logo candidate image');
   if (favicon) inspected.push('favicon');
+  // A favicon standing in for a missing logo is an honest fallback, not a
+  // verified full brand mark. Record both facts so the UI never implies that
+  // a retrieved icon proves the company's complete visual identity.
+  if (logo && logo === favicon) {
+    inspected.push('verified favicon fallback used as logo');
+    warnings.push('No full brand logo was found on the page; the reported logo is the site favicon and may only be an abbreviated identity mark.');
+  }
 
   const titleText = cleanMetaText($('title').first().text());
   // SEO titles commonly append a long product/category slogan after a separator.
@@ -1214,7 +1396,15 @@ export function extractBrandIdentity(html: string, finalUrl: string | null): Ext
   const titleBrandName = titleText
     ? cleanMetaText(titleText.split(/\s+(?:\||—|–|:)\s+/)[0] ?? titleText) ?? titleText
     : null;
+  // A site mid-rebrand declares its CURRENT name in the title itself
+  // ("... | Now Iru", "Iru (formerly Kandji) | ..."). That declaration is the
+  // current corporate identity; the historical name stays in the page content
+  // instead of taking over the brand label (kandji.com scanning Iru's
+  // kandji-mdm page must present Iru, not the historical product name).
+  const rebrandedName = rebrandDeclaredName(titleText);
+  if (rebrandedName) inspected.push('rebrand declared in page title');
   const brandName =
+    rebrandedName ??
     cleanMetaText($('meta[property="og:site_name"]').first().attr('content')) ??
     cleanMetaText($('meta[name="application-name"]').first().attr('content')) ??
     detectStructuredBrandName($) ??
@@ -1255,7 +1445,11 @@ export function extractBrandIdentity(html: string, finalUrl: string | null): Ext
  */
 export function extractRenderedLogoCandidates(markdown: string, baseUrl: string): string[] {
   const candidates = new Map<string, number>();
-  const ignored = /(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter|x-twitter|social[-_/ ]?(?:icon|logo|share)|partner|customer|sponsor|testimonial|hero|banner|screenshot|thumbnail|og[-_]?image|share[-_]?card)/i;
+  const ignored = /(?:facebook|instagram|linkedin|youtube|tiktok|pinterest|threads|twitter|x-twitter|social[-_/ ]?(?:icon|logo|share)|partner|partners|sponsor|sponsors|trusted[-_ ]?by|customer|client|integration|integrations|ecosystem|marketplace|testimonial|case[-_ ]?stud(y|ies)|promo[-_ ]?banner|advertisement|screenshot|thumbnail|flag|flags|country[-_ ]?switcher|language[-_ ]?switcher|locale[-_ ]?switcher|avatar|headshot|portrait|author|og[-_]?image|share[-_]?card)/i;
+  const baseRootToken = (() => {
+    try { return new URL(baseUrl).hostname.toLowerCase().replace(/^www\./, '').split('.')[0] ?? ''; } catch { return ''; }
+  })();
+  const baseSiteName = baseRootToken.replace(/[-_]+/g, ' ').trim();
 
   for (const match of markdown.matchAll(/!\[([^\]]{0,240})\]\(\s*(?:<)?(https?:\/\/[^)\s>]+|\/[^)\s>]+)(?:>)?(?:\s+["'][^)]*["'])?\s*\)/gi)) {
     const alt = (match[1] ?? '').trim();
@@ -1273,10 +1467,30 @@ export function extractRenderedLogoCandidates(markdown: string, baseUrl: string)
     const semanticAlt = /(?:logo|wordmark|brandmark|brand[-_]?mark)/i.test(alt);
     if (!semanticPath && !semanticAlt) continue;
 
+    // A named asset such as `Coupang-logo.png`, `iru-logo.png` or `ai-logo.png`
+    // identifies a customer, partner or concept — not this website. Tokens as
+    // short as two characters are checked so that 3-character brands ("iru")
+    // and 2-character technology tokens ("ai") cannot masquerade as the site's
+    // own name ("ai" must never match "openai").
+    const filenameTokens = path.split('/').pop()?.replace(/\.[^.]+$/, '').split(/[^a-z0-9]+/).filter(Boolean) ?? [];
+    const namedTokens = filenameTokens.filter((token) =>
+      token.length >= 2 && !GENERIC_ASSET_TOKENS.has(token) && !/^\d+$/.test(token) && !/^[0-9a-f]{5,}$/i.test(token));
+    const referencesSite = (tokens: string[]) => tokens.some((token) =>
+      token === baseRootToken || labelMatchesWebsite(token, baseSiteName, baseRootToken));
+    // A generic alt ("logo") cannot override explicit filename evidence that
+    // the asset belongs to a different brand, even on a same-site CDN subdomain:
+    // customer and partner logos are routinely hosted next to the site's own
+    // assets. Only filename tokens or the URL path referencing this site's own
+    // brand keep a named asset eligible. Hash-named wordmarks and assets whose
+    // filenames carry no distinctive token remain eligible.
+    const pathReferencesSite = referencesSite(namedTokens) ||
+      (baseRootToken.length >= 3 && path.includes(baseRootToken));
+    if (namedTokens.length > 0 && !pathReferencesSite) continue;
+
     const sameSite = sameSiteUrl(baseUrl, url);
     let score = (semanticPath ? 80 : 0) + (semanticAlt ? 70 : 0);
     try {
-      const rootToken = new URL(baseUrl).hostname.toLowerCase().replace(/^www\./, '').split('.')[0] ?? '';
+      const rootToken = baseRootToken;
       if (rootToken.length >= 3 && (parsed.hostname.toLowerCase().includes(rootToken) || path.includes(rootToken))) score += 8;
     } catch {
       // URL validity has already been checked; the semantic score still applies.

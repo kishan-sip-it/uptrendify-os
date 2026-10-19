@@ -11,16 +11,13 @@ const OPTIONS = [
   ['system', 'System', Monitor],
 ] as const;
 
-function readTheme(): ThemePreference {
-  if (typeof document !== 'undefined') {
-    const current = document.documentElement.dataset.theme;
-    return current === 'dark' || current === 'system' ? current : 'light';
-  }
-  return 'light';
-}
-
 export function ThemeController({ compact = false }: { compact?: boolean }) {
-  const [theme, setTheme] = useState<ThemePreference>(readTheme);
+  // Hydration-safe: the first client render must match the server HTML, which
+  // always renders "light" active. The inline boot script in app/layout.tsx
+  // has already applied the stored theme to <html data-theme>, so styling is
+  // correct before this state syncs; the effect below then moves the button
+  // state to the real preference after hydration.
+  const [theme, setTheme] = useState<ThemePreference>('light');
 
   useEffect(() => {
     let stored: string | null = null;

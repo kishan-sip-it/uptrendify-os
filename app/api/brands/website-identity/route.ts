@@ -78,8 +78,14 @@ async function fetchHtml(root: URL, maxRedirects = 3, userAgent = env().RESEARCH
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get('location');
         if (!location || redirects >= maxRedirects) break;
+        // A brand's own domain may canonically move to a different registrable
+        // domain (kandji.com -> www.kandji.io -> www.iru.com/kandji-mdm, or
+        // greenhouse.io -> www.greenhouse.com). The redirect destination, not
+        // the entered URL, is the identity the scan must inspect. Every hop is
+        // still safety-asserted (public http(s) URL + resolvable public host)
+        // and bounded by the redirect budget, so internal-network targets and
+        // unbounded chains stay impossible.
         const next = assertPublicHttpUrl(new URL(location, target).toString());
-        if (!sameSite(root.toString(), next.toString())) break;
         await assertResolvablePublicHost(next.hostname);
         target = next.toString();
         finalUrl = target;
@@ -1357,6 +1363,16 @@ export async function GET(request: Request) {
             '</p></body></html>',
           raw,
         );
+
+    /**
+     * Records honestly when the reported logo is only a favicon/app icon
+     * fallback rather than a verified full brand logo. A public HTTP 200 on an
+     * icon URL never proves that the icon represents the company logo.
+     */
+    const noteIconFallback = (iconUrl: string, source: string) => {
+      identity.inspected.push(`icon fallback used as logo (${source}): ${iconUrl}`);
+      identity.warnings.push(`No verified full brand logo was found; the reported logo is a ${source} icon and may not represent the complete brand identity.`);
+    };
     let baseHtml = outcome.ok && !outcome.renderedFallback ? outcome.html : '';
     let baseUrl = outcome.ok ? outcome.finalUrl : (outcome.finalUrl ?? raw);
     const initialLogoUrl = identity.logoUrl;
@@ -1498,9 +1514,11 @@ export async function GET(request: Request) {
         ? await withTimeout(verifyConventionalIcon(baseUrl, scanController.signal), iconBudgetMs, 'Low-evidence icon recovery exceeded its budget').catch(() => null)
         : null;
       if (conventionalIcon) {
+        const hadLogo = Boolean(identity.logoUrl);
         identity.logoUrl = conventionalIcon;
         identity.faviconUrl = identity.faviconUrl ?? conventionalIcon;
         identity.inspected.push('verified conventional icon recovered before the evidence gate');
+        if (!hadLogo) noteIconFallback(conventionalIcon, 'conventional favicon');
         hasVisualEvidence = true;
       }
     }
@@ -1631,9 +1649,11 @@ export async function GET(request: Request) {
       ).catch(() => [] as Array<string | null>);
       const verifiedManifestIcon = verifiedManifestIcons.find((url): url is string => Boolean(url));
       if (verifiedManifestIcon) {
+        const hadLogo = Boolean(identity.logoUrl);
         identity.logoUrl = identity.logoUrl ?? verifiedManifestIcon;
         identity.faviconUrl = identity.faviconUrl ?? verifiedManifestIcon;
         if (!identity.inspected.includes('verified manifest icon fallback')) identity.inspected.push('verified manifest icon fallback');
+        if (!hadLogo) noteIconFallback(verifiedManifestIcon, 'web-app manifest');
       }
     }
 
@@ -1642,11 +1662,13 @@ export async function GET(request: Request) {
     if (!identity.logoUrl || !identity.faviconUrl) {
       const conventionalIcon = await withTimeout(verifyConventionalIcon(baseUrl, scanController.signal), sharedWebsiteScanStageBudgetMs(elapsed(), 2_800), 'Optional icon fallback exceeded its budget').catch(() => null);
       if (conventionalIcon) {
+        const hadLogo = Boolean(identity.logoUrl);
         identity.logoUrl = identity.logoUrl ?? conventionalIcon;
         identity.faviconUrl = identity.faviconUrl ?? conventionalIcon;
         if (!identity.inspected.includes('verified conventional favicon fallback')) {
           identity.inspected.push('verified conventional favicon fallback');
         }
+        if (!hadLogo) noteIconFallback(conventionalIcon, 'conventional favicon');
       }
     }
 

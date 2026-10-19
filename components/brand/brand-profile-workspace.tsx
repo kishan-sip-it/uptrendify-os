@@ -350,7 +350,9 @@ export function BrandProfileWorkspace({
     const primary = palette.find((c) => c.role === 'primary')?.hex ?? identity.primaryColor ?? palette[0]?.hex ?? null;
     return save({
       primaryColor: primary,
-      secondaryColors: palette.filter((c) => c.hex !== primary).map((c) => c.hex),
+      // The PATCH schema caps secondary colors at 8; the full palette still
+      // persists in visual_identity.palette (rendered by this workspace).
+      secondaryColors: palette.filter((c) => c.hex !== primary).map((c) => c.hex).slice(0, 8),
       visualIdentity: {
         logoUrl: identity.logoUrl,
         faviconUrl: identity.faviconUrl,
@@ -375,7 +377,7 @@ export function BrandProfileWorkspace({
     const nextPalette = identity.palette.some((color) => color.role === 'primary')
       ? identity.palette.map((color) => color.role === 'primary' ? { ...color, hex: primaryColor } : color)
       : [{ hex: primaryColor, role: 'primary', occurrences: 0, sources: ['user'] }, ...identity.palette.filter((color) => color.hex !== primaryColor)];
-    const nextSecondary = identity.secondaryColors?.filter((color) => color !== currentPrimary && color !== primaryColor) ?? [];
+    const nextSecondary = identity.secondaryColors?.filter((color) => color !== currentPrimary && color !== primaryColor).slice(0, 8) ?? [];
     return save({
       primaryColor,
       secondaryColors: nextSecondary,

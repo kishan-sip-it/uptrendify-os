@@ -274,6 +274,16 @@ export async function completeReplayResearchRun(
       }
   }
 
+  // The workflow invariant trigger (migration 0020) only allows
+  // QUEUED -> RUNNING -> COMPLETED, so the replay completion must step through
+  // RUNNING instead of jumping straight to COMPLETED.
+  const runStart = await supabase
+    .from('research_runs')
+    .update({ status: 'RUNNING', started_at: now, error_code: null, error_message: null })
+    .eq('id', researchRunId)
+    .eq('organization_id', organizationId);
+  if (runStart.error) throw runStart.error;
+
   const runUpdate = await supabase
     .from('research_runs')
     .update({
@@ -284,7 +294,6 @@ export async function completeReplayResearchRun(
       model: REPLAY_MODEL,
       error_code: null,
       error_message: null,
-      started_at: now,
       finished_at: now,
     })
     .eq('id', researchRunId)

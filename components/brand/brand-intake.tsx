@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Globe2, LoaderCircle, RefreshCw, Sparkles } from 'lucide-react';
 import type { ExtractedIdentity } from '@/lib/brand/visual-extraction';
-import { preferredPreviewFontFamily, toVisualIdentity } from '@/lib/brand/identity-mapping';
+import { preferredPreviewFontFamily } from '@/lib/brand/identity-mapping';
+import { TONE_OPTIONS } from '@/lib/brand/voice';
+import { applyPrimaryColorToDraft, buildCreatePatchPayload, buildReviewDraft, type ReviewDraft } from '@/lib/brand/review-draft';
 import { brandNameFromWebsiteUrl } from '@/lib/brand/website-url';
 import { mergeExistingBrandScanPatch } from '@/lib/brand/scan-merge';
 import { brandInitials, BrandField, BrandPanel, BrandSection, NotDetected } from './brand-profile-primitives';
+import { EditableColorPalette, EditablePersonas, EditablePrimaryColor, EditableTags, EditableTextField, normaliseClearedText } from './brand-identity-editors';
 
 type IntakeIdentity = ExtractedIdentity & {
   assets?: { url: string; type: string; label: string | null }[];
@@ -77,7 +80,7 @@ export function BrandIntake({
   startResearch = true,
   showReview = true,
 }: {
-  onCreated: (brandId: string, details?: { brandName: string; websiteUrl: string }) => void;
+  onCreated: (brandId: string, details?: { brandName: string; websiteUrl: string; manual?: boolean }) => void;
   initialWebsite?: string;
   initialBrandName?: string;
   startResearch?: boolean;
@@ -119,23 +122,39 @@ export function BrandIntake({
   const [stepIndex, setStepIndex] = useState(0);
   const [scanElapsed, setScanElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // Inline field validation (empty or malformed input) is distinct from a scan
+  // failure: it never starts a request and never offers the failed-scan fallback.
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [manualSaving, setManualSaving] = useState(false);
+  // Reviewed pre-creation values. The draft is authoritative: create() persists
+  // exactly these values, including intentional clears.
+  const [draft, setDraft] = useState<ReviewDraft | null>(null);
+  const draftDirtyRef = useRef(false);
   const createInFlightRef = useRef(false);
   const reviewAfterScan = showReview !== false;
 
   const scan = useCallback(async () => {
     const entered = website.trim();
+    if (!entered) {
+      setUrlError('Enter a website URL to analyse.');
+      return;
+    }
     const value = /^https?:\/\//i.test(entered) ? entered : `https://${entered.replace(/^\/+/g, '')}`;
     try {
       const parsed = new URL(value);
-      if (!parsed.hostname.includes('.') || !['http:', 'https:'].includes(parsed.protocol)) throw new Error('Enter a valid public website domain or URL.');
+      if (!parsed.hostname.includes('.') || !['http:', 'https:'].includes(parsed.protocol)) throw new Error('invalid');
     } catch {
-      setError('Enter a valid public website domain or URL, such as salesforce.com');
-      setPhase('error');
+      // A malformed URL never reached the API, so this is field validation,
+      // not a failed scan: stay on the form.
+      setUrlError('Enter a valid public website domain or URL, such as salesforce.com');
       return;
     }
 
     setWebsite(value);
     setError(null);
+    setUrlError(null);
+    setSaveError(null);
     setPhase('scanning');
     setStepIndex(0);
     setScanElapsed(0);
@@ -160,6 +179,10 @@ export function BrandIntake({
       setIdentity(next);
       const hostLabel = brandNameFromWebsiteUrl(next.finalUrl ?? value);
       setName(next.brandName || name.trim() || hostLabel);
+      // The reviewed values start as the scan output; every edit marks the draft
+      // dirty so create() can tell a reviewed import from a repeat scan import.
+      draftDirtyRef.current = false;
+      setDraft(buildReviewDraft(next));
       setPhase('review');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read that website.');
@@ -169,8 +192,23 @@ export function BrandIntake({
     }
   }, [website, name]);
 
+  // Local (pre-creation) save for the review editors: the same components the
+  // saved Brand Profile uses, writing into the draft instead of the API. The
+  // create step persists the draft exactly as reviewed.
+  const saveDraftField = useCallback(<K extends keyof ReviewDraft>(key: K, value: ReviewDraft[K]): Promise<boolean> => {
+    draftDirtyRef.current = true;
+    setDraft((current) => (current ? { ...current, [key]: value } : current));
+    return Promise.resolve(true);
+  }, []);
+
+  const saveDraftPrimaryColor = useCallback((next: string): Promise<boolean> => {
+    draftDirtyRef.current = true;
+    setDraft((current) => (current ? applyPrimaryColorToDraft(current, next) : current));
+    return Promise.resolve(true);
+  }, []);
+
   const create = useCallback(async () => {
-    if (!identity || createInFlightRef.current) return;
+    if (!identity || !draft || createInFlightRef.current) return;
     createInFlightRef.current = true;
     setPhase('saving');
     setError(null);
@@ -183,9 +221,9 @@ export function BrandIntake({
         body: JSON.stringify({
           brandName: resolvedName,
           websiteUrl: resolvedUrl,
-          description: identity.description ?? undefined,
-          industry: identity.aiProfile?.industry ?? undefined,
-          targetAudience: identity.aiProfile?.audience ?? undefined,
+          description: draft.description ?? undefined,
+          industry: draft.industry ?? undefined,
+          targetAudience: draft.targetAudience ?? undefined,
         }),
       });
       const created = await createResponse.json().catch(() => null);
@@ -195,47 +233,15 @@ export function BrandIntake({
       }
 
       const brandId = String(created.brand.id);
-      const scannedPatch = {
-        description: identity.description ?? null,
-        primaryColor: identity.primaryColor,
-        secondaryColors: identity.secondaryColors,
-        industry: identity.aiProfile?.industry ?? null,
-        targetAudience: identity.aiProfile?.audience ?? null,
-        positioning: {
-          valueProposition: identity.aiProfile?.valueProposition ?? null,
-          differentiators: identity.aiProfile?.differentiators ?? [],
-          positioningThemes: identity.aiProfile?.positioningThemes ?? [],
-          competitiveContext: identity.aiProfile?.competition ?? null,
-          seoResearch: identity.aiProfile?.seo ?? null,
-        },
-        offerDetails: {
-          products: identity.aiProfile?.products ?? [],
-          services: identity.aiProfile?.services ?? [],
-          keyFeatures: identity.aiProfile?.keyFeatures ?? [],
-          benefits: identity.aiProfile?.benefits ?? [],
-          pricingSignals: identity.aiProfile?.pricingSignals ?? [],
-          productCategories: identity.aiProfile?.productCategories ?? [],
-          callsToAction: identity.aiProfile?.callsToAction ?? [],
-          painPoints: identity.aiProfile?.painPoints ?? [],
-          useCases: identity.aiProfile?.useCases ?? [],
-        },
-        audienceDetails: {
-          summary: identity.aiProfile?.audience ?? null,
-          personas: identity.aiProfile?.personas ?? [],
-          customerTypes: identity.aiProfile?.customerTypes ?? [],
-        },
-        messaging: {
-          toneOfVoice: identity.aiProfile?.tone ?? [],
-          terminology: identity.aiProfile?.terminology ?? [],
-          recurringClaims: identity.aiProfile?.recurringClaims ?? [],
-          messagingThemes: identity.aiProfile?.messagingThemes ?? [],
-          brandMessaging: identity.aiProfile?.valueProposition ?? null,
-        },
-        visualIdentity: toVisualIdentity(identity),
-      };
+      // Persist exactly the reviewed values, including intentional clears
+      // (explicit null/[]), so no later read can restore the scanned originals.
+      const scannedPatch = buildCreatePatchPayload(draft, identity);
 
       let patchPayload: Record<string, unknown> = scannedPatch;
-      if (created.existing === true) {
+      if (created.existing === true && !draftDirtyRef.current) {
+        // Repeat-scan import without review: existing human edits stay
+        // authoritative. A reviewed draft is applied verbatim instead — the
+        // user explicitly confirmed these values before creation.
         const existingResponse = await fetch(`/api/brands/${brandId}`, { cache: 'no-store' });
         const existingBody = await existingResponse.json().catch(() => null);
         if (!existingResponse.ok || !existingBody?.brand) {
@@ -265,19 +271,77 @@ export function BrandIntake({
       }
       onCreated(brandId, { brandName: resolvedName, websiteUrl: resolvedUrl });
     } catch (err) {
+      // A brand-save failure is not a scan failure: stay in the review with the
+      // draft intact so the user can retry without losing their edits.
       setError(err instanceof Error ? err.message : 'Could not create the brand.');
-      setPhase('error');
+      setPhase('review');
     } finally {
       createInFlightRef.current = false;
     }
-  }, [identity, name, website, onCreated, startResearch]);
+  }, [identity, draft, name, website, onCreated, startResearch]);
 
   useEffect(() => {
-    if (reviewAfterScan || phase !== 'review' || !identity) return;
+    if (reviewAfterScan || phase !== 'review' || !identity || !draft) return;
     void create();
-  }, [create, identity, phase, reviewAfterScan]);
+  }, [create, identity, draft, phase, reviewAfterScan]);
+
+  /**
+   * Failure path: when the website scan failed or returned no usable identity,
+   * the user can still create the brand from the name and URL they entered.
+   * Nothing is invented: identity fields simply stay empty, and the existing
+   * Brand Profile editors provide the same Edit/Clear capabilities used after
+   * a scanned creation. This is a distinct operation from the scanned create()
+   * above — no scanned patch, and research is not auto-started on empty data.
+   */
+  const createManually = useCallback(async () => {
+    if (createInFlightRef.current) return;
+    const entered = website.trim();
+    const value = /^https?:\/\//i.test(entered) ? entered : `https://${entered.replace(/^\/+/g, '')}`;
+    try {
+      const parsed = new URL(value);
+      if (!parsed.hostname.includes('.') || !['http:', 'https:'].includes(parsed.protocol)) throw new Error('invalid');
+    } catch {
+      setSaveError('Enter the website URL first so the brand has a valid website address.');
+      return;
+    }
+    const resolvedName = name.trim() || brandNameFromWebsiteUrl(value);
+    if (resolvedName.trim().length < 2) {
+      setSaveError('Enter a brand name (at least 2 characters) to create the brand.');
+      return;
+    }
+    createInFlightRef.current = true;
+    setManualSaving(true);
+    setSaveError(null);
+    try {
+      const createResponse = await fetch('/api/brands', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ brandName: resolvedName.trim(), websiteUrl: value }),
+      });
+      const created = await createResponse.json().catch(() => null);
+      if (!createResponse.ok) {
+        if (createResponse.status === 401) { window.location.href = '/login'; return; }
+        throw new Error(created?.error || 'Could not create the brand.');
+      }
+      onCreated(String(created.brand.id), { brandName: resolvedName.trim(), websiteUrl: value, manual: true });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not create the brand.');
+    } finally {
+      createInFlightRef.current = false;
+      setManualSaving(false);
+    }
+  }, [website, name, onCreated]);
+
+  // A failed scan keeps every entered value: pre-fill the manual brand name
+  // from the URL so manual creation needs no retyping.
+  useEffect(() => {
+    if (phase !== 'error') return;
+    if (name.trim()) return;
+    setName(brandNameFromWebsiteUrl(website.trim()));
+  }, [phase, name, website]);
 
   if (phase === 'input' || phase === 'error') {
+    const scanFailed = phase === 'error';
     return (      <div>
         <label className="brand-field" style={{ display: 'block', borderTop: 0, paddingTop: 0 }}>
           <span style={{ display: 'block', marginBottom: 8, color: 'var(--text)', fontWeight: 650 }}>Start with the brand website</span>
@@ -286,11 +350,33 @@ export function BrandIntake({
           </span>
           <div style={{ position: 'relative' }}>
             <Globe2 size={17} style={{ position: 'absolute', left: 13, top: 14, color: 'var(--text-subtle)', pointerEvents: 'none' }} />
-            <input type="url" value={website} onChange={(event) => setWebsite(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void scan(); } }} placeholder="https://example.com" aria-label="Brand website URL" style={{ paddingLeft: 40 }} autoFocus />
+            <input type="url" value={website} onChange={(event) => { setWebsite(event.target.value); if (urlError) setUrlError(null); }} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void scan(); } }} placeholder="https://example.com" aria-label="Brand website URL" aria-invalid={urlError ? true : undefined} style={{ paddingLeft: 40 }} autoFocus />
           </div>
         </label>
+        {urlError ? <p role="alert" className="brand-section-hint" style={{ marginTop: 10, color: 'var(--status-danger)' }}>{urlError}</p> : null}
         {error ? <p role="alert" className="brand-section-hint" style={{ marginTop: 10, color: 'var(--status-danger)' }}>{error}</p> : null}
-        <button type="button" className="brand-btn brand-btn-primary" style={{ marginTop: 14 }} onClick={() => void scan()}><Sparkles size={14} /> Analyse website</button>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+          <button type="button" className="brand-btn brand-btn-primary" onClick={() => { setSaveError(null); void scan(); }} disabled={!website.trim() || manualSaving} title={website.trim() ? undefined : 'Enter a website URL first'}><Sparkles size={14} /> Analyse website</button>
+        </div>
+        {scanFailed ? (
+          <div className="brand-edit" style={{ marginTop: 18 }}>
+            <strong style={{ display: 'block', fontSize: 13 }}>Create the brand without website data</strong>
+            <span style={{ display: 'block', marginTop: 5, color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>
+              The analysis above failed, so nothing was imported. Your name and URL are kept: create the brand with just those and fill in, edit or clear every other field in the Brand Profile — the same editors a scanned brand uses.
+            </span>
+            <label style={{ display: 'block', marginTop: 10 }}>
+              <span className="brand-persona-fact-label">Brand name</span>
+              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Acme" aria-label="Brand name" disabled={manualSaving} />
+            </label>
+            {saveError ? <p role="alert" className="brand-section-hint" style={{ marginTop: 8, color: 'var(--status-danger)' }}>{saveError}</p> : null}
+            <div className="brand-edit-actions">
+              <button type="button" className="brand-btn brand-btn-primary" onClick={() => void createManually()} disabled={manualSaving}>
+                {manualSaving ? <LoaderCircle size={14} className="spin" /> : <ArrowRight size={14} />}
+                {manualSaving ? 'Creating brand…' : 'Create brand manually'}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -333,7 +419,7 @@ export function BrandIntake({
     );
   }
 
-  if (!identity) return null;
+  if (!identity || !draft) return null;
   const ai = identity.aiProfile;
   const assets = identity.assets ?? [];
   const previewFont = preferredPreviewFontFamily(identity.fonts);
@@ -348,7 +434,7 @@ export function BrandIntake({
 
   return (
     <div>
-      <BrandPanel icon={<Sparkles size={17} />} title="Brand IQ review" subtitle="Everything the website scan found, grouped into the same working contexts your content and strategy use.">
+      <BrandPanel icon={<Sparkles size={17} />} title="Brand IQ review" subtitle="Everything the website scan found, grouped into the same working contexts your content and strategy use. Edit or clear any value below — what you review here is exactly what gets saved.">
         {actionableWarnings.length || !ai || aiFallbackUsed ? (
           <div className="brand-scan-warning" role="status" aria-live="polite">
             <strong>{aiFallbackUsed ? 'AI enrichment fallback used' : !ai ? 'Structured Brand IQ needs attention' : 'Some parts of the scan need review'}</strong>
@@ -369,64 +455,63 @@ export function BrandIntake({
           </div>
         </div>
 
-        <BrandSection title="Brand Essentials" hint="The core identity and positioning context.">
+        <BrandSection title="Brand Essentials" hint="The core identity and positioning context. Edit any value, or clear what the scan got wrong.">
           <div className="brand-fields">
-            <BrandField label="What they do"><span>{identity.description || <NotDetected label="Not detected from this website" />}</span></BrandField>
-            <BrandField label="Industry"><span>{identity.aiProfile?.industry || <NotDetected label="Not detected from this website" />}</span></BrandField>
-            <BrandField label="Business model"><span>{ai?.businessModel || <NotDetected label="Not detected from this website" />}</span></BrandField>
-            <BrandField label="Primary market / geography"><span>{[ai?.primaryMarket, ai?.geography].filter(Boolean).join(' · ') || <NotDetected label="Not detected from this website" />}</span></BrandField>
-            <BrandField label="Positioning"><span>{ai?.valueProposition || <NotDetected label="Not detected from this website" />}</span></BrandField>
-            <BrandField label="Differentiators">{tags(ai?.differentiators)}</BrandField>
+            <BrandField label="What they do"><EditableTextField value={draft.description} placeholder="Describe the business." multiline onSave={(next) => saveDraftField('description', normaliseClearedText(next))} /></BrandField>
+            <BrandField label="Industry"><EditableTextField value={draft.industry} placeholder="Industry" onSave={(next) => saveDraftField('industry', normaliseClearedText(next))} /></BrandField>
+            <BrandField label="Business model"><EditableTextField value={draft.businessModel} placeholder="How the business makes money or delivers value" onSave={(next) => saveDraftField('businessModel', normaliseClearedText(next))} /></BrandField>
+            <BrandField label="Primary market"><EditableTextField value={draft.primaryMarket} placeholder="Primary market" onSave={(next) => saveDraftField('primaryMarket', normaliseClearedText(next))} /></BrandField>
+            <BrandField label="Geography"><EditableTextField value={draft.geography} placeholder="Geography" onSave={(next) => saveDraftField('geography', normaliseClearedText(next))} /></BrandField>
+            <BrandField label="Positioning"><EditableTextField value={draft.valueProposition} placeholder="Why this brand wins" multiline onSave={(next) => saveDraftField('valueProposition', normaliseClearedText(next))} /></BrandField>
+            <BrandField label="Differentiators"><EditableTags label="Differentiators" values={draft.differentiators} placeholder="Add a differentiator" onSave={(next) => saveDraftField('differentiators', next)} /></BrandField>
           </div>
         </BrandSection>
 
-        <BrandSection title="Products & Services" hint="What the site actually sells, offers or describes.">
+        <BrandSection title="Products & Services" hint="What the site actually sells, offers or describes. Remove anything that is not part of the offer.">
           <div className="brand-fields">
-            <BrandField label="Products">{tags(ai?.products)}</BrandField>
-            <BrandField label="Services">{tags(ai?.services)}</BrandField>
-            <BrandField label="Key features">{tags(ai?.keyFeatures)}</BrandField>
-            <BrandField label="Benefits">{tags(ai?.benefits)}</BrandField>
-            <BrandField label="Pricing signals">{tags(ai?.pricingSignals)}</BrandField>
-            <BrandField label="Product categories">{tags(ai?.productCategories)}</BrandField>
-            <BrandField label="Calls to action">{tags(ai?.callsToAction)}</BrandField>
+            <BrandField label="Products"><EditableTags label="Products" values={draft.products} placeholder="Add a product" onSave={(next) => saveDraftField('products', next)} /></BrandField>
+            <BrandField label="Services"><EditableTags label="Services" values={draft.services} placeholder="Add a service" onSave={(next) => saveDraftField('services', next)} /></BrandField>
+            <BrandField label="Key features"><EditableTags label="Key features" values={draft.keyFeatures} placeholder="Add a key feature" onSave={(next) => saveDraftField('keyFeatures', next)} /></BrandField>
+            <BrandField label="Benefits"><EditableTags label="Benefits" values={draft.benefits} placeholder="Add a benefit" onSave={(next) => saveDraftField('benefits', next)} /></BrandField>
+            <BrandField label="Pricing signals"><EditableTags label="Pricing signals" values={draft.pricingSignals} placeholder="Add a pricing signal" onSave={(next) => saveDraftField('pricingSignals', next)} /></BrandField>
+            <BrandField label="Product categories"><EditableTags label="Product categories" values={draft.productCategories} placeholder="Add a category" onSave={(next) => saveDraftField('productCategories', next)} /></BrandField>
+            <BrandField label="Calls to action"><EditableTags label="Calls to action" values={draft.callsToAction} placeholder="Add a CTA" onSave={(next) => saveDraftField('callsToAction', next)} /></BrandField>
           </div>
         </BrandSection>
 
         <BrandSection title="Audience" hint="Who the website says it serves, including detected segments and needs.">
           <div className="brand-fields">
-            <BrandField label="Target audience"><span>{ai?.audience || <NotDetected label="Not detected from this website" />}</span></BrandField>
-            <BrandField label="Customer types">{tags(ai?.customerTypes)}</BrandField>
-            <BrandField label="Personas">
-              {ai?.personas?.length ? <div className="brand-persona-grid">{ai.personas.map((persona) => <div key={persona.name} className="brand-persona"><h4 className="brand-persona-name">{persona.name}</h4>{persona.description ? <p className="brand-persona-desc">{persona.description}</p> : null}</div>)}</div> : <NotDetected label="No distinct personas detected from this website" />}
-            </BrandField>
-            <BrandField label="Pain points">{tags(ai?.painPoints)}</BrandField>
-            <BrandField label="Use cases">{tags(ai?.useCases)}</BrandField>
+            <BrandField label="Target audience"><EditableTextField value={draft.targetAudience} placeholder="Who should this brand reach?" multiline onSave={(next) => saveDraftField('targetAudience', normaliseClearedText(next))} /></BrandField>
+            <BrandField label="Customer types"><EditableTags label="Customer types" values={draft.customerTypes} placeholder="Add a customer type" onSave={(next) => saveDraftField('customerTypes', next)} /></BrandField>
+            <BrandField label="Personas"><EditablePersonas personas={draft.personas} onSave={(next) => saveDraftField('personas', next)} /></BrandField>
+            <BrandField label="Pain points"><EditableTags label="Pain points" values={draft.painPoints} placeholder="Add a pain point" onSave={(next) => saveDraftField('painPoints', next)} /></BrandField>
+            <BrandField label="Use cases"><EditableTags label="Use cases" values={draft.useCases} placeholder="Add a use case" onSave={(next) => saveDraftField('useCases', next)} /></BrandField>
           </div>
         </BrandSection>
 
         <BrandSection title="Voice & Tone" hint="The verbal identity extracted from the site's own copy.">
           <div className="brand-fields">
-            <BrandField label="Tone of voice">{tags(ai?.tone)}</BrandField>
-            <BrandField label="Terminology">{tags(ai?.terminology)}</BrandField>
-            <BrandField label="Recurring claims">{tags(ai?.recurringClaims)}</BrandField>
-            <BrandField label="Messaging themes">{tags(ai?.messagingThemes)}</BrandField>
+            <BrandField label="Tone of voice"><EditableTags label="Tone" values={draft.tone} placeholder="Add a tone" max={3} primaryFirst suggestions={[...TONE_OPTIONS]} onSave={(next) => saveDraftField('tone', next)} /></BrandField>
+            <BrandField label="Terminology"><EditableTags label="Terminology" values={draft.terminology} placeholder="Add preferred terminology" onSave={(next) => saveDraftField('terminology', next)} /></BrandField>
+            <BrandField label="Recurring claims"><EditableTags label="Recurring claims" values={draft.recurringClaims} placeholder="Add a recurring claim" onSave={(next) => saveDraftField('recurringClaims', next)} /></BrandField>
+            <BrandField label="Messaging themes"><EditableTags label="Messaging themes" values={draft.messagingThemes} placeholder="Add a messaging theme" onSave={(next) => saveDraftField('messagingThemes', next)} /></BrandField>
           </div>
         </BrandSection>
 
         <BrandSection title="SEO & Search" hint="Topics and search-intent opportunities grounded in the scanned pages.">
           <div className="brand-fields">
-            <BrandField label="Important topics">{tags(ai?.seo?.importantTopics)}</BrandField>
-            <BrandField label="Keyword themes">{tags(ai?.seo?.keywordThemes)}</BrandField>
-            <BrandField label="Content gaps">{tags(ai?.seo?.contentGaps)}</BrandField>
-            <BrandField label="Search intent opportunities">{tags(ai?.seo?.searchIntentOpportunities)}</BrandField>
+            <BrandField label="Important topics"><EditableTags label="Important topics" values={draft.seo.importantTopics} placeholder="Add a topic" onSave={(next) => saveDraftField('seo', { ...draft.seo, importantTopics: next })} /></BrandField>
+            <BrandField label="Keyword themes"><EditableTags label="Keyword themes" values={draft.seo.keywordThemes} placeholder="Add a keyword theme" onSave={(next) => saveDraftField('seo', { ...draft.seo, keywordThemes: next })} /></BrandField>
+            <BrandField label="Content gaps"><EditableTags label="Content gaps" values={draft.seo.contentGaps} placeholder="Add a content gap" onSave={(next) => saveDraftField('seo', { ...draft.seo, contentGaps: next })} /></BrandField>
+            <BrandField label="Search intent opportunities"><EditableTags label="Search intent opportunities" values={draft.seo.searchIntentOpportunities} placeholder="Add a search-intent opportunity" onSave={(next) => saveDraftField('seo', { ...draft.seo, searchIntentOpportunities: next })} /></BrandField>
           </div>
         </BrandSection>
 
         <BrandSection title="Competitive Context" hint="Competitors and alternatives only when supported by evidence.">
           <div className="brand-fields">
-            <BrandField label="Named competitors">{tags(ai?.competition?.namedCompetitors)}</BrandField>
-            <BrandField label="Alternatives">{tags(ai?.competition?.alternatives)}</BrandField>
-            <BrandField label="Differentiation claims">{tags(ai?.competition?.differentiationClaims)}</BrandField>
+            <BrandField label="Named competitors"><EditableTags label="Named competitors" values={draft.competition.namedCompetitors} placeholder="Add a competitor" onSave={(next) => saveDraftField('competition', { ...draft.competition, namedCompetitors: next })} /></BrandField>
+            <BrandField label="Alternatives"><EditableTags label="Alternatives" values={draft.competition.alternatives} placeholder="Add an alternative" onSave={(next) => saveDraftField('competition', { ...draft.competition, alternatives: next })} /></BrandField>
+            <BrandField label="Differentiation claims"><EditableTags label="Differentiation claims" values={draft.competition.differentiationClaims} placeholder="Add a differentiation claim" onSave={(next) => saveDraftField('competition', { ...draft.competition, differentiationClaims: next })} /></BrandField>
           </div>
         </BrandSection>
 
@@ -438,13 +523,28 @@ export function BrandIntake({
           ) : null}
           <div className="brand-fields">
             <BrandField label="Logo">
-              {identity.logoUrl ? <div className="brand-identity"><img src={identity.logoUrl} alt="Detected brand logo" style={{ maxWidth: 220, maxHeight: 64, objectFit: 'contain' }} /></div> : <NotDetected label="No logo candidate detected" />}
+              {identity.logoUrl ? (
+                <div>
+                  <div className="brand-identity"><img src={identity.logoUrl} alt="Detected brand logo" style={{ maxWidth: 220, maxHeight: 64, objectFit: 'contain' }} /></div>
+                  <span className="brand-section-hint" style={{ display: 'block', marginTop: 8 }}>The scanned logo is read-only in this preview. If this scanned logo isn&apos;t right, you can change it after creating the brand.</span>
+                </div>
+              ) : (
+                <div>
+                  <NotDetected label="No logo candidate detected" />
+                  <span className="brand-section-hint" style={{ display: 'block', marginTop: 8 }}>No logo could be verified from this website yet. You can add or change the logo after creating the brand.</span>
+                </div>
+              )}
             </BrandField>
-            <BrandField label="Colours">
-              {identity.palette.length ? <div className="brand-swatches">{identity.palette.map((color) => <span key={color.hex} className="brand-swatch"><span className="brand-swatch-dot" style={{ ['--swatch' as string]: color.hex }} /><span style={{ textTransform: 'uppercase' }}>{color.hex.replace('#', '')}</span><span className="brand-swatch-role">{color.role}</span></span>)}</div> : <NotDetected label="No colours could be detected from the website" />}
-            </BrandField>
+            <BrandField label="Primary colour"><EditablePrimaryColor value={draft.primaryColor} onSave={saveDraftPrimaryColor} /></BrandField>
+            <BrandField label="Colours"><EditableColorPalette palette={draft.palette} onSave={(next) => saveDraftField('palette', next)} /></BrandField>
             <BrandField label="Fonts">
-              {identity.fonts.length ? <div className="brand-tags">{identity.fonts.map((font) => <span key={font.family} className="brand-tag">{font.family}</span>)}</div> : <NotDetected label="No font declarations detected" />}
+              <div>
+                {identity.fonts.length ? <div className="brand-tags">{identity.fonts.map((font) => <span key={font.family} className="brand-tag">{font.family}</span>)}</div> : <NotDetected label="No font declarations detected" />}
+                <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                  <div><span className="brand-persona-fact-label">Heading font</span><EditableTextField value={draft.headingFont} placeholder="e.g. Inter" onSave={(next) => saveDraftField('headingFont', normaliseClearedText(next))} /></div>
+                  <div><span className="brand-persona-fact-label">Body font</span><EditableTextField value={draft.bodyFont} placeholder="e.g. Inter" onSave={(next) => saveDraftField('bodyFont', normaliseClearedText(next))} /></div>
+                </div>
+              </div>
             </BrandField>
           </div>
         </BrandSection>
@@ -455,8 +555,8 @@ export function BrandIntake({
 
         <BrandSection title="Live Preview" hint="A small brand-context preview using the imported identity, not generated placeholder data.">
           <div className="brand-voice-summary" style={{ background: 'color-mix(in srgb, var(--brand-primary, var(--accent)) 12%, var(--surface))', ...(previewFont ? { fontFamily: `"${previewFont.replace(/["\\]/g, '')}", sans-serif` } : {}) }}>
-            <strong>{name || identity.brandName || 'Your brand'}</strong>{ai?.valueProposition ? ` — ${ai.valueProposition}` : identity.description ? ` — ${identity.description}` : ''}
-            {ai?.tone?.length ? <span style={{ display: 'block', marginTop: 6, opacity: .78 }}>Voice: {ai.tone.join(' · ')}</span> : null}
+            <strong>{name || identity.brandName || 'Your brand'}</strong>{draft.valueProposition ? ` — ${draft.valueProposition}` : draft.description ? ` — ${draft.description}` : ''}
+            {draft.tone.length ? <span style={{ display: 'block', marginTop: 6, opacity: .78 }}>Voice: {draft.tone.join(' · ')}</span> : null}
           </div>
         </BrandSection>
 
@@ -473,7 +573,7 @@ export function BrandIntake({
         {error ? <p role="alert" className="brand-section-hint" style={{ marginTop: 12, color: 'var(--status-danger)' }}>{error}</p> : null}
         <div style={{ display: 'flex', gap: 8, marginTop: 18, flexWrap: 'wrap' }}>
           <button type="button" className="brand-btn brand-btn-primary" onClick={() => void create()} disabled={phase === 'saving'}>{phase === 'saving' ? <LoaderCircle size={14} className="spin" /> : <ArrowRight size={14} />}{phase === 'saving' ? 'Creating brand…' : 'Create brand'}</button>
-          <button type="button" className="brand-btn" onClick={() => { setPhase('input'); setIdentity(null); setError(null); }} disabled={phase === 'saving'}><RefreshCw size={14} /> Scan a different site</button>
+          <button type="button" className="brand-btn" onClick={() => { setPhase('input'); setIdentity(null); setError(null); setSaveError(null); setName(''); setDraft(null); draftDirtyRef.current = false; }} disabled={phase === 'saving'}><RefreshCw size={14} /> Scan a different site</button>
         </div>
       </BrandPanel>
     </div>

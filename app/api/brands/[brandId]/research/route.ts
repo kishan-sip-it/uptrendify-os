@@ -177,7 +177,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     return NextResponse.json({ ok: true, researchRunId: runId, status: 'QUEUED' }, { status: 201 });
   } catch (error) {
     if (error instanceof Error && isNoRowsError(error as unknown as { code?: string })) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
-    const message = error instanceof Error ? error.message : String(error);
+    // Supabase throws plain PostgrestError objects; String() would log "[object
+    // Object]" and hide the failing query, so stringify non-Error throws.
+    const message = error instanceof Error ? error.message
+      : error && typeof error === 'object' ? JSON.stringify(error)
+      : String(error);
     obs.error('Research request failed', { error: message });
     if (startedRun) {
       // An active run left behind makes every later attempt return 409.

@@ -11,6 +11,7 @@ import {
   rankPalette,
   isNeutral,
   rankExtractedFonts,
+  rebrandDeclaredName,
   normalizeHex,
   parseCssColor,
   readableTextOn,
@@ -704,5 +705,556 @@ describe('preview typography source priority', () => {
   it('does not invent a font when no evidence is available', () => {
     expect(preferredPreviewFontFamily([])).toBeNull();
     expect(resolveFontRoles([])).toEqual({ headingFont: null, bodyFont: null });
+  });
+});
+
+describe('logo-selection accuracy regressions', () => {
+  it('rejects a third-party CDN logo that names a different company (Salesforce icon for Workato)', () => {
+    // Workato's header integration dropdown hosts partner icons on a first-party
+    // Contentful CDN. An alt-less `salesforce-icon-light.svg` must not become the
+    // requested brand's logo merely because its class contains "header".
+    const html = `
+      <html><head>
+        <title>Workato | Enterprise Automation</title>
+        <meta property="og:site_name" content="Workato" />
+      </head><body>
+        <header>
+          <a href="/"><img src="/assets/workato-logo.svg" alt="Workato" width="160" height="34" /></a>
+          <div class="header-dropdown-rebrand__link">
+            <a href="/integrations/salesforce">
+              <img class="header-dropdown-rebrand__link-icon" src="https://images.ctfassets.net/abc/salesforce-icon-light.svg" alt="" />
+            </a>
+          </div>
+        </header>
+      </body></html>`;
+    const identity = extractBrandIdentity(html, 'https://www.workato.com/');
+    expect(identity.logoUrl).toBe('https://www.workato.com/assets/workato-logo.svg');
+    expect(identity.logoUrl).not.toContain('salesforce');
+  });
+
+  it('keeps a legitimate first-party brand logo that is hosted on a third-party CDN', () => {
+    const html = `
+      <html><head>
+        <title>Harness</title>
+        <meta property="og:site_name" content="Harness" />
+      </head><body>
+        <header>
+          <a href="/"><img src="https://cdn.prod.website-files.com/abc/harness-main-white-logo.svg" alt="Harness" width="180" height="40" /></a>
+        </header>
+      </body></html>`;
+    const identity = extractBrandIdentity(html, 'https://www.harness.io/');
+    expect(identity.logoUrl).toBe('https://cdn.prod.website-files.com/abc/harness-main-white-logo.svg');
+  });
+
+  it('rejects a customer/partner logo placed in a header or promotional section', () => {
+    const html = `
+      <html><head>
+        <title>Greenhouse</title>
+        <meta property="og:site_name" content="Greenhouse" />
+      </head><body>
+        <header class="trusted-by">
+          <img src="https://cdn.prod.website-files.com/abc/Coupang-logo.png" alt="" width="140" height="40" />
+        </header>
+        <section class="logo-strip">
+          <img src="https://cdn.prod.website-files.com/abc/HelloFresh-logo.png" alt="HelloFresh" width="140" height="40" />
+        </section>
+        <nav><a href="/"><img src="/assets/greenhouse-logo.svg" alt="Greenhouse" width="190" height="42" /></a></nav>
+      </body></html>`;
+    const identity = extractBrandIdentity(html, 'https://www.greenhouse.io/');
+    expect(identity.logoUrl).toBe('https://www.greenhouse.io/assets/greenhouse-logo.svg');
+    expect(identity.logoUrl).not.toContain('coupang');
+  });
+
+  it('rejects an unrelated asset that merely has "logo" in its filename', () => {
+    const html = `
+      <html><head>
+        <title>Kandji</title>
+        <meta property="og:site_name" content="Kandji" />
+      </head><body>
+        <main>
+          <img src="https://www.iru.com/assets/iru-logo.png" alt="IRU logo" width="200" height="60" />
+        </main>
+        <nav><a href="/"><img src="/assets/kandji-logo.svg" alt="Kandji" width="170" height="38" /></a></nav>
+      </body></html>`;
+    const identity = extractBrandIdentity(html, 'https://www.kandji.io/');
+    expect(identity.logoUrl).toBe('https://www.kandji.io/assets/kandji-logo.svg');
+    expect(identity.logoUrl).not.toContain('iru');
+  });
+
+  it('rejects a country flag asset in the logo slot', () => {
+    const html = `
+      <html><head>
+        <title>MoveInSync</title>
+        <meta property="og:site_name" content="MoveInSync" />
+      </head><body>
+        <header>
+          <img class="cbs-flag" src="/wp-content/plugins/country-switcher-v2/assets/flags/in.svg" alt="IN" width="24" height="16" />
+          <a href="/"><img src="/wp-content/uploads/2020/03/Header-Logo-White.svg" alt="Header-Logo-White" width="113" height="45" /></a>
+        </header>
+      </body></html>`;
+    const identity = extractBrandIdentity(html, 'https://moveinsync.com/');
+    expect(identity.logoUrl).toBe('https://moveinsync.com/wp-content/uploads/2020/03/Header-Logo-White.svg');
+    expect(identity.logoUrl).not.toContain('flags');
+  });
+
+  it('falls back to a verified favicon when no defensible full logo exists', () => {
+    const html = `
+      <html><head>
+        <title>Acme</title>
+        <meta property="og:site_name" content="Acme" />
+        <link rel="icon" href="/favicon.ico" />
+      </head><body>
+        <main>
+          <img src="https://cdn.example/trusted-by/stripe-logo.svg" alt="Stripe" width="160" height="40" />
+        </main>
+      </body></html>`;
+    const identity = extractBrandIdentity(html, 'https://www.acme.com/');
+    expect(identity.logoUrl).toBe('https://www.acme.com/favicon.ico');
+    expect(identity.logoUrl).not.toContain('stripe');
+  });
+
+  it('applies equivalent mismatch handling to the rendered-reader fallback', () => {
+    const markdown = [
+      '![Coupang-logo](https://cdn.prod.website-files.com/abc/Coupang-logo.png)',
+      '![Greenhouse](https://cdn.prod.website-files.com/abc/greenhouse-logo.svg)',
+      '![Stripe integration](https://cdn.example/trusted-by/stripe-logo.svg)',
+      '![Country flag](https://cdn.example/flags/in.svg)',
+    ].join('\n');
+    expect(extractRenderedLogoCandidates(markdown, 'https://www.greenhouse.io/')).toEqual([
+      'https://cdn.prod.website-files.com/abc/greenhouse-logo.svg',
+    ]);
+  });
+
+  it('does not treat a short country code as a match for the brand name', () => {
+    // "in" must not be considered part of "moveinsync"; the old substring logic
+    // let a 24x16 flag beat the real 113x45 header wordmark.
+    const html = `
+      <html><head><title>MoveInSync</title><meta property="og:site_name" content="MoveInSync" /></head>
+      <body><header>
+        <img class="cbs-flag" src="/flags/in.svg" alt="IN" />
+        <a href="/"><img src="/Header-Logo.svg" alt="Header-Logo" width="113" height="45" /></a>
+      </header></body></html>`;
+    const identity = extractBrandIdentity(html, 'https://moveinsync.com/');
+    expect(identity.logoUrl).toBe('https://moveinsync.com/Header-Logo.svg');
+  });
+});
+
+describe('decorative mega-menu icon regression', () => {
+  // Reproduction of the Obsidian scan failure: the real wordmark sits in the
+  // header, but a decorative dropdown/flyout icon (Group.svg) appeared later in
+  // the DOM inside a mega-menu, inside a link named "Group", with large
+  // dimensions and a hint filename — enough for the old scorer to promote it
+  // over the actual site logo.
+  const MEGA_MENU_PAGE = `<!doctype html>
+    <html>
+      <head><title>Obsidian</title><meta property="og:site_name" content="Obsidian" /></head>
+      <body>
+        <header>
+          <a href="/" class="site-logo"><img src="/assets/logo-obsidian.svg" alt="Obsidian" width="136" height="34" /></a>
+        </header>
+        <nav class="mega-menu">
+          <a href="/features/group" class="megamenu_group_link_icon">
+            <img src="/assets/icons/Group.svg" alt="Group" width="48" height="48" />
+          </a>
+        </nav>
+      </body>
+    </html>`;
+
+  it('a decorative mega-menu icon cannot outrank the real site logo', () => {
+    const identity = extractBrandIdentity(MEGA_MENU_PAGE, 'https://obsidian.md/');
+    expect(identity.logoUrl).toBe('https://obsidian.md/assets/logo-obsidian.svg');
+  });
+
+  it('a decorative mega-menu icon cannot outrank an honest favicon fallback', () => {
+    // Same page without the wordmark: the correct answer is the favicon, never
+    // the unrelated dropdown glyph.
+    const noWordmark = MEGA_MENU_PAGE
+      .replace(' <a href="/" class="site-logo"><img src="/assets/logo-obsidian.svg" alt="Obsidian" width="136" height="34" /></a>', '')
+      .replace('<title>Obsidian</title>', '<title>Obsidian</title><link rel="icon" href="/favicon.ico" />');
+    const identity = extractBrandIdentity(noWordmark, 'https://obsidian.md/');
+    expect(identity.logoUrl).toBe('https://obsidian.md/favicon.ico');
+    expect(identity.faviconUrl).toBe('https://obsidian.md/favicon.ico');
+    expect(identity.warnings.join(' ')).toMatch(/logo/i);
+    expect(identity.inspected.join(' ')).toContain('favicon fallback');
+  });
+
+  it('promotes a wordmark even when a later decorative icon scores higher on placement', () => {
+    // Wordmark first in DOM order, decorative icon later with banner/link
+    // context and larger dimensions — ranking must stay logo-first.
+    const reordered = `<!doctype html>
+      <html>
+        <head><title>Obsidian</title><meta property="og:site_name" content="Obsidian" /></head>
+        <body>
+          <header><a href="/"><img src="/assets/logo-obsidian.svg" alt="Obsidian" width="136" height="34" /></a></header>
+          <nav>
+            <div class="megamenu_group_link_icon"><a href="/group"><img src="/assets/icons/Group.svg" alt="Group icon" width="64" height="64" /></a></div>
+          </nav>
+        </body>
+      </html>`;
+    const identity = extractBrandIdentity(reordered, 'https://obsidian.md/');
+    expect(identity.logoUrl).toBe('https://obsidian.md/assets/logo-obsidian.svg');
+  });
+});
+
+describe('rendered-reader cross-brand filename regressions', () => {
+  it('rejects a 3-character unrelated brand token (iru-logo.png for kandji.io)', () => {
+    // kandji.io's rendered page contained an IRU partner mark whose generic
+    // "logo" alt let it through. The filename names a different brand and must
+    // be rejected even though the alt is unhelpful.
+    const markdown = '![logo](https://www.iru.com/assets/iru-logo.png)';
+    expect(extractRenderedLogoCandidates(markdown, 'https://www.kandji.io/')).toEqual([]);
+  });
+
+  it('a generic "logo" alt cannot rescue a filename naming another brand on a same-site CDN', () => {
+    // The path deliberately avoids words like "customers" — only the filename
+    // identifies the other brand, and the CDN host is a same-site subdomain.
+    const markdown = '![logo](https://cdn.greenhouse.io/assets/Coupang-logo.png)';
+    expect(extractRenderedLogoCandidates(markdown, 'https://www.greenhouse.io/')).toEqual([]);
+  });
+
+  it('the token "ai" cannot falsely match "openai"', () => {
+    // Under the old substring logic, alias.includes(candidate) made the short
+    // technology token "ai" look like evidence of openai's own identity.
+    const markdown = [
+      '![AI](https://cdn.example.com/ai-logo.png)',
+      '![AI platform](https://cdn.example.com/artificial-intelligence-logo.svg)',
+    ].join('\n');
+    expect(extractRenderedLogoCandidates(markdown, 'https://openai.com/')).toEqual([]);
+  });
+
+  it('still accepts openai branding that actually references openai', () => {
+    const markdown = '![logo](https://cdn.openai.com/logo.svg)';
+    expect(extractRenderedLogoCandidates(markdown, 'https://openai.com/'))
+      .toEqual(['https://cdn.openai.com/logo.svg']);
+  });
+
+  it('keeps a hash-named CDN wordmark with a generic alt', () => {
+    const markdown = '![logo](https://cdn.example.com/a1b2c3d4e5/logo.svg)';
+    expect(extractRenderedLogoCandidates(markdown, 'https://www.kandji.io/'))
+      .toEqual(['https://cdn.example.com/a1b2c3d4e5/logo.svg']);
+  });
+
+  it('keeps a third-party CDN wordmark whose filename names the site brand', () => {
+    const markdown = '![logo](https://cdn.prod.website-files.com/abc/harness-logo.svg)';
+    expect(extractRenderedLogoCandidates(markdown, 'https://www.harness.io/'))
+      .toEqual(['https://cdn.prod.website-files.com/abc/harness-logo.svg']);
+  });
+});
+
+describe('generic decorative navigation icon regressions', () => {
+  // Exact reported failing case: Group.svg sits inside a generic nav link to
+  // /features/group with no mega-menu/dropdown class names, and a favicon is
+  // available. The icon is navigation chrome, never the company logo.
+  const NAV_ICON_PAGE = (head: string, body: string) => `<!doctype html>
+    <html>
+      <head><title>ClickUp</title><meta property="og:site_name" content="ClickUp" />${head}</head>
+      <body>
+        <header>
+          <nav aria-label="Main">
+            <a href="/features/group"><img src="/assets/icons/Group.svg" alt="Group" width="48" height="48" /></a>
+          </nav>
+          ${body}
+        </header>
+      </body>
+    </html>`;
+
+  it('a generic nav-link icon cannot become the logo; the favicon fallback wins', () => {
+    const html = NAV_ICON_PAGE('<link rel="icon" href="/favicon.ico" />', '');
+    const identity = extractBrandIdentity(html, 'https://clickup.com/');
+    expect(identity.logoUrl).toBe('https://clickup.com/favicon.ico');
+    expect(identity.faviconUrl).toBe('https://clickup.com/favicon.ico');
+    expect(identity.warnings.join(' ')).toMatch(/logo/i);
+    expect(identity.inspected.join(' ')).toContain('favicon fallback');
+  });
+
+  it('a real home-linked site logo outranks the generic nav-link icon', () => {
+    const html = NAV_ICON_PAGE('', '<a href="/" class="site-logo"><img src="/assets/logo-clickup.svg" alt="ClickUp" width="150" height="36" /></a>');
+    const identity = extractBrandIdentity(html, 'https://clickup.com/');
+    expect(identity.logoUrl).toBe('https://clickup.com/assets/logo-clickup.svg');
+  });
+
+  it('a generic nav-link icon wins nothing even without header wrapping', () => {
+    // Same icon linked from body content: the same-site product link alone is
+    // not logo evidence.
+    const html = `<!doctype html>
+      <html>
+        <head><title>ClickUp</title><meta property="og:site_name" content="ClickUp" /><link rel="icon" href="/favicon.ico" /></head>
+        <body>
+          <main>
+            <a href="/features/group"><img src="/assets/icons/Group.svg" alt="Group" width="48" height="48" /></a>
+          </main>
+        </body>
+      </html>`;
+    const identity = extractBrandIdentity(html, 'https://clickup.com/');
+    expect(identity.logoUrl).toBe('https://clickup.com/favicon.ico');
+  });
+});
+
+describe('context-filter accuracy regressions', () => {
+  it('keeps a genuine banner-logo wordmark in the site header', () => {
+    // "banner" in a header asset frequently refers to the ARIA banner (header)
+    // landmark, not a promotional banner. A home-linked header image whose
+    // filename identifies a logo must not be discarded as third-party.
+    const html = `<!doctype html>
+      <html>
+        <head><title>Northwind</title><meta property="og:site_name" content="Northwind" /></head>
+        <body>
+          <header>
+            <a href="/"><img src="/images/banner-logo.png" alt="" width="220" height="60" /></a>
+          </header>
+        </body>
+      </html>`;
+    const identity = extractBrandIdentity(html, 'https://www.northwind.com/');
+    expect(identity.logoUrl).toBe('https://www.northwind.com/images/banner-logo.png');
+  });
+
+  it('rejects a generic-named customer logo inside an identified customer logo strip', () => {
+    const html = `<!doctype html>
+      <html>
+        <head><title>Bluewave</title><meta property="og:site_name" content="Bluewave" /></head>
+        <body>
+          <header>
+            <a href="/"><img src="/assets/bluewave-logo.svg" alt="Bluewave" width="170" height="40" /></a>
+          </header>
+          <section class="customers" aria-label="Trusted by leading teams">
+            <img src="https://cdn.example.com/logos/acme-logo.png" alt="logo" width="140" height="40" />
+          </section>
+        </body>
+      </html>`;
+    const identity = extractBrandIdentity(html, 'https://www.bluewave.com/');
+    expect(identity.logoUrl).toBe('https://www.bluewave.com/assets/bluewave-logo.svg');
+    expect(identity.logoUrl).not.toContain('acme');
+  });
+
+  it('still rejects a promotional banner asset in the logo slot', () => {
+    const html = `<!doctype html>
+      <html>
+        <head><title>Northwind</title><meta property="og:site_name" content="Northwind" /><link rel="icon" href="/favicon.ico" /></head>
+        <body>
+          <div class="promo-banner">
+            <a href="/sale"><img src="/images/promo-banner-sale.svg" alt="Summer sale" width="700" height="90" /></a>
+          </div>
+        </body>
+      </html>`;
+    const identity = extractBrandIdentity(html, 'https://www.northwind.com/');
+    expect(identity.logoUrl).toBe('https://www.northwind.com/favicon.ico');
+  });
+});
+
+describe('nav topic-link illustrations are not the site logo', () => {
+  const navIllustrationHtml = (alt: string, src: string) => `<!doctype html>
+    <html>
+      <head><title>Greenhouse</title><meta property="og:site_name" content="Greenhouse" /><link rel="icon" href="/favicon.ico" /></head>
+      <body>
+        <nav aria-label="main menu" class="nav">
+          <a href="/" class="nav-brand"><img src="/logo.svg" alt="Greenhouse" /></a>
+          <div class="nav-column">
+            <a class="nav-topic-item" href="/content-topic/diversity-inclusion" aria-label="DE&I">
+              <img src="${src}" alt="${alt}" />
+            </a>
+          </div>
+        </nav>
+        <main><h1>Greenhouse</h1><p>Hiring software.</p></main>
+      </body>
+    </html>`;
+
+  it('rejects a person photo nav illustration whose caption merely starts with the site name', () => {
+    const html = navIllustrationHtml(
+      'Greenhouse DEI Icon and office worker facing camera in collared shirt',
+      'https://cdn.prod.website-files.com/abc123_Greenhouse-DEI-Icon-and-office-worker-facing-cameria-in-collared-shirt.webp',
+    );
+    const identity = extractBrandIdentity(html, 'https://www.greenhouse.com/');
+    expect(identity.logoUrl).toBe('https://www.greenhouse.com/logo.svg');
+  });
+
+  it('rejects a non-person topic illustration in a nav content link when the nav logo is missing', () => {
+    const html = `<!doctype html>
+      <html>
+        <head><title>Greenhouse</title><meta property="og:site_name" content="Greenhouse" /></head>
+        <body>
+          <nav aria-label="main menu" class="nav">
+            <a class="nav-topic-item" href="/content-topic/diversity-inclusion">
+              <img src="https://cdn.prod.website-files.com/abc123_topic-illustration.svg" alt="Greenhouse topic" />
+            </a>
+          </nav>
+          <main><h1>Greenhouse</h1><p>Hiring software.</p></main>
+        </body>
+      </html>`;
+    const identity = extractBrandIdentity(html, 'https://www.greenhouse.com/');
+    expect(identity.logoUrl).toBeNull();
+  });
+
+  it('keeps a real logo image inside a nav content link when it carries explicit logo wording', () => {
+    const html = `<!doctype html>
+      <html>
+        <head><title>Northwind</title><meta property="og:site_name" content="Northwind" /></head>
+        <body>
+          <nav aria-label="main menu" class="nav">
+            <a class="nav-topic-item" href="/products/platform">
+              <img src="/images/northwind-logo.svg" alt="Northwind logo" />
+            </a>
+          </nav>
+          <main><h1>Northwind</h1></main>
+        </body>
+      </html>`;
+    const identity = extractBrandIdentity(html, 'https://www.northwind.com/');
+    expect(identity.logoUrl).toBe('https://www.northwind.com/images/northwind-logo.svg');
+  });
+});
+
+describe('person photographs are never the owner logo without brand-mark wording', () => {
+  it('rejects a founder photo captioned with the brand name outside a logo slot', () => {
+    const html = `<!doctype html>
+      <html>
+        <head><title>Acme</title><meta property="og:site_name" content="Acme" /></head>
+        <body>
+          <header>
+            <div class="founder-section">
+              <img src="/images/jane-doe-founder.jpg" alt="Acme founder Jane Doe" width="400" height="400" />
+            </div>
+          </header>
+          <main><h1>Acme</h1></main>
+        </body>
+      </html>`;
+    const identity = extractBrandIdentity(html, 'https://www.acme.com/');
+    expect(identity.logoUrl).toBeNull();
+  });
+});
+
+describe('page-declared icons hosted on generic CDN infrastructure', () => {
+  it('accepts a cross-host icon link when the host is shared CDN infrastructure', () => {
+    const html = `<!doctype html>
+      <html>
+        <head>
+          <title>Greenhouse</title>
+          <link rel="shortcut icon" href="https://cdn.prod.website-files.com/abc_gh_Icon-greenhouse-green.png" />
+        </head>
+        <body><main><h1>Greenhouse</h1></main></body>
+      </html>`;
+    const identity = extractBrandIdentity(html, 'https://www.greenhouse.com/');
+    expect(identity.faviconUrl).toBe('https://cdn.prod.website-files.com/abc_gh_Icon-greenhouse-green.png');
+  });
+
+  it('still rejects a cross-brand host declared as the icon', () => {
+    const html = '<html><head><title>GitHub</title><link rel="icon" href="https://duolingo.example/favicon.ico" /></head><body><main><h1>GitHub</h1></main></body></html>';
+    const identity = extractBrandIdentity(html, 'https://github.com/');
+    expect(identity.faviconUrl).toBeNull();
+  });
+});
+
+describe('sub-brand scoped colours and gradient decorations stay out of the palette', () => {
+  it('demotes podcast-scoped utility colours below declared brand tokens', () => {
+    const css = [
+      ':root{--color-brand-darkblue:#0143fe;--color-brand-green:#4bd783;--color-podcast-neon:#e5fc56;--color-podcast-satori:#2268d9;}',
+      '.bg-podcast-Neon{background-color:var(--color-podcast-neon)}',
+      '.podcast-prose a{color:var(--color-podcast-satori)}',
+      '.btn-primary{background-color:var(--color-brand-darkblue)}',
+      '.badge-green{background-color:var(--color-brand-green)}',
+    ].join('\n');
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    collectColors(css, 'external-stylesheet', sink);
+    const palette = rankPalette(sink, 2);
+    expect(palette.map((color) => color.hex)).toEqual(['#0143fe', '#4bd783']);
+    // Sub-brand scoped usage never earns corroborating control/link evidence.
+    expect(sink.get('#e5fc56')?.sources).not.toContain('primary-control');
+    expect(sink.get('#2268d9')?.sources).not.toContain('link-accent');
+  });
+
+  it('never grants gradient stops control-colour evidence', () => {
+    const css = [
+      ':root{--accent:#ff9ae6;}',
+      '.form-actions{background:linear-gradient(90deg,#ff9ae6,#afb3fe);}',
+    ].join('\n');
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    collectColors(css, 'external-stylesheet', sink);
+    expect(sink.get('#ff9ae6')?.sources).not.toContain('primary-control');
+    expect(sink.get('#afb3fe')?.sources).not.toContain('primary-control');
+    expect(sink.get('#ff9ae6')?.sources).toContain('gradient-css');
+  });
+
+  it('does not count colour words inside var() names as named-colour declarations', () => {
+    const css = '.panel{border-color:var(--color-red-600)}';
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    collectColors(css, 'external-stylesheet', sink);
+    expect(sink.get('#ff0000')).toBeUndefined();
+  });
+
+  it('keeps volume-only unattributed colours below attributed brand tokens', () => {
+    const css = [
+      ':root{--color-brand-darkorange:#ff5300;}',
+      ...Array.from({ length: 60 }, (_, i) => `@keyframes frame-${i}{0%{color:color-mix(in lab,red,red)}}`),
+      '.btn-primary{background-color:var(--color-brand-darkorange)}',
+    ].join('\n');
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    collectColors(css, 'external-stylesheet', sink);
+    const palette = rankPalette(sink, 4);
+    // The attributed brand token outranks the keyframe red despite its volume.
+    expect(palette.map((color) => color.hex)).toEqual(['#ff5300', '#ff0000']);
+  });
+});
+
+describe('rebrand declarations in page titles', () => {
+  it('reads the current corporate name from a "Now X" title suffix', () => {
+    // kandji.com resolves to Iru's kandji-mdm page, whose title still leads
+    // with the historical product name: "... | Now Iru".
+    expect(rebrandDeclaredName('Kandji Device Management and Security  | Now Iru')).toBe('Iru');
+  });
+
+  it('reads the current name from a "(formerly X)" leader', () => {
+    expect(rebrandDeclaredName('Iru (formerly Kandji) | Securing devices, identity, and compliance.')).toBe('Iru');
+  });
+
+  it('reads "formerly known as" suffixes', () => {
+    expect(rebrandDeclaredName('Acme — formerly known as WidgetCo')).toBe('WidgetCo');
+  });
+
+  it('leaves ordinary titles untouched', () => {
+    expect(rebrandDeclaredName('Atlassian | Software')).toBeNull();
+    expect(rebrandDeclaredName('OpenAI')).toBeNull();
+    expect(rebrandDeclaredName('Microsoft – Official product page')).toBeNull();
+    expect(rebrandDeclaredName(null)).toBeNull();
+  });
+
+  it('a rebranded page reports the current brand, keeping the historical name in the content', () => {
+    const html = `<!doctype html>
+      <html>
+        <head>
+          <title>Kandji Device Management and Security  | Now Iru</title>
+          <meta name="description" content="Apple MDM solutions built for Mac, iPad and iPhone." />
+          <link rel="icon" href="/favicon.ico" />
+        </head>
+        <body>
+          <main><h1>Kandji is now Iru</h1><p>Kandji MDM capabilities continue under the Iru platform.</p></main>
+        </body>
+      </html>`;
+    const identity = extractBrandIdentity(html, 'https://www.iru.com/kandji-mdm');
+    expect(identity.brandName).toBe('Iru');
+    expect(identity.description).toContain('Apple MDM');
+  });
+});
+
+describe('byte-capped stylesheets stay fast to parse', () => {
+  it('an unterminated tail (mid data-URI, no closing brace) cannot make colour extraction quadratic', () => {
+    // Reproduces the Microsoft scan stall: fetchCss caps a stylesheet at 350KB,
+    // cutting the file mid `url("data:...base64` with no closing brace. The
+    // /([^{}]+)\{([^{}]*)\}/g rules loop then backtracked quadratically
+    // (~90s for 345KB in production). The fix drops the unterminated tail.
+    const completeRule = 'a{color:#123456;background:#0143fe;}';
+    const truncated = completeRule + 'b{background-image:url("data:image/png;base64,' + 'QUJD'.repeat(30_000);
+    const startedAt = Date.now();
+    const sink = new Map<string, { count: number; sources: Set<string> }>();
+    collectColors(truncated, 'external-stylesheet', sink);
+    const elapsedMs = Date.now() - startedAt;
+    expect(elapsedMs).toBeLessThan(2_000);
+    // Legit colours declared before the cut are still extracted.
+    expect(sink.get('#123456')).toBeTruthy();
+    expect(sink.get('#0143fe')).toBeTruthy();
+  });
+
+  it('a stylesheet with no complete rule at all yields no rule evidence without stalling', () => {
+    const neverClosed = 'a{color:#123456;background-image:url("data:image/png;base64,' + 'QUJD'.repeat(40_000);
+    const startedAt = Date.now();
+    collectColors(neverClosed, 'external-stylesheet', new Map());
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
   });
 });
