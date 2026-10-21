@@ -131,7 +131,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
         suppressContentEditableWarning
         className="editor-inline-edit"
         onInput={(event) => onDraftInput?.(event.currentTarget.innerText)}
-        onBlur={() => {}
+        onBlur={() => {
           setEditing(false);
           const next = (ref.current?.innerText ?? '').replace(/ /g, ' ').replace(/[ 	]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
           onCommit(next);
