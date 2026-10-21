@@ -54,6 +54,27 @@ describe('content document body format', () => {
     expect(parseContentBody(body)).toEqual(doc);
   });
 
+  it('accepts same-origin uploaded Studio asset paths and rejects unsafe image sources', () => {
+    const assetPath = '/api/brands/11111111-1111-4111-8111-111111111111/content/22222222-2222-4222-8222-222222222222/assets/33333333-3333-4333-8333-333333333333';
+    const doc: ContentDocument = {
+      kind: 'uptrendify-doc',
+      version: 1,
+      mode: 'free',
+      pages: [{
+        id: 'page-1',
+        size: 'square',
+        backgroundImage: { src: assetPath, alt: '' },
+        blocks: [{ id: 'image-1', type: 'image', url: assetPath, alt: 'Uploaded image', align: 'center', width: 80, geometry: { x: 20, y: 30, w: 400, h: 300 } }],
+      }],
+    };
+    expect(parseContentBody(serializeContentDocument(doc))).toEqual(doc);
+    const unsafe = serializeContentDocument({
+      ...doc,
+      pages: [{ ...doc.pages[0]!, backgroundImage: { src: 'javascript:alert(1)', alt: '' } }],
+    });
+    expect(parseContentBody(unsafe)).toBeNull();
+  });
+
   it('serializes a single-page document in the flat blocks form and re-parses it exactly', () => {
     const body = serializeContentDocument(singlePageDoc());
     expect(body).toContain('"blocks"');

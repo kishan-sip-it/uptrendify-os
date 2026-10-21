@@ -68,7 +68,18 @@ const safeUrl = z
     } catch {
       return false;
     }
-  }, 'Image source must be an http(s) URL');
+  }, 'URL must use http(s)');
+
+const managedStudioAssetPath = /^\/api\/brands\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/content\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const imageSource = z.string().max(2000).refine((value) => {
+  if (managedStudioAssetPath.test(value)) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}, 'Image source must be an http(s) URL or an authenticated Studio asset path');
 
 const emphasis = {
   bold: z.boolean().nullish().transform((value) => value ?? false),
@@ -90,7 +101,7 @@ const geometry = z.object({
 });
 
 const backgroundImage = z.object({
-  src: safeUrl,
+  src: imageSource,
   alt: z.string().max(300).nullish().transform((value) => value ?? ''),
 });
 
@@ -135,7 +146,7 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
   z.object({
     id: blockId,
     type: z.literal('image'),
-    url: safeUrl,
+    url: imageSource,
     alt: z.string().max(300).nullish().transform((value) => value ?? ''),
     align,
     width: widthPct,

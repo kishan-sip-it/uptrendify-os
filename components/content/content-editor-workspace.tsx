@@ -76,6 +76,7 @@ const BLOCK_LABEL: Record<EditorBlock['type'], string> = {
 };
 
 type EditorBlock = ContentDocBlock;
+type CanvasGeometry = NonNullable<EditorBlock['geometry']>;
 
 const HISTORY_LIMIT = 80;
 
@@ -95,12 +96,13 @@ function emptyBlock(type: EditorBlock['type']): EditorBlock {
 }
 
 /** Inline canvas text editing. Commits on blur or Enter (Shift+Enter = newline in multiline). */
-function CanvasText({ value, disabled, multiline, onCommit, onClick }: {
+function CanvasText({ value, disabled, multiline, onCommit, onClick, editOnDoubleClick = false }: {
   value: string;
   disabled: boolean;
   multiline: boolean;
   onCommit: (next: string) => void;
   onClick: () => void;
+  editOnDoubleClick?: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [editing, setEditing] = useState(false);
@@ -143,7 +145,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick }: {
     return (
       <div
         className="editor-canvas-text is-empty"
-        onClick={() => { onClick(); if (!disabled) setEditing(true); }}
+        onClick={() => { onClick(); if (!disabled && !editOnDoubleClick) setEditing(true); }} onDoubleClick={() => { if (!disabled) setEditing(true); }}
         title={disabled ? undefined : 'Click to add text'}
       >
         Empty text block — click to write.
@@ -154,7 +156,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick }: {
     <div
       className="editor-canvas-text is-editable"
       style={{ whiteSpace: 'pre-wrap' }}
-      onClick={() => { onClick(); if (!disabled) setEditing(true); }}
+      onClick={() => { onClick(); if (!disabled && !editOnDoubleClick) setEditing(true); }} onDoubleClick={() => { if (!disabled) setEditing(true); }}
       title={disabled ? undefined : 'Click to edit text'}
     >
       {value}
@@ -192,6 +194,20 @@ function normalizeHttpImageUrl(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+function normalizeStudioAssetPath(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const path = value.trim();
+  return /^\/api\/brands\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/content\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(path) ? path : null;
+}
+
+function clampCanvasCoordinate(value: number): number {
+  return Math.max(-2000, Math.min(4000, Math.round(value)));
+}
+
+function clampCanvasSize(value: number): number {
+  return Math.max(24, Math.min(4000, Math.round(value)));
 }
 
 /** Convert flow-only blocks to non-overlapping page geometry before enabling free canvas mode. */
@@ -291,10 +307,12 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [imageUrlDraft, setImageUrlDraft] = useState('');
   const [imageAltDraft, setImageAltDraft] = useState('');
   const [backgroundImageUrl, setBackgroundImageUrl] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const imageFileInputRef = useRef<HTMLInputElement | null>(null);
   const [floatAnchor, setFloatAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const dragIndex = useRef<number | null>(null);
-  const freeDrag = useRef<{ id: string; startX: number; startY: number; origin: { x: number; y: number; w: number; h: number } } | null>(null);
-  const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: { x: number; y: number; w: number; h: number }; next: { x: number; y: number; w: number; h: number } } | null>(null);
+  const freeDrag = useRef<{ id: string; startX: number; startY: number; origin: CanvasGeometry } | null>(null);
+  const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: CanvasGeometry; next: CanvasGeometry } | null>(null);
   const saveInFlight = useRef(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -387,18 +405,17 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const setPageBackgroundImage = (image: { src: string; alt: string } | null) => {
     commit(pages.map((page, index) => (index === activePageIndex ? { ...page, backgroundImage: image ?? undefined } : page)));
   };
-  const addImageFromUrl = () => {
-    if (!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS) return;
-    const src = normalizeHttpImageUrl(imageUrlDraft);
-    if (!src) {
-      setError('Enter a valid image URL beginning with https:// or http://.');
-      return;
+  const insertImageBlock = (src: string, alt: string): boolean => {
+    if (!canEdit || !activePage || activePage.blocks.length >= CONTENT_DOC_MAX_BLOCKS) {
+      setError('This page has reached its element limit or is not editable.');
+      return false;
     }
+    const freePages = pages.map(layoutPageForFreeCanvas);
     const block = {
       id: newBlockId('image'),
       type: 'image' as const,
       url: src,
-      alt: imageAltDraft.trim(),
+      alt,
       align: 'center' as const,
       width: 80,
       geometry: {
@@ -408,16 +425,60 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         h: Math.round(pageDims.height * 0.32),
       },
     } satisfies EditorBlock;
-    const freePages = pages.map(layoutPageForFreeCanvas);
     const nextPages = freePages.map((page, index) => index === activePageIndex ? { ...page, blocks: [...page.blocks, block] } : page);
     commit(nextPages, 'free');
     setFreeMode(true);
     setSelectedId(block.id);
     setInspectorTab('design');
-    setImageUrlDraft('');
-    setImageAltDraft('');
     setError(null);
-    setNotice('Image added. Resize it with the canvas handles or enter exact dimensions in Arrange.');
+    setNotice('Image added as an independent layer. Drag to move, use any edge/corner handle or enter exact X/Y/width/height values to resize.');
+    return true;
+  };
+
+  const addImageFromUrl = () => {
+    if (!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS) return;
+    const src = normalizeHttpImageUrl(imageUrlDraft);
+    if (!src) {
+      setError('Enter a valid image URL beginning with https:// or http://.');
+      return;
+    }
+    if (insertImageBlock(src, imageAltDraft.trim())) {
+      setImageUrlDraft('');
+      setImageAltDraft('');
+    }
+  };
+
+  const addImageFromFile = async (file: File) => {
+    if (!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS) {
+      setError('This page has reached its element limit or is not editable.');
+      return;
+    }
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setError('Choose a PNG, JPG, or WEBP image.');
+      return;
+    }
+    if (file.size <= 0 || file.size > 2 * 1024 * 1024) {
+      setError('Images must be 2 MB or smaller.');
+      return;
+    }
+    setIsUploadingImage(true);
+    setError(null);
+    try {
+      const assetId = crypto.randomUUID();
+      const form = new FormData();
+      form.append('file', file);
+      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/assets/${assetId}`, { method: 'POST', body: form });
+      const payload = await response.json().catch(() => null) as { src?: unknown; error?: unknown } | null;
+      if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : 'Image upload failed.');
+      const src = normalizeStudioAssetPath(payload?.src);
+      if (!src) throw new Error('The server returned an invalid image asset reference.');
+      if (insertImageBlock(src, imageAltDraft.trim())) setImageAltDraft('');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Image upload failed.');
+    } finally {
+      setIsUploadingImage(false);
+      if (imageFileInputRef.current) imageFileInputRef.current.value = '';
+    }
   };
   const applyBackgroundImageUrl = () => {
     if (!canEdit) return;
@@ -457,7 +518,8 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     setSelectedId(null);
     setFreeMode(true);
     setLoadedVersionId(null);
-    setLoadedSnapshot(serializeContentDocument({ kind: 'uptrendify-doc', version: 1, mode: 'free' as const, pages: [page] } satisfies ContentDocument));
+    // A newly inserted template is an unsaved working design until the user explicitly saves a version.
+    setLoadedSnapshot('');
     setHistory([serializeContentDocument({ kind: 'uptrendify-doc', version: 1, mode: 'free' as const, pages: [page] } satisfies ContentDocument)]);
     setHistoryIndex(0);
     setSaved(false);
@@ -754,13 +816,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       case 'heading':
         return (
           <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} />
+            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} editOnDoubleClick={freeMode} />
           </div>
         );
       case 'text':
         return (
           <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} />
+            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} editOnDoubleClick={freeMode} />
           </div>
         );
       case 'image':
@@ -791,11 +853,11 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     const dx = (event.clientX - resize.startX) / (zoom / 100);
     const dy = (event.clientY - resize.startY) / (zoom / 100);
     let { x, y, w, h } = resize.origin;
-    if (dir.includes('e')) w = Math.max(24, Math.round(resize.origin.w + dx));
-    if (dir.includes('s')) h = Math.max(24, Math.round(resize.origin.h + dy));
-    if (dir.includes('w')) { w = Math.max(24, Math.round(resize.origin.w - dx)); x = Math.round(resize.origin.x + resize.origin.w - w); }
-    if (dir.includes('n')) { h = Math.max(24, Math.round(resize.origin.h - dy)); y = Math.round(resize.origin.y + resize.origin.h - h); }
-    const next = { ...resize.origin, x, y, w, h };
+    if (dir.includes('e')) w = clampCanvasSize(resize.origin.w + dx);
+    if (dir.includes('s')) h = clampCanvasSize(resize.origin.h + dy);
+    if (dir.includes('w')) { w = clampCanvasSize(resize.origin.w - dx); x = resize.origin.x + resize.origin.w - w; }
+    if (dir.includes('n')) { h = clampCanvasSize(resize.origin.h - dy); y = resize.origin.y + resize.origin.h - h; }
+    const next: CanvasGeometry = { ...resize.origin, x: clampCanvasCoordinate(x), y: clampCanvasCoordinate(y), w: clampCanvasSize(w), h: clampCanvasSize(h) };
     const el = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${id}"]`);
     if (el) { el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.width = `${w}px`; el.style.height = `${h}px`; }
     freeResize.current = { ...resize, next };
@@ -941,7 +1003,25 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       </button>
                     ))}
                   </div>
-                  <span className="st-label">Add image from URL</span>
+                  <span className="st-label">Add image</span>
+                  <label className="st-field">
+                    <span>Upload from device · PNG/JPG/WEBP, max 2 MB</span>
+                    <input
+                      ref={imageFileInputRef}
+                      className="st-input"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      disabled={!canEdit || isUploadingImage || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS}
+                      onChange={(event) => {
+                        const input = event.currentTarget;
+                        const file = input.files?.[0];
+                        input.value = '';
+                        if (file) void addImageFromFile(file);
+                      }}
+                    />
+                  </label>
+                  {isUploadingImage ? <p className="editor-hint" role="status">Uploading image securely…</p> : null}
+                  <span className="st-label">Or use an image URL</span>
                   <label className="st-field">
                     <span>Image URL</span>
                     <input className="st-input" type="url" inputMode="url" value={imageUrlDraft} onChange={(event) => setImageUrlDraft(event.target.value)} placeholder="https://example.com/image.png" disabled={!canEdit} />
@@ -950,7 +1030,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     <span>Alt text (optional)</span>
                     <input className="st-input" value={imageAltDraft} onChange={(event) => setImageAltDraft(event.target.value)} placeholder="Describe the image" disabled={!canEdit} />
                   </label>
-                  <button type="button" className="st-btn st-btn--primary" onClick={addImageFromUrl} disabled={!canEdit || !imageUrlDraft.trim() || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS}>Insert image on canvas</button>
+                  <button type="button" className="st-btn st-btn--primary" onClick={addImageFromUrl} disabled={!canEdit || !imageUrlDraft.trim() || isUploadingImage || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS}>Insert image on canvas</button>
                   <span className="st-label">Blocks</span>
                   <div className="st-insert-grid">
                     {insertTiles.filter(({ label }) => insertMatches(label)).map(({ type, label, icon: Icon }) => (
@@ -1114,14 +1194,24 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     data-bid={block.id}
                     className={`editor-free-block${isSelected ? ' is-selected' : ''}${block.hidden ? ' is-ghost' : ''}`}
                     style={{ left: geo.x, top: geo.y, width: geo.w, height: geo.h, transform: geo.rotation ? `rotate(${geo.rotation}deg)` : undefined, cursor: canEdit && !block.locked ? 'move' : 'default' }}
-                    onPointerDown={(event) => { setSelectedId(block.id); if (canEdit && !block.locked) { (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); freeDrag.current = { id: block.id, startX: event.clientX, startY: event.clientY, origin: { ...geo } }; } }}
+                    onPointerDown={(event) => {
+                      setSelectedId(block.id);
+                      if ((event.target as HTMLElement).closest('.editor-inline-edit, [contenteditable="true"]')) return;
+                      if (canEdit && !block.locked) {
+                        event.preventDefault();
+                        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+                        freeDrag.current = { id: block.id, startX: event.clientX, startY: event.clientY, origin: { ...geo } };
+                      }
+                    }}
                     onPointerMove={(event) => {
                       const drag = freeDrag.current;
                       if (!drag || drag.id !== block.id) return;
                       const dx = (event.clientX - drag.startX) / (zoom / 100);
                       const dy = (event.clientY - drag.startY) / (zoom / 100);
                       const el = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${block.id}"]`);
-                      if (el) { el.style.left = `${Math.round(drag.origin.x + dx)}px`; el.style.top = `${Math.round(drag.origin.y + dy)}px`; }
+                      const nextX = clampCanvasCoordinate(drag.origin.x + dx);
+                      const nextY = clampCanvasCoordinate(drag.origin.y + dy);
+                      if (el) { el.style.left = `${nextX}px`; el.style.top = `${nextY}px`; }
                     }}
                     onPointerUp={(event) => {
                       const drag = freeDrag.current;
@@ -1130,7 +1220,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       const dx = (event.clientX - drag.startX) / (zoom / 100);
                       const dy = (event.clientY - drag.startY) / (zoom / 100);
                       const moved = Math.abs(dx) > 1 || Math.abs(dy) > 1;
-                      if (moved) patchBlock(block.id, { geometry: { x: Math.round(drag.origin.x + dx), y: Math.round(drag.origin.y + dy), w: geo.w, h: geo.h } });
+                      if (moved) patchBlock(block.id, { geometry: { ...drag.origin, x: clampCanvasCoordinate(drag.origin.x + dx), y: clampCanvasCoordinate(drag.origin.y + dy) } });
                       else setSelectedId(block.id);
                     }}
                   >
@@ -1179,12 +1269,12 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     >
                       {block.type === 'heading' ? (
                         <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} />
+                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} editOnDoubleClick={freeMode} />
                         </div>
                       ) : null}
                       {block.type === 'text' ? (
                         <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} />
+                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} editOnDoubleClick={freeMode} />
                         </div>
                       ) : null}
                       {block.type === 'image' ? (
