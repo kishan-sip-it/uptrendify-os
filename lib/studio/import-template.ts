@@ -181,8 +181,8 @@ function geometryFor(node:XmlNode, d:string, fs:number):Bounds|null {
   if(node.tag==='rect')return {x:n('x'),y:n('y'),w:Math.max(.01,n('width')),h:Math.max(.01,n('height'))};
   if(node.tag==='circle'){const x=n('cx'),y=n('cy'),r=Math.max(.01,n('r'));return{x:x-r,y:y-r,w:r*2,h:r*2};}
   if(node.tag==='ellipse'){const x=n('cx'),y=n('cy'),rx=Math.max(.01,n('rx')),ry=Math.max(.01,n('ry'));return{x:x-rx,y:y-ry,w:rx*2,h:ry*2};}
-  if(node.tag==='line'){const x=n('x1'),y=n('y1'),x2=n('x2'),y2=n('y2');return{x:Math.min(x,x2),y:Math.min(y,y2),w:Math.max(.01,Math.abs(x2-x)),h:Math.max(.01,Math.abs(y2-y)};}
-  if(node.tag==='polygon'||node.tag==='polyline'){const a=attr(node,'points').trim().split(/[\s,]+/).map(Number);if(a.length<4||a.some(v=>!Number.isFinite(v)))return null;const xs=a.filter((_,i)=>i%2===0),ys=a.filter((_,i)=>i%2===1);return{x:Math.min(...xs),y:Math.min(...ys),w:Math.max(.01,Math.max(...xs)-Math.min(...xs)),h:Math.max(.01,Math.max(...ys)-Math.min(...ys)};}
+  if(node.tag==='line'){const x=n('x1'),y=n('y1'),x2=n('x2'),y2=n('y2');return{x:Math.min(x,x2),y:Math.min(y,y2),w:Math.max(.01,Math.abs(x2-x)),h:Math.max(.01,Math.abs(y2-y))};}
+  if(node.tag==='polygon'||node.tag==='polyline'){const a=attr(node,'points').trim().split(/[\s,]+/).map(Number);if(a.length<4||a.some(v=>!Number.isFinite(v)))return null;const xs=a.filter((_,i)=>i%2===0),ys=a.filter((_,i)=>i%2===1);return{x:Math.min(...xs),y:Math.min(...ys),w:Math.max(.01,Math.max(...xs)-Math.min(...xs)),h:Math.max(.01,Math.max(...ys)-Math.min(...ys))};}
   if(node.tag==='text'){const txt=textOf(node).trim();if(!txt)return null;const lines=txt.split(/\r?\n/),w=Math.max(fs*.65,...lines.map(x=>x.length*fs*.58)),h=Math.max(fs*1.25,lines.length*fs*1.35),anchor=attr(node,'text-anchor','start'),x=n('x')-(anchor==='middle'?w/2:anchor==='end'?w:0);return{x,y:n('y')-fs*1.08,w,h};}
   if(node.tag==='image')return{x:n('x'),y:n('y'),w:Math.max(.01,n('width')),h:Math.max(.01,n('height'))};
   return null;
