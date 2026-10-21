@@ -110,6 +110,8 @@ const flags = {
   hidden: z.boolean().optional(),
   /** Locked blocks render but reject edits in the editor. */
   locked: z.boolean().optional(),
+  /** Per-element visual opacity; 1 is fully opaque and 0 is transparent. */
+  opacity: z.coerce.number().min(0).max(1).optional(),
 };
 
 export const contentDocBlockSchema = z.discriminatedUnion('type', [
