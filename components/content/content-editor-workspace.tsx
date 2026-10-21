@@ -437,7 +437,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         try { window.localStorage.removeItem(localDraftKey); } catch { /* storage optional */ }
       } else {
         const recovered = parseContentBody(candidate.body);
-        if (recovered && candidate.baseSnapshot === baseline && candidate.baseVersionId === currentVersionId) {
+        if (recovered && candidate.baseSnapshot === baseline) {
           setPages(recovered.pages.map((page) => layoutPageForFreeCanvas(page)));
           setFreeMode(true);
           setActivePageIndex(Math.max(0, Math.min(candidate.activePageIndex, recovered.pages.length - 1)));
@@ -1556,7 +1556,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                 <>
                   <span className="st-label">Templates</span>
                   <p className="editor-hint">Choose a starting layout for this canvas. Existing unsaved changes are protected by a confirmation prompt.</p>
-                  {STUDIO_TEMPLATES.filter((template) => insertMatches(template.label)).map((template) => (
+                  {STUDIO_TEMPLATES.map((template) => (
                     <button key={template.id} type="button" className="st-insert-tile" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', width: '100%', gap: 8 }} disabled={!canEdit} onClick={() => insertTemplate(template.id)}>
                       <Sparkles size={14} />
                       <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>{template.label}</span>
