@@ -854,7 +854,11 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   }, [zoom]);
 
   const setManualZoom = (next: number) => zoomCanvas(next);
-  const fitNow = () => { manualZoomRef.current = false; refit(); };
+  const fitNow = () => {
+    manualZoomRef.current = false;
+    setZoomManual(false);
+    refit();
+  };
 
   // Overflow detection on the active page (frame content taller than the frame).
   useEffect(() => {
