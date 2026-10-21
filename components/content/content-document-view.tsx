@@ -27,15 +27,17 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
           className={`content-doc-page${doc.mode === 'free' ? ' is-free' : ''}`}
           style={{
             ...(page.bg ? { background: page.bg, borderRadius: 10 } : {}),
+            ...(page.backgroundImage ? {
+              backgroundImage: `url(${JSON.stringify(page.backgroundImage.src)})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+            } : {}),
             ...(doc.mode === 'free' ? {
               position: 'relative',
               width: CONTENT_PAGE_SIZES[page.size ?? 'a4'].width,
               height: CONTENT_PAGE_SIZES[page.size ?? 'a4'].height,
               backgroundColor: page.bg ?? '#ffffff',
-              backgroundImage: page.backgroundImage ? `url(${JSON.stringify(page.backgroundImage.src)})` : undefined,
-              backgroundSize: page.backgroundImage ? 'cover' : undefined,
-              backgroundPosition: page.backgroundImage ? 'center' : undefined,
-              backgroundRepeat: page.backgroundImage ? 'no-repeat' : undefined,
             } : {}),
           }}
         >

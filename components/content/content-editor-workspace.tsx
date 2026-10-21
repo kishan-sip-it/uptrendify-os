@@ -194,6 +194,46 @@ function normalizeHttpImageUrl(value: string): string | null {
   }
 }
 
+/** Convert flow-only blocks to non-overlapping page geometry before enabling free canvas mode. */
+function layoutPageForFreeCanvas(page: ContentDocPage): ContentDocPage {
+  const dims = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
+  const margin = 32;
+  const usableWidth = Math.max(200, dims.width - margin * 2);
+  let cursorY = Math.max(margin, ...page.blocks.flatMap((block) => block.geometry ? [block.geometry.y + block.geometry.h + 24] : []));
+
+  const blocks = page.blocks.map((block) => {
+    if (block.geometry) return block;
+    let width = usableWidth;
+    let height = 72;
+    const textValue = block.type === 'heading' || block.type === 'text' || block.type === 'button' ? block.text : '';
+    const fontSize = block.type === 'heading'
+      ? block.fontSize ?? (block.level === 1 ? 36 : block.level === 2 ? 28 : 22)
+      : block.type === 'text' ? block.fontSize ?? defaultFontSize(block) : 16;
+
+    if (block.type === 'heading' || block.type === 'text') {
+      const charsPerLine = Math.max(12, Math.floor(usableWidth / Math.max(7, fontSize * 0.54)));
+      const lineCount = Math.max(1, Math.ceil(textValue.length / charsPerLine));
+      height = Math.min(420, Math.max(fontSize * 1.6 + 12, lineCount * fontSize * 1.45 + 12));
+    } else if (block.type === 'image') {
+      width = Math.round(usableWidth * ((block.width ?? 80) / 100));
+      height = Math.max(120, Math.min(Math.round(dims.height * 0.36), Math.round(width * 0.62)));
+    } else if (block.type === 'shape') {
+      width = Math.round(usableWidth * ((block.width ?? 60) / 100));
+      height = Math.max(24, block.height ?? 120);
+    } else {
+      width = Math.round(usableWidth * ((block.width ?? 60) / 100));
+      height = 56;
+    }
+
+    const align = block.align ?? 'left';
+    const x = align === 'center' ? Math.round((dims.width - width) / 2) : align === 'right' ? dims.width - margin - width : margin;
+    const y = Math.min(3800, cursorY);
+    cursorY = Math.min(4000, y + height + 24);
+    return { ...block, geometry: { x, y, w: width, h: height } } as EditorBlock;
+  });
+  return { ...page, blocks };
+}
+
 function fitZoom(stage: { w: number; h: number }, page: { w: number; h: number }, pad = 56): number {
   return Math.min((stage.w - pad * 2) / page.w, (stage.h - pad * 2) / page.h, 1.5);
 }
@@ -220,7 +260,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const initialDoc = useMemo(() => {
     const saved = parseContentBody(body);
     if (saved) return saved;
-    if (isStoryboard && body.trim()) return { kind: 'uptrendify-doc' as const, version: 1 as const, pages: storyboardPagesFromScript(body, defaultPageSizeForType(contentType)) };
+    if (isStoryboard && body.trim()) return { kind: 'uptrendify-doc' as const, version: 1 as const, mode: 'free' as const, pages: storyboardPagesFromScript(body, defaultPageSizeForType(contentType)) };
     return createDocumentFromText(body);
   }, [body, contentType, isStoryboard]);
   const [pages, setPages] = useState<ContentDocPage[]>(() => initialDoc.pages);
@@ -299,12 +339,12 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const linkedValues = useMemo(() => ({ title: documentTitle, cta: itemCta ?? undefined }), [documentTitle, itemCta]);
   const charLimit = channelLimit(channel);
   const selected = activePage?.blocks.find((block) => block.id === selectedId) ?? null;
-  const selectedGeometry = selected?.geometry ?? { x: 24, y: 24, w: Math.round(pageDims.width * 0.6), h: 90 };
+  const selectedGeometry = selected?.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
   const selectedIndex = activePage?.blocks.findIndex((block) => block.id === selectedId) ?? -1;
 
-  const commit = useCallback((nextPages: ContentDocPage[]) => {
+  const commit = useCallback((nextPages: ContentDocPage[], mode: 'flow' | 'free' = freeMode ? 'free' : 'flow') => {
     setPages(nextPages);
-    const snapshot = serializeContentDocument({ kind: 'uptrendify-doc', version: 1, pages: nextPages } satisfies ContentDocument);
+    const snapshot = serializeContentDocument({ kind: 'uptrendify-doc', version: 1, ...(mode === 'free' ? { mode: 'free' as const } : {}), pages: nextPages } satisfies ContentDocument);
     setHistory((current) => {
       const truncated = current.slice(0, historyIndex + 1);
       if (truncated[truncated.length - 1] === snapshot) return truncated;
@@ -314,7 +354,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     });
     setSaved(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyIndex]);
+  }, [historyIndex, freeMode]);
 
   const patchPage = (pageIndex: number, transformer: (blocks: EditorBlock[]) => EditorBlock[]) => {
     commit(pages.map((page, index) => (index === pageIndex ? { ...page, blocks: transformer(page.blocks) } : page)));
@@ -339,7 +379,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     patchPage(activePageIndex, (current) => current.map((block) => (block.id === id ? ({ ...block, geometry } as EditorBlock) : block)));
   };
   const updateBlockGeometry = (block: EditorBlock, key: 'x' | 'y' | 'w' | 'h', rawValue: number) => {
-    const current = block.geometry ?? { x: 24, y: 24, w: Math.round(pageDims.width * 0.6), h: 90 };
+    const current = block.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
     const min = key === 'w' || key === 'h' ? 24 : -2000;
     const value = Number.isFinite(rawValue) ? Math.round(Math.max(min, Math.min(4000, rawValue))) : current[key];
     setBlockGeometry(block.id, { ...current, [key]: value });
@@ -368,8 +408,10 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         h: Math.round(pageDims.height * 0.32),
       },
     } satisfies EditorBlock;
+    const freePages = pages.map(layoutPageForFreeCanvas);
+    const nextPages = freePages.map((page, index) => index === activePageIndex ? { ...page, blocks: [...page.blocks, block] } : page);
+    commit(nextPages, 'free');
     setFreeMode(true);
-    patchPage(activePageIndex, (current) => [...current, block]);
     setSelectedId(block.id);
     setInspectorTab('design');
     setImageUrlDraft('');
@@ -397,7 +439,15 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     setSelectedId(null);
     setNotice('Image moved to the page background. You can still add new independent image layers.');
   };
-  const enableFreeMode = () => setFreeMode(true);
+  const toggleCanvasMode = () => {
+    const nextFreeMode = !freeMode;
+    const nextPages = nextFreeMode ? pages.map(layoutPageForFreeCanvas) : pages;
+    commit(nextPages, nextFreeMode ? 'free' : 'flow');
+    setFreeMode(nextFreeMode);
+    setNotice(nextFreeMode
+      ? 'Free canvas enabled. Select any element to move and resize it independently.'
+      : 'Flow layout enabled. Element geometry is preserved and can be restored by switching back to Free canvas.');
+  };
   const insertTemplate = (templateId: string) => {
     if (dirty && !window.confirm('Discard unsaved changes and start from this template?')) return;
     const page = buildTemplatePage(templateId, brand.colors[0] ?? '#7c7cff');
@@ -581,13 +631,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       if (event.key.toLowerCase() === 'f' && !meta) { event.preventDefault(); setFocusMode((value) => !value); return; }
       if (meta && event.key.toLowerCase() === 'z') {
         event.preventDefault();
-        if (event.shiftKey) setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) setPages(doc.pages); return index + 1; });
-        else setHistoryIndex((index) => { if (index <= 0) return index; const doc = parseContentBody(history[index - 1]); if (doc) setPages(doc.pages); return index - 1; });
+        if (event.shiftKey) setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); } return index + 1; });
+        else setHistoryIndex((index) => { if (index <= 0) return index; const doc = parseContentBody(history[index - 1]); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); } return index - 1; });
         return;
       }
       if (meta && event.key.toLowerCase() === 'y') {
         event.preventDefault();
-        setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) setPages(doc.pages); return index + 1; });
+        setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); } return index + 1; });
         return;
       }
       if (!selectedId || previewMode) return;
@@ -799,8 +849,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           {health}%
         </span>
         <span style={{ flex: 1 }} />
-        <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index <= 0) return index; const doc = parseContentBody(history[index - 1]); if (doc) setPages(doc.pages); return index - 1; })} disabled={historyIndex <= 0} title="Undo (Ctrl+Z)" aria-label="Undo"><Undo2 size={15} /></button>
-        <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) setPages(doc.pages); return index + 1; })} disabled={historyIndex >= history.length - 1} title="Redo (Ctrl+Y)" aria-label="Redo"><Redo2 size={15} /></button>
+        <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index <= 0) return index; const doc = parseContentBody(history[index - 1]); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); } return index - 1; })} disabled={historyIndex <= 0} title="Undo (Ctrl+Z)" aria-label="Undo"><Undo2 size={15} /></button>
+        <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); } return index + 1; })} disabled={historyIndex >= history.length - 1} title="Redo (Ctrl+Y)" aria-label="Redo"><Redo2 size={15} /></button>
+        <button type="button" className={`st-btn${freeMode ? ' st-btn--primary' : ''}`} onClick={toggleCanvasMode} aria-pressed={freeMode} title="Switch between stacked flow layout and independently movable/resizable canvas layers">Free canvas{freeMode ? ' ✓' : ''}</button>
         <button type="button" className="st-btn" onClick={() => setPreviewMode((value) => !value)} aria-pressed={previewMode}>{previewMode ? 'Exit preview' : 'Preview'}</button>
         <button type="button" className="st-btn" onClick={() => void save()} disabled={busy || !canEdit || !dirty} title={!canEdit ? 'Editing is available in draft, after change requests, or after rejection.' : !dirty ? 'Nothing to save yet — the canvas matches the saved version.' : 'Save these edits as a new version'}>
           {busy ? 'Saving…' : 'Save new version'}
