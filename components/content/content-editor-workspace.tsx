@@ -1066,7 +1066,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                         type="button"
                         className="st-shape-tile"
                         aria-label={`Add ${label.toLowerCase()} shape`}
-                        title={`Add ${label.toLowerCase()} shape`}
                         disabled={!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS}
                         onClick={() => addBlock('shape', kind)}
                       >
