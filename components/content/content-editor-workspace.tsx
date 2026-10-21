@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
+  ArrowDown,
+  ArrowUp,
+  BringToFront,
   Check,
   Copy,
   Eye,
@@ -21,6 +24,7 @@ import {
   Plus,
   Redo2,
   Save,
+  SendToBack,
   Send,
   Sparkles,
   Square,
@@ -762,6 +766,22 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     if (selectedId === id) setSelectedId(null);
   };
 
+  const changeLayerOrder = (id: string, destination: 'forward' | 'backward' | 'front' | 'back') => {
+    const blocks = pages[activePageIndex]?.blocks ?? [];
+    const from = blocks.findIndex((block) => block.id === id);
+    if (from < 0 || blocks.length < 2) return;
+    const to = destination === 'front'
+      ? blocks.length - 1
+      : destination === 'back'
+        ? 0
+        : destination === 'forward'
+          ? Math.min(blocks.length - 1, from + 1)
+          : Math.max(0, from - 1);
+    if (from === to) return;
+    patchPage(activePageIndex, (current) => reorderBlocks(current, from, to));
+    setSelectedId(id);
+  };
+
   // Fit-to-screen: auto until the user zooms manually; refits on panel toggles and resizes.
   const refit = useCallback(() => {
     const stage = stageRef.current;
@@ -1026,6 +1046,12 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             <button key={option} type="button" className={block.align === option ? 'is-on' : ''} onClick={() => patchBlock(block.id, { align: option })} disabled={!canEditBlock(block)} title={`Align ${option}`}>{option === 'left' ? '⇤' : option === 'center' ? '≡' : '⇥'}</button>
           ))}
         </span>
+        <span className="st-float-group" role="group" aria-label="Layer order">
+          <button type="button" onClick={() => changeLayerOrder(block.id, 'back')} disabled={!canEditBlock(block) || selectedIndex <= 0} aria-label="Send to back" title="Send to back"><SendToBack size={12} /></button>
+          <button type="button" onClick={() => changeLayerOrder(block.id, 'backward')} disabled={!canEditBlock(block) || selectedIndex <= 0} aria-label="Send backward" title="Send backward"><ArrowDown size={12} /></button>
+          <button type="button" onClick={() => changeLayerOrder(block.id, 'forward')} disabled={!canEditBlock(block) || selectedIndex >= (activePage?.blocks.length ?? 1) - 1} aria-label="Bring forward" title="Bring forward"><ArrowUp size={12} /></button>
+          <button type="button" onClick={() => changeLayerOrder(block.id, 'front')} disabled={!canEditBlock(block) || selectedIndex >= (activePage?.blocks.length ?? 1) - 1} aria-label="Bring to front" title="Bring to front"><BringToFront size={12} /></button>
+        </span>
         <span className="st-float-group">
           <button type="button" onClick={() => duplicateBlock(block.id)} disabled={!canEditBlock(block) || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} title="Duplicate (Ctrl+D)"><Copy size={12} /></button>
           <button type="button" className="is-danger" onClick={() => removeBlock(block.id)} disabled={!canEditBlock(block)} title="Delete"><Trash2 size={12} /></button>
@@ -1044,7 +1070,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     switch (block.type) {
       case 'heading':
         return (
-          <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
+          <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden', opacity: block.opacity ?? 1 }}>
             <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
           </div>
         );
@@ -1056,7 +1082,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         );
       case 'image':
         return (
-          <div style={{ width: '100%', height: '100%' }}>
+          <div style={{ width: '100%', height: '100%', opacity: block.opacity ?? 1 }}>
             {/* Canvas preview; the URL is validated to http(s) by the body schema. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={block.url} alt={block.alt} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8, pointerEvents: 'none' }} />
@@ -1064,11 +1090,11 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         );
       case 'shape':
         return (
-          <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? 'var(--st-accent)', width: '100%', height: '100%', display: 'inline-block', pointerEvents: 'none' }} />
+          <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? 'var(--st-accent)', width: '100%', height: '100%', display: 'inline-block', pointerEvents: 'none', opacity: block.opacity ?? 1 }} />
         );
       case 'button':
         return (
-          <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none' }}>
+          <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none', opacity: block.opacity ?? 1 }}>
             {resolveBlockText(block, linkedValues)}
           </span>
         );
@@ -1370,13 +1396,26 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             setOffset(next);
           }}
           onWheel={(event) => {
-            if (!(event.ctrlKey || event.metaKey)) return;
+            // While the pointer is over the canvas, wheel input belongs to the
+            // canvas instead of scrolling or zooming the surrounding page.
             event.preventDefault();
             const stage = stageRef.current;
             if (!stage) return;
             const rect = stage.getBoundingClientRect();
             const cx = event.clientX - rect.left;
             const cy = event.clientY - rect.top;
+            if (!(event.ctrlKey || event.metaKey)) {
+              const horizontal = event.shiftKey ? event.deltaY : event.deltaX;
+              const vertical = event.shiftKey ? 0 : event.deltaY;
+              const nextOffset = {
+                x: offsetRef.current.x - horizontal,
+                y: offsetRef.current.y - vertical,
+              };
+              offsetRef.current = nextOffset;
+              setOffset(nextOffset);
+              if (frameRef.current) frameRef.current.style.transform = `translate(${nextOffset.x}px, ${nextOffset.y}px) scale(${zoom / 100})`;
+              return;
+            }
             const oldScale = zoom / 100;
             const nextScale = Math.max(0.2, Math.min(3, oldScale * (event.deltaY < 0 ? 1.1 : 0.9)));
             const nextOffset = { x: cx - (cx - offsetRef.current.x) * (nextScale / oldScale), y: cy - (cy - offsetRef.current.y) * (nextScale / oldScale) };
@@ -1421,7 +1460,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               <div aria-hidden="true" style={{ position: 'absolute', inset: '10% 8%', border: '1px dashed rgba(124,124,255,.55)', borderRadius: 8, pointerEvents: 'none' }} />
             ) : null}
             {freeMode ? (
-              (activePage?.blocks ?? []).map((block) => {
+              (activePage?.blocks ?? []).map((block, layerIndex) => {
                 const geo = block.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
                 const isSelected = selectedId === block.id && !previewMode;
                 return (
@@ -1429,7 +1468,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     key={block.id}
                     data-bid={block.id}
                     className={`editor-free-block${isSelected ? ' is-selected' : ''}${block.hidden ? ' is-ghost' : ''}`}
-                    style={{ left: geo.x, top: geo.y, width: geo.w, height: geo.h, transform: geo.rotation ? `rotate(${geo.rotation}deg)` : undefined, cursor: canEdit && !block.locked ? 'move' : 'default' }}
+                    style={{ left: geo.x, top: geo.y, width: geo.w, height: geo.h, zIndex: layerIndex + 1, transform: geo.rotation ? `rotate(${geo.rotation}deg)` : undefined, cursor: canEdit && !block.locked ? 'move' : 'default' }}
                     onPointerDown={(event) => {
                       setSelectedId(block.id);
                       if ((event.target as HTMLElement).closest('.editor-inline-edit, [contenteditable="true"]')) return;
@@ -1516,7 +1555,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       onDragOver={(event) => { if (dragIndex.current !== null) { event.preventDefault(); setDropTarget({ index, below: event.clientY > (event.currentTarget as HTMLElement).getBoundingClientRect().bottom - 14 }); } }}
                       onDragLeave={() => setDropTarget((current) => (current?.index === index ? null : current))}
                       onDrop={(event) => canvasDrop(index, event)}
-                      style={{ cursor: block.locked ? 'not-allowed' : undefined }}
+                      style={{ cursor: block.locked ? 'not-allowed' : undefined, opacity: block.opacity ?? 1 }}
                     >
                       {block.type === 'heading' ? (
                         <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
@@ -1663,6 +1702,20 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               ) : inspectorTab === 'design' ? (
                 <>
                   <span className="st-label">{BLOCK_LABEL[selected.type]} · design</span>
+                  <label className="st-field">
+                    <span>Opacity · {Math.round((selected.opacity ?? 1) * 100)}%</span>
+                    <input
+                      className="st-range"
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={Math.round((selected.opacity ?? 1) * 100)}
+                      onChange={(event) => patchBlock(selected.id, { opacity: Number(event.target.value) / 100 })}
+                      disabled={!canEditBlock(selected)}
+                      aria-label="Selected element opacity"
+                    />
+                  </label>
                   {selected.type === 'text' && charLimit ? (
                     <div className="st-field">
                       <span>Channel meter · {channel}</span>
@@ -1777,6 +1830,16 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               ) : inspectorTab === 'arrange' ? (
                 <>
                   <span className="st-label">{BLOCK_LABEL[selected.type]} · arrange</span>
+                  <div className="st-field">
+                    <span>Layer order</span>
+                    <div className="st-field-row" role="group" aria-label="Layer order">
+                      <button type="button" className="st-icon" onClick={() => changeLayerOrder(selected.id, 'back')} disabled={!canEditBlock(selected) || selectedIndex <= 0} aria-label="Send to back" title="Send to back"><SendToBack size={14} /></button>
+                      <button type="button" className="st-icon" onClick={() => changeLayerOrder(selected.id, 'backward')} disabled={!canEditBlock(selected) || selectedIndex <= 0} aria-label="Send backward" title="Send backward"><ArrowDown size={14} /></button>
+                      <button type="button" className="st-icon" onClick={() => changeLayerOrder(selected.id, 'forward')} disabled={!canEditBlock(selected) || selectedIndex >= (activePage?.blocks.length ?? 1) - 1} aria-label="Bring forward" title="Bring forward"><ArrowUp size={14} /></button>
+                      <button type="button" className="st-icon" onClick={() => changeLayerOrder(selected.id, 'front')} disabled={!canEditBlock(selected) || selectedIndex >= (activePage?.blocks.length ?? 1) - 1} aria-label="Bring to front" title="Bring to front"><BringToFront size={14} /></button>
+                    </div>
+                    <span className="editor-hint">Layers higher in the stack appear in front. Select any element to change its stacking order.</span>
+                  </div>
                   <div className="st-field">
                     <span>Alignment</span>
                     <div className="st-field-row">
