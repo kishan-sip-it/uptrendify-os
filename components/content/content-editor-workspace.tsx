@@ -312,7 +312,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [floatAnchor, setFloatAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const dragIndex = useRef<number | null>(null);
   const freeDrag = useRef<{ id: string; startX: number; startY: number; origin: CanvasGeometry } | null>(null);
-  const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: CanvasGeometry; next: CanvasGeometry } | null>(null);
+  const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: CanvasGeometry; next: CanvasGeometry; originFontSize?: number } | null>(null);
   const saveInFlight = useRef(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -859,14 +859,33 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     if (dir.includes('n')) { h = clampCanvasSize(resize.origin.h - dy); y = resize.origin.y + resize.origin.h - h; }
     const next: CanvasGeometry = { ...resize.origin, x: clampCanvasCoordinate(x), y: clampCanvasCoordinate(y), w: clampCanvasSize(w), h: clampCanvasSize(h) };
     const el = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${id}"]`);
-    if (el) { el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.width = `${w}px`; el.style.height = `${h}px`; }
+    if (el) {
+      el.style.left = `${next.x}px`;
+      el.style.top = `${next.y}px`;
+      el.style.width = `${next.w}px`;
+      el.style.height = `${next.h}px`;
+      if (resize.originFontSize !== undefined) {
+        // Scale typography with the element using the combined horizontal + vertical resize.
+        const factor = Math.sqrt((next.w / resize.origin.w) * (next.h / resize.origin.h));
+        const scaledFontSize = Math.max(8, Math.min(160, Math.round(resize.originFontSize * factor)));
+        const text = el.querySelector<HTMLElement>('.content-doc-heading, .content-doc-text');
+        if (text) text.style.fontSize = `${scaledFontSize}px`;
+      }
+    }
     freeResize.current = { ...resize, next };
   };
   const finishFreeResize = (id: string) => {
     const resize = freeResize.current;
     if (!resize || resize.id !== id) return;
     freeResize.current = null;
-    patchBlock(id, { geometry: resize.next });
+    const block = activePage?.blocks.find((entry) => entry.id === id);
+    if (block && resize.originFontSize !== undefined && (block.type === 'heading' || block.type === 'text')) {
+      const factor = Math.sqrt((resize.next.w / resize.origin.w) * (resize.next.h / resize.origin.h));
+      const fontSize = Math.max(8, Math.min(160, Math.round(resize.originFontSize * factor)));
+      patchBlock(id, { geometry: resize.next, fontSize });
+    } else {
+      patchBlock(id, { geometry: resize.next });
+    }
   };
 
   return (
@@ -1042,7 +1061,15 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                   <span className="st-label">Shapes</span>
                   <div className="st-shape-grid">
                     {shapeTiles.filter(({ label }) => insertMatches(label)).map(({ kind, label }) => (
-                      <button key={kind} type="button" className="st-shape-tile" disabled={!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} onClick={() => addBlock('shape', kind)}>
+                      <button
+                        key={kind}
+                        type="button"
+                        className="st-shape-tile"
+                        aria-label={`Add ${label.toLowerCase()} shape`}
+                        title={`Add ${label.toLowerCase()} shape`}
+                        disabled={!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS}
+                        onClick={() => addBlock('shape', kind)}
+                      >
                         <svg className="st-shape-swatch" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                           {kind === 'rectangle' ? <rect x="3" y="7" width="18" height="10" rx="2" /> : null}
                           {kind === 'square' ? <rect x="5" y="5" width="14" height="14" rx="2" /> : null}
@@ -1051,7 +1078,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                           {kind === 'star' ? <path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.5l-5.4 3 1.2-6L3.3 9.3l6.1-.7z" /> : null}
                           {kind === 'pyramid' ? <path d="M12 3l8 14-8 4-8-4zM12 3v18" /> : null}
                         </svg>
-                        {label}
                       </button>
                     ))}
                   </div>
@@ -1233,7 +1259,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     }}
                   >
                     {renderBlockInner(block)}
-                    {canEdit && !block.locked ? (
+                    {isSelected && canEdit && !block.locked ? (
                       (['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const).map((dir) => (
                         <span
                           key={dir}
@@ -1242,7 +1268,17 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                           onPointerDown={(event) => {
                             event.stopPropagation();
                             (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-                            freeResize.current = { id: block.id, dir, startX: event.clientX, startY: event.clientY, origin: { ...geo }, next: { ...geo } };
+                            freeResize.current = {
+                              id: block.id,
+                              dir,
+                              startX: event.clientX,
+                              startY: event.clientY,
+                              origin: { ...geo },
+                              next: { ...geo },
+                              originFontSize: block.type === 'heading' || block.type === 'text'
+                                ? block.fontSize ?? defaultFontSize(block)
+                                : undefined,
+                            };
                           }}
                           onPointerMove={(event) => onFreeResizeMove(event, block.id, dir)}
                           onPointerUp={() => finishFreeResize(block.id)}
