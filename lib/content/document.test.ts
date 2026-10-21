@@ -35,6 +35,26 @@ const multiPageDoc = (): ContentDocument => ({
 const singlePageDoc = (): ContentDocument => ({ kind: 'uptrendify-doc', version: 1, pages: [{ id: 'p1', size: 'a4', blocks: BLOCKS }] });
 
 describe('content document body format', () => {
+  it('round-trips opacity for every block type and rejects out-of-range values', () => {
+    const original = singlePageDoc();
+    const opacityDoc: ContentDocument = {
+      ...original,
+      mode: 'free',
+      pages: original.pages.map((page) => ({
+        ...page,
+        blocks: page.blocks.map((block) => ({ ...block, opacity: 0.35 })),
+      })),
+    };
+    const body = serializeContentDocument(opacityDoc);
+    expect(parseContentBody(body)).toEqual(opacityDoc);
+
+    const raw = JSON.parse(body) as { blocks: Array<Record<string, unknown>> };
+    raw.blocks[0]!.opacity = 1.01;
+    expect(parseContentBody(JSON.stringify(raw))).toBeNull();
+    raw.blocks[0]!.opacity = -0.01;
+    expect(parseContentBody(JSON.stringify(raw))).toBeNull();
+  });
+
   it('round-trips independent geometry, numeric typography, and a page background image', () => {
     const doc: ContentDocument = {
       kind: 'uptrendify-doc',
