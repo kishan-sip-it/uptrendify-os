@@ -104,12 +104,13 @@ function emptyBlock(type: EditorBlock['type']): EditorBlock {
 }
 
 /** Inline canvas text editing. Commits on blur or Enter (Shift+Enter = newline in multiline). */
-function CanvasText({ value, disabled, multiline, onCommit, onClick, editOnDoubleClick = false }: {
+function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInput, editOnDoubleClick = false }: {
   value: string;
   disabled: boolean;
   multiline: boolean;
   onCommit: (next: string) => void;
   onClick: () => void;
+  onDraftInput?: (next: string) => void;
   editOnDoubleClick?: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -129,7 +130,8 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, editOnDoubl
         contentEditable={!disabled}
         suppressContentEditableWarning
         className="editor-inline-edit"
-        onBlur={() => {
+        onInput={(event) => onDraftInput?.(event.currentTarget.innerText)}
+        onBlur={() => {}
           setEditing(false);
           const next = (ref.current?.innerText ?? '').replace(/ /g, ' ').replace(/[ 	]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
           onCommit(next);
@@ -525,6 +527,40 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     setSaved(false);
     setNotice('Recovered the older browser draft. Review it and save as a new version when ready.');
   };
+
+  const persistInlineTextDraft = useCallback((id: string, value: string) => {
+    if (!localDraftReady) return;
+    try {
+      const nextPages = pages.map((page, index) => index === activePageIndex
+        ? { ...page, blocks: page.blocks.map((block) => block.id === id
+            ? ({ ...block, text: value, link: undefined } as EditorBlock)
+            : block) }
+        : page);
+      const body = serializeContentDocument({
+        kind: 'uptrendify-doc',
+        version: 1,
+        ...(freeMode ? { mode: 'free' as const } : {}),
+        pages: nextPages,
+      } satisfies ContentDocument);
+      if (body === loadedSnapshot) {
+        window.localStorage.removeItem(localDraftKey);
+        setLocalDraftSaved(false);
+        return;
+      }
+      const draft: LocalStudioDraft = {
+        schemaVersion: 1,
+        body,
+        baseSnapshot: loadedSnapshot,
+        baseVersionId: loadedVersionId ?? currentVersionId,
+        activePageIndex,
+        savedAt: Date.now(),
+      };
+      window.localStorage.setItem(localDraftKey, JSON.stringify(draft));
+      setLocalDraftSaved(true);
+    } catch {
+      setLocalDraftSaved(false);
+    }
+  }, [localDraftReady, pages, activePageIndex, freeMode, loadedSnapshot, loadedVersionId, currentVersionId, localDraftKey]);
 
   const brandIssues = useMemo(
     () => lintBlocks(activePage?.blocks ?? [], { colors: brand.colors }, activePage?.bg),
@@ -1009,7 +1045,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       case 'heading':
         return (
           <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} editOnDoubleClick={freeMode} />
+            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
           </div>
         );
       case 'text':
