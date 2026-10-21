@@ -415,7 +415,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       const root = studioRootRef.current;
       if (!root) return;
       const top = Math.max(8, root.getBoundingClientRect().top);
-      const next = Math.max(620, Math.floor(window.innerHeight - top - 8));
+      const next = Math.max(420, Math.floor(window.innerHeight - top - 8));
       setStudioHeight((current) => current === next ? current : next);
     };
     updateHeight();
