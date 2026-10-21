@@ -1027,7 +1027,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     if (!stage) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const rect = stage.getBoundingClientRect();
       if (event.ctrlKey || event.metaKey) {
         zoomCanvas(zoom + (event.deltaY < 0 ? 10 : -10), { x: event.clientX, y: event.clientY });
         return;
@@ -1042,7 +1041,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       setOffset(nextOffset);
       if (frameRef.current) frameRef.current.style.transform = `translate(${nextOffset.x}px, ${nextOffset.y}px) scale(${zoom / 100})`;
       stagePointerRef.current = { x: event.clientX, y: event.clientY };
-      void rect;
     };
     stage.addEventListener('wheel', onWheel, { passive: false });
     return () => stage.removeEventListener('wheel', onWheel);
@@ -1057,11 +1055,10 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       const target = event.target as HTMLElement | null;
       const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
       if (typing) return;
-      const hasModifier = event.ctrlKey || event.metaKey;
       const zoomIn = event.key === '+' || event.key === '=' || event.code === 'NumpadAdd';
       const zoomOut = event.key === '-' || event.key === '_' || event.code === 'NumpadSubtract';
       const zoomReset = event.key === '0' || event.code === 'Numpad0';
-      if ((!hasModifier && !zoomIn && !zoomOut && !zoomReset) || (!zoomIn && !zoomOut && !zoomReset)) return;
+      if (!zoomIn && !zoomOut && !zoomReset) return;
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
