@@ -1183,6 +1183,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             </div>
           ) : null}
         </div>
+        </div>
 
         {/* ---------- inspector ---------- */}
         {!focusMode ? (
