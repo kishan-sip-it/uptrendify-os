@@ -1199,6 +1199,8 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       if ((event.target as HTMLElement).closest('.editor-inline-edit, [contenteditable="true"]')) return;
                       if (canEdit && !block.locked) {
                         event.preventDefault();
+                        // Keep pointer events on the block even after it moves out from under the cursor.
+                        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
                         freeDrag.current = { id: block.id, startX: event.clientX, startY: event.clientY, origin: { ...geo } };
                       }
                     }}
@@ -1221,6 +1223,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       const moved = Math.abs(dx) > 1 || Math.abs(dy) > 1;
                       if (moved) patchBlock(block.id, { geometry: { ...drag.origin, x: clampCanvasCoordinate(drag.origin.x + dx), y: clampCanvasCoordinate(drag.origin.y + dy) } });
                       else setSelectedId(block.id);
+                    }}
+                    onPointerCancel={() => {
+                      const drag = freeDrag.current;
+                      if (!drag || drag.id !== block.id) return;
+                      freeDrag.current = null;
+                      const el = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${block.id}"]`);
+                      if (el) { el.style.left = `${drag.origin.x}px`; el.style.top = `${drag.origin.y}px`; }
                     }}
                   >
                     {renderBlockInner(block)}
@@ -1301,6 +1310,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                 })
             )}
 
+        </div>
           {isStoryboard ? (
             <div className="studio-filmstrip" aria-label="Storyboard beats">
               <span className="studio-filmstrip-meta">
@@ -1322,7 +1332,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               ))}
             </div>
           ) : null}
-        </div>
         </div>
 
         {/* ---------- inspector ---------- */}
