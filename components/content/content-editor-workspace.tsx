@@ -1539,7 +1539,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       <span className="editor-hint">Each element has its own X/Y position and width/height. Drag any handle to resize visually, or enter exact dimensions here.</span>
                     </div>
                   ) : null}
-                  {selected.type === 'image' || selected.type === 'button' || selected.type === 'shape' ? (
+                  {!freeMode && (selected.type === 'image' || selected.type === 'button' || selected.type === 'shape') ? (
                     <label className="st-field">
                       <span>Width · {selected.width ?? (selected.type === 'shape' ? 60 : 80)}%</span>
                       <div className="st-field-row">
@@ -1548,7 +1548,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       </div>
                     </label>
                   ) : null}
-                  {selected.type === 'shape' ? (
+                  {!freeMode && selected.type === 'shape' ? (
                     <label className="st-field">
                       <span>Height · {selected.height}px</span>
                       <div className="st-field-row">
