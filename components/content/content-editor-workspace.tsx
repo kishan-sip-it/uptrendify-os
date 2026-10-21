@@ -55,6 +55,7 @@ import {
 } from '@/lib/content/document';
 import { ContentDocumentView } from '@/components/content/content-document-view';
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
+import { importSvgTemplate, type SvgTemplateImport } from '@/lib/studio/import-template';
 import { storyboardPagesFromScript } from '@/lib/content/parse-script';
 import { lintBlocks, healthScore, channelLimit, type BrandLintIssue } from '@/lib/studio/brand-lint';
 import { reflowPage, resolveBlockText } from '@/lib/content/document';
@@ -370,7 +371,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [imageAltDraft, setImageAltDraft] = useState('');
   const [backgroundImageUrl, setBackgroundImageUrl] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isImportingTemplate, setIsImportingTemplate] = useState(false);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
+  const templateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [floatAnchor, setFloatAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const dragIndex = useRef<number | null>(null);
   const freeDrag = useRef<{ id: string; startX: number; startY: number; origin: CanvasGeometry } | null>(null);
@@ -731,6 +734,145 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       setIsUploadingImage(false);
       if (imageFileInputRef.current) imageFileInputRef.current.value = '';
     }
+  };
+
+  const uploadTemplateRaster = async (embedded: SvgTemplateImport['embeddedImages'][number]): Promise<string | null> => {
+    const match = /^data:(image\/(?:png|jpeg|webp));base64,([a-z0-9+/=\s]+)$/i.exec(embedded.dataUrl);
+    if (!match) return null;
+    const base64 = match[2]!.replace(/\s/g, '');
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    if (bytes.length <= 0 || bytes.length > 2 * 1024 * 1024) return null;
+    const mime = match[1]!.toLowerCase();
+    const extension = mime === 'image/jpeg' ? 'jpg' : mime.slice('image/'.length);
+    const file = new File([bytes], 'studio-import.' + extension, { type: mime });
+    const assetId = crypto.randomUUID();
+    const form = new FormData();
+    form.append('file', file);
+    const response = await fetch(`/api/brands/${brandId}/content/${contentId}/assets/${assetId}`, { method: 'POST', body: form });
+    const payload = await response.json().catch(() => null) as { src?: unknown; error?: unknown } | null;
+    if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : 'An embedded image could not be uploaded.');
+    return normalizeStudioAssetPath(payload?.src);
+  };
+
+  const installImportedPages = (importedPages: ContentDocPage[], message: string) => {
+    if (!importedPages.length || importedPages.length > CONTENT_DOC_MAX_PAGES) {
+      setError('The imported template must contain between 1 and ' + CONTENT_DOC_MAX_PAGES + ' pages.');
+      return;
+    }
+    const nextPages = importedPages.map(layoutPageForFreeCanvas);
+    const nextBody = serializeContentDocument({ kind: 'uptrendify-doc', version: 1, mode: 'free', pages: nextPages } satisfies ContentDocument);
+    setPages(nextPages);
+    setActivePageIndex(0);
+    setSelectedId(null);
+    setFreeMode(true);
+    setPreviewMode(false);
+    setLoadedVersionId(null);
+    setLoadedSnapshot('');
+    setHistory([nextBody]);
+    setHistoryIndex(0);
+    setSaved(false);
+    setZoomManual(false);
+    manualZoomRef.current = false;
+    setNotice(message);
+    setError(null);
+  };
+
+  const confirmImportedCanvasReplacement = () => {
+    const hasCurrentContent = (activePage?.blocks.length ?? 0) > 0;
+    if (!dirty && !hasCurrentContent) return true;
+    return window.confirm('Import this template as a new editable canvas? The current canvas will be replaced. Save your current work first if you need to keep it.');
+  };
+
+  const importSvgMarkup = async (markup: string) => {
+    if (!canEdit || isImportingTemplate) return;
+    const imported = importSvgTemplate(markup);
+    if (!imported) {
+      setError('Could not read this as an SVG template. In Canva, download the design as SVG and try again.');
+      return;
+    }
+    if (!confirmImportedCanvasReplacement()) return;
+    setIsImportingTemplate(true);
+    setError(null);
+    try {
+      const failedImageIds = new Set<string>();
+      const replacementSources = new Map<string, string>();
+      for (const embedded of imported.embeddedImages) {
+        try {
+          const src = await uploadTemplateRaster(embedded);
+          if (src) replacementSources.set(embedded.blockId, src);
+          else failedImageIds.add(embedded.blockId);
+        } catch {
+          failedImageIds.add(embedded.blockId);
+        }
+      }
+      const blocks = imported.page.blocks
+        .filter((block) => !failedImageIds.has(block.id))
+        .map((block) => block.type === 'image' && replacementSources.has(block.id)
+          ? ({ ...block, url: replacementSources.get(block.id)! } as EditorBlock)
+          : block);
+      if (!blocks.length) throw new Error('No supported editable elements could be imported from this SVG.');
+      const page = { ...imported.page, blocks };
+      const notes = [...imported.warnings];
+      if (failedImageIds.size) notes.push(failedImageIds.size + ' embedded image(s) could not be uploaded and were skipped.');
+      const warningText = notes.length ? ' Notes: ' + notes.slice(0, 3).join(' ') : '';
+      installImportedPages([page], 'Imported SVG template: ' + blocks.length + ' editable layers detected. Review the canvas, then save as a new version.' + warningText);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Template import failed.');
+    } finally {
+      setIsImportingTemplate(false);
+      if (templateFileInputRef.current) templateFileInputRef.current.value = '';
+    }
+  };
+
+  const importNativeDocument = async (raw: string) => {
+    if (!canEdit || isImportingTemplate) return;
+    const document = parseContentBody(raw);
+    if (!document) {
+      setError('This JSON file is not a valid UpTrendifyOS Studio document.');
+      return;
+    }
+    if (!confirmImportedCanvasReplacement()) return;
+    installImportedPages(document.pages, 'Imported Studio document with ' + document.pages.length + ' page(s). All supported text, shape and image layers are editable.');
+  };
+
+  const importTemplateFile = async (file: File) => {
+    if (file.size <= 0 || file.size > 5 * 1024 * 1024) {
+      setError('Template files must be 5 MB or smaller.');
+      return;
+    }
+    const name = file.name.toLowerCase();
+    setIsImportingTemplate(true);
+    setError(null);
+    try {
+      if (name.endsWith('.json') || file.type === 'application/json') {
+        const raw = await file.text();
+        await importNativeDocument(raw);
+      } else if (name.endsWith('.svg') || file.type === 'image/svg+xml') {
+        const raw = await file.text();
+        await importSvgMarkup(raw);
+      } else {
+        setError('Use a Canva SVG export for editable layers, or a native UpTrendifyOS Studio JSON file. PNG/JPG files are flattened images and do not contain recoverable original layers.');
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Template import failed.');
+    } finally {
+      setIsImportingTemplate(false);
+      if (templateFileInputRef.current) templateFileInputRef.current.value = '';
+    }
+  };
+
+  const handleTemplatePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+    const clipboard = event.clipboardData;
+    const raw = clipboard.getData('image/svg+xml') || clipboard.getData('text/html') || clipboard.getData('text/plain');
+    if (!raw || !/<svg\b/i.test(raw)) return;
+    const match = /<svg\b[\s\S]*?<\/svg\s*>/i.exec(raw);
+    if (!match) return;
+    event.preventDefault();
+    void importSvgMarkup(match[0]);
   };
   const applyBackgroundImageUrl = () => {
     if (!canEdit) return;
