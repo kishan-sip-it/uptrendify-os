@@ -185,7 +185,7 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     svgBounds: svgVectorBounds.optional(),
     svgMatrix: svgVectorMatrix.optional(),
     svgFillNone: z.boolean().optional(),
-    svgStroke: color,
+    svgStroke: color.optional(),
     svgStrokeWidth: z.coerce.number().min(0).max(1000).optional(),
     geometry: geometry.optional(),
     ...flags,
