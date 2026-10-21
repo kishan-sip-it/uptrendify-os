@@ -1199,7 +1199,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       if ((event.target as HTMLElement).closest('.editor-inline-edit, [contenteditable="true"]')) return;
                       if (canEdit && !block.locked) {
                         event.preventDefault();
-                        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
                         freeDrag.current = { id: block.id, startX: event.clientX, startY: event.clientY, origin: { ...geo } };
                       }
                     }}
