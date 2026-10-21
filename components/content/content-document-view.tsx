@@ -38,6 +38,7 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
               width: CONTENT_PAGE_SIZES[page.size ?? 'a4'].width,
               height: CONTENT_PAGE_SIZES[page.size ?? 'a4'].height,
               backgroundColor: page.bg ?? '#ffffff',
+              overflow: 'hidden',
             } : {}),
           }}
         >
