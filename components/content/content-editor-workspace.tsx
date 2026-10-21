@@ -77,6 +77,14 @@ const BLOCK_LABEL: Record<EditorBlock['type'], string> = {
 
 type EditorBlock = ContentDocBlock;
 type CanvasGeometry = NonNullable<EditorBlock['geometry']>;
+type LocalStudioDraft = {
+  schemaVersion: 1;
+  body: string;
+  baseSnapshot: string;
+  baseVersionId: string | null;
+  activePageIndex: number;
+  savedAt: number;
+};
 
 const HISTORY_LIMIT = 80;
 
@@ -227,8 +235,15 @@ function layoutPageForFreeCanvas(page: ContentDocPage): ContentDocPage {
       : block.type === 'text' ? block.fontSize ?? defaultFontSize(block) : 16;
 
     if (block.type === 'heading' || block.type === 'text') {
-      const charsPerLine = Math.max(12, Math.floor(usableWidth / Math.max(7, fontSize * 0.54)));
-      const lineCount = Math.max(1, Math.ceil(textValue.length / charsPerLine));
+      // Keep short text boxes content-sized instead of giving every block the
+      // full page width. Long paragraphs still grow up to the usable page width.
+      const longestLine = textValue.split(/\r?\n/).reduce((longest, line) => Math.max(longest, line.length), 0);
+      width = Math.min(usableWidth, Math.max(220, Math.ceil(longestLine * fontSize * 0.54 + 24)));
+      const charsPerLine = Math.max(12, Math.floor(width / Math.max(7, fontSize * 0.54)));
+      const lineCount = textValue.split(/\r?\n/).reduce(
+        (total, line) => total + Math.max(1, Math.ceil(line.length / charsPerLine)),
+        0,
+      );
       height = Math.min(420, Math.max(fontSize * 1.6 + 12, lineCount * fontSize * 1.45 + 12));
     } else if (block.type === 'image') {
       width = Math.round(usableWidth * ((block.width ?? 80) / 100));
@@ -248,6 +263,35 @@ function layoutPageForFreeCanvas(page: ContentDocPage): ContentDocPage {
     return { ...block, geometry: { x, y, w: width, h: height } } as EditorBlock;
   });
   return { ...page, blocks };
+}
+
+/** Place newly inserted free-canvas elements at usable, independent dimensions. */
+function defaultGeometryForNewBlock(block: EditorBlock, page: ContentDocPage): CanvasGeometry {
+  const dims = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
+  const margin = 32;
+  const usableWidth = Math.max(200, dims.width - margin * 2);
+  const y = Math.min(3800, Math.max(margin, ...page.blocks.flatMap((entry) =>
+    entry.geometry ? [entry.geometry.y + entry.geometry.h + 18] : [],
+  )));
+  let w = Math.min(usableWidth, 360);
+  let h = 96;
+  if (block.type === 'heading') {
+    w = Math.min(usableWidth, Math.max(220, Math.ceil(block.text.length * defaultFontSize(block) * 0.54 + 24)));
+    h = 68;
+  } else if (block.type === 'text') {
+    w = Math.min(usableWidth, Math.max(220, Math.ceil(Math.min(block.text.length, 90) * defaultFontSize(block) * 0.54 + 24)));
+    h = 112;
+  } else if (block.type === 'shape') {
+    w = Math.round(usableWidth * ((block.width ?? 60) / 100));
+    h = block.height ?? 120;
+  } else if (block.type === 'button') {
+    w = Math.round(usableWidth * ((block.width ?? 60) / 100));
+    h = 56;
+  } else if (block.type === 'image') {
+    w = Math.round(usableWidth * ((block.width ?? 80) / 100));
+    h = Math.max(120, Math.round(w * 0.62));
+  }
+  return { x: margin, y, w: clampCanvasSize(w), h: clampCanvasSize(h) };
 }
 
 function fitZoom(stage: { w: number; h: number }, page: { w: number; h: number }, pad = 56): number {
@@ -275,9 +319,16 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const isStoryboard = contentType === 'video_script';
   const initialDoc = useMemo(() => {
     const saved = parseContentBody(body);
-    if (saved) return saved;
-    if (isStoryboard && body.trim()) return { kind: 'uptrendify-doc' as const, version: 1 as const, mode: 'free' as const, pages: storyboardPagesFromScript(body, defaultPageSizeForType(contentType)) };
-    return createDocumentFromText(body);
+    const source = saved ?? (isStoryboard && body.trim()
+      ? { kind: 'uptrendify-doc' as const, version: 1 as const, mode: 'free' as const, pages: storyboardPagesFromScript(body, defaultPageSizeForType(contentType)) }
+      : createDocumentFromText(body, defaultPageSizeForType(contentType)));
+    // The visual editor opens in free-canvas mode so every selected block can
+    // be moved and resized before the user inserts an image.
+    return {
+      ...source,
+      mode: 'free' as const,
+      pages: source.pages.map((page) => layoutPageForFreeCanvas(page)),
+    };
   }, [body, contentType, isStoryboard]);
   const [pages, setPages] = useState<ContentDocPage[]>(() => initialDoc.pages);
   const [freeMode, setFreeMode] = useState(initialDoc.mode === 'free');
@@ -291,11 +342,15 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [gridOn, setGridOn] = useState(true);
   const [focusMode, setFocusMode] = useState(false);
   const [dockTab, setDockTab] = useState<'layers' | 'insert' | 'brand' | 'ai' | 'scenes' | null>('layers');
-  const [inspectorTab, setInspectorTab] = useState<'design' | 'arrange' | 'brand' | 'ai'>('design');
+  const [inspectorTab, setInspectorTab] = useState<'design' | 'arrange' | 'brand' | 'ai' | 'templates'>('design');
   const [drawerSearch, setDrawerSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [localDraftReady, setLocalDraftReady] = useState(false);
+  const [localDraftSaved, setLocalDraftSaved] = useState(false);
+  const [draftRecoveryCandidate, setDraftRecoveryCandidate] = useState<LocalStudioDraft | null>(null);
+  const localDraftKey = `uptrendify-studio-draft-v1:${brandId}:${contentId}`;
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadedVersionId, setLoadedVersionId] = useState<string | null>(currentVersionId);
@@ -312,7 +367,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [floatAnchor, setFloatAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const dragIndex = useRef<number | null>(null);
   const freeDrag = useRef<{ id: string; startX: number; startY: number; origin: CanvasGeometry } | null>(null);
-  const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: CanvasGeometry; next: CanvasGeometry; originFontSize?: number } | null>(null);
+  const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: CanvasGeometry; next: CanvasGeometry } | null>(null);
   const saveInFlight = useRef(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -349,6 +404,128 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     [pages, freeMode],
   );
   const dirty = serialized !== loadedSnapshot;
+
+  // Restore an unsaved draft only when its saved-version baseline still matches.
+  // If the server version has changed, keep the old draft available for an explicit
+  // recovery action instead of silently overwriting either copy.
+  useEffect(() => {
+    const baseline = serializeContentDocument(initialDoc);
+    let candidate: LocalStudioDraft | null = null;
+    try {
+      const raw = window.localStorage.getItem(localDraftKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<LocalStudioDraft>;
+        if (
+          parsed.schemaVersion === 1 &&
+          typeof parsed.body === 'string' &&
+          typeof parsed.baseSnapshot === 'string' &&
+          (typeof parsed.baseVersionId === 'string' || parsed.baseVersionId === null) &&
+          typeof parsed.activePageIndex === 'number' &&
+          typeof parsed.savedAt === 'number'
+        ) {
+          candidate = parsed as LocalStudioDraft;
+        } else {
+          window.localStorage.removeItem(localDraftKey);
+        }
+      }
+    } catch {
+      // Storage can be disabled or full; the editor remains usable without it.
+    }
+
+    if (candidate) {
+      if (candidate.body === baseline) {
+        try { window.localStorage.removeItem(localDraftKey); } catch { /* storage optional */ }
+      } else {
+        const recovered = parseContentBody(candidate.body);
+        if (recovered && candidate.baseSnapshot === baseline && candidate.baseVersionId === currentVersionId) {
+          setPages(recovered.pages.map((page) => layoutPageForFreeCanvas(page)));
+          setFreeMode(true);
+          setActivePageIndex(Math.max(0, Math.min(candidate.activePageIndex, recovered.pages.length - 1)));
+          setSelectedId(null);
+          setLoadedSnapshot(baseline);
+          setHistory([candidate.body]);
+          setHistoryIndex(0);
+          setSaved(false);
+          setNotice('Recovered unsaved work from this browser. Keep editing or save it as a new version.');
+        } else {
+          setDraftRecoveryCandidate(candidate);
+        }
+      }
+    }
+    setLocalDraftReady(true);
+  }, [localDraftKey, initialDoc, currentVersionId]);
+
+  // Write immediately after document edits; localStorage survives browser close,
+  // a dev-server Ctrl+C, and a device restart on this same browser/profile.
+  useEffect(() => {
+    if (!localDraftReady || draftRecoveryCandidate) return;
+    try {
+      if (serialized === loadedSnapshot) {
+        window.localStorage.removeItem(localDraftKey);
+        setLocalDraftSaved(false);
+        return;
+      }
+      const draft: LocalStudioDraft = {
+        schemaVersion: 1,
+        body: serialized,
+        baseSnapshot: loadedSnapshot,
+        baseVersionId: loadedVersionId ?? currentVersionId,
+        activePageIndex,
+        savedAt: Date.now(),
+      };
+      window.localStorage.setItem(localDraftKey, JSON.stringify(draft));
+      setLocalDraftSaved(true);
+    } catch {
+      setLocalDraftSaved(false);
+    }
+  }, [localDraftReady, draftRecoveryCandidate, serialized, loadedSnapshot, loadedVersionId, currentVersionId, activePageIndex, localDraftKey]);
+
+  const persistDraftOnExit = useCallback(() => {
+    if (!localDraftReady || draftRecoveryCandidate) return;
+    try {
+      if (serialized === loadedSnapshot) {
+        window.localStorage.removeItem(localDraftKey);
+        return;
+      }
+      const draft: LocalStudioDraft = {
+        schemaVersion: 1,
+        body: serialized,
+        baseSnapshot: loadedSnapshot,
+        baseVersionId: loadedVersionId ?? currentVersionId,
+        activePageIndex,
+        savedAt: Date.now(),
+      };
+      window.localStorage.setItem(localDraftKey, JSON.stringify(draft));
+    } catch {
+      // Best-effort last-chance flush; normal autosave already ran after edits.
+    }
+  }, [localDraftReady, draftRecoveryCandidate, serialized, loadedSnapshot, loadedVersionId, currentVersionId, activePageIndex, localDraftKey]);
+
+  useEffect(() => {
+    window.addEventListener('pagehide', persistDraftOnExit);
+    return () => window.removeEventListener('pagehide', persistDraftOnExit);
+  }, [persistDraftOnExit]);
+
+  const restoreLocalDraft = () => {
+    if (!draftRecoveryCandidate) return;
+    if (!window.confirm('This draft was made from a different saved version. Restore it onto the current canvas?')) return;
+    const recovered = parseContentBody(draftRecoveryCandidate.body);
+    if (!recovered) {
+      setError('The saved browser draft could not be parsed. Your current canvas has not been changed.');
+      return;
+    }
+    setPages(recovered.pages.map((page) => layoutPageForFreeCanvas(page)));
+    setFreeMode(true);
+    setActivePageIndex(Math.max(0, Math.min(draftRecoveryCandidate.activePageIndex, recovered.pages.length - 1)));
+    setSelectedId(null);
+    setLoadedSnapshot(serializeContentDocument(initialDoc));
+    setHistory([draftRecoveryCandidate.body]);
+    setHistoryIndex(0);
+    setDraftRecoveryCandidate(null);
+    setSaved(false);
+    setNotice('Recovered the older browser draft. Review it and save as a new version when ready.');
+  };
+
   const brandIssues = useMemo(
     () => lintBlocks(activePage?.blocks ?? [], { colors: brand.colors }, activePage?.bg),
     [activePage, brand.colors],
@@ -387,8 +564,18 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       return;
     }
     const base = emptyBlock(type);
-    const block = (type === 'shape' && shapeKind ? { ...base, shape: shapeKind } : base) as EditorBlock;
-    patchPage(activePageIndex, (current) => [...current, block]);
+    const currentPage = pages[activePageIndex] ?? activePage;
+    if (!currentPage) return;
+    const pageForPlacement = freeMode ? layoutPageForFreeCanvas(currentPage) : currentPage;
+    const unplaced = (type === 'shape' && shapeKind ? { ...base, shape: shapeKind } : base) as EditorBlock;
+    const block = freeMode
+      ? ({ ...unplaced, geometry: defaultGeometryForNewBlock(unplaced, pageForPlacement) } as EditorBlock)
+      : unplaced;
+    const existingBlocks = freeMode ? pageForPlacement.blocks : currentPage.blocks;
+    const nextPages = pages.map((page, index) => index === activePageIndex
+      ? { ...page, blocks: [...existingBlocks, block] }
+      : page);
+    commit(nextPages, freeMode ? 'free' : 'flow');
     setSelectedId(block.id);
     setInspectorTab('design');
     setPreviewMode(false);
@@ -597,10 +784,15 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     if (dirty && !window.confirm('Discard unsaved changes and open that version?')) return;
     const source = versions.find((entry) => entry.id === versionId);
     if (!source) return;
-    const doc = parseContentBody(source.body) ?? createDocumentFromText(source.body);
+    const parsedDoc = parseContentBody(source.body) ?? createDocumentFromText(source.body);
+    const doc = {
+      ...parsedDoc,
+      mode: 'free' as const,
+      pages: parsedDoc.pages.map((page) => layoutPageForFreeCanvas(page)),
+    };
     const snapshot = serializeContentDocument(doc);
     setPages(doc.pages);
-    setFreeMode(doc.mode === 'free');
+    setFreeMode(true);
     setActivePageIndex(0);
     setSelectedId(null);
     setLoadedVersionId(versionId);
@@ -629,6 +821,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(result?.error || 'Could not save the edited content');
       setLoadedVersionId(null);
+      setLoadedSnapshot(serialized);
       setSaved(true);
       setNotice('Saved as the new current version. Approval and publishing now read exactly what is on the canvas.');
       router.refresh();
@@ -864,13 +1057,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       el.style.top = `${next.y}px`;
       el.style.width = `${next.w}px`;
       el.style.height = `${next.h}px`;
-      if (resize.originFontSize !== undefined) {
-        // Scale typography with the element using the combined horizontal + vertical resize.
-        const factor = Math.sqrt((next.w / resize.origin.w) * (next.h / resize.origin.h));
-        const scaledFontSize = Math.max(8, Math.min(160, Math.round(resize.originFontSize * factor)));
-        const text = el.querySelector<HTMLElement>('.content-doc-heading, .content-doc-text');
-        if (text) text.style.fontSize = `${scaledFontSize}px`;
-      }
     }
     freeResize.current = { ...resize, next };
   };
@@ -878,14 +1064,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     const resize = freeResize.current;
     if (!resize || resize.id !== id) return;
     freeResize.current = null;
-    const block = activePage?.blocks.find((entry) => entry.id === id);
-    if (block && resize.originFontSize !== undefined && (block.type === 'heading' || block.type === 'text')) {
-      const factor = Math.sqrt((resize.next.w / resize.origin.w) * (resize.next.h / resize.origin.h));
-      const fontSize = Math.max(8, Math.min(160, Math.round(resize.originFontSize * factor)));
-      patchBlock(id, { geometry: resize.next, fontSize });
-    } else {
-      patchBlock(id, { geometry: resize.next });
-    }
+    patchBlock(id, { geometry: resize.next });
   };
 
   return (
@@ -920,8 +1099,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         )}
         <span className={`studio-save-state${dirty ? ' is-dirty' : saved ? ' is-saved' : ''}`} role="status">
           <span className="dot" />
-          {dirty ? 'Unsaved changes' : saved ? 'Saved · just now' : 'All changes saved'}
+          {dirty ? (localDraftSaved ? 'Recovery saved locally' : 'Unsaved changes') : saved ? 'Saved · just now' : 'All changes saved'}
         </span>
+        {draftRecoveryCandidate ? (
+          <button type="button" className="st-btn" onClick={restoreLocalDraft} title="Restore a browser draft from another saved version">
+            Restore local draft
+          </button>
+        ) : null}
         <span className="studio-health" title={`Brand health: ${health}% — ${brandIssues.length} issue${brandIssues.length === 1 ? '' : 's'}`} aria-label={`Brand health ${health} percent`}>
           <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
             <circle cx="10" cy="10" r="7" fill="none" stroke="var(--st-line-strong)" strokeWidth="3" />
@@ -1013,15 +1197,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
 
               {dockTab === 'insert' ? (
                 <>
-                  <span className="st-label">Templates</span>
-                  <div className="st-insert-grid" style={{ gridTemplateColumns: '1fr' }}>
-                    {STUDIO_TEMPLATES.filter((template) => insertMatches(template.label)).map((template) => (
-                      <button key={template.id} type="button" className="st-insert-tile" style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-start' }} disabled={!canEdit} onClick={() => insertTemplate(template.id)}>
-                        <Sparkles size={14} /> {template.label}
-                        <span className="st-preview-tag">{CONTENT_PAGE_SIZES[template.size].label}</span>
-                      </button>
-                    ))}
-                  </div>
                   <span className="st-label">Add image</span>
                   <label className="st-field">
                     <span>Upload from device · PNG/JPG/WEBP, max 2 MB</span>
@@ -1274,9 +1449,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                               startY: event.clientY,
                               origin: { ...geo },
                               next: { ...geo },
-                              originFontSize: block.type === 'heading' || block.type === 'text'
-                                ? block.fontSize ?? defaultFontSize(block)
-                                : undefined,
                             };
                           }}
                           onPointerMove={(event) => onFreeResizeMove(event, block.id, dir)}
@@ -1373,14 +1545,26 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         {!focusMode ? (
           <aside className="studio-inspector" aria-label="Inspector">
             <div className="studio-inspector-tabs" role="tablist" aria-label="Inspector sections">
-              {(['design', 'arrange', 'brand', 'ai'] as const).map((tab) => (
+              {(['design', 'arrange', 'brand', 'ai', 'templates'] as const).map((tab) => (
                 <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} className={`studio-inspector-tab${inspectorTab === tab ? ' is-active' : ''}`} onClick={() => setInspectorTab(tab)}>
-                  {tab === 'design' ? 'Design' : tab === 'arrange' ? 'Arrange' : tab === 'brand' ? 'Brand' : 'AI'}
+                  {tab === 'design' ? 'Design' : tab === 'arrange' ? 'Arrange' : tab === 'brand' ? 'Brand' : tab === 'templates' ? 'Templates' : 'AI'}
                 </button>
               ))}
             </div>
             <div className="studio-inspector-body">
-              {!selected ? (
+              {inspectorTab === 'templates' ? (
+                <>
+                  <span className="st-label">Templates</span>
+                  <p className="editor-hint">Choose a starting layout for this canvas. Existing unsaved changes are protected by a confirmation prompt.</p>
+                  {STUDIO_TEMPLATES.filter((template) => insertMatches(template.label)).map((template) => (
+                    <button key={template.id} type="button" className="st-insert-tile" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', width: '100%', gap: 8 }} disabled={!canEdit} onClick={() => insertTemplate(template.id)}>
+                      <Sparkles size={14} />
+                      <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>{template.label}</span>
+                      <span className="st-preview-tag">{CONTENT_PAGE_SIZES[template.size].label}</span>
+                    </button>
+                  ))}
+                </>
+              ) : !selected ? (
                 <>
                   <span className="st-label">Page settings</span>
                   <label className="st-field">
