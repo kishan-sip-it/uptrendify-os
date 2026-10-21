@@ -79,6 +79,28 @@ const emphasis = {
 export const CONTENT_SHAPE_KINDS = ['rectangle', 'square', 'circle', 'triangle', 'star', 'pyramid'] as const;
 const shapeKind = z.enum(CONTENT_SHAPE_KINDS);
 
+const linkedField = z.enum(['title', 'cta']).optional();
+
+const geometry = z.object({
+  x: z.coerce.number().min(-2000).max(4000),
+  y: z.coerce.number().min(-2000).max(4000),
+  w: z.coerce.number().min(24).max(4000),
+  h: z.coerce.number().min(24).max(4000),
+  rotation: z.coerce.number().min(-180).max(180).optional(),
+});
+
+const backgroundImage = z.object({
+  src: safeUrl,
+  alt: z.string().max(300).nullish().transform((value) => value ?? ''),
+});
+
+const flags = {
+  /** Hidden blocks are skipped by every renderer and projection. */
+  hidden: z.boolean().optional(),
+  /** Locked blocks render but reject edits in the editor. */
+  locked: z.boolean().optional(),
+};
+
 export const contentDocBlockSchema = z.discriminatedUnion('type', [
   z.object({
     id: blockId,
@@ -89,6 +111,9 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     color,
     bg: color,
     ...emphasis,
+    link: linkedField,
+    geometry: geometry.optional(),
+    ...flags,
   }),
   z.object({
     id: blockId,
@@ -99,6 +124,9 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     bg: color,
     size: z.enum(['sm', 'md', 'lg', 'xl']).nullish().transform((value) => value ?? 'md'),
     ...emphasis,
+    link: linkedField,
+    geometry: geometry.optional(),
+    ...flags,
   }),
   z.object({
     id: blockId,
@@ -107,6 +135,8 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     alt: z.string().max(300).nullish().transform((value) => value ?? ''),
     align,
     width: widthPct,
+    geometry: geometry.optional(),
+    ...flags,
   }),
   z.object({
     id: blockId,
@@ -116,6 +146,8 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     align,
     width: widthPct,
     height: z.coerce.number().int().min(24).max(480).nullish().transform((value) => value ?? 120),
+    geometry: geometry.optional(),
+    ...flags,
   }),
   z.object({
     id: blockId,
@@ -125,6 +157,9 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     color,
     align,
     width: widthPct,
+    link: linkedField,
+    geometry: geometry.optional(),
+    ...flags,
   }),
 ]);
 
@@ -135,6 +170,9 @@ const pageSize = z.enum(CONTENT_PAGE_SIZE_IDS).nullish().transform((value) => va
 const contentDocPageSchema = z.object({
   id: blockId,
   size: pageSize,
+  note: z.string().max(500).optional(),
+  bg: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  backgroundImage: backgroundImage.optional(),
   blocks: z.array(contentDocBlockSchema).max(CONTENT_DOC_MAX_BLOCKS),
 });
 export type ContentDocPage = z.infer<typeof contentDocPageSchema>;
@@ -142,6 +180,7 @@ export type ContentDocPage = z.infer<typeof contentDocPageSchema>;
 export const contentDocumentSchema = z.object({
   kind: z.literal(CONTENT_DOC_KIND),
   version: z.literal(CONTENT_DOC_VERSION),
+  mode: z.enum(['flow', 'free']).optional(),
   pages: z.array(contentDocPageSchema).min(1).max(CONTENT_DOC_MAX_PAGES),
 });
 
@@ -166,7 +205,7 @@ export function parseContentBody(body: string): ContentDocument | null {
   const source = raw as Record<string, unknown>;
 
   if (Array.isArray(source.pages)) {
-    const parsed = contentDocumentSchema.safeParse({ kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, pages: source.pages });
+    const parsed = contentDocumentSchema.safeParse({ kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, mode: source.mode, backgroundImage: source.backgroundImage, pages: source.pages });
     return parsed.success ? parsed.data : null;
   }
   if (Array.isArray(source.blocks)) {
@@ -174,9 +213,9 @@ export function parseContentBody(body: string): ContentDocument | null {
     // empty array as malformed rather than as an empty page.
     if (source.blocks.length === 0) return null;
     const pageId = typeof source.pageId === 'string' && source.pageId.trim() ? source.pageId : 'page-1';
-    const parsed = contentDocPageSchema.safeParse({ id: pageId, size: source.size, blocks: source.blocks });
+    const parsed = contentDocPageSchema.safeParse({ id: pageId, size: source.size, backgroundImage: source.backgroundImage, blocks: source.blocks });
     if (!parsed.success) return null;
-    return { kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, pages: [parsed.data] };
+    return { kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, mode: source.mode === 'free' ? 'free' : undefined, pages: [parsed.data] };
   }
   return null;
 }
@@ -190,17 +229,23 @@ export function isContentDocumentBody(body: string): boolean {
  * `blocks` form; multiple pages use the `pages` form.
  */
 export function serializeContentDocument(doc: ContentDocument): string {
+  const mode = doc.mode === 'free' ? { mode: 'free' } : {};
   if (doc.pages.length === 1) {
     const page = doc.pages[0]!;
-    return JSON.stringify({ kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, pageId: page.id, size: page.size, blocks: page.blocks });
+    return JSON.stringify({
+      kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, ...mode,
+      pageId: page.id, size: page.size, ...(page.backgroundImage ? { backgroundImage: page.backgroundImage } : {}),
+      blocks: page.blocks,
+    });
   }
-  return JSON.stringify({ kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, pages: doc.pages });
+  return JSON.stringify({ kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, ...mode, pages: doc.pages });
 }
 
 /** Plain-text projection used by search, summaries and text-only publishing. */
 export function documentToPlainText(doc: ContentDocument): string {
   return doc.pages
     .map((page) => page.blocks
+      .filter((block) => !block.hidden)
       .map((block) => {
         if (block.type === 'heading') return block.text.trim();
         if (block.type === 'text') return block.text.trim();
@@ -227,6 +272,22 @@ export function newBlockId(type: string): string {
 }
 
 /**
+ * Deterministic block/page id derived from content. Used when a document is
+ * DERIVED at render time (e.g. legacy plain text wrapped into blocks): the id
+ * must be identical on the server and the client or hydration fails, and
+ * stable across reloads or the canvas would look permanently dirty.
+ * Interactive (user-added) blocks keep timestamp ids from newBlockId.
+ */
+export function hashId(input: string): string {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < input.length; i += 1) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/**
  * Reorder blocks by list index (drag-and-drop from the layer list or the
  * move up/down controls). Returns the same array when the move is a no-op so
  * callers can keep identity-based dirty checks stable.
@@ -244,8 +305,8 @@ export function reorderBlocks<T>(blocks: T[], fromIndex: number, toIndex: number
 /** Wrap legacy plain text into a one-page editable document. */
 export function createDocumentFromText(body: string, pageSize: ContentPageSizeId = 'a4'): ContentDocument {
   const paragraphs = body.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
-  const blocks: ContentDocBlock[] = (paragraphs.length > 0 ? paragraphs : ['']).map((paragraph) => ({
-    id: newBlockId('text'),
+  const blocks: ContentDocBlock[] = (paragraphs.length > 0 ? paragraphs : ['']).map((paragraph, index) => ({
+    id: `text-${index}-${hashId(`${index}|${paragraph}`)}`,
     type: 'text' as const,
     text: paragraph.slice(0, CONTENT_DOC_MAX_TEXT),
     align: 'left' as const,
@@ -259,10 +320,45 @@ export function createDocumentFromText(body: string, pageSize: ContentPageSizeId
   return {
     kind: CONTENT_DOC_KIND,
     version: CONTENT_DOC_VERSION,
-    pages: [{ id: newBlockId('page'), size: pageSize, blocks: blocks.slice(0, CONTENT_DOC_MAX_BLOCKS) }],
+    pages: [{ id: `page-0-${hashId(`page|${pageSize}|${body.slice(0, 256)}`)}`, size: pageSize, blocks: blocks.slice(0, CONTENT_DOC_MAX_BLOCKS) }],
   };
 }
 
 export function newPage(pageSize: ContentPageSizeId = 'a4'): ContentDocPage {
   return { id: newBlockId('page'), size: pageSize, blocks: [] };
+}
+
+/**
+ * Duplicate a page into a different canvas size with content-aware reflow:
+ * text steps its size by the smaller dimension ratio (clamped to the size
+ * scale), everything else keeps relative widths. The source page is untouched.
+ */
+export function reflowPage(page: ContentDocPage, toSize: ContentPageSizeId): ContentDocPage {
+  const from = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
+  const to = CONTENT_PAGE_SIZES[toSize];
+  const ratio = Math.min(to.width / from.width, to.height / from.height);
+  const step = (size: 'sm' | 'md' | 'lg' | 'xl'): 'sm' | 'md' | 'lg' | 'xl' => {
+    if (ratio >= 1.2) return size === 'sm' ? 'md' : size === 'md' ? 'lg' : 'xl';
+    if (ratio <= 0.8) return size === 'xl' ? 'lg' : size === 'lg' ? 'md' : 'sm';
+    return size;
+  };
+  return {
+    id: newBlockId('page'),
+    size: toSize,
+    blocks: page.blocks.map((block) => {
+      if (block.type === 'text') return { ...block, size: step(block.size) };
+      if (block.type === 'heading') return { ...block, level: ratio <= 0.8 ? Math.min(3, block.level + 1) as 1 | 2 | 3 : Math.max(1, block.level - 1) as 1 | 2 | 3 };
+      return { ...block };
+    }),
+  };
+}
+
+/** Resolve a block's displayed text, honouring linked content fields. */
+export function resolveBlockText(
+  block: { type: string; text: string; link?: 'title' | 'cta' | null },
+  linked: { title?: string | null; cta?: string | null } | undefined,
+): string {
+  if (block.link === 'title' && linked?.title) return linked.title;
+  if (block.link === 'cta' && linked?.cta) return linked.cta;
+  return block.text;
 }

@@ -363,7 +363,7 @@ export function PublishPreview({
                       >
                         {headline}
                       </h3>
-                      {isDocument ? <ContentDocumentView body={body} /> : paragraphs.slice(0, 5).map((paragraph, index) => (
+                      {isDocument ? <ContentDocumentView body={body} linkedValues={{ title: item.title, cta: item.currentVersion?.cta ?? null }} /> : paragraphs.slice(0, 5).map((paragraph, index) => (
                         <p key={index} style={{ lineHeight: 1.65, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
                           {paragraph}
                         </p>
@@ -407,7 +407,7 @@ export function PublishPreview({
                       >
                         {headline}
                       </h3>
-                      {isDocument ? <ContentDocumentView body={body} /> : paragraphs.slice(0, 6).map((paragraph, index) => (
+                      {isDocument ? <ContentDocumentView body={body} linkedValues={{ title: item.title, cta: item.currentVersion?.cta ?? null }} /> : paragraphs.slice(0, 6).map((paragraph, index) => (
                         <p key={index} style={{ lineHeight: 1.65, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
                           {paragraph}
                         </p>
@@ -478,7 +478,7 @@ export function PublishPreview({
                       >
                         {headline}
                       </h3>
-                      {isDocument ? <ContentDocumentView body={body} /> : paragraphs.slice(0, 8).map((paragraph, index) => (
+                      {isDocument ? <ContentDocumentView body={body} linkedValues={{ title: item.title, cta: item.currentVersion?.cta ?? null }} /> : paragraphs.slice(0, 8).map((paragraph, index) => (
                         <p key={index} style={{ lineHeight: 1.65, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
                           {paragraph}
                         </p>

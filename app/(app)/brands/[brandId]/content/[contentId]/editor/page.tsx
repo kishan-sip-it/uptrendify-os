@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
 import { CAN_GENERATE_CONTENT, CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth/roles';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ContentEditorWorkspace } from '@/components/content/content-editor-workspace';
@@ -16,7 +15,7 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
   const supabase = await createSupabaseServerClient();
   const { data: brand } = await supabase
     .from('brands')
-    .select('id,name')
+    .select('id,name,primary_color,secondary_colors,visual_identity')
     .eq('id', brandId)
     .eq('organization_id', auth.context.organizationId)
     .maybeSingle();
@@ -24,7 +23,7 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
 
   const { data: item } = await supabase
     .from('content_items')
-    .select('id,title,type,status,current_version_id')
+    .select('id,title,type,channel,cta,status,current_version_id')
     .eq('id', contentId)
     .eq('brand_id', brandId)
     .eq('organization_id', auth.context.organizationId)
@@ -39,33 +38,38 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
   // canvas opens the current version.
   const versionsResult = await supabase
     .from('content_versions')
-    .select('id,version,body')
+    .select('id,version,body,cta')
     .eq('content_item_id', contentId)
     .eq('organization_id', auth.context.organizationId)
     .order('version', { ascending: false })
     .limit(40);
   if (versionsResult.error) throw versionsResult.error;
-  const versions = (versionsResult.data ?? []) as Array<{ id: string; version: number; body: string }>;
+  const versions = (versionsResult.data ?? []) as Array<{ id: string; version: number; body: string; cta?: string | null }>;
   const version = versions.find((entry) => entry.id === item.current_version_id) ?? versions[0] ?? null;
 
+  // Brand kit for the editor: palette + font families from the saved brand.
+  const brandColors = [brand.primary_color, ...(Array.isArray(brand.secondary_colors) ? brand.secondary_colors : [])]
+    .filter((value): value is string => typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value));
+  const brandFonts = Array.isArray((brand.visual_identity as { fonts?: Array<{ family?: string }> } | null)?.fonts)
+    ? ((brand.visual_identity as { fonts: Array<{ family: string }> }).fonts.map((font) => font.family).filter(Boolean))
+    : [];
+
   return (
-    <main className="main">
-      <div style={{ marginBottom: 12 }}>
-        <a href={`/brands/${brandId}/content/${contentId}`} className="metric-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-          <ArrowLeft size={15} /> Back to content detail
-        </a>
-      </div>
+    <>
       <ContentEditorWorkspace
         brandId={brandId}
         contentId={contentId}
         documentTitle={item.title}
         contentType={item.type}
+        channel={item.channel}
+        itemCta={version?.cta ?? item.cta ?? null}
+        brand={{ colors: brandColors, fonts: brandFonts }}
         versionNumber={version?.version ?? 0}
         body={version?.body ?? ''}
         canEdit={Boolean(canEdit && version)}
         versions={versions}
         currentVersionId={item.current_version_id}
       />
-    </main>
+    </>
   );
 }

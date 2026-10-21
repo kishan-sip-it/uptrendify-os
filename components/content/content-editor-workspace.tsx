@@ -1,40 +1,44 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   Check,
+  Copy,
   Eye,
   EyeOff,
-  Copy,
-  Heading1,
-  Image as ImageIcon,
   GripVertical,
+  Heading1,
+  Pilcrow,
+  Image as ImageIcon,
   Layers,
   LoaderCircle,
+  Lock,
+  Maximize,
   Minus,
   MousePointerClick,
-  Pilcrow,
   Plus,
   Redo2,
   Save,
   Send,
+  Sparkles,
   Square,
   Trash2,
   Type,
   Undo2,
+  Unlock,
+  Grid3X3,
 } from 'lucide-react';
 import {
   CONTENT_DOC_MAX_BLOCKS,
+  CONTENT_DOC_MAX_PAGES,
   CONTENT_PAGE_SIZES,
   CONTENT_PAGE_SIZE_IDS,
-  defaultPageSizeForType,
-  CONTENT_DOC_MAX_PAGES,
   CONTENT_SHAPE_KINDS,
   contentBodyToPlainText,
   createDocumentFromText,
+  defaultPageSizeForType,
   newBlockId,
   newPage,
   parseContentBody,
@@ -47,18 +51,21 @@ import {
   type ContentShapeKind,
 } from '@/lib/content/document';
 import { ContentDocumentView } from '@/components/content/content-document-view';
+import { StudioFreeCanvas } from '@/components/content/studio-free-canvas';
+import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
+import { storyboardPagesFromScript, estimateSeconds } from '@/lib/content/parse-script';
+import { lintBlocks, healthScore, channelLimit, type BrandLintIssue } from '@/lib/studio/brand-lint';
+import { reflowPage, resolveBlockText } from '@/lib/content/document';
+import { Clapperboard, Film } from 'lucide-react';
 
 /**
- * UpTrendifyOS visual content editor.
+ * UpTrendifyOS Studio — full-bleed visual editor.
  *
- * A page-based editing workspace over the saved `uptrendify-doc` body: the
- * canvas is the document (one or more pages), the layer list is the active
- * page's order, the formatting bar edits the selected block, and the
- * properties panel holds the full controls. A version picker loads any saved
- * version. Saving persists the exact pages/blocks as a NEW content version
- * through the existing PATCH contract; submitting pins that version for
- * approval. Undo/redo operates on bounded serialized snapshots — no parallel
- * model.
+ * Owns the viewport (fixed inset:0). The app shell stays in the DOM beneath;
+ * the top-bar Back button replaces the sidebar navigation while editing.
+ * Everything edits the saved `uptrendify-doc` version body; saving creates a
+ * NEW version through the existing PATCH contract, and submission pins that
+ * exact version for approval.
  */
 
 const BLOCK_LABEL: Record<EditorBlock['type'], string> = {
@@ -71,7 +78,7 @@ const BLOCK_LABEL: Record<EditorBlock['type'], string> = {
 
 type EditorBlock = ContentDocBlock;
 
-const HISTORY_LIMIT = 60;
+const HISTORY_LIMIT = 80;
 
 function emptyBlock(type: EditorBlock['type']): EditorBlock {
   switch (type) {
@@ -86,20 +93,6 @@ function emptyBlock(type: EditorBlock['type']): EditorBlock {
     case 'button':
       return { id: newBlockId('button'), type, text: 'Call to action', href: null, color: null, align: 'center', width: 60 };
   }
-}
-
-const TYPE_ICON: Record<EditorBlock['type'], typeof Heading1> = {
-  heading: Heading1,
-  text: Pilcrow,
-  image: ImageIcon,
-  shape: Square,
-  button: MousePointerClick,
-};
-
-function blockSummary(block: EditorBlock): string {
-  if (block.type === 'image') return block.alt || 'Image';
-  if (block.type === 'shape') return block.shape;
-  return block.text.length > 42 ? `${block.text.slice(0, 42)}…` : block.text || BLOCK_LABEL[block.type];
 }
 
 /** Inline canvas text editing. Commits on blur or Enter (Shift+Enter = newline in multiline). */
@@ -129,7 +122,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick }: {
         className="editor-inline-edit"
         onBlur={() => {
           setEditing(false);
-          const next = (ref.current?.innerText ?? '').replace(/ /g, ' ').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+          const next = (ref.current?.innerText ?? '').replace(/ /g, ' ').replace(/[ 	]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
           onCommit(next);
         }}
         onKeyDown={(event) => {
@@ -160,7 +153,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick }: {
   }
   return (
     <div
-      className={`editor-canvas-text is-editable`}
+      className="editor-canvas-text is-editable"
       style={{ whiteSpace: 'pre-wrap' }}
       onClick={() => { onClick(); if (!disabled) setEditing(true); }}
       title={disabled ? undefined : 'Click to edit text'}
@@ -170,31 +163,66 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick }: {
   );
 }
 
-export function ContentEditorWorkspace({ brandId, contentId, documentTitle, contentType, versionNumber, body, canEdit, versions, currentVersionId }: {
+const TYPE_ICON: Record<EditorBlock['type'], typeof Heading1> = {
+  heading: Heading1,
+  text: Pilcrow,
+  image: ImageIcon,
+  shape: Square,
+  button: MousePointerClick,
+};
+
+function blockName(block: EditorBlock): string {
+  if (block.type === 'image') return 'Image';
+  if (block.type === 'shape') return `Shape · ${block.shape}`;
+  if (block.type === 'button') return block.text || 'CTA button';
+  const trimmed = block.text.trim();
+  if (!trimmed) return `${BLOCK_LABEL[block.type]} (empty)`;
+  return trimmed.length > 36 ? `${trimmed.slice(0, 36)}…` : trimmed;
+}
+
+function fitZoom(stage: { w: number; h: number }, page: { w: number; h: number }, pad = 56): number {
+  return Math.min((stage.w - pad * 2) / page.w, (stage.h - pad * 2) / page.h, 1.5);
+}
+function centerOffset(stage: { w: number; h: number }, page: { w: number; h: number }, z: number): { x: number; y: number } {
+  return { x: (stage.w - page.w * z) / 2, y: (stage.h - page.h * z) / 2 };
+}
+
+export function ContentEditorWorkspace({ brandId, contentId, documentTitle, contentType, channel, itemCta, brand, versionNumber, body, canEdit, versions, currentVersionId }: {
   brandId: string;
   contentId: string;
   documentTitle: string;
   contentType: string | null;
+  channel: string | null;
+  itemCta: string | null;
+  brand: { colors: string[]; fonts: string[] };
   versionNumber: number;
   body: string;
   canEdit: boolean;
-  versions: Array<{ id: string; version: number; body: string }>;
+  versions: Array<{ id: string; version: number; body: string; cta?: string | null }>;
   currentVersionId: string | null;
 }) {
   const router = useRouter();
-  // The loaded document is derived exactly once so the canvas, the saved
-  // snapshot and the history share identical block ids and page size — any
-  // second derivation (fresh ids / different size default) would show a
-  // permanent false "Unsaved changes".
-  const initialDoc = useMemo(
-    () => parseContentBody(body) ?? createDocumentFromText(body, defaultPageSizeForType(contentType)),
-    [body, contentType],
-  );
+  const isStoryboard = contentType === 'video_script';
+  const initialDoc = useMemo(() => {
+    const saved = parseContentBody(body);
+    if (saved) return saved;
+    if (isStoryboard && body.trim()) return { kind: 'uptrendify-doc' as const, version: 1 as const, pages: storyboardPagesFromScript(body, defaultPageSizeForType(contentType)) };
+    return createDocumentFromText(body);
+  }, [body, contentType, isStoryboard]);
   const [pages, setPages] = useState<ContentDocPage[]>(() => initialDoc.pages);
+  const [freeMode, setFreeMode] = useState(initialDoc.mode === 'free');
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
   const [zoom, setZoom] = useState(100);
+  const [zoomManual, setZoomManual] = useState(false);
+
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [gridOn, setGridOn] = useState(true);
+  const [focusMode, setFocusMode] = useState(false);
+  const [dockTab, setDockTab] = useState<'layers' | 'insert' | 'brand' | 'ai' | 'scenes' | null>('layers');
+  const [inspectorTab, setInspectorTab] = useState<'design' | 'arrange' | 'brand' | 'ai'>('design');
+  const [drawerSearch, setDrawerSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -203,24 +231,52 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [loadedVersionId, setLoadedVersionId] = useState<string | null>(currentVersionId);
   const [displayVersion, setDisplayVersion] = useState(versionNumber);
   const [dropTarget, setDropTarget] = useState<{ index: number; below: boolean } | null>(null);
+  const [overflow, setOverflow] = useState(false);
+  const [safeZones, setSafeZones] = useState(false);
+  const [duplicateSize, setDuplicateSize] = useState<ContentPageSizeId>('square');
+  const [floatAnchor, setFloatAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const dragIndex = useRef<number | null>(null);
+  const freeDrag = useRef<{ id: string; startX: number; startY: number; origin: { x: number; y: number; w: number; h: number } } | null>(null);
+  const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: { x: number; y: number; w: number; h: number } } | null>(null);
   const saveInFlight = useRef(false);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const manualZoomRef = useRef(false);
+  const offsetRef = useRef({ x: 0, y: 0 });
+  const panRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const spaceHeld = useRef(false);
 
-  // The serialized snapshot of the version currently loaded on the canvas.
-  // Derived ONCE per load (not per render): legacy plain-text bodies are
-  // wrapped by createDocumentFromText, which mints fresh block ids each call —
-  // recomputing it would make the canvas permanently compare unequal.
-  const [loadedSnapshot, setLoadedSnapshot] = useState<string>(() => serializeContentDocument(initialDoc));
   const [history, setHistory] = useState<string[]>([serializeContentDocument(initialDoc)]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [loadedSnapshot, setLoadedSnapshot] = useState<string>(() => serializeContentDocument(initialDoc));
 
+  useEffect(() => { offsetRef.current = offset; }, [offset]);
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? (window.visualViewport as VisualViewport | null) : null;
+    if (!vv) return;
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target || !(target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      if (window.innerWidth > 699) return;
+      window.setTimeout(() => target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => document.removeEventListener('focusin', onFocusIn);
+  }, []);
   const activePage = pages[activePageIndex] ?? pages[0];
+  const pageDims = CONTENT_PAGE_SIZES[(activePage?.size ?? 'a4') as keyof typeof CONTENT_PAGE_SIZES] ?? CONTENT_PAGE_SIZES.a4;
   const serialized = useMemo(
-    () => serializeContentDocument({ kind: 'uptrendify-doc', version: 1, pages } satisfies ContentDocument),
-    [pages],
+    () => serializeContentDocument({ kind: 'uptrendify-doc', version: 1, ...(freeMode ? { mode: 'free' as const } : {}), pages } satisfies ContentDocument),
+    [pages, freeMode],
   );
   const dirty = serialized !== loadedSnapshot;
-
+  const brandIssues = useMemo(
+    () => lintBlocks(activePage?.blocks ?? [], { colors: brand.colors }, activePage?.bg),
+    [activePage, brand.colors],
+  );
+  const health = healthScore(brandIssues, activePage?.blocks.length ?? 0);
+  const linkedValues = useMemo(() => ({ title: documentTitle, cta: itemCta ?? undefined }), [documentTitle, itemCta]);
+  const charLimit = channelLimit(channel);
   const selected = activePage?.blocks.find((block) => block.id === selectedId) ?? null;
   const selectedIndex = activePage?.blocks.findIndex((block) => block.id === selectedId) ?? -1;
 
@@ -246,10 +302,33 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
   const addBlock = (type: EditorBlock['type'], shapeKind?: ContentShapeKind) => {
     const base = emptyBlock(type);
-    const block = (type === 'shape' && shapeKind ? { ...base, type: 'shape', shape: shapeKind } : base) as EditorBlock;
+    const block = (type === 'shape' && shapeKind ? { ...base, shape: shapeKind } : base) as EditorBlock;
     patchPage(activePageIndex, (current) => [...current, block]);
     setSelectedId(block.id);
+    setInspectorTab('design');
     setPreviewMode(false);
+  };
+  const setBlockGeometry = (id: string, geometry: NonNullable<EditorBlock['geometry']>) => {
+    patchPage(activePageIndex, (current) => current.map((block) => (block.id === id ? ({ ...block, geometry } as EditorBlock) : block)));
+  };
+  const setPageBackgroundImage = (image: { src: string; alt: string } | null) => {
+    commit(pages.map((page, index) => (index === activePageIndex ? { ...page, backgroundImage: image ?? undefined } : page)));
+  };
+  const enableFreeMode = () => setFreeMode(true);
+  const insertTemplate = (templateId: string) => {
+    if (dirty && !window.confirm('Discard unsaved changes and start from this template?')) return;
+    const page = buildTemplatePage(templateId, brand.colors[0] ?? '#7c7cff');
+    if (!page) return;
+    setPages([page]);
+    setActivePageIndex(0);
+    setSelectedId(null);
+    setFreeMode(true);
+    setLoadedVersionId(null);
+    setLoadedSnapshot(serializeContentDocument({ kind: 'uptrendify-doc', version: 1, mode: 'free' as const, pages: [page] } satisfies ContentDocument));
+    setHistory([serializeContentDocument({ kind: 'uptrendify-doc', version: 1, mode: 'free' as const, pages: [page] } satisfies ContentDocument)]);
+    setHistoryIndex(0);
+    setSaved(false);
+    setNotice('Template inserted on a free canvas. Edit any block, then save as a new version.');
   };
   const duplicateBlock = (id: string) => {
     const page = pages[activePageIndex];
@@ -265,71 +344,65 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     if (selectedId === id) setSelectedId(null);
   };
 
-  // Keyboard shortcuts (skips typing targets).
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
-      const meta = event.metaKey || event.ctrlKey;
-      if (meta && event.key.toLowerCase() === 'z') {
-        event.preventDefault();
-        if (event.shiftKey) setHistoryIndex((index) => {
-          if (index >= history.length - 1) return index;
-          const doc = parseContentBody(history[index + 1]);
-          if (doc) setPages(doc.pages);
-          return index + 1;
-        });
-        else setHistoryIndex((index) => {
-          if (index <= 0) return index;
-          const doc = parseContentBody(history[index - 1]);
-          if (doc) setPages(doc.pages);
-          return index - 1;
-        });
-        return;
-      }
-      if (meta && event.key.toLowerCase() === 'y') {
-        event.preventDefault();
-        setHistoryIndex((index) => {
-          if (index >= history.length - 1) return index;
-          const doc = parseContentBody(history[index + 1]);
-          if (doc) setPages(doc.pages);
-          return index + 1;
-        });
-        return;
-      }
-      if (typing || !selectedId || previewMode) return;
-      if (meta && ['b', 'i', 'u'].includes(event.key.toLowerCase())) {
-        event.preventDefault();
-        const key = event.key.toLowerCase() as 'b' | 'i' | 'u';
-        const selectedBlock = pages[activePageIndex]?.blocks.find((block) => block.id === selectedId);
-        if (selectedBlock && (selectedBlock.type === 'text' || selectedBlock.type === 'heading')) {
-          if (key === 'b') patchBlock(selectedId, { bold: !selectedBlock.bold });
-          if (key === 'i') patchBlock(selectedId, { italic: !selectedBlock.italic });
-          if (key === 'u') patchBlock(selectedId, { underline: !selectedBlock.underline });
-        }
-        return;
-      }
-      if ((event.key === 'Backspace' || event.key === 'Delete')) {
-        event.preventDefault();
-        removeBlock(selectedId);
-      }
-      if (meta && event.key.toLowerCase() === 'd') {
-        event.preventDefault();
-        duplicateBlock(selectedId);
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, previewMode, pages, history, historyIndex]);
+  // Fit-to-screen: auto until the user zooms manually; refits on panel toggles and resizes.
+  const refit = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const rect = { w: stage.clientWidth, h: stage.clientHeight };
+    const z = Math.max(0.05, fitZoom(rect, { w: pageDims.width, h: pageDims.height }));
+    setZoom(Math.round(z * 100));
+    setOffset(centerOffset(rect, { w: pageDims.width, h: pageDims.height }, z));
+  }, [pageDims.width, pageDims.height]);
 
-  /** Load another saved version into the canvas (with unsaved-edit guard). */
+  useEffect(() => {
+    if (zoomManual) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const observer = new ResizeObserver(() => {
+      const rect = { w: stage.clientWidth, h: stage.clientHeight };
+      const z = Math.max(0.05, fitZoom(rect, { w: pageDims.width, h: pageDims.height }));
+      setZoom(Math.round(z * 100));
+      setOffset(centerOffset(rect, { w: pageDims.width, h: pageDims.height }, z));
+    });
+    observer.observe(stage);
+    // First paint: the grid may not have sized the stage yet when the observer
+    // fires once with a collapsed box — refit on the next frame regardless.
+    const initial = window.setTimeout(() => refit(), 60);
+    return () => { observer.disconnect(); window.clearTimeout(initial); };
+  }, [zoomManual, pageDims.width, pageDims.height, refit]);
+
+  const setManualZoom = (next: number) => {
+    manualZoomRef.current = true;
+    setZoomManual(true);
+    setZoom(Math.max(20, Math.min(300, Math.round(next))));
+  };
+  const fitNow = () => { manualZoomRef.current = false; refit(); };
+
+  // Overflow detection on the active page (frame content taller than the frame).
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) { setOverflow(false); return; }
+    const id = window.requestAnimationFrame(() => {
+      setOverflow(frame.scrollHeight > frame.clientHeight + 2);
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [pages, activePageIndex, zoom]);
+
+  /** One-click "Fit text": step every oversized text block down one size until it fits. */
+  const fitText = () => {
+    patchPage(activePageIndex, (current) => current.map((block) => {
+      if (block.type === 'text') return { ...block, size: block.size === 'xl' ? 'lg' : block.size === 'lg' ? 'md' : 'sm' };
+      if (block.type === 'heading') return { ...block, level: block.level === 1 ? 2 : 3 };
+      return block;
+    }));
+  };
+
   const switchVersion = (versionId: string) => {
     if (versionId === loadedVersionId) return;
     if (dirty && !window.confirm('Discard unsaved changes and open that version?')) return;
     const source = versions.find((entry) => entry.id === versionId);
     if (!source) return;
-    const doc = parseContentBody(source.body) ?? createDocumentFromText(source.body, defaultPageSizeForType(contentType));
+    const doc = parseContentBody(source.body) ?? createDocumentFromText(source.body);
     const snapshot = serializeContentDocument(doc);
     setPages(doc.pages);
     setActivePageIndex(0);
@@ -340,6 +413,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     setHistory([snapshot]);
     setHistoryIndex(0);
     setSaved(false);
+    manualZoomRef.current = false;
     setNotice(`Opened v${source.version}${versionId === currentVersionId ? ' (the current version)' : ''}. Saving creates a new version from it.`);
   };
 
@@ -358,7 +432,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       const result = await response.json().catch(() => null);
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(result?.error || 'Could not save the edited content');
-      setLoadedVersionId(null); // Resolves to the new current version after refresh.
+      setLoadedVersionId(null);
       setSaved(true);
       setNotice('Saved as the new current version. Approval and publishing now read exactly what is on the canvas.');
       router.refresh();
@@ -372,8 +446,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
 
   const submitForApproval = async () => {
     if (saveInFlight.current || submitting || !canEdit || dirty) return;
-    // Only the current saved version may be submitted; viewing an older
-    // version and submitting would pin the wrong content.
     if (loadedVersionId !== currentVersionId) {
       setError('This canvas shows an older version. Open the current version (or save it as a new version) before submitting.');
       return;
@@ -397,21 +469,87 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     }
   };
 
-  const canvasDrop = (index: number, event: React.DragEvent) => {
-    event.preventDefault();
-    if (dragIndex.current === null) return;
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const below = event.clientY > rect.top + rect.height / 2;
-    const from = dragIndex.current;
-    let to = index + (below ? 1 : 0);
-    if (from < to) to -= 1;
-    setDropTarget(null);
-    dragIndex.current = null;
-    if (from === to) return;
-    patchPage(activePageIndex, (current) => reorderBlocks(current, from, to));
-  };
+  // Keep the floating toolbar anchored to the selected block's on-screen rect.
+  useEffect(() => {
+    if (!selectedId || previewMode) { setFloatAnchor(null); return; }
+    const compute = () => {
+      const el = frameRef.current?.querySelector(`[data-bid="${selectedId}"]`);
+      if (!el) { setFloatAnchor(null); return; }
+      const r = el.getBoundingClientRect();
+      setFloatAnchor({ x: r.left, y: r.top, w: r.width, h: r.height });
+    };
+    compute();
+    const id = window.setInterval(compute, 350);
+    window.addEventListener('resize', compute);
+    window.addEventListener('scroll', compute, true);
+    return () => { window.clearInterval(id); window.removeEventListener('resize', compute); window.removeEventListener('scroll', compute, true); };
+  }, [selectedId, previewMode, pages, activePageIndex, zoom]);
 
-  const shapeButtons: Array<{ kind: ContentShapeKind; label: string }> = [
+  // Focus mode + shortcuts (skips typing targets).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+      if (event.key === 'Escape' && focusMode) { setFocusMode(false); return; }
+      if (event.key === ' ') { spaceHeld.current = true; return; }
+      if (typing) return;
+      const meta = event.metaKey || event.ctrlKey;
+      if (event.key.toLowerCase() === 'f' && !meta) { event.preventDefault(); setFocusMode((value) => !value); return; }
+      if (meta && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) setPages(doc.pages); return index + 1; });
+        else setHistoryIndex((index) => { if (index <= 0) return index; const doc = parseContentBody(history[index - 1]); if (doc) setPages(doc.pages); return index - 1; });
+        return;
+      }
+      if (meta && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) setPages(doc.pages); return index + 1; });
+        return;
+      }
+      if (!selectedId || previewMode) return;
+      const selectedBlock = pages[activePageIndex]?.blocks.find((block) => block.id === selectedId);
+      if (meta && ['b', 'i', 'u'].includes(event.key.toLowerCase()) && selectedBlock && (selectedBlock.type === 'text' || selectedBlock.type === 'heading')) {
+        event.preventDefault();
+        const key = event.key.toLowerCase() as 'b' | 'i' | 'u';
+        if (key === 'b') patchBlock(selectedId, { bold: !selectedBlock.bold });
+        if (key === 'i') patchBlock(selectedId, { italic: !selectedBlock.italic });
+        if (key === 'u') patchBlock(selectedId, { underline: !selectedBlock.underline });
+        return;
+      }
+      if (meta && event.key.toLowerCase() === 'd') { event.preventDefault(); duplicateBlock(selectedId); return; }
+      if (event.key === 'Backspace' || event.key === 'Delete') {
+        event.preventDefault();
+        removeBlock(selectedId);
+        return;
+      }
+      if (event.key.startsWith('Arrow') && !meta) {
+        event.preventDefault();
+        const step = event.shiftKey ? 0 : 1; // order nudge; freeform x/y arrives with the scene graph
+        void step;
+      }
+    };
+    const onKeyUp = (event: KeyboardEvent) => { if (event.key === ' ') spaceHeld.current = false; };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+    return () => { document.removeEventListener('keydown', onKeyDown); document.removeEventListener('keyup', onKeyUp); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, previewMode, pages, activePageIndex, history, historyIndex, focusMode]);
+
+  const dockItems = [
+    { id: 'layers' as const, label: 'Layers', icon: Layers },
+    { id: 'insert' as const, label: 'Insert', icon: Plus },
+    { id: 'brand' as const, label: 'Brand', icon: Check },
+    { id: 'ai' as const, label: 'AI', icon: Sparkles },
+    { id: 'scenes' as const, label: 'Scenes', icon: Layers },
+  ];
+  const drawerOpen = dockTab !== null && !focusMode;
+  const insertTiles = [
+    { type: 'heading' as const, label: 'Heading', icon: Heading1 },
+    { type: 'text' as const, label: 'Text', icon: Type },
+    { type: 'image' as const, label: 'Image', icon: ImageIcon },
+    { type: 'button' as const, label: 'CTA', icon: Square },
+  ];
+  const shapeTiles: Array<{ kind: ContentShapeKind; label: string }> = [
     { kind: 'rectangle', label: 'Rectangle' },
     { kind: 'square', label: 'Square' },
     { kind: 'circle', label: 'Circle' },
@@ -419,327 +557,475 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     { kind: 'star', label: 'Star' },
     { kind: 'pyramid', label: 'Pyramid' },
   ];
+  const searchNeedle = drawerSearch.trim().toLowerCase();
+  const layerMatches = (block: EditorBlock) =>
+    !searchNeedle || blockName(block).toLowerCase().includes(searchNeedle) || BLOCK_LABEL[block.type].toLowerCase().includes(searchNeedle);
+  const insertMatches = (label: string) => !searchNeedle || label.toLowerCase().includes(searchNeedle);
+  const activeBlocks = (activePage?.blocks ?? []).filter(layerMatches);
+
+  const floatToolbar = (() => {
+    if (!floatAnchor || previewMode) return null;
+    const block = selected;
+    if (!block || !canEditBlock(block)) return null;
+    if (!block) return null;
+    return (
+      <div className="studio-float" role="toolbar" aria-label="Selection tools" style={{ left: floatAnchor.x, top: Math.max(8, floatAnchor.y - 46), width: 'max-content' }}>
+        {block.type === 'heading' ? (
+          <span className="st-float-group">
+            {([1, 2, 3] as const).map((level) => (
+              <button key={level} type="button" className={block.level === level ? 'is-on' : ''} onClick={() => patchBlock(block.id, { level })} disabled={!canEditBlock(block)}>H{level}</button>
+            ))}
+          </span>
+        ) : null}
+        {block.type === 'text' ? (
+          <span className="st-float-group">
+            {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
+              <button key={size} type="button" className={block.size === size ? 'is-on' : ''} onClick={() => patchBlock(block.id, { size })} disabled={!canEditBlock(block)}>{size.toUpperCase()}</button>
+            ))}
+          </span>
+        ) : null}
+        {block.type === 'text' || block.type === 'heading' ? (
+          <span className="st-float-group">
+            <button type="button" className={block.bold ? 'is-on' : ''} onClick={() => patchBlock(block.id, { bold: !block.bold })} disabled={!canEditBlock(block)} title="Bold"><strong>B</strong></button>
+            <button type="button" className={block.italic ? 'is-on' : ''} onClick={() => patchBlock(block.id, { italic: !block.italic })} disabled={!canEditBlock(block)} title="Italic"><em>I</em></button>
+            <button type="button" className={block.underline ? 'is-on' : ''} onClick={() => patchBlock(block.id, { underline: !block.underline })} disabled={!canEditBlock(block)} title="Underline"><u>U</u></button>
+          </span>
+        ) : null}
+        {block.type === 'shape' ? (
+          <span className="st-float-group">
+            <input type="color" value={block.color ?? '#8b7cff'} onChange={(event) => patchBlock(block.id, { color: event.target.value })} disabled={!canEditBlock(block)} aria-label="Fill colour" />
+          </span>
+        ) : null}
+        <span className="st-float-group">
+          {(['left', 'center', 'right'] as const).map((option) => (
+            <button key={option} type="button" className={block.align === option ? 'is-on' : ''} onClick={() => patchBlock(block.id, { align: option })} disabled={!canEditBlock(block)} title={`Align ${option}`}>{option === 'left' ? '⇤' : option === 'center' ? '≡' : '⇥'}</button>
+          ))}
+        </span>
+        <span className="st-float-group">
+          <button type="button" onClick={() => duplicateBlock(block.id)} disabled={!canEditBlock(block) || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} title="Duplicate (Ctrl+D)"><Copy size={12} /></button>
+          <button type="button" className="is-danger" onClick={() => removeBlock(block.id)} disabled={!canEditBlock(block)} title="Delete"><Trash2 size={12} /></button>
+        </span>
+      </div>
+    );
+  })();
+
+  function canEditBlock(block: EditorBlock | null): boolean {
+    return block !== null && canEdit && !block.locked;
+  }
+
+  const renderBlockInner = (block: EditorBlock) => {
+    const editable = canEdit && !block.locked;
+    const textProps = { onClick: () => { setSelectedId(block.id); setInspectorTab('design'); }, onCommit: (next: string) => patchBlock(block.id, { text: next, link: undefined }) };
+    switch (block.type) {
+      case 'heading':
+        return (
+          <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
+            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} />
+          </div>
+        );
+      case 'text':
+        return (
+          <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
+            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} />
+          </div>
+        );
+      case 'image':
+        return (
+          <div style={{ width: '100%', height: '100%' }}>
+            {/* Canvas preview; the URL is validated to http(s) by the body schema. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={block.url} alt={block.alt} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8, pointerEvents: 'none' }} />
+          </div>
+        );
+      case 'shape':
+        return (
+          <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? 'var(--st-accent)', width: '100%', height: '100%', display: 'inline-block', pointerEvents: 'none' }} />
+        );
+      case 'button':
+        return (
+          <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none' }}>
+            {resolveBlockText(block, linkedValues)}
+          </span>
+        );
+    }
+  };
+
+  /** Resize gesture: dir decides which edges move; writes DOM during drag, commits on release. */
+  const onFreeResizeMove = (event: React.PointerEvent, id: string, dir: string) => {
+    const resize = freeResize.current;
+    if (!resize || resize.id !== id) return;
+    const dx = (event.clientX - resize.startX) / (zoom / 100);
+    const dy = (event.clientY - resize.startY) / (zoom / 100);
+    let { x, y, w, h } = resize.origin;
+    if (dir.includes('e')) w = Math.max(24, Math.round(resize.origin.w + dx));
+    if (dir.includes('s')) h = Math.max(24, Math.round(resize.origin.h + dy));
+    if (dir.includes('w')) { w = Math.max(24, Math.round(resize.origin.w - dx)); x = Math.round(resize.origin.x + resize.origin.w - w); }
+    if (dir.includes('n')) { h = Math.max(24, Math.round(resize.origin.h - dy)); y = Math.round(resize.origin.y + resize.origin.h - h); }
+    const el = frameRef.current?.querySelector(`[data-bid="${id}"]`);
+    if (el) { el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.width = `${w}px`; el.style.height = `${h}px`; }
+  };
 
   return (
-    <div className="editor-shell">
-      <div className="editor-topbar">
-        <Link href={`/brands/${brandId}/content/${contentId}`} className="editor-back" aria-label="Back to content detail">
-          <ArrowLeft size={15} /> Back
-        </Link>
-        <div className="editor-topbar-title">
-          <span className="eyebrow">UPTRENDIFY STUDIO</span>
-          <strong>{documentTitle}</strong>
-          <span className="editor-version">v{displayVersion}</span>
-          {dirty ? <span className="editor-save-state is-dirty">Unsaved changes</span>
-            : saved ? <span className="editor-save-state is-saved"><Check size={12} /> Saved</span>
-            : <span className="editor-save-state">All changes saved</span>}
-        </div>
-        <div style={{ flex: 1 }} />
+    <div className={`studio${focusMode ? ' is-focus' : ''}`}>
+      {/* ---------- top bar ---------- */}
+      <div className="studio-topbar">
+        <button type="button" className="st-icon" aria-label="Back to content" title="Back to content (Esc closes panels)" onClick={() => router.push(`/brands/${brandId}/content/${contentId}`)}>
+          <ArrowLeft size={16} />
+        </button>
+        <input
+          className="studio-title-input"
+          value={documentTitle}
+          readOnly
+          aria-label="Document title (edit the title in the content brief)"
+          title="The document title comes from the content brief"
+        />
         {versions.length > 1 ? (
-          <label className="editor-version-picker" title="Choose which saved content version to open">
-            <span>Version</span>
-            <select value={loadedVersionId ?? ''} onChange={(event) => switchVersion(event.target.value)} disabled={busy}>
-              {versions.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  v{entry.version}{entry.id === currentVersionId ? ' · current' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <div className="editor-btn-group" role="group" aria-label="History">
-          <button type="button" className="editor-btn" onClick={() => setHistoryIndex((index) => { if (index <= 0) return index; const doc = parseContentBody(history[index - 1]); if (doc) setPages(doc.pages); return index - 1; })} disabled={historyIndex <= 0} title="Undo (Ctrl+Z)"><Undo2 size={14} /></button>
-          <button type="button" className="editor-btn" onClick={() => setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) setPages(doc.pages); return index + 1; })} disabled={historyIndex >= history.length - 1} title="Redo (Ctrl+Y)"><Redo2 size={14} /></button>
-        </div>
-        <button type="button" className="editor-btn" onClick={() => setPreviewMode((value) => !value)} aria-pressed={previewMode}>
-          {previewMode ? <><EyeOff size={14} /> Exit preview</> : <><Eye size={14} /> Preview</>}
-        </button>
-        <button type="button" className="editor-btn editor-btn-primary" onClick={() => void save()} disabled={busy || !canEdit || !dirty} title={!canEdit ? 'Editing is available in draft, after change requests, or after rejection.' : !dirty ? 'Nothing to save yet.' : undefined}>
-          {busy ? <><LoaderCircle size={14} className="spin" /> Saving…</> : <><Save size={14} /> Save new version</>}
-        </button>
-        <button type="button" className="editor-btn editor-btn-submit" disabled={busy || submitting || !canEdit || dirty || loadedVersionId !== currentVersionId} title={dirty ? 'Save your edits first, then submit the exact saved version.' : loadedVersionId !== currentVersionId ? 'This canvas shows an older version. Open the current version before submitting.' : !canEdit ? 'Editing is not available in this status.' : 'Send this exact saved version to the approval queue.'} onClick={() => void submitForApproval()}>
-          {submitting ? <><LoaderCircle size={14} className="spin" /> Sending…</> : <><Send size={14} /> Submit for approval</>}
-        </button>
-      </div>
-
-      {notice ? <div className="editor-note is-ok" role="status">{notice}</div> : null}
-      {error ? <div className="editor-note is-error" role="alert">{error}</div> : null}
-      {!canEdit ? <div className="editor-note">Editing is available while the content is a draft, after change requests, or after rejection. Status changes happen in the Approval Queue.</div> : null}
-
-      {/* Formatting bar (word-processor style, applied to the selected block). */}
-      <div className="editor-formatbar" role="toolbar" aria-label="Formatting">
-        {selected ? (
-          <>
-            <span className="editor-formatbar-target">{BLOCK_LABEL[selected.type]}</span>
-            {selected.type === 'heading' ? (
-              <span className="editor-formatbar-group">
-                {([1, 2, 3] as const).map((level) => (
-                  <button key={level} type="button" className={selected.level === level ? 'is-on' : ''} onClick={() => patchBlock(selected.id, { level })} disabled={!canEdit}>H{level}</button>
-                ))}
-              </span>
-            ) : null}
-            {selected.type === 'text' ? (
-              <span className="editor-formatbar-group">
-                {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
-                  <button key={size} type="button" className={selected.size === size ? 'is-on' : ''} onClick={() => patchBlock(selected.id, { size })} disabled={!canEdit}>{size.toUpperCase()}</button>
-                ))}
-              </span>
-            ) : null}
-            {selected.type === 'heading' || selected.type === 'text' ? (
-              <>
-                <span className="editor-formatbar-group">
-                  <button type="button" className={selected.bold ? 'is-on' : ''} onClick={() => patchBlock(selected.id, { bold: !selected.bold })} disabled={!canEdit} title="Bold (applies to the whole block)"><strong>B</strong></button>
-                  <button type="button" className={selected.italic ? 'is-on' : ''} onClick={() => patchBlock(selected.id, { italic: !selected.italic })} disabled={!canEdit} title="Italic"><em>I</em></button>
-                  <button type="button" className={selected.underline ? 'is-on' : ''} onClick={() => patchBlock(selected.id, { underline: !selected.underline })} disabled={!canEdit} title="Underline"><u>U</u></button>
-                </span>
-                <span className="editor-formatbar-group">
-                  <label className="editor-formatbar-color" title="Text colour">
-                    <input type="color" value={selected.color ?? '#111111'} onChange={(event) => patchBlock(selected.id, { color: event.target.value })} disabled={!canEdit} aria-label="Text colour" />
-                  </label>
-                  <label className="editor-formatbar-color" title="Background colour">
-                    <input type="color" value={selected.bg ?? '#ffffff'} onChange={(event) => patchBlock(selected.id, { bg: event.target.value })} disabled={!canEdit} aria-label="Background colour" />
-                    <span>BG</span>
-                  </label>
-                </span>
-              </>
-            ) : null}
-            {selected.type === 'shape' ? (
-              <span className="editor-formatbar-group">
-                {CONTENT_SHAPE_KINDS.map((kind) => (
-                  <button key={kind} type="button" className={selected.shape === kind ? 'is-on' : ''} onClick={() => patchBlock(selected.id, { shape: kind })} disabled={!canEdit}>{kind}</button>
-                ))}
-              </span>
-            ) : null}
-            {selected.type === 'shape' || selected.type === 'button' ? (
-              <span className="editor-formatbar-group">
-                <label className="editor-formatbar-color" title="Fill colour">
-                  <input type="color" value={selected.color ?? '#8b7cff'} onChange={(event) => patchBlock(selected.id, { color: event.target.value })} disabled={!canEdit} aria-label="Fill colour" />
-                  <span>Fill</span>
-                </label>
-              </span>
-            ) : null}
-            <span className="editor-formatbar-group">
-              {(['left', 'center', 'right'] as const).map((option) => (
-                <button key={option} type="button" className={selected.align === option ? 'is-on' : ''} onClick={() => patchBlock(selected.id, { align: option })} disabled={!canEdit} title={`Align ${option}`}>{option === 'left' ? '⇤' : option === 'center' ? '≡' : '⇥'}</button>
-              ))}
-            </span>
-            <span className="editor-formatbar-group">
-              <button type="button" onClick={() => duplicateBlock(selected.id)} disabled={!canEdit} title="Duplicate (Ctrl+D)"><Copy size={12} /></button>
-              <button type="button" className="is-danger" onClick={() => removeBlock(selected.id)} disabled={!canEdit} title="Delete"><Trash2 size={12} /></button>
-            </span>
-            <span className="editor-formatbar-meta">{selectedIndex >= 0 ? `${selectedIndex + 1}/` : ''}{activePage?.blocks.length ?? 0} on page {activePageIndex + 1}</span>
-          </>
+          <select
+            className="st-select"
+            style={{ width: 'auto' }}
+            value={loadedVersionId ?? ''}
+            onChange={(event) => switchVersion(event.target.value)}
+            disabled={busy}
+            aria-label="Content version"
+          >
+            {versions.map((entry) => (
+              <option key={entry.id} value={entry.id}>v{entry.version}{entry.id === currentVersionId ? ' · current' : ''}</option>
+            ))}
+          </select>
         ) : (
-          <span className="editor-formatbar-target">Select a block to format it. Shapes, headings, text, images and CTAs can all be added from the left panel.</span>
+          <span className="editor-version">v{displayVersion}</span>
         )}
+        <span className={`studio-save-state${dirty ? ' is-dirty' : saved ? ' is-saved' : ''}`} role="status">
+          <span className="dot" />
+          {dirty ? 'Unsaved changes' : saved ? 'Saved · just now' : 'All changes saved'}
+        </span>
+        <span className="studio-health" title={`Brand health: ${health}% — ${brandIssues.length} issue${brandIssues.length === 1 ? '' : 's'}`} aria-label={`Brand health ${health} percent`}>
+          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+            <circle cx="10" cy="10" r="7" fill="none" stroke="var(--st-line-strong)" strokeWidth="3" />
+            <circle cx="10" cy="10" r="7" fill="none" stroke={health > 80 ? 'var(--st-ok)' : health > 50 ? 'var(--st-warn)' : 'var(--st-danger)'} strokeWidth="3" strokeDasharray={`${(health / 100) * 44} 44`} strokeLinecap="round" transform="rotate(-90 10 10)" />
+          </svg>
+          {health}%
+        </span>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index <= 0) return index; const doc = parseContentBody(history[index - 1]); if (doc) setPages(doc.pages); return index - 1; })} disabled={historyIndex <= 0} title="Undo (Ctrl+Z)" aria-label="Undo"><Undo2 size={15} /></button>
+        <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) setPages(doc.pages); return index + 1; })} disabled={historyIndex >= history.length - 1} title="Redo (Ctrl+Y)" aria-label="Redo"><Redo2 size={15} /></button>
+        <button type="button" className="st-btn" onClick={() => setPreviewMode((value) => !value)} aria-pressed={previewMode}>{previewMode ? 'Exit preview' : 'Preview'}</button>
+        <button type="button" className="st-btn" onClick={() => void save()} disabled={busy || !canEdit || !dirty} title={!canEdit ? 'Editing is available in draft, after change requests, or after rejection.' : !dirty ? 'Nothing to save yet — the canvas matches the saved version.' : 'Save these edits as a new version'}>
+          {busy ? 'Saving…' : 'Save new version'}
+        </button>
+        <button type="button" className="st-btn st-btn--primary" onClick={() => void submitForApproval()} disabled={busy || submitting || !canEdit || dirty || loadedVersionId !== currentVersionId} title={dirty ? 'Save your edits first, then submit the exact saved version.' : loadedVersionId !== currentVersionId ? 'An older version is on the canvas. Open the current version (or save it as a new version) before submitting.' : !canEdit ? 'Editing is not available in this status.' : 'Send this exact saved version to the approval queue.'}>
+          {submitting ? 'Sending…' : 'Submit for approval'}
+        </button>
       </div>
 
-      <div className="editor-layout">
-        <aside className="editor-layers" aria-label="Content blocks">
-          <div className="editor-panel-label"><Layers size={13} /> Blocks · page {activePageIndex + 1}</div>
-          {(activePage?.blocks ?? []).map((block, index) => {
-            const Icon = TYPE_ICON[block.type];
-            return (
-              <div
-                key={block.id}
-                className={`editor-layer${selectedId === block.id ? ' is-selected' : ''}`}
-                onClick={() => { setSelectedId(block.id); setPreviewMode(false); }}
-                onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(block.id); setPreviewMode(false); } }}
-                draggable={canEdit}
-                onDragStart={(event) => { dragIndex.current = index; event.dataTransfer.effectAllowed = 'move'; }}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => { event.preventDefault(); if (dragIndex.current !== null) { patchPage(activePageIndex, (current) => reorderBlocks(current, dragIndex.current ?? index, index)); dragIndex.current = null; } }}
-                role="button"
-                tabIndex={0}
-              >
-                <GripVertical size={11} className="editor-layer-grip" aria-hidden="true" />
-                <Icon size={13} />
-                <span className="editor-layer-label">{BLOCK_LABEL[block.type]}</span>
-                <span className="editor-layer-summary">{blockSummary(block)}</span>
-              </div>
-            );
-          })}
-          <div className="editor-insert">
-            <div className="editor-panel-label"><Plus size={13} /> Insert</div>
-            {([
-              { type: 'heading' as const, label: 'Heading', icon: Heading1 },
-              { type: 'text' as const, label: 'Text', icon: Type },
-              { type: 'image' as const, label: 'Image', icon: ImageIcon },
-              { type: 'button' as const, label: 'CTA', icon: Square },
-            ]).map(({ type, label, icon: Icon }) => (
+      {/* ---------- body ---------- */}
+      <div className="studio-body">
+        {!focusMode ? (
+          <nav className="studio-dock" aria-label="Editor panels">
+            {dockItems.map(({ id, label, icon: Icon }) => (
               <button
-                key={type}
+                key={id}
                 type="button"
-                className="editor-insert-btn"
-                disabled={!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS}
-                onClick={() => addBlock(type)}
+                className={`studio-dock-btn${dockTab === id ? ' is-active' : ''}`}
+                onClick={() => setDockTab((current) => (current === id ? null : id))}
+                aria-pressed={dockTab === id}
               >
-                <Icon size={15} /> {label}
+                <Icon size={16} />
+                {label}
               </button>
             ))}
-          </div>
-          <div>
-            <div className="editor-panel-label">Shapes</div>
-            <div className="editor-shapes-row">
-              {shapeButtons.map(({ kind, label }) => (
-                <button
-                  key={kind}
-                  type="button"
-                  className="editor-shape-btn"
-                  disabled={!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS}
-                  onClick={() => addBlock('shape', kind)}
-                  title={`Insert ${label.toLowerCase()}`}
-                >
-                  <span className={`editor-shape-swatch is-${kind}`} />
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </aside>
+          </nav>
+        ) : null}
 
-        <section className={`editor-canvas${previewMode ? ' is-preview' : ''}`} aria-label="Content canvas">
-          <div className="editor-canvas-meta">
-            <span className="editor-page-tabs" role="tablist" aria-label="Document pages">
-              {pages.map((page, index) => (
-                <button
-                  key={page.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={index === activePageIndex}
-                  className={`editor-page-tab${index === activePageIndex ? ' is-active' : ''}`}
-                  onClick={() => { setActivePageIndex(index); setSelectedId(null); }}
-                >
-                  Page {index + 1}{page.blocks.length ? '' : ' ·'}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="editor-page-tab is-add"
-                onClick={() => {
-                  if (pages.length >= CONTENT_DOC_MAX_PAGES) return;
-                  const page = newPage(activePage?.size ?? 'a4');
-                  commit([...pages, page]);
-                  setActivePageIndex(pages.length);
-                  setSelectedId(null);
-                  setPreviewMode(false);
-                }}
-                disabled={!canEdit || pages.length >= CONTENT_DOC_MAX_PAGES}
-                title="Add a page"
-              >
-                <Plus size={11} /> Add page
-              </button>
-              {pages.length > 1 ? (
-                <button
-                  type="button"
-                  className="editor-page-tab is-danger"
-                  onClick={() => {
-                    if (!window.confirm(`Delete page ${activePageIndex + 1}? Its blocks are removed from the document.`)) return;
-                    commit(pages.filter((_, index) => index !== activePageIndex));
-                    setActivePageIndex(0);
-                    setSelectedId(null);
-                  }}
-                  disabled={!canEdit}
-                  title="Delete this page"
-                >
-                  <Trash2 size={11} />
-                </button>
+        {drawerOpen && !focusMode ? (
+          <aside className="studio-drawer" aria-label={`${dockTab} panel`}>
+            <div className="studio-drawer-head">
+              <span className="st-label">{dockTab}</span>
+              <button type="button" className="st-icon" style={{ width: 32, height: 32 }} onClick={() => setDockTab(null)} aria-label="Close panel"><Trash2 size={0} /><span aria-hidden="true">×</span></button>
+            </div>
+            <div className="studio-drawer-search">
+              <input value={drawerSearch} onChange={(event) => setDrawerSearch(event.target.value)} placeholder="Search layers, blocks…" aria-label="Search layers and blocks" />
+            </div>
+            <div className="studio-drawer-body" role="listbox" aria-label="Layers">
+              {dockTab === 'layers' ? (
+                <>
+                  <span className="st-label">Layers · page {activePageIndex + 1}</span>
+                  {(activePage?.blocks ?? []).filter(layerMatches).map((block, matchIndex) => {
+                    const Icon = TYPE_ICON[block.type];
+                    const realIndex = (activePage?.blocks ?? []).indexOf(block);
+                    return (
+                      <div
+                        key={block.id}
+                        className={`st-layer-row${selectedId === block.id ? ' is-selected' : ''}${block.hidden ? ' is-hidden' : ''}`}
+                        onClick={() => { setSelectedId(block.id); setInspectorTab('design'); }}
+                        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(block.id); } }}
+                        draggable={canEdit && !block.locked}
+                        onDragStart={(event) => { dragIndex.current = realIndex; event.dataTransfer.effectAllowed = 'move'; }}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => { event.preventDefault(); if (dragIndex.current !== null) { patchPage(activePageIndex, (current) => reorderBlocks(current, dragIndex.current ?? realIndex, realIndex)); dragIndex.current = null; } }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <GripVertical size={11} style={{ opacity: 0.5 }} aria-hidden="true" />
+                        <span style={{ display: 'grid', minWidth: 0 }}>
+                          <span className="st-layer-name">{blockName(block)}</span>
+                          <span className="st-layer-kind">{BLOCK_LABEL[block.type]}</span>
+                        </span>
+                        <span className="st-layer-actions">
+                          <button type="button" className="st-icon" style={{ width: 32, height: 32 }} aria-label={block.hidden ? 'Show block' : 'Hide block'} title={block.hidden ? 'Show' : 'Hide'} onClick={(event) => { event.stopPropagation(); patchBlock(block.id, { hidden: !block.hidden }); }}>
+                            {block.hidden ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                          <button type="button" className="st-icon" style={{ width: 32, height: 32 }} aria-label={block.locked ? 'Unlock block' : 'Lock block'} title={block.locked ? 'Unlock' : 'Lock'} onClick={(event) => { event.stopPropagation(); patchBlock(block.id, { locked: !block.locked }); }}>
+                            {block.locked ? <Lock size={13} /> : <Unlock size={13} />}
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {(activePage?.blocks ?? []).length === 0 ? <p className="editor-hint">This page is empty. Use Insert to add blocks.</p> : null}
+                  {searchNeedle && activeBlocks.length === 0 ? <p className="editor-hint">No layers match “{drawerSearch}”.</p> : null}
+                </>
               ) : null}
-            </span>
-            <label className="editor-size-picker" title="Canvas size">
-              <span>Size</span>
-              <select
-                value={activePage?.size ?? 'a4'}
-                disabled={!canEdit || previewMode}
-                onChange={(event) => {
-                const size = event.target.value as ContentPageSizeId;
-                commit(pages.map((page, index) => (index === activePageIndex ? { ...page, size } : page)));
-              }}
-              >
-                {CONTENT_PAGE_SIZE_IDS.map((id) => (
-                  <option key={id} value={id}>{CONTENT_PAGE_SIZES[id].label}</option>
-                ))}
-              </select>
-            </label>
-            <span>UPTRENDIFY STUDIO · V{displayVersion}</span>
-            <span className="editor-zoom">
-              <button type="button" onClick={() => setZoom((z) => Math.max(60, z - 10))} aria-label="Zoom out" disabled={zoom <= 60}><Minus size={12} /></button>
-              <span>{zoom}%</span>
-              <button type="button" onClick={() => setZoom((z) => Math.min(140, z + 10))} aria-label="Zoom in" disabled={zoom >= 140}><Plus size={12} /></button>
-            </span>
-          </div>
-          <div className="editor-canvas-scroll">
-            <div className={`editor-canvas-page size-${activePage?.size ?? 'a4'}`} style={{ zoom: `${zoom}%` }}>
-              {(activePage?.blocks ?? []).length === 0 ? (
-                <div className="editor-empty">
-                  <Layers size={22} />
-                  <strong>Empty page</strong>
-                  <span>Add blocks from the left panel, or add another page.</span>
-                </div>
+
+              {dockTab === 'insert' ? (
+                <>
+                  <span className="st-label">Templates</span>
+                  <div className="st-insert-grid" style={{ gridTemplateColumns: '1fr' }}>
+                    {STUDIO_TEMPLATES.filter((template) => insertMatches(template.label)).map((template) => (
+                      <button key={template.id} type="button" className="st-insert-tile" style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-start' }} disabled={!canEdit} onClick={() => insertTemplate(template.id)}>
+                        <Sparkles size={14} /> {template.label}
+                        <span className="st-preview-tag">{CONTENT_PAGE_SIZES[template.size].label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <span className="st-label">Blocks</span>
+                  <div className="st-insert-grid">
+                    {insertTiles.filter(({ label }) => insertMatches(label)).map(({ type, label, icon: Icon }) => (
+                      <button key={type} type="button" className="st-insert-tile" disabled={!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} onClick={() => addBlock(type)}>
+                        <Icon size={16} /> {label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="st-label">Shapes</span>
+                  <div className="st-shape-grid">
+                    {shapeTiles.filter(({ label }) => insertMatches(label)).map(({ kind, label }) => (
+                      <button key={kind} type="button" className="st-shape-tile" disabled={!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} onClick={() => addBlock('shape', kind)}>
+                        <svg className="st-shape-swatch" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                          {kind === 'rectangle' ? <rect x="3" y="7" width="18" height="10" rx="2" /> : null}
+                          {kind === 'square' ? <rect x="5" y="5" width="14" height="14" rx="2" /> : null}
+                          {kind === 'circle' ? <circle cx="12" cy="12" r="8" /> : null}
+                          {kind === 'triangle' ? <path d="M12 4l9 16H3z" /> : null}
+                          {kind === 'star' ? <path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.5l-5.4 3 1.2-6L3.3 9.3l6.1-.7z" /> : null}
+                          {kind === 'pyramid' ? <path d="M12 3l8 14-8 4-8-4zM12 3v18" /> : null}
+                        </svg>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </>
               ) : null}
-              {(activePage?.blocks ?? []).map((block, index) => {
+
+              {dockTab === 'brand' ? (
+                <>
+                  <span className="st-label">Palette</span>
+                  <div className="editor-shapes-row">
+                    {brand.colors.map((color) => (
+                      <button key={color} type="button" className="st-shape-tile" title={`Apply ${color}`} disabled={!selected || !canEdit} onClick={() => selected && patchBlock(selected.id, { color })}>
+                        <span className="editor-shape-swatch" style={{ background: color, borderRadius: 6 }} />
+                        {color}
+                      </button>
+                    ))}
+                  </div>
+                  {brand.fonts.length ? (
+                    <>
+                      <span className="st-label">Fonts</span>
+                      <div className="editor-shapes-row">
+                        {brand.fonts.slice(0, 4).map((font) => (
+                          <span key={font} className="st-shape-tile" title={`Brand font: ${font}`}>{font}</span>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                  <span className="st-label">Brand lint {brandIssues.length === 0 ? '· clean' : `· ${brandIssues.length}`}</span>
+                  {brandIssues.length === 0 ? <p className="editor-hint">Everything matches the brand kit.</p> : (
+                    brandIssues.slice(0, 8).map((issue: BrandLintIssue, index) => (
+                      <div key={`${issue.blockId}-${index}`} className="st-layer-row" style={{ gridTemplateColumns: 'minmax(0,1fr) auto', height: 'auto', padding: '7px 8px' }}>
+                        <span style={{ minWidth: 0 }}>
+                          <span className="st-layer-name">{issue.kind}</span>
+                          <span className="st-layer-summary">{issue.message}</span>
+                        </span>
+                        <button type="button" className="st-btn" style={{ height: 28, padding: '0 8px' }} onClick={() => patchBlock(issue.blockId, issue.patch)}>Fix</button>
+                      </div>
+                    ))
+                  )}
+                </>
+              ) : null}
+              {dockTab === 'ai' ? (
+                <>
+                  <span className="st-label">AI</span>
+                  <p className="editor-hint">Ask AI to rewrite, shorten or restyle the selected block. <span className="st-preview-tag">Preview</span></p>
+                </>
+              ) : null}
+              {dockTab === 'scenes' ? (
+                <>
+                  <span className="st-label">Scenes</span>
+                  <p className="editor-hint">Storyboard mode for video scripts lands with the content-aware modes. <span className="st-preview-tag">Preview</span></p>
+                </>
+              ) : null}
+            </div>
+          </aside>
+        ) : null}
+
+        {/* ---------- stage ---------- */}
+        <div
+          className={`studio-stage${gridOn ? '' : ' no-grid'}`}
+          ref={stageRef}
+          onPointerDown={(event) => {
+            const pan = event.button === 1 || spaceHeld.current || event.target === event.currentTarget;
+            if (!pan) return;
+            panRef.current = { x: event.clientX, y: event.clientY, ox: offsetRef.current.x, oy: offsetRef.current.y };
+            (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            const pan = panRef.current;
+            if (!pan || !frameRef.current) return;
+            const next = { x: pan.ox + (event.clientX - pan.x), y: pan.oy + (event.clientY - pan.y) };
+            offsetRef.current = next;
+            frameRef.current.style.transform = `translate(${next.x}px, ${next.y}px) scale(${zoom / 100})`;
+          }}
+          onPointerUp={(event) => {
+            const pan = panRef.current;
+            if (!pan) return;
+            const next = { x: pan.ox + (event.clientX - pan.x), y: pan.oy + (event.clientY - pan.y) };
+            panRef.current = null;
+            setOffset(next);
+          }}
+          onWheel={(event) => {
+            if (!(event.ctrlKey || event.metaKey)) return;
+            event.preventDefault();
+            const stage = stageRef.current;
+            if (!stage) return;
+            const rect = stage.getBoundingClientRect();
+            const cx = event.clientX - rect.left;
+            const cy = event.clientY - rect.top;
+            const oldScale = zoom / 100;
+            const nextScale = Math.max(0.2, Math.min(3, oldScale * (event.deltaY < 0 ? 1.1 : 0.9)));
+            const nextOffset = { x: cx - (cx - offsetRef.current.x) * (nextScale / oldScale), y: cy - (cy - offsetRef.current.y) * (nextScale / oldScale) };
+            manualZoomRef.current = true;
+            setZoomManual(true);
+            setZoom(Math.round(nextScale * 100));
+            offsetRef.current = nextOffset;
+            setOffset(nextOffset);
+          }}
+        >
+          <div
+            ref={frameRef}
+            className="studio-page-frame"
+            style={{
+              width: pageDims.width,
+              minHeight: pageDims.height,
+              transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom / 100})`,
+            }}
+            onClick={(event) => { if (event.target === frameRef.current) setSelectedId(null); }}
+          >
+            <span className="studio-page-label">
+              {isStoryboard ? <Clapperboard size={11} /> : null}
+              {activePage?.size === 'story' ? 'Story 9:16 · 760×1351' : activePage?.size === 'square' ? 'Square · 760×760' : activePage?.size === 'letter' ? 'US Letter · 816×1056' : 'A4 · 794×1123'}
+            </span>
+            {isStoryboard && activePage?.note ? (
+              <span className="studio-director-chip" title="Director's note from the script">
+                <Clapperboard size={11} /> {activePage.note}
+              </span>
+            ) : null}
+            {overflow ? (
+              <span className="studio-overflow-badge">
+                Overflow
+                <button type="button" onClick={fitText}>Fit text</button>
+              </span>
+            ) : null}
+            {safeZones ? (
+              <div aria-hidden="true" style={{ position: 'absolute', inset: '10% 8%', border: '1px dashed rgba(124,124,255,.55)', borderRadius: 8, pointerEvents: 'none' }} />
+            ) : null}
+            {freeMode ? (
+              (activePage?.blocks ?? []).map((block) => {
+                const geo = block.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
+                const isSelected = selectedId === block.id && !previewMode;
+                return (
+                  <div
+                    key={block.id}
+                    data-bid={block.id}
+                    className={`editor-free-block${isSelected ? ' is-selected' : ''}${block.hidden ? ' is-ghost' : ''}`}
+                    style={{ left: geo.x, top: geo.y, width: geo.w, height: geo.h, transform: geo.rotation ? `rotate(${geo.rotation}deg)` : undefined, cursor: canEdit && !block.locked ? 'move' : 'default' }}
+                    onPointerDown={(event) => { setSelectedId(block.id); if (canEdit && !block.locked) { (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); freeDrag.current = { id: block.id, startX: event.clientX, startY: event.clientY, origin: { ...geo } }; } }}
+                    onPointerMove={(event) => {
+                      const drag = freeDrag.current;
+                      if (!drag || drag.id !== block.id) return;
+                      const dx = (event.clientX - drag.startX) / (zoom / 100);
+                      const dy = (event.clientY - drag.startY) / (zoom / 100);
+                      const el = frameRef.current?.querySelector(`[data-bid="${block.id}"]`);
+                      if (el) { el.style.left = `${Math.round(drag.origin.x + dx)}px`; el.style.top = `${Math.round(drag.origin.y + dy)}px`; }
+                    }}
+                    onPointerUp={(event) => {
+                      const drag = freeDrag.current;
+                      if (!drag || drag.id !== block.id) return;
+                      freeDrag.current = null;
+                      const dx = (event.clientX - drag.startX) / (zoom / 100);
+                      const dy = (event.clientY - drag.startY) / (zoom / 100);
+                      const moved = Math.abs(dx) > 1 || Math.abs(dy) > 1;
+                      if (moved) patchBlock(block.id, { geometry: { x: Math.round(drag.origin.x + dx), y: Math.round(drag.origin.y + dy), w: geo.w, h: geo.h } });
+                      else setSelectedId(block.id);
+                    }}
+                  >
+                    {renderBlockInner(block)}
+                    {canEdit && !block.locked ? (
+                      (['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const).map((dir) => (
+                        <span
+                          key={dir}
+                          className={`st-free-handle st-handle-${dir}`}
+                          style={{ cursor: dir.includes('n') && dir.length === 1 ? 'ns-resize' : dir.includes('s') && dir.length === 1 ? 'ns-resize' : dir === 'e' ? 'ew-resize' : dir === 'w' ? 'ew-resize' : dir === 'ne' ? 'nesw-resize' : dir === 'sw' ? 'nesw-resize' : 'nwse-resize' }}
+                          onPointerDown={(event) => {
+                            event.stopPropagation();
+                            (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+                            freeResize.current = { id: block.id, dir, startX: event.clientX, startY: event.clientY, origin: { ...geo } };
+                          }}
+                          onPointerMove={(event) => onFreeResizeMove(event, block.id, dir)}
+                          onPointerUp={() => { const resize = freeResize.current; freeResize.current = null; if (resize) patchBlock(block.id, { geometry: resize.geometry }); }}
+                        />
+                      ))
+                    ) : null}
+                  </div>
+                );
+              })
+            ) : (
+              (activePage?.blocks ?? []).map((block, index) => {
                 const isSelected = selectedId === block.id && !previewMode;
                 const dropBefore = dropTarget?.index === index && !dropTarget.below;
                 const dropAfter = dropTarget?.index === index && dropTarget.below;
-                const textProps = { onClick: () => setSelectedId(block.id), onCommit: (next: string) => patchBlock(block.id, { text: next }) };
+                const textProps = { onClick: () => { setSelectedId(block.id); setInspectorTab('design'); }, onCommit: (next: string) => patchBlock(block.id, { text: next }) };
+                const editable = canEdit && !block.locked;
                 return (
                   <div key={block.id} className="editor-drop-wrap">
                     {dropBefore ? <div className="editor-drop-line" /> : null}
                     <div
-                      className={`editor-block${isSelected ? ' is-selected' : ''}`}
+                      data-bid={block.id}
+                      className={`editor-block${isSelected ? ' is-selected' : ''}${block.hidden ? ' is-ghost' : ''}`}
                       onClick={() => setSelectedId(block.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(block.id); } }}
-                      draggable={canEdit}
+                      data-block-name={`${BLOCK_LABEL[block.type]}: ${blockName(block)}`}
+                      draggable={editable}
                       onDragStart={(event) => { dragIndex.current = index; event.dataTransfer.effectAllowed = 'move'; }}
                       onDragOver={(event) => { if (dragIndex.current !== null) { event.preventDefault(); setDropTarget({ index, below: event.clientY > (event.currentTarget as HTMLElement).getBoundingClientRect().bottom - 14 }); } }}
                       onDragLeave={() => setDropTarget((current) => (current?.index === index ? null : current))}
                       onDrop={(event) => canvasDrop(index, event)}
+                      style={{ cursor: block.locked ? 'not-allowed' : undefined }}
                     >
-                      {isSelected && !previewMode ? (
-                        <div className="editor-float-toolbar" onClick={(event) => event.stopPropagation()}>
-                          {block.type === 'heading' ? (
-                            <span className="editor-float-group">
-                              {([1, 2, 3] as const).map((level) => (
-                                <button key={level} type="button" className={block.level === level ? 'is-on' : ''} onClick={() => patchBlock(block.id, { level })} disabled={!canEdit}>H{level}</button>
-                              ))}
-                            </span>
-                          ) : null}
-                          {block.type === 'text' ? (
-                            <span className="editor-float-group">
-                              {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
-                                <button key={size} type="button" className={block.size === size ? 'is-on' : ''} onClick={() => patchBlock(block.id, { size })} disabled={!canEdit}>{size.toUpperCase()}</button>
-                              ))}
-                            </span>
-                          ) : null}
-                          {block.type === 'heading' || block.type === 'text' ? (
-                            <span className="editor-float-group">
-                              <button type="button" className={block.bold ? 'is-on' : ''} onClick={() => patchBlock(block.id, { bold: !block.bold })} disabled={!canEdit} title="Bold"><strong>B</strong></button>
-                              <button type="button" className={block.italic ? 'is-on' : ''} onClick={() => patchBlock(block.id, { italic: !block.italic })} disabled={!canEdit} title="Italic"><em>I</em></button>
-                              <button type="button" className={block.underline ? 'is-on' : ''} onClick={() => patchBlock(block.id, { underline: !block.underline })} disabled={!canEdit} title="Underline"><u>U</u></button>
-                            </span>
-                          ) : null}
-                          <span className="editor-float-group">
-                            {(['left', 'center', 'right'] as const).map((option) => (
-                              <button key={option} type="button" className={block.align === option ? 'is-on' : ''} onClick={() => patchBlock(block.id, { align: option })} disabled={!canEdit} title={`Align ${option}`}>{option === 'left' ? '⇤' : option === 'center' ? '≡' : '⇥'}</button>
-                            ))}
-                          </span>
-                          <span className="editor-float-group">
-                            <button type="button" onClick={() => duplicateBlock(block.id)} disabled={!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} title="Duplicate (Ctrl+D)"><Copy size={12} /></button>
-                            <button type="button" className="is-danger" onClick={() => removeBlock(block.id)} disabled={!canEdit} title="Delete"><Trash2 size={12} /></button>
-                          </span>
-                          <span className="editor-float-meta">{index + 1}/{activePage?.blocks.length}</span>
-                        </div>
-                      ) : null}
                       {block.type === 'heading' ? (
                         <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={block.text} disabled={!canEdit} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} />
+                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} />
                         </div>
                       ) : null}
                       {block.type === 'text' ? (
                         <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={block.text} disabled={!canEdit} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} />
+                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} />
                         </div>
                       ) : null}
                       {block.type === 'image' ? (
@@ -751,7 +1037,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       ) : null}
                       {block.type === 'shape' ? (
                         <div className={`content-doc-shape align-${block.align}`}>
-                          <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? 'var(--accent)', width: `${block.width ?? 60}%`, height: block.height }} />
+                          <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? 'var(--st-accent)', width: `${block.width ?? 60}%`, height: block.height }} />
                         </div>
                       ) : null}
                       {block.type === 'button' ? (
@@ -761,146 +1047,330 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                           </span>
                         </div>
                       ) : null}
-                      {isSelected && !previewMode ? (
-                        <>
-                          <span className="editor-handle editor-handle-tl" />
-                          <span className="editor-handle editor-handle-tr" />
-                          <span className="editor-handle editor-handle-bl" />
-                          <span className="editor-handle editor-handle-br" />
-                        </>
-                      ) : null}
                     </div>
-                    {dropAfter ? <div className="editor-drop-line" /> : null}
-                  </div>
-                );
-              })}
+                  );
+                })
+            )}
+
+          {isStoryboard ? (
+            <div className="studio-filmstrip" aria-label="Storyboard beats">
+              <span className="studio-filmstrip-meta">
+                <Film size={12} /> {pages.length} beat{pages.length === 1 ? '' : 's'} · est. {pages.reduce((total, page) => total + estimateSeconds(contentBodyToPlainText(serializeContentDocument({ kind: 'uptrendify-doc', version: 1, pages: [page] }))), 0)}s
+              </span>
+              {pages.map((page, index) => (
+                <button
+                  key={page.id}
+                  type="button"
+                  className={`studio-filmstrip-thumb${index === activePageIndex ? ' is-active' : ''}`}
+                  onClick={() => { setActivePageIndex(index); setSelectedId(null); }}
+                >
+                  <span className="studio-filmstrip-num">{index + 1}</span>
+                  <span className="studio-filmstrip-copy">
+                    <span>{contentBodyToPlainText(serializeContentDocument({ kind: 'uptrendify-doc', version: 1, pages: [page] })).split('\n')[0]?.slice(0, 34) || `Beat ${index + 1}`}</span>
+                    <span className="st-label">est. {estimateSeconds(contentBodyToPlainText(serializeContentDocument({ kind: 'uptrendify-doc', version: 1, pages: [page] })))}s</span>
+                  </span>
+                </button>
+              ))}
             </div>
-          </div>
-        </section>
+          ) : null}
+        </div>
 
-        <aside className="editor-properties" aria-label="Block properties">
-          <div className="editor-panel-label">Properties</div>
-          {!selected ? (
-            <p className="editor-hint">Select a block on the canvas or in the layer list to edit its properties.</p>
-          ) : (
-            <div className="editor-props">
-              <div className="editor-props-title"><MousePointerClick size={13} /> {BLOCK_LABEL[selected.type]}</div>
-
-              {selected.type !== 'image' && selected.type !== 'shape' ? (
-                <label className="editor-field">
-                  <span>{selected.type === 'button' ? 'Button text' : 'Text'}</span>
-                  {selected.type === 'text' ? (
-                    <textarea value={selected.text} onChange={(event) => patchBlock(selected.id, { text: event.target.value })} disabled={!canEdit} rows={4} />
-                  ) : (
-                    <input value={selected.text} onChange={(event) => patchBlock(selected.id, { text: event.target.value })} disabled={!canEdit} />
-                  )}
-                </label>
-              ) : null}
-
-              {selected.type === 'heading' ? (
-                <div className="editor-field">
-                  <span>Level</span>
-                  <div className="chip-row">
-                    {([1, 2, 3] as const).map((level) => (
-                      <button key={level} type="button" className={`chip chip-toggle${selected.level === level ? ' chip-toggle-active' : ''}`} onClick={() => patchBlock(selected.id, { level })} disabled={!canEdit}>H{level}</button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {selected.type === 'text' ? (
-                <div className="editor-field">
-                  <span>Size</span>
-                  <div className="chip-row">
-                    {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
-                      <button key={size} type="button" className={`chip chip-toggle${selected.size === size ? ' chip-toggle-active' : ''}`} onClick={() => patchBlock(selected.id, { size })} disabled={!canEdit}>{size.toUpperCase()}</button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {selected.type === 'shape' ? (
-                <div className="editor-field">
-                  <span>Shape</span>
-                  <div className="chip-row">
-                    {CONTENT_SHAPE_KINDS.map((kind) => (
-                      <button key={kind} type="button" className={`chip chip-toggle${selected.shape === kind ? ' chip-toggle-active' : ''}`} onClick={() => patchBlock(selected.id, { shape: kind })} disabled={!canEdit}>{kind}</button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {selected.type === 'image' ? (
+        {/* ---------- inspector ---------- */}
+        {!focusMode ? (
+          <aside className="studio-inspector" aria-label="Inspector">
+            <div className="studio-inspector-tabs" role="tablist" aria-label="Inspector sections">
+              {(['design', 'arrange', 'brand', 'ai'] as const).map((tab) => (
+                <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} className={`studio-inspector-tab${inspectorTab === tab ? ' is-active' : ''}`} onClick={() => setInspectorTab(tab)}>
+                  {tab === 'design' ? 'Design' : tab === 'arrange' ? 'Arrange' : tab === 'brand' ? 'Brand' : 'AI'}
+                </button>
+              ))}
+            </div>
+            <div className="studio-inspector-body">
+              {!selected ? (
                 <>
-                  <label className="editor-field">
-                    <span>Image URL</span>
-                    <input value={selected.url} onChange={(event) => patchBlock(selected.id, { url: event.target.value })} disabled={!canEdit} inputMode="url" placeholder="https://…" />
+                  <span className="st-label">Page settings</span>
+                  <label className="st-field">
+                    <span>Canvas size</span>
+                    <select className="st-select" value={activePage?.size ?? 'a4'} disabled={!canEdit || previewMode} onChange={(event) => { const size = event.target.value as ContentPageSizeId; commit(pages.map((page, index) => (index === activePageIndex ? { ...page, size } : page))); }}>
+                      {CONTENT_PAGE_SIZE_IDS.map((id) => (
+                        <option key={id} value={id}>{CONTENT_PAGE_SIZES[id].label} · {CONTENT_PAGE_SIZES[id].width}×{CONTENT_PAGE_SIZES[id].height}</option>
+                      ))}
+                    </select>
                   </label>
-                  <label className="editor-field">
-                    <span>Alt text</span>
-                    <input value={selected.alt} onChange={(event) => patchBlock(selected.id, { alt: event.target.value })} disabled={!canEdit} placeholder="Describe the image" />
-                  </label>
+                  <div className="st-field">
+                    <span>Page background</span>
+                    <div className="st-field-row">
+                      <input type="color" value={activePage?.bg ?? '#ffffff'} disabled={!canEdit || previewMode} onChange={(event) => commit(pages.map((page, index) => (index === activePageIndex ? { ...page, bg: event.target.value } : page)))} aria-label="Page background colour" />
+                      <button type="button" className="st-quiet-link" onClick={() => commit(pages.map((page, index) => (index === activePageIndex ? { ...page, bg: undefined } : page)))} disabled={!canEdit || !activePage?.bg}>Reset to white</button>
+                    </div>
+                  </div>
+                  <div className="st-field">
+                    <span>Margins</span>
+                    <div className="st-field-row">
+                      <input type="range" className="st-range" style={{ ['--p' as string]: '40%' }} defaultValue={40} disabled aria-label="Page margins (preview)" />
+                      <span className="st-preview-tag">Preview</span>
+                    </div>
+                  </div>
+                  <div className="st-field">
+                    <span>Duplicate page as another format</span>
+                    <div className="st-field-row">
+                      <select className="st-select" value={duplicateSize} disabled={!canEdit} onChange={(event) => setDuplicateSize(event.target.value as ContentPageSizeId)}>
+                        {CONTENT_PAGE_SIZE_IDS.filter((id) => id !== (activePage?.size ?? 'a4')).map((id) => (
+                          <option key={id} value={id}>{CONTENT_PAGE_SIZES[id].label}</option>
+                        ))}
+                      </select>
+                      <button type="button" className="st-btn" style={{ height: 32 }} disabled={!canEdit} onClick={() => {
+                        const page = pages[activePageIndex];
+                        if (!page) return;
+                        const copy = reflowPage(page, duplicateSize);
+                        commit([...pages, copy]);
+                        setActivePageIndex(pages.length);
+                        setNotice(`Added ${CONTENT_PAGE_SIZES[duplicateSize].label} copy of page ${activePageIndex + 1}. Text sizes were re-fit for the new canvas.`);
+                      }}>Duplicate as format</button>
+                    </div>
+                  </div>
+                  <div className="st-field">
+                    <span>Safe zones</span>
+                    <div className="st-field-row">
+                      <button type="button" className="st-btn" style={{ height: 30 }} onClick={() => setSafeZones((value) => !value)} aria-pressed={safeZones}>{safeZones ? 'Hide guides' : 'Show guides'}</button>
+                    </div>
+                  </div>
+                  <p className="editor-hint">Select a block to edit its text, style, arrangement and brand fit.</p>
                 </>
-              ) : null}
-
-              {selected.type === 'button' ? (
-                <label className="editor-field">
-                  <span>Destination URL</span>
-                  <input value={selected.href ?? ''} onChange={(event) => patchBlock(selected.id, { href: event.target.value })} disabled={!canEdit} inputMode="url" placeholder="https://destination (optional)" />
-                </label>
-              ) : null}
-
-              <div className="editor-field">
-                <span>Alignment</span>
-                <div className="chip-row">
-                  {(['left', 'center', 'right'] as const).map((option) => (
-                    <button key={option} type="button" className={`chip chip-toggle${selected.align === option ? ' chip-toggle-active' : ''}`} onClick={() => patchBlock(selected.id, { align: option })} disabled={!canEdit}>{option}</button>
+              ) : inspectorTab === 'design' ? (
+                <>
+                  <span className="st-label">{BLOCK_LABEL[selected.type]} · design</span>
+                  {selected.type === 'text' && charLimit ? (
+                    <div className="st-field">
+                      <span>Channel meter · {channel}</span>
+                      <div className="st-field-row">
+                        <div className="st-range" style={{ height: 6, borderRadius: 99, background: `linear-gradient(90deg, ${(selected.text || '').length > charLimit ? 'var(--st-danger)' : 'var(--st-ok)'} ${(Math.min((selected.text || '').length, charLimit) / charLimit) * 100}%, var(--st-line-strong) ${(Math.min((selected.text || '').length, charLimit) / charLimit) * 100}%)` }} role="meter" aria-valuenow={(selected.text || '').length} aria-valuemax={charLimit} aria-label="Character count" />
+                        <span style={{ fontSize: 11, color: 'var(--st-ink-2)' }}>{(selected.text || '').length}/{charLimit}</span>
+                      </div>
+                    </div>
+                  ) : null}
+                  {selected.type === 'text' || selected.type === 'button' ? (
+                    <label className="st-field">
+                      <span>Linked content field</span>
+                      <select className="st-select" value={selected.link ?? ''} disabled={!canEditBlock(selected)} onChange={(event) => patchBlock(selected.id, { link: (event.target.value || undefined) as 'title' | 'cta' | undefined, text: event.target.value === 'title' ? documentTitle : event.target.value === 'cta' ? (itemCta ?? selected.text) : selected.text })}>
+                        <option value="">Not linked (custom text)</option>
+                        <option value="title">Document title</option>
+                        <option value="cta">CTA field</option>
+                      </select>
+                      {selected.link ? <span style={{ fontSize: 11, color: 'var(--st-ink-3)' }}>Linked blocks follow the content field. Editing the text on canvas detaches the link.</span> : null}
+                    </label>
+                  ) : null}
+                  {selected.type !== 'image' && selected.type !== 'shape' ? (
+                    <label className="st-field">
+                      <span>{selected.type === 'button' ? 'Button text' : 'Text'}</span>
+                      {selected.type === 'text' ? (
+                        <textarea className="st-textarea" value={selected.text} onChange={(event) => patchBlock(selected.id, { text: event.target.value })} disabled={!canEditBlock(selected)} rows={4} />
+                      ) : (
+                        <input className="st-input" value={selected.text} onChange={(event) => patchBlock(selected.id, { text: event.target.value })} disabled={!canEditBlock(selected)} />
+                      )}
+                    </label>
+                  ) : null}
+                  {selected.type === 'image' ? (
+                    <>
+                      <label className="st-field">
+                        <span>Image URL</span>
+                        <input className="st-input" value={selected.url} onChange={(event) => patchBlock(selected.id, { url: event.target.value })} disabled={!canEditBlock(selected)} inputMode="url" placeholder="https://…" />
+                      </label>
+                      <label className="st-field">
+                        <span>Alt text</span>
+                        <input className="st-input" value={selected.alt} onChange={(event) => patchBlock(selected.id, { alt: event.target.value })} disabled={!canEditBlock(selected)} placeholder="Describe the image" />
+                      </label>
+                    </>
+                  ) : null}
+                  {selected.type === 'button' ? (
+                    <label className="st-field">
+                      <span>Destination URL</span>
+                      <input className="st-input" value={selected.href ?? ''} onChange={(event) => patchBlock(selected.id, { href: event.target.value })} disabled={!canEditBlock(selected)} inputMode="url" placeholder="https://destination (optional)" />
+                    </label>
+                  ) : null}
+                  {selected.type === 'heading' ? (
+                    <div className="st-field">
+                      <span>Level</span>
+                      <div className="st-field-row">
+                        {([1, 2, 3] as const).map((level) => (
+                          <button key={level} type="button" className={`st-btn${selected.level === level ? ' st-btn--primary' : ''}`} style={{ height: 32, padding: '0 10px' }} onClick={() => patchBlock(selected.id, { level })} disabled={!canEditBlock(selected)}>H{level}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {selected.type === 'text' ? (
+                    <div className="st-field">
+                      <span>Size</span>
+                      <div className="st-field-row">
+                        {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
+                          <button key={size} type="button" className={`st-btn${selected.size === size ? ' st-btn--primary' : ''}`} style={{ height: 32, padding: '0 10px' }} onClick={() => patchBlock(selected.id, { size })} disabled={!canEditBlock(selected)}>{size.toUpperCase()}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {selected.type === 'shape' ? (
+                    <div className="st-field">
+                      <span>Shape</span>
+                      <select className="st-select" value={selected.shape} disabled={!canEditBlock(selected)} onChange={(event) => patchBlock(selected.id, { shape: event.target.value as ContentShapeKind })}>
+                        {CONTENT_SHAPE_KINDS.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
+                      </select>
+                    </div>
+                  ) : null}
+                  {selected.type !== 'image' ? (
+                    <div className="st-field">
+                      <span>Colour</span>
+                      <div className="st-field-row">
+                        <input type="color" value={selected.color ?? '#111111'} onChange={(event) => patchBlock(selected.id, { color: event.target.value })} disabled={!canEditBlock(selected)} aria-label="Block colour" />
+                        <button type="button" className="st-quiet-link" onClick={() => patchBlock(selected.id, { color: null })} disabled={!canEditBlock(selected) || !selected.color}>Use theme default</button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {selected.type === 'heading' || selected.type === 'text' ? (
+                    <div className="st-field">
+                      <span>Background</span>
+                      <div className="st-field-row">
+                        <input type="color" value={selected.bg ?? '#ffffff'} onChange={(event) => patchBlock(selected.id, { bg: event.target.value })} disabled={!canEditBlock(selected)} aria-label="Text background colour" />
+                        <button type="button" className="st-quiet-link" onClick={() => patchBlock(selected.id, { bg: null })} disabled={!canEditBlock(selected) || !selected.bg}>No background</button>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : inspectorTab === 'arrange' ? (
+                <>
+                  <span className="st-label">{BLOCK_LABEL[selected.type]} · arrange</span>
+                  <div className="st-field">
+                    <span>Alignment</span>
+                    <div className="st-field-row">
+                      {(['left', 'center', 'right'] as const).map((option) => (
+                        <button key={option} type="button" className={`st-btn${selected.align === option ? ' st-btn--primary' : ''}`} style={{ height: 32, padding: '0 10px' }} onClick={() => patchBlock(selected.id, { align: option })} disabled={!canEditBlock(selected)}>{option}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {selected.type === 'image' || selected.type === 'button' || selected.type === 'shape' ? (
+                    <label className="st-field">
+                      <span>Width · {selected.width ?? (selected.type === 'shape' ? 60 : 80)}%</span>
+                      <div className="st-field-row">
+                        <input type="range" className="st-range" min={20} max={100} step={5} value={selected.width ?? (selected.type === 'shape' ? 60 : 80)} style={{ ['--p' as string]: `${(((selected.width ?? (selected.type === 'shape' ? 60 : 80)) - 20) / 80) * 100}%` }} onChange={(event) => patchBlock(selected.id, { width: Number(event.target.value) })} disabled={!canEditBlock(selected)} />
+                        <input className="st-input" style={{ width: 72 }} type="number" min={20} max={100} value={selected.width ?? (selected.type === 'shape' ? 60 : 80)} onChange={(event) => patchBlock(selected.id, { width: Number(event.target.value) })} disabled={!canEditBlock(selected)} aria-label="Width percent" />
+                      </div>
+                    </label>
+                  ) : null}
+                  {selected.type === 'shape' ? (
+                    <label className="st-field">
+                      <span>Height · {selected.height}px</span>
+                      <div className="st-field-row">
+                        <input type="range" className="st-range" min={24} max={480} step={12} value={selected.height} style={{ ['--p' as string]: `${((selected.height - 24) / 456) * 100}%` }} onChange={(event) => patchBlock(selected.id, { height: Number(event.target.value) })} disabled={!canEditBlock(selected)} />
+                        <input className="st-input" style={{ width: 72 }} type="number" min={24} max={480} value={selected.height} onChange={(event) => patchBlock(selected.id, { height: Number(event.target.value) })} disabled={!canEditBlock(selected)} aria-label="Height pixels" />
+                      </div>
+                    </label>
+                  ) : null}
+                  <div className="st-field">
+                    <span>Order on page {activePageIndex + 1}</span>
+                    <div className="st-field-row">
+                      <button type="button" className="st-btn" style={{ height: 30 }} onClick={() => { const i = selectedIndex; if (i > 0) patchPage(activePageIndex, (current) => reorderBlocks(current, i, i - 1)); }} disabled={!canEditBlock(selected) || selectedIndex <= 0}>Move up</button>
+                      <button type="button" className="st-btn" style={{ height: 30 }} onClick={() => { const i = selectedIndex; const n = activePage?.blocks.length ?? 0; if (i > -1 && i < n - 1) patchPage(activePageIndex, (current) => reorderBlocks(current, i, i + 1)); }} disabled={!canEditBlock(selected) || selectedIndex >= (activePage?.blocks.length ?? 1) - 1}>Move down</button>
+                    </div>
+                  </div>
+                  <div className="st-field-row" style={{ marginTop: 4 }}>
+                    <button type="button" className="st-btn" style={{ height: 30 }} onClick={() => duplicateBlock(selected.id)} disabled={!canEditBlock(selected)}>Duplicate</button>
+                    <button type="button" className="st-icon st-danger-icon" style={{ width: 30, height: 30 }} onClick={() => removeBlock(selected.id)} disabled={!canEditBlock(selected)} aria-label="Remove block" title="Remove block"><Trash2 size={14} /></button>
+                    <button type="button" className="st-icon st-danger-icon" style={{ width: 30, height: 30 }} onClick={() => patchBlock(selected.id, { hidden: !selected.hidden })} aria-label={selected.hidden ? 'Show block' : 'Hide block'} title={selected.hidden ? 'Show' : 'Hide'}>{selected.hidden ? <EyeOff size={14} /> : <Eye size={14} />}</button>
+                    <button type="button" className="st-icon st-danger-icon" style={{ width: 30, height: 30 }} onClick={() => patchBlock(selected.id, { locked: !selected.locked })} aria-label={selected.locked ? 'Unlock block' : 'Lock block'} title={selected.locked ? 'Unlock' : 'Lock'}>{selected.locked ? <Lock size={14} /> : <Unlock size={14} />}</button>
+                  </div>
+                </>
+              ) : inspectorTab === 'brand' ? (
+                <>
+                  <span className="st-label">Brand palette</span>
+                  <div className="st-field-row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                    {brand.colors.map((color) => (
+                      <button key={color} type="button" style={{ width: 30, height: 30, borderRadius: 8, background: color, border: '1px solid var(--st-line-strong)', cursor: 'pointer' }} disabled={!canEditBlock(selected)} onClick={() => selected && patchBlock(selected.id, { color })} aria-label={`Apply ${color}`} title={`Apply ${color}`} />
+                    ))}
+                  </div>
+                  {brand.fonts.length ? (
+                    <div className="st-field">
+                      <span>Brand fonts</span>
+                      <div className="st-field-row" style={{ flexWrap: 'wrap', gap: 4 }}>
+                        {brand.fonts.slice(0, 4).map((font) => <span key={font} className="st-preview-tag">{font}</span>)}
+                      </div>
+                    </div>
+                  ) : null}
+                  <span className="st-label">Brand lint · {brandIssues.length} issue{brandIssues.length === 1 ? '' : 's'}</span>
+                  {brandIssues.slice(0, 6).map((issue: BrandLintIssue, index) => (
+                    <div key={`${issue.blockId}-${issue.kind}-${index}`} className="st-layer-row" style={{ gridTemplateColumns: 'minmax(0,1fr) auto', height: 'auto', padding: '6px 8px' }}>
+                      <span style={{ minWidth: 0 }}>
+                        <span className="st-layer-name">{issue.kind}</span>
+                        <span className="st-layer-summary">{issue.message}</span>
+                      </span>
+                      <button type="button" className="st-btn" style={{ height: 28, padding: '0 8px' }} onClick={() => patchBlock(issue.blockId, issue.patch)}>Fix</button>
+                    </div>
                   ))}
-                </div>
-              </div>
-
-              {selected.type === 'image' || selected.type === 'button' || selected.type === 'shape' ? (
-                <label className="editor-field">
-                  <span>Width · {selected.width ?? (selected.type === 'shape' ? 60 : 80)}%</span>
-                  <input type="range" min={20} max={100} step={5} value={selected.width ?? (selected.type === 'shape' ? 60 : 80)} onChange={(event) => patchBlock(selected.id, { width: Number(event.target.value) })} disabled={!canEdit} />
-                </label>
-              ) : null}
-
-              {selected.type === 'shape' ? (
-                <label className="editor-field">
-                  <span>Height · {selected.height}px</span>
-                  <input type="range" min={24} max={480} step={12} value={selected.height} onChange={(event) => patchBlock(selected.id, { height: Number(event.target.value) })} disabled={!canEdit} />
-                </label>
-              ) : null}
-
-              {selected.type !== 'image' ? (
-                <div className="editor-field">
-                  <span>{selected.type === 'shape' ? 'Fill colour' : 'Colour'}</span>
-                  <div className="editor-color-row">
-                    <input type="color" value={selected.color ?? '#111111'} onChange={(event) => patchBlock(selected.id, { color: event.target.value })} disabled={!canEdit} aria-label="Block colour" />
-                    <button type="button" className="chip" onClick={() => patchBlock(selected.id, { color: null })} disabled={!canEdit || !selected.color}>Use theme default</button>
-                  </div>
-                </div>
-              ) : null}
-
-              {selected.type === 'heading' || selected.type === 'text' ? (
-                <div className="editor-field">
-                  <span>Background</span>
-                  <div className="editor-color-row">
-                    <input type="color" value={selected.bg ?? '#ffffff'} onChange={(event) => patchBlock(selected.id, { bg: event.target.value })} disabled={!canEdit} aria-label="Background colour" />
-                    <button type="button" className="chip" onClick={() => patchBlock(selected.id, { bg: null })} disabled={!canEdit || !selected.bg}>No background</button>
-                  </div>
-                </div>
-              ) : null}
-
-              <button type="button" className="editor-remove" onClick={() => removeBlock(selected.id)} disabled={!canEdit}>
-                <Trash2 size={13} /> Remove block
-              </button>
-              <p className="editor-hint">Drag blocks on the canvas or in the layer list to reorder. Ctrl+Z undo · Ctrl+D duplicate · Del remove.</p>
+                </>
+              ) : (
+                <>
+                  <span className="st-label">AI</span>
+                  <p className="editor-hint">Select a block and ask AI to rewrite, shorten or restyle it — grounded in approved Brand Brain facts. <span className="st-preview-tag">Preview</span></p>
+                </>
+              )}
             </div>
-          )}
-        </aside>
+          </aside>
+        ) : null}
       </div>
+
+      {/* ---------- bottom bar ---------- */}
+      {!focusMode ? (
+        <div className="studio-bottombar">
+          <span className="studio-page-tabs" role="tablist" aria-label="Document pages">
+            {pages.map((page, index) => (
+              <button key={page.id} type="button" role="tab" aria-selected={index === activePageIndex} className={`studio-page-tab${index === activePageIndex ? ' is-active' : ''}`} onClick={() => { setActivePageIndex(index); setSelectedId(null); }}>
+                Page {index + 1}{page.blocks.length ? '' : ' ·'}
+              </button>
+            ))}
+            <button type="button" className="studio-page-tab is-add" onClick={() => { if (pages.length >= CONTENT_DOC_MAX_PAGES) return; const page = newPage(activePage?.size ?? 'a4'); commit([...pages, page]); setActivePageIndex(pages.length); setSelectedId(null); }} disabled={!canEdit || pages.length >= CONTENT_DOC_MAX_PAGES} title="Add a page">
+              <Plus size={11} /> Add page
+            </button>
+            {pages.length > 1 ? (
+              <button type="button" className="studio-page-tab is-danger" onClick={() => { if (!window.confirm(`Delete page ${activePageIndex + 1}? Its blocks are removed from the document.`)) return; commit(pages.filter((_, index) => index !== activePageIndex)); setActivePageIndex(0); setSelectedId(null); }} disabled={!canEdit} title="Delete this page">
+                <Trash2 size={11} />
+              </button>
+            ) : null}
+          </span>
+          <label className="editor-size-picker" title="Canvas size">
+            <span className="st-label">Size</span>
+            <select className="studio-select" value={activePage?.size ?? 'a4'} disabled={!canEdit || previewMode} onChange={(event) => { const size = event.target.value as ContentPageSizeId; commit(pages.map((page, index) => (index === activePageIndex ? { ...page, size } : page))); }}>
+              {CONTENT_PAGE_SIZE_IDS.map((id) => (
+                <option key={id} value={id}>{CONTENT_PAGE_SIZES[id].label}</option>
+              ))}
+            </select>
+          </label>
+          <span className="editor-zoom">
+            <button type="button" className="st-icon" onClick={() => { setManualZoom(zoom - 10); }} aria-label="Zoom out" disabled={zoom <= 20}><Minus size={13} /></button>
+            <span style={{ minWidth: 42, textAlign: 'center' }}>{zoom}%</span>
+            <button type="button" className="st-icon" onClick={() => { setManualZoom(zoom + 10); }} aria-label="Zoom in" disabled={zoom >= 300}><Plus size={13} /></button>
+            <button type="button" className="st-quiet-link" onClick={fitNow} title="Fit the page to the screen">Fit</button>
+          </span>
+          <span className="spacer" />
+          <button type="button" className={`st-btn${gridOn ? ' st-btn--primary' : ''}`} style={{ height: 32, padding: '0 10px' }} onClick={() => setGridOn((value) => !value)} aria-pressed={gridOn}>Grid</button>
+          <button type="button" className="st-btn" style={{ height: 32, padding: '0 10px' }} onClick={() => setFocusMode(true)} title="Focus mode (F)">Focus (F)</button>
+        </div>
+      ) : (
+        <button type="button" className="studio-exit-focus" onClick={() => setFocusMode(false)}>Exit focus (F)</button>
+      )}
+
+      {floatToolbar}
     </div>
   );
+
+  function canvasDrop(index: number, event: React.DragEvent) {
+    event.preventDefault();
+    if (dragIndex.current === null) return;
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const below = event.clientY > rect.top + rect.height / 2;
+    const from = dragIndex.current;
+    let to = index + (below ? 1 : 0);
+    if (from < to) to -= 1;
+    setDropTarget(null);
+    dragIndex.current = null;
+    if (from === to) return;
+    patchPage(activePageIndex, (current) => reorderBlocks(current, from, to));
+  }
 }

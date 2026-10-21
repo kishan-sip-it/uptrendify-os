@@ -131,7 +131,6 @@
 .editor-layer-label { font-size: 11px; font-weight: 750; color: var(--text); white-space: nowrap; }
 .editor-layer-summary { grid-column: 2 / -1; font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.editor-insert { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; padding-top: 9px; border-top: 1px solid var(--line); }
 .editor-insert-btn {
   display: grid;
   justify-items: center;
@@ -172,7 +171,6 @@
 .editor-shape-swatch.is-star { clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
 .editor-shape-swatch.is-pyramid { clip-path: polygon(50% 0, 88% 78%, 88% 100%, 12% 100%, 12% 78%); }
 
-.editor-insert-note { color: var(--muted); font-size: 10px; margin: 0; }
 
 .editor-canvas {
   border: 1px solid var(--line);
@@ -289,44 +287,6 @@ div[class*="level-1"] { font-weight: 800; }
 .editor-canvas-page .content-doc-heading.editor-level-3 { font-size: 19px; font-weight: 700; }
 
 /* Floating selection toolbar (UpTrendifyOS style: dark pill, corner ticks on the block). */
-.editor-float-toolbar {
-  position: absolute;
-  top: -40px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 4px 6px;
-  border-radius: 10px;
-  background: var(--surface-elevated, #171e2a);
-  border: 1px solid var(--line);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
-  z-index: 30;
-  white-space: nowrap;
-}
-.editor-float-toolbar button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 26px;
-  height: 26px;
-  padding: 0 6px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 750;
-  cursor: pointer;
-}
-.editor-float-toolbar button:hover:not(:disabled) { color: var(--text); background: color-mix(in srgb, var(--accent) 16%, transparent); }
-.editor-float-toolbar button.is-on { color: var(--accent-contrast, #fff); background: var(--accent); }
-.editor-float-toolbar button.is-danger:hover:not(:disabled) { color: var(--status-danger, #f87171); background: color-mix(in srgb, var(--status-danger, #dc2626) 16%, transparent); }
-.editor-float-group { display: inline-flex; gap: 2px; padding-right: 5px; margin-right: 3px; border-right: 1px solid var(--line); }
-.editor-float-group:last-of-type { border-right: 0; }
-.editor-float-meta { color: var(--muted); font-size: 10px; font-weight: 700; padding: 0 4px; }
 
 /* Selection = accent outline + corner ticks (deliberately not a rounded halo). */
 .editor-block { position: relative; }
@@ -400,7 +360,7 @@ div[class*="level-1"] { font-weight: 800; }
 .editor-canvas .content-doc-heading .editor-canvas-text.is-empty::before { content: 'Empty heading — click to write.'; }
 
 .editor-size-picker { display: inline-flex; align-items: center; gap: 6px; }
-.editor-size-picker > span { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: 0.05em; }
+.editor-size-picker > span { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0.05em; }
 .editor-size-picker select {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -411,3 +371,19 @@ div[class*="level-1"] { font-weight: 800; }
   padding: 5px 7px;
   cursor: pointer;
 }
+
+/* Studio free canvas */
+.editor-free-block { position: absolute; }
+.editor-free-block.is-selected { outline: 2px solid var(--accent); outline-offset: 2px; }
+.editor-free-block .editor-canvas-text.is-empty { min-height: 20px; }
+.st-free-handle { position: absolute; width: 12px; height: 12px; border-radius: 2px; background: #fff; border: 2px solid var(--st-accent); z-index: 5; }
+.st-free-handle:hover { transform: scale(1.2); }
+.st-handle-n { top: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
+.st-handle-s { bottom: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
+.st-handle-e { right: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
+.st-handle-w { left: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
+.st-handle-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+.st-handle-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+.st-handle-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+.st-handle-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.studio-page-bg-controls { display: grid; gap: 6px; }

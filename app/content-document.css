@@ -84,3 +84,9 @@
 .content-doc-shape-item.is-triangle { clip-path: polygon(50% 0, 100% 100%, 0 100%); height: 140px; }
 .content-doc-shape-item.is-star { clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); aspect-ratio: 1; width: 150px !important; }
 .content-doc-shape-item.is-pyramid { clip-path: polygon(50% 0, 88% 78%, 88% 100%, 12% 100%, 12% 78%); height: 150px; }
+
+/* Free canvas mode: absolute blocks on a fixed-size sheet. */
+.content-doc.is-free { position: relative; overflow: hidden; }
+.content-doc.is-free .content-doc-page { display: block; min-height: 100%; }
+.content-doc-bgimage { position: absolute; inset: 0; overflow: hidden; }
+.content-doc-bgimage img { width: 100%; height: 100%; object-fit: cover; }
