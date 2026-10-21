@@ -980,6 +980,50 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, previewMode, pages, activePageIndex, history, historyIndex, focusMode]);
 
+  // Override browser-level Ctrl/⌘ +/- only while the pointer is over the canvas.
+  // Keep zoom anchored at the pointer so the design does not jump around.
+  useEffect(() => {
+    const onCanvasZoomShortcut = (event: KeyboardEvent) => {
+      const stage = stageRef.current;
+      if (!stage || !stage.matches(':hover') || !(event.ctrlKey || event.metaKey)) return;
+
+      const zoomIn = event.key === '+' || event.key === '=' || event.code === 'NumpadAdd';
+      const zoomOut = event.key === '-' || event.key === '_' || event.code === 'NumpadSubtract';
+      const zoomReset = event.key === '0' || event.code === 'Numpad0';
+      if (!zoomIn && !zoomOut && !zoomReset) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (zoomReset) {
+        manualZoomRef.current = false;
+        setZoomManual(false);
+        refit();
+        return;
+      }
+
+      const nextZoom = Math.max(20, Math.min(300, zoom + (zoomIn ? 10 : -10)));
+      if (nextZoom === zoom) return;
+      const rect = stage.getBoundingClientRect();
+      const cx = Math.max(0, Math.min(rect.width, stagePointerRef.current.x - rect.left));
+      const cy = Math.max(0, Math.min(rect.height, stagePointerRef.current.y - rect.top));
+      const oldScale = zoom / 100;
+      const nextScale = nextZoom / 100;
+      const nextOffset = {
+        x: cx - (cx - offsetRef.current.x) * (nextScale / oldScale),
+        y: cy - (cy - offsetRef.current.y) * (nextScale / oldScale),
+      };
+
+      manualZoomRef.current = true;
+      setZoomManual(true);
+      setZoom(nextZoom);
+      offsetRef.current = nextOffset;
+      setOffset(nextOffset);
+    };
+
+    document.addEventListener('keydown', onCanvasZoomShortcut, true);
+    return () => document.removeEventListener('keydown', onCanvasZoomShortcut, true);
+  }, [zoom, refit]);
+
   const dockItems = [
     { id: 'layers' as const, label: 'Layers', icon: Layers },
     { id: 'insert' as const, label: 'Insert', icon: Plus },
