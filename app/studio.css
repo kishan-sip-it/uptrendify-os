@@ -248,6 +248,10 @@
   background: color-mix(in srgb, var(--st-accent) 14%, var(--st-panel));
   color: var(--st-text);
 }
+.studio-drawer-placeholder {
+  min-width: 0;
+  min-height: 0;
+}
 .studio-drawer,
 .studio-inspector {
   display: flex;
@@ -471,6 +475,14 @@
   color: #202635;
   box-shadow: 0 18px 60px rgba(0, 0, 0, .28), 0 2px 6px rgba(0, 0, 0, .12);
   cursor: default;
+}
+/* Keep the page label outside the clipped sheet, but clip design elements
+   to the paper bounds just like a typical visual canvas editor. */
+.studio-page-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 2px;
 }
 .studio-page-label {
   position: absolute;
@@ -709,6 +721,7 @@
   .studio-stage { min-height: 640px; }
 }
 @media (max-width: 760px) {
+  .studio-drawer-placeholder { display: none; }
   .studio { gap: 8px; }
   .studio-topbar { border-radius: 10px; padding: 7px; }
   .studio-title-input { order: 2; flex: 1 1 calc(100% - 46px); max-width: none; }
