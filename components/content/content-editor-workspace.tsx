@@ -40,7 +40,6 @@ import {
   CONTENT_PAGE_SIZES,
   CONTENT_PAGE_SIZE_IDS,
   CONTENT_SHAPE_KINDS,
-  contentBodyToPlainText,
   createDocumentFromText,
   defaultPageSizeForType,
   newBlockId,
@@ -56,10 +55,10 @@ import {
 } from '@/lib/content/document';
 import { ContentDocumentView } from '@/components/content/content-document-view';
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
-import { storyboardPagesFromScript, estimateSeconds } from '@/lib/content/parse-script';
+import { storyboardPagesFromScript } from '@/lib/content/parse-script';
 import { lintBlocks, healthScore, channelLimit, type BrandLintIssue } from '@/lib/studio/brand-lint';
 import { reflowPage, resolveBlockText } from '@/lib/content/document';
-import { Clapperboard, Film } from 'lucide-react';
+import { Clapperboard } from 'lucide-react';
 
 /**
  * UpTrendifyOS Studio — full-bleed visual editor.
@@ -376,6 +375,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: CanvasGeometry; next: CanvasGeometry } | null>(null);
   const saveInFlight = useRef(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const stagePointerRef = useRef({ x: 0, y: 0 });
   const frameRef = useRef<HTMLDivElement | null>(null);
   const manualZoomRef = useRef(false);
   const offsetRef = useRef({ x: 0, y: 0 });
@@ -1370,11 +1370,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             </div>
           </aside>
         ) : null}
+        {!drawerOpen && !focusMode ? <div className="studio-drawer-placeholder" aria-hidden="true" /> : null}
 
         {/* ---------- stage ---------- */}
         <div
           className={`studio-stage${gridOn ? '' : ' no-grid'}`}
           ref={stageRef}
+          onPointerEnter={(event) => { stagePointerRef.current = { x: event.clientX, y: event.clientY }; }}
           onPointerDown={(event) => {
             const pan = event.button === 1 || spaceHeld.current || event.target === event.currentTarget;
             if (!pan) return;
@@ -1382,6 +1384,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
           }}
           onPointerMove={(event) => {
+            stagePointerRef.current = { x: event.clientX, y: event.clientY };
             const pan = panRef.current;
             if (!pan || !frameRef.current) return;
             const next = { x: pan.ox + (event.clientX - pan.x), y: pan.oy + (event.clientY - pan.y) };
@@ -1445,6 +1448,10 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               {isStoryboard ? <Clapperboard size={11} /> : null}
               {activePage?.size === 'story' ? 'Story 9:16 · 760×1351' : activePage?.size === 'square' ? 'Square · 760×760' : activePage?.size === 'letter' ? 'US Letter · 816×1056' : 'A4 · 794×1123'}
             </span>
+            <div
+              className="studio-page-clip"
+              onClick={(event) => { if (event.target === event.currentTarget) setSelectedId(null); }}
+            >
             {isStoryboard && activePage?.note ? (
               <span className="studio-director-chip" title="Director's note from the script">
                 <Clapperboard size={11} /> {activePage.note}
@@ -1591,29 +1598,8 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                   );
                 })
             )}
-
-        </div>
-          {isStoryboard ? (
-            <div className="studio-filmstrip" aria-label="Storyboard beats">
-              <span className="studio-filmstrip-meta">
-                <Film size={12} /> {pages.length} beat{pages.length === 1 ? '' : 's'} · est. {pages.reduce((total, page) => total + estimateSeconds(contentBodyToPlainText(serializeContentDocument({ kind: 'uptrendify-doc', version: 1, pages: [page] }))), 0)}s
-              </span>
-              {pages.map((page, index) => (
-                <button
-                  key={page.id}
-                  type="button"
-                  className={`studio-filmstrip-thumb${index === activePageIndex ? ' is-active' : ''}`}
-                  onClick={() => { setActivePageIndex(index); setSelectedId(null); }}
-                >
-                  <span className="studio-filmstrip-num">{index + 1}</span>
-                  <span className="studio-filmstrip-copy">
-                    <span>{contentBodyToPlainText(serializeContentDocument({ kind: 'uptrendify-doc', version: 1, pages: [page] })).split('\n')[0]?.slice(0, 34) || `Beat ${index + 1}`}</span>
-                    <span className="st-label">est. {estimateSeconds(contentBodyToPlainText(serializeContentDocument({ kind: 'uptrendify-doc', version: 1, pages: [page] })))}s</span>
-                  </span>
-                </button>
-              ))}
             </div>
-          ) : null}
+          </div>
         </div>
 
         {/* ---------- inspector ---------- */}
