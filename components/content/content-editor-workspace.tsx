@@ -1696,7 +1696,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           >
             <span className="studio-page-label">
               {isStoryboard ? <Clapperboard size={11} /> : null}
-              {activePage?.size === 'story' ? 'Story 9:16 · 760×1351' : activePage?.size === 'square' ? 'Square · 760×760' : activePage?.size === 'letter' ? 'US Letter · 816×1056' : 'A4 · 794×1123'}
+              {CONTENT_PAGE_SIZES[activePage?.size ?? 'a4'].label + ' · ' + CONTENT_PAGE_SIZES[activePage?.size ?? 'a4'].width + '×' + CONTENT_PAGE_SIZES[activePage?.size ?? 'a4'].height}
             </span>
             <div
               className="studio-page-clip"
@@ -2039,12 +2039,19 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     </div>
                   ) : null}
                   {selected.type === 'shape' ? (
-                    <div className="st-field">
-                      <span>Shape</span>
-                      <select className="st-select" value={selected.shape} disabled={!canEditBlock(selected)} onChange={(event) => patchBlock(selected.id, { shape: event.target.value as ContentShapeKind })}>
-                        {CONTENT_SHAPE_KINDS.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
-                      </select>
-                    </div>
+                    selected.svgPath ? (
+                      <div className="st-field">
+                        <span>Imported vector shape</span>
+                        <p className="editor-hint">This source vector stays as its own layer. Resize it on the canvas, change its colour, opacity, and layer order.</p>
+                      </div>
+                    ) : (
+                      <div className="st-field">
+                        <span>Shape</span>
+                        <select className="st-select" value={selected.shape} disabled={!canEditBlock(selected)} onChange={(event) => patchBlock(selected.id, { shape: event.target.value as ContentShapeKind })}>
+                          {CONTENT_SHAPE_KINDS.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
+                        </select>
+                      </div>
+                    )
                   ) : null}
                   {selected.type !== 'image' ? (
                     <div className="st-field">
