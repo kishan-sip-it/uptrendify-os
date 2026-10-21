@@ -44,7 +44,17 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
           {pageIndex > 0 ? <div className="content-doc-page-break">Page {pageIndex + 1}</div> : null}
           {page.blocks.length === 0 && doc.mode !== 'free' ? <p className="content-doc-page-empty">Empty page</p> : null}
           {page.blocks.filter((block) => !block.hidden).map((block) => {
-            const geoStyle = doc.mode === 'free' && block.geometry ? { position: 'absolute' as const, left: block.geometry.x, top: block.geometry.y, width: block.geometry.w, height: block.geometry.h, transform: block.geometry.rotation ? `rotate(${block.geometry.rotation}deg)` : undefined } : {};
+            const geoStyle = {
+              ...(doc.mode === 'free' && block.geometry ? {
+                position: 'absolute' as const,
+                left: block.geometry.x,
+                top: block.geometry.y,
+                width: block.geometry.w,
+                height: block.geometry.h,
+                transform: block.geometry.rotation ? `rotate(${block.geometry.rotation}deg)` : undefined,
+              } : {}),
+              opacity: block.opacity ?? 1,
+            };
             if (block.type === 'heading') {
               const Tag = (block.level === 1 ? 'h1' : block.level === 3 ? 'h3' : 'h2') as 'h1' | 'h2' | 'h3';
               return (
