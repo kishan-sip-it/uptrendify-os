@@ -123,7 +123,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     return NextResponse.json({ ok: true, status: transitionRow.status, reviewId: transitionRow.review_id });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid review request' }, { status: 400 });
-    obs.error('Content review failed', { error: error instanceof Error ? error.message : String(error) });
+    // Supabase throws plain PostgrestError objects; String() would log
+    // "[object Object]" and hide the failing operation (this hid a missing
+    // apply_content_review_transition migration), so stringify non-Error throws.
+    const message = error instanceof Error ? error.message
+      : error && typeof error === 'object' ? JSON.stringify(error)
+      : String(error);
+    obs.error('Content review failed', { error: message });
     return NextResponse.json({ error: 'Could not update content status' }, { status: 500 });
   }
 }

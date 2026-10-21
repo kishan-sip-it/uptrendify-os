@@ -17,6 +17,11 @@ const updateSchema = contentItemInputSchema.partial().extend({
   clientId: z.string().uuid().nullish(),
 });
 
+// Body edits create a new version, so they are only allowed while the content
+// is in a creator-owned state. During review/approval/publishing the pinned
+// version must stay exactly what the approver saw when it was submitted.
+import { EDITABLE_BODY_STATUSES } from '@/lib/content/edit-policy';
+
 async function loadItem(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   args: { brandId: string; contentId: string; organizationId: string },
@@ -201,6 +206,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
     if (!item) return NextResponse.json({ error: 'Content not found' }, { status: 404 });
 
     if (Object.keys(body).length === 0) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+
+    if (body.body !== undefined && !EDITABLE_BODY_STATUSES.includes(String(item.status))) {
+      return NextResponse.json(
+        { error: `The content body is locked while its status is ${item.status}. Return it to draft (or resubmit flow) before editing the reviewed version.` },
+        { status: 409 },
+      );
+    }
 
     if (body.clientId !== undefined) {
       const brandContext = await supabase.from('brands').select('client_id').eq('id', brandId).eq('organization_id', auth.context.organizationId).maybeSingle();

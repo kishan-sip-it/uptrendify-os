@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyPrimaryColorToDraft, buildCreatePatchPayload, buildReviewDraft } from './review-draft';
-import { toVisualIdentity } from './identity-mapping';
+import { parseVisualIdentity } from './identity-mapping';
 import type { ReviewDraftSource } from './review-draft';
 
 const SCAN: ReviewDraftSource = {
@@ -15,9 +15,9 @@ const SCAN: ReviewDraftSource = {
   aiProfile: {
     products: ['Kandji MDM'],
     services: [],
-    keyFeatures: [],
-    benefits: [],
-    pricingSignals: [],
+    keyFeatures: ['Unified dashboard'],
+    benefits: ['Less manual work'],
+    pricingSignals: ['Per-device pricing'],
     audience: 'IT teams',
     personas: [{ name: 'IT admin', description: 'Runs device fleets' }],
     customerTypes: ['Enterprise'],
@@ -137,13 +137,25 @@ describe('buildCreatePatchPayload', () => {
     expect(rows.find((row) => row.hex === '#0143fe')).toBeUndefined();
   });
 
-  it('round-trips the visual identity through the saved-profile parser', () => {
+  it('round-trips the actual saved visual identity through the production parser', () => {
+    // The saved Brand Profile reads visual_identity through parseVisualIdentity;
+    // feed it the payload buildCreatePatchPayload actually produced (not a
+    // reconstructed object) and assert the reviewed values survive verbatim.
     const patch = buildCreatePatchPayload(draftOf(SCAN), SCAN as never);
-    const visual = patch.visualIdentity as Record<string, unknown>;
-    // The saved Brand Profile parses visual_identity with parseVisualIdentity;
-    // reviewed palette rows and fonts must survive that parse untouched.
-    const reparsed = toVisualIdentity({ ...(SCAN as unknown as import('./visual-extraction').ExtractedIdentity), palette: SCAN.palette, aiProfile: SCAN.aiProfile }, {});
-    expect(reparsed.palette).toHaveLength(SCAN.palette.length);
+    const saved = parseVisualIdentity((patch.visualIdentity as Record<string, unknown>));
+
+    expect(saved.palette.map((row) => [row.hex, row.role, row.occurrences, row.sources]))
+      .toEqual([
+        ['#0143fe', 'primary', 12, ['external-stylesheet']],
+        ['#4bd783', 'secondary', 4, ['external-stylesheet']],
+        ['#ffffff', 'neutral', 30, ['css-color-declaration']],
+      ]);
+    expect(saved.headingFont).toBe('Inter');
+    expect(saved.fonts.map((font) => font.family)).toEqual(['Inter']);
+    expect(saved.aiProfile?.products).toEqual(['Kandji MDM']);
+    expect(saved.aiProfile?.businessModel).toBe('SaaS');
+    // The SCAN fixture carries no logo, so the saved payload has none either.
+    expect(saved.logoUrl).toBeNull();
   });
 });
 
@@ -182,5 +194,29 @@ describe('secondaryColors schema cap', () => {
     expect(patch.secondaryColors).toHaveLength(8);
     const visual = patch.visualIdentity as Record<string, unknown>;
     expect(((visual.palette) as unknown[])).toHaveLength(10);
+  });
+});
+
+describe('scanned offer enrichment survives the review draft', () => {
+  it('keeps scanned keyFeatures, benefits and pricingSignals in the draft and the create payload', () => {
+    // Regression: buildReviewDraft previously hardcoded these to [] and
+    // discarded what the website scan enrichment had found under offerDetails.
+    const draft = draftOf(SCAN);
+    expect(draft.keyFeatures).toEqual(['Unified dashboard']);
+    expect(draft.benefits).toEqual(['Less manual work']);
+    expect(draft.pricingSignals).toEqual(['Per-device pricing']);
+
+    const patch = buildCreatePatchPayload(draft, SCAN as never);
+    const offer = patch.offerDetails as Record<string, unknown>;
+    expect(offer.keyFeatures).toEqual(['Unified dashboard']);
+    expect(offer.benefits).toEqual(['Less manual work']);
+    expect(offer.pricingSignals).toEqual(['Per-device pricing']);
+  });
+
+  it('tolerates a scan without the optional enrichment fields', () => {
+    const draft = draftOf({ ...SCAN, aiProfile: null });
+    expect(draft.keyFeatures).toEqual([]);
+    expect(draft.benefits).toEqual([]);
+    expect(draft.pricingSignals).toEqual([]);
   });
 });

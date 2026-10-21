@@ -6,7 +6,12 @@ import { Activity, ArrowDownRight, BrainCircuit, Globe2, Layers3, Sparkles, Work
 type ThemeName = 'light' | 'dark';
 
 function readTheme(): ThemeName {
-  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  const applied = document.documentElement.dataset.theme;
+  if (applied === 'dark') return 'dark';
+  // System resolves through the OS media query (same rule the CSS uses for
+  // html[data-theme="system"]).
+  if (applied === 'system') return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return 'light';
 }
 
 export default function ThemeHeroVideo() {
@@ -25,6 +30,12 @@ export default function ThemeHeroVideo() {
     const observer = new MutationObserver(() => setTheme(readTheme()));
     observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
 
+    // While System is active the applied theme follows the OS without
+    // data-theme changing, so track the media query directly too.
+    const systemQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const onSystemChange = () => setTheme(readTheme());
+    systemQuery.addEventListener('change', onSystemChange);
+
     const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const updateMotion = () => setReducedMotion(motionQuery.matches);
     updateMotion();
@@ -32,6 +43,7 @@ export default function ThemeHeroVideo() {
 
     return () => {
       observer.disconnect();
+      systemQuery.removeEventListener('change', onSystemChange);
       motionQuery.removeEventListener('change', updateMotion);
     };
   }, []);

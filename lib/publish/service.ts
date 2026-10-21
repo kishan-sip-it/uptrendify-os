@@ -1,3 +1,4 @@
+import { contentBodyToPlainText } from '@/lib/content/document';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { CONTENT_CHANNEL_VALUES } from '@/lib/content/schema';
 import { PUBLISH_ERROR_CODES, type PublishOutcome } from '@/lib/publish/schema';
@@ -214,7 +215,10 @@ export async function publishContent(
 
   let outcome: PublishOutcome;
   try {
-    outcome = await connector.publish({ channel, headline: version.headline ?? '', body: version.body ?? '' });
+    // Channels are text-only today: the canonical saved document stays in
+    // content_versions.body; connectors receive an explicit plain-text
+    // conversion (lib/content/document.ts) rather than raw JSON.
+    outcome = await connector.publish({ channel, headline: version.headline ?? '', body: contentBodyToPlainText(version.body ?? '') });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     outcome = {

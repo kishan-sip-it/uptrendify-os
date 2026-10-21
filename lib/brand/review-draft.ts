@@ -86,9 +86,11 @@ export function buildReviewDraft(identity: ReviewDraftSource): ReviewDraft {
     geography: ai?.geography ?? null,
     products: ai?.products ?? [],
     services: ai?.services ?? [],
-    keyFeatures: [],
-    benefits: [],
-    pricingSignals: [],
+    // Scan enrichment supplies these under offerDetails; the review form must
+    // preserve them so creation persists what the scan actually found.
+    keyFeatures: ai?.keyFeatures ?? [],
+    benefits: ai?.benefits ?? [],
+    pricingSignals: ai?.pricingSignals ?? [],
     productCategories: ai?.productCategories ?? [],
     callsToAction: ai?.callsToAction ?? [],
     painPoints: ai?.painPoints ?? [],
