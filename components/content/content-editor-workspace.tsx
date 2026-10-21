@@ -840,25 +840,21 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const importTemplateFile = async (file: File) => {
     if (file.size <= 0 || file.size > 5 * 1024 * 1024) {
       setError('Template files must be 5 MB or smaller.');
+      if (templateFileInputRef.current) templateFileInputRef.current.value = '';
       return;
     }
     const name = file.name.toLowerCase();
-    setIsImportingTemplate(true);
-    setError(null);
     try {
       if (name.endsWith('.json') || file.type === 'application/json') {
-        const raw = await file.text();
-        await importNativeDocument(raw);
+        await importNativeDocument(await file.text());
       } else if (name.endsWith('.svg') || file.type === 'image/svg+xml') {
-        const raw = await file.text();
-        await importSvgMarkup(raw);
+        await importSvgMarkup(await file.text());
       } else {
         setError('Use a Canva SVG export for editable layers, or a native UpTrendifyOS Studio JSON file. PNG/JPG files are flattened images and do not contain recoverable original layers.');
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Template import failed.');
     } finally {
-      setIsImportingTemplate(false);
       if (templateFileInputRef.current) templateFileInputRef.current.value = '';
     }
   };
@@ -1396,6 +1392,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       ref={studioRootRef}
       className={`studio${focusMode ? ' is-focus' : ''}`}
       style={!focusMode && studioHeight !== null ? { height: studioHeight } : undefined}
+      onPaste={handleTemplatePaste}
     >
       {/* ---------- top bar ---------- */}
       <div className="studio-topbar">
@@ -1525,6 +1522,23 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
 
               {dockTab === 'insert' ? (
                 <>
+                  <span className="st-label">Import editable template</span>
+                  <label className="st-field">
+                    <span>Canva SVG export or Studio JSON · max 5 MB</span>
+                    <input
+                      ref={templateFileInputRef}
+                      className="st-input"
+                      type="file"
+                      accept=".svg,image/svg+xml,.json,application/json"
+                      disabled={!canEdit || isImportingTemplate || isUploadingImage}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+                        if (file) void importTemplateFile(file);
+                      }}
+                    />
+                  </label>
+                  <p className="editor-hint">SVG imports detect separate text, vector shapes and images. You can also paste SVG markup onto the canvas. Text outlined by Canva remains a vector shape. PNG/JPG and flattened PDF exports do not expose original layers.</p>
+                  {isImportingTemplate ? <p className="editor-hint" role="status">Detecting template layers and importing embedded images…</p> : null}
                   <span className="st-label">Add image</span>
                   <label className="st-field">
                     <span>Upload from device · PNG/JPG/WEBP, max 2 MB</span>
