@@ -1,8 +1,12 @@
 import { z } from 'zod';
 
-// Keep structured strategy generation within the configured on-demand TPM
-// envelope while leaving room for input context and a bounded repair attempt.
-export const STRATEGY_MAX_TOKENS = 3072;
+// The strategy schema requires 14 top-level groups of JSON. A 3072-token cap
+// truncated the tail of the output (kpis and risksAndGaps were reported
+// missing and Gemini rejected the cut JSON with failed_generation), and the
+// repair attempt reused the same cap so it truncated the same way. 6144 fits
+// the complete schema; provider TPM limits are already handled transiently by
+// withTransientRetry.
+export const STRATEGY_MAX_TOKENS = 6144;
 export const STRATEGY_OBJECTIVES_MIN = 3;
 export const STRATEGY_OBJECTIVES_MAX = 5;
 export const STRATEGY_ASSUMPTIONS_MAX = 25;

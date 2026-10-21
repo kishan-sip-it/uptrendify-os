@@ -2,6 +2,8 @@
 
 import { X, Send, Sparkles } from 'lucide-react';
 import { channelLabel, contentTypeLabel } from '@/lib/content/schema';
+import { contentBodyToPlainText, parseContentBody } from '@/lib/content/document';
+import { ContentDocumentView } from '@/components/content/content-document-view';
 
 type PreviewItem = {
   brandName: string | null;
@@ -26,7 +28,9 @@ function safeColor(value: string | null | undefined, fallback: string) {
 }
 
 function splitBody(body: string) {
-  return body
+  // Editor documents (lib/content/document.ts) flatten to plain text first;
+  // legacy bodies split unchanged.
+  return contentBodyToPlainText(body)
     .split(/\n{2,}/)
     .map((part) => part.trim())
     .filter(Boolean);
@@ -221,6 +225,7 @@ export function PublishPreview({
   const primary = safeColor(item.brandStyle?.primaryColor, '#8b7cff');
   const secondary = safeColor(item.brandStyle?.secondaryColors?.[0], '#d946ef');
   const body = item.currentVersion?.body ?? '';
+  const isDocument = parseContentBody(body) !== null;
   const paragraphs = splitBody(body);
   const channel = item.channel ?? 'selected channel';
   const textOnPrimary = contrastText(primary);
@@ -358,7 +363,7 @@ export function PublishPreview({
                       >
                         {headline}
                       </h3>
-                      {paragraphs.slice(0, 5).map((paragraph, index) => (
+                      {isDocument ? <ContentDocumentView body={body} linkedValues={{ title: item.title, cta: item.currentVersion?.cta ?? null }} /> : paragraphs.slice(0, 5).map((paragraph, index) => (
                         <p key={index} style={{ lineHeight: 1.65, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
                           {paragraph}
                         </p>
@@ -402,7 +407,7 @@ export function PublishPreview({
                       >
                         {headline}
                       </h3>
-                      {paragraphs.slice(0, 6).map((paragraph, index) => (
+                      {isDocument ? <ContentDocumentView body={body} linkedValues={{ title: item.title, cta: item.currentVersion?.cta ?? null }} /> : paragraphs.slice(0, 6).map((paragraph, index) => (
                         <p key={index} style={{ lineHeight: 1.65, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
                           {paragraph}
                         </p>
@@ -473,11 +478,8 @@ export function PublishPreview({
                       >
                         {headline}
                       </h3>
-                      {paragraphs.slice(0, 8).map((paragraph, index) => (
-                        <p
-                          key={index}
-                          style={{ lineHeight: 1.6, margin: '0 0 12px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
-                        >
+                      {isDocument ? <ContentDocumentView body={body} linkedValues={{ title: item.title, cta: item.currentVersion?.cta ?? null }} /> : paragraphs.slice(0, 8).map((paragraph, index) => (
+                        <p key={index} style={{ lineHeight: 1.65, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
                           {paragraph}
                         </p>
                       ))}
