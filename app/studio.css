@@ -776,3 +776,93 @@
 @media (prefers-reduced-motion: reduce) {
   .studio * { transition: none !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+
+/* Free-canvas drag must retain pointer events after the block moves beneath
+   the cursor. Keep editable text wrapping inside its own element bounds. */
+.editor-free-block,
+.editor-block,
+.editor-drop-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+.editor-canvas-text,
+.editor-inline-edit {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.editor-inline-edit {
+  display: block;
+  width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.editor-free-block > .content-doc-heading,
+.editor-free-block > .content-doc-text {
+  display: block;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.editor-free-block .editor-canvas-text {
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+.editor-block .content-doc-heading,
+.editor-block .content-doc-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* The storyboard strip is a dock in the stage, never a child of the paper. */
+.studio-filmstrip {
+  position: absolute;
+  z-index: 80;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  max-height: 92px;
+  min-height: 58px;
+  padding: 6px;
+  border-color: var(--st-line-strong);
+  background: color-mix(in srgb, var(--st-panel) 96%, transparent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
+  backdrop-filter: blur(12px);
+}
+.studio-filmstrip-meta {
+  flex-basis: 96px;
+  min-width: 82px;
+}
+.studio-filmstrip-thumb {
+  flex-basis: 112px;
+  min-height: 44px;
+  padding: 5px 7px;
+}
+.studio-filmstrip-copy {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+@media (max-width: 760px) {
+  .studio-filmstrip {
+    right: 6px;
+    bottom: 6px;
+    left: 6px;
+    max-height: 82px;
+    gap: 5px;
+  }
+}
