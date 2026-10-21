@@ -1051,7 +1051,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       case 'text':
         return (
           <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} editOnDoubleClick={freeMode} />
+            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
           </div>
         );
       case 'image':
@@ -1520,12 +1520,12 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     >
                       {block.type === 'heading' ? (
                         <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} editOnDoubleClick={freeMode} />
+                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
                         </div>
                       ) : null}
                       {block.type === 'text' ? (
                         <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} editOnDoubleClick={freeMode} />
+                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
                         </div>
                       ) : null}
                       {block.type === 'image' ? (
