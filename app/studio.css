@@ -443,6 +443,7 @@
   min-width: 0;
   min-height: 620px;
   overflow: hidden;
+  overscroll-behavior: contain;
   border: 1px solid var(--st-line-strong);
   border-radius: 12px;
   background-color: var(--st-bg);
