@@ -106,10 +106,30 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
             if (block.type === 'shape') {
               return (
                 <div key={block.id} className={`content-doc-shape align-${block.align}`} style={geoStyle}>
-                  <span
-                    className={`content-doc-shape-item is-${block.shape}`}
-                    style={{ background: block.color ?? 'var(--accent)', width: '100%', height: '100%' }}
-                  />
+                  {block.svgPath && block.svgBounds && block.svgMatrix ? (
+                    <svg
+                      width="100%"
+                      height="100%"
+                      viewBox={"0 0 " + block.svgBounds.w + " " + block.svgBounds.h}
+                      preserveAspectRatio="none"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d={block.svgPath}
+                        transform={"translate(" + (-block.svgBounds.x) + " " + (-block.svgBounds.y) + ") matrix(" + block.svgMatrix.a + " " + block.svgMatrix.b + " " + block.svgMatrix.c + " " + block.svgMatrix.d + " " + block.svgMatrix.e + " " + block.svgMatrix.f + ")"}
+                        fill={block.svgFillNone ? 'none' : (block.color ?? 'var(--accent)')}
+                        stroke={block.svgFillNone ? (block.color ?? block.svgStroke ?? 'none') : (block.svgStroke ?? 'none')}
+                        strokeWidth={block.svgStrokeWidth ?? 1}
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  ) : (
+                    <span
+                      className={`content-doc-shape-item is-${block.shape}`}
+                      style={{ background: block.color ?? 'var(--accent)', width: '100%', height: '100%' }}
+                    />
+                  )}
                 </div>
               );
             }
