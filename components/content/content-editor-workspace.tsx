@@ -1120,7 +1120,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       if (!drag || drag.id !== block.id) return;
                       const dx = (event.clientX - drag.startX) / (zoom / 100);
                       const dy = (event.clientY - drag.startY) / (zoom / 100);
-                      const el = frameRef.current?.querySelector(`[data-bid="${block.id}"]`);
+                      const el = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${block.id}"]`);
                       if (el) { el.style.left = `${Math.round(drag.origin.x + dx)}px`; el.style.top = `${Math.round(drag.origin.y + dy)}px`; }
                     }}
                     onPointerUp={(event) => {
