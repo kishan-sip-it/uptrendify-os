@@ -31,6 +31,8 @@ export const CONTENT_PAGE_SIZES = {
   letter: { label: 'US Letter', width: 816, height: 1056 },
   square: { label: 'Square post', width: 760, height: 760 },
   story: { label: 'Story 9:16', width: 760, height: 1351 },
+  landscape: { label: 'A4 landscape', width: 1123, height: 794 },
+  wide: { label: 'Presentation 16:9', width: 1280, height: 720 },
 } as const;
 export type ContentPageSizeId = keyof typeof CONTENT_PAGE_SIZES;
 export const CONTENT_PAGE_SIZE_IDS = Object.keys(CONTENT_PAGE_SIZES) as ContentPageSizeId[];
@@ -105,6 +107,21 @@ const backgroundImage = z.object({
   alt: z.string().max(300).nullish().transform((value) => value ?? ''),
 });
 
+const svgVectorBounds = z.object({
+  x: z.coerce.number().min(-100_000).max(100_000),
+  y: z.coerce.number().min(-100_000).max(100_000),
+  w: z.coerce.number().positive().max(100_000),
+  h: z.coerce.number().positive().max(100_000),
+});
+const svgVectorMatrix = z.object({
+  a: z.coerce.number().min(-100_000).max(100_000),
+  b: z.coerce.number().min(-100_000).max(100_000),
+  c: z.coerce.number().min(-100_000).max(100_000),
+  d: z.coerce.number().min(-100_000).max(100_000),
+  e: z.coerce.number().min(-100_000).max(100_000),
+  f: z.coerce.number().min(-100_000).max(100_000),
+});
+
 const flags = {
   /** Hidden blocks are skipped by every renderer and projection. */
   hidden: z.boolean().optional(),
@@ -163,6 +180,13 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     align,
     width: widthPct,
     height: z.coerce.number().int().min(24).max(480).nullish().transform((value) => value ?? 120),
+    /** Sanitized SVG path data imported as a separately editable vector layer. */
+    svgPath: z.string().max(50_000).refine((value) => !/[<>]/.test(value)).optional(),
+    svgBounds: svgVectorBounds.optional(),
+    svgMatrix: svgVectorMatrix.optional(),
+    svgFillNone: z.boolean().optional(),
+    svgStroke: color,
+    svgStrokeWidth: z.coerce.number().min(0).max(1000).optional(),
     geometry: geometry.optional(),
     ...flags,
   }),
