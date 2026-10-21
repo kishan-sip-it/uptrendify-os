@@ -17,20 +17,28 @@ const PAPER: React.CSSProperties = { background: '#ffffff', color: '#1d2634' };
 export function ContentDocumentView({ body, linkedValues }: { body: string; linkedValues?: { title?: string | null; cta?: string | null } }) {
   const doc = parseContentBody(body);
   if (!doc) return <>{body}</>;
-  const bgImage = doc.pages.length === 1 ? doc.pages[0]?.backgroundImage : undefined;
   const free = doc.mode === 'free';
   const freeDims = CONTENT_PAGE_SIZES[doc.pages[0]?.size ?? 'a4'];
   return (
     <div className={`content-doc${free ? ' is-free' : ''}`} style={{ ...PAPER, ...(free ? { width: freeDims.width, height: freeDims.height } : {}) }}>
-      {bgImage ? (
-        <div className="content-doc-bgimage" aria-hidden="true">
-          {/* Background image; URL validated to http(s) by the body schema. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={bgImage.src} alt="" />
-        </div>
-      ) : null}
       {doc.pages.map((page, pageIndex) => (
-        <div key={page.id} className={`content-doc-page${doc.mode === 'free' ? ' is-free' : ''}`} style={{ ...(page.bg ? { background: page.bg, borderRadius: 10 } : {}), ...(doc.mode === 'free' && bgImage ? { background: 'transparent' } : {}) }}>
+        <div
+          key={page.id}
+          className={`content-doc-page${doc.mode === 'free' ? ' is-free' : ''}`}
+          style={{
+            ...(page.bg ? { background: page.bg, borderRadius: 10 } : {}),
+            ...(doc.mode === 'free' ? {
+              position: 'relative',
+              width: CONTENT_PAGE_SIZES[page.size ?? 'a4'].width,
+              height: CONTENT_PAGE_SIZES[page.size ?? 'a4'].height,
+              backgroundColor: page.bg ?? '#ffffff',
+              backgroundImage: page.backgroundImage ? `url(${JSON.stringify(page.backgroundImage.src)})` : undefined,
+              backgroundSize: page.backgroundImage ? 'cover' : undefined,
+              backgroundPosition: page.backgroundImage ? 'center' : undefined,
+              backgroundRepeat: page.backgroundImage ? 'no-repeat' : undefined,
+            } : {}),
+          }}
+        >
           {pageIndex > 0 ? <div className="content-doc-page-break">Page {pageIndex + 1}</div> : null}
           {page.blocks.length === 0 && doc.mode !== 'free' ? <p className="content-doc-page-empty">Empty page</p> : null}
           {page.blocks.filter((block) => !block.hidden).map((block) => {
@@ -45,7 +53,7 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
                     ...geoStyle,
                     ...(block.color ? { color: block.color } : {}),
                     ...(block.bg ? { background: block.bg } : {}),
-                    fontWeight: block.bold ? 800 : undefined,
+                    fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined,
                     fontStyle: block.italic ? 'italic' : undefined,
                     textDecoration: block.underline ? 'underline' : undefined,
                   }}
@@ -63,7 +71,7 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
                     ...geoStyle,
                     ...(block.color ? { color: block.color } : {}),
                     ...(block.bg ? { background: block.bg } : {}),
-                    fontWeight: block.bold ? 700 : undefined,
+                    fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined,
                     fontStyle: block.italic ? 'italic' : undefined,
                     textDecoration: block.underline ? 'underline' : undefined,
                   }}

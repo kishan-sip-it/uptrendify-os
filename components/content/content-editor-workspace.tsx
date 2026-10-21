@@ -51,7 +51,6 @@ import {
   type ContentShapeKind,
 } from '@/lib/content/document';
 import { ContentDocumentView } from '@/components/content/content-document-view';
-import { StudioFreeCanvas } from '@/components/content/studio-free-canvas';
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
 import { storyboardPagesFromScript, estimateSeconds } from '@/lib/content/parse-script';
 import { lintBlocks, healthScore, channelLimit, type BrandLintIssue } from '@/lib/studio/brand-lint';
@@ -180,6 +179,21 @@ function blockName(block: EditorBlock): string {
   return trimmed.length > 36 ? `${trimmed.slice(0, 36)}…` : trimmed;
 }
 
+function defaultFontSize(block: EditorBlock): number {
+  if (block.type === 'heading') return block.level === 1 ? 36 : block.level === 2 ? 28 : 22;
+  if (block.type === 'text') return block.size === 'sm' ? 13 : block.size === 'md' ? 15 : block.size === 'lg' ? 18 : 24;
+  return 16;
+}
+
+function normalizeHttpImageUrl(value: string): string | null {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 function fitZoom(stage: { w: number; h: number }, page: { w: number; h: number }, pad = 56): number {
   return Math.min((stage.w - pad * 2) / page.w, (stage.h - pad * 2) / page.h, 1.5);
 }
@@ -234,10 +248,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [overflow, setOverflow] = useState(false);
   const [safeZones, setSafeZones] = useState(false);
   const [duplicateSize, setDuplicateSize] = useState<ContentPageSizeId>('square');
+  const [imageUrlDraft, setImageUrlDraft] = useState('');
+  const [imageAltDraft, setImageAltDraft] = useState('');
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState('');
   const [floatAnchor, setFloatAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const dragIndex = useRef<number | null>(null);
   const freeDrag = useRef<{ id: string; startX: number; startY: number; origin: { x: number; y: number; w: number; h: number } } | null>(null);
-  const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: { x: number; y: number; w: number; h: number } } | null>(null);
+  const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: { x: number; y: number; w: number; h: number }; next: { x: number; y: number; w: number; h: number } } | null>(null);
   const saveInFlight = useRef(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -265,6 +282,10 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   }, []);
   const activePage = pages[activePageIndex] ?? pages[0];
   const pageDims = CONTENT_PAGE_SIZES[(activePage?.size ?? 'a4') as keyof typeof CONTENT_PAGE_SIZES] ?? CONTENT_PAGE_SIZES.a4;
+
+  useEffect(() => {
+    setBackgroundImageUrl(activePage?.backgroundImage?.src ?? '');
+  }, [activePage?.id, activePage?.backgroundImage?.src]);
   const serialized = useMemo(
     () => serializeContentDocument({ kind: 'uptrendify-doc', version: 1, ...(freeMode ? { mode: 'free' as const } : {}), pages } satisfies ContentDocument),
     [pages, freeMode],
@@ -278,6 +299,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const linkedValues = useMemo(() => ({ title: documentTitle, cta: itemCta ?? undefined }), [documentTitle, itemCta]);
   const charLimit = channelLimit(channel);
   const selected = activePage?.blocks.find((block) => block.id === selectedId) ?? null;
+  const selectedGeometry = selected?.geometry ?? { x: 24, y: 24, w: Math.round(pageDims.width * 0.6), h: 90 };
   const selectedIndex = activePage?.blocks.findIndex((block) => block.id === selectedId) ?? -1;
 
   const commit = useCallback((nextPages: ContentDocPage[]) => {
@@ -301,6 +323,11 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     patchPage(activePageIndex, (current) => current.map((block) => (block.id === id ? ({ ...block, ...patch } as EditorBlock) : block)));
   };
   const addBlock = (type: EditorBlock['type'], shapeKind?: ContentShapeKind) => {
+    if (type === 'image') {
+      setDockTab('insert');
+      setNotice('Paste a valid HTTP(S) image URL in the Insert panel to add an image.');
+      return;
+    }
     const base = emptyBlock(type);
     const block = (type === 'shape' && shapeKind ? { ...base, shape: shapeKind } : base) as EditorBlock;
     patchPage(activePageIndex, (current) => [...current, block]);
@@ -311,8 +338,64 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const setBlockGeometry = (id: string, geometry: NonNullable<EditorBlock['geometry']>) => {
     patchPage(activePageIndex, (current) => current.map((block) => (block.id === id ? ({ ...block, geometry } as EditorBlock) : block)));
   };
+  const updateBlockGeometry = (block: EditorBlock, key: 'x' | 'y' | 'w' | 'h', rawValue: number) => {
+    const current = block.geometry ?? { x: 24, y: 24, w: Math.round(pageDims.width * 0.6), h: 90 };
+    const min = key === 'w' || key === 'h' ? 24 : -2000;
+    const value = Number.isFinite(rawValue) ? Math.round(Math.max(min, Math.min(4000, rawValue))) : current[key];
+    setBlockGeometry(block.id, { ...current, [key]: value });
+  };
   const setPageBackgroundImage = (image: { src: string; alt: string } | null) => {
     commit(pages.map((page, index) => (index === activePageIndex ? { ...page, backgroundImage: image ?? undefined } : page)));
+  };
+  const addImageFromUrl = () => {
+    if (!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS) return;
+    const src = normalizeHttpImageUrl(imageUrlDraft);
+    if (!src) {
+      setError('Enter a valid image URL beginning with https:// or http://.');
+      return;
+    }
+    const block = {
+      id: newBlockId('image'),
+      type: 'image' as const,
+      url: src,
+      alt: imageAltDraft.trim(),
+      align: 'center' as const,
+      width: 80,
+      geometry: {
+        x: Math.round(pageDims.width * 0.15),
+        y: Math.round(pageDims.height * 0.16),
+        w: Math.round(pageDims.width * 0.7),
+        h: Math.round(pageDims.height * 0.32),
+      },
+    } satisfies EditorBlock;
+    setFreeMode(true);
+    patchPage(activePageIndex, (current) => [...current, block]);
+    setSelectedId(block.id);
+    setInspectorTab('design');
+    setImageUrlDraft('');
+    setImageAltDraft('');
+    setError(null);
+    setNotice('Image added. Resize it with the canvas handles or enter exact dimensions in Arrange.');
+  };
+  const applyBackgroundImageUrl = () => {
+    if (!canEdit) return;
+    const src = normalizeHttpImageUrl(backgroundImageUrl);
+    if (!src) {
+      setError('Enter a valid background image URL beginning with https:// or http://.');
+      return;
+    }
+    setPageBackgroundImage({ src, alt: '' });
+    setBackgroundImageUrl(src);
+    setError(null);
+    setNotice('Page background image updated.');
+  };
+  const useImageAsBackground = (block: EditorBlock) => {
+    if (block.type !== 'image' || !canEditBlock(block)) return;
+    commit(pages.map((page, index) => index === activePageIndex
+      ? { ...page, backgroundImage: { src: block.url, alt: block.alt }, blocks: page.blocks.filter((entry) => entry.id !== block.id) }
+      : page));
+    setSelectedId(null);
+    setNotice('Image moved to the page background. You can still add new independent image layers.');
   };
   const enableFreeMode = () => setFreeMode(true);
   const insertTemplate = (templateId: string) => {
@@ -405,6 +488,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     const doc = parseContentBody(source.body) ?? createDocumentFromText(source.body);
     const snapshot = serializeContentDocument(doc);
     setPages(doc.pages);
+    setFreeMode(doc.mode === 'free');
     setActivePageIndex(0);
     setSelectedId(null);
     setLoadedVersionId(versionId);
@@ -619,13 +703,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     switch (block.type) {
       case 'heading':
         return (
-          <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
+          <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
             <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} />
           </div>
         );
       case 'text':
         return (
-          <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
+          <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
             <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} />
           </div>
         );
@@ -661,8 +745,16 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     if (dir.includes('s')) h = Math.max(24, Math.round(resize.origin.h + dy));
     if (dir.includes('w')) { w = Math.max(24, Math.round(resize.origin.w - dx)); x = Math.round(resize.origin.x + resize.origin.w - w); }
     if (dir.includes('n')) { h = Math.max(24, Math.round(resize.origin.h - dy)); y = Math.round(resize.origin.y + resize.origin.h - h); }
-    const el = frameRef.current?.querySelector(`[data-bid="${id}"]`);
+    const next = { ...resize.origin, x, y, w, h };
+    const el = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${id}"]`);
     if (el) { el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.width = `${w}px`; el.style.height = `${h}px`; }
+    freeResize.current = { ...resize, next };
+  };
+  const finishFreeResize = (id: string) => {
+    const resize = freeResize.current;
+    if (!resize || resize.id !== id) return;
+    freeResize.current = null;
+    patchBlock(id, { geometry: resize.next });
   };
 
   return (
@@ -798,6 +890,16 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       </button>
                     ))}
                   </div>
+                  <span className="st-label">Add image from URL</span>
+                  <label className="st-field">
+                    <span>Image URL</span>
+                    <input className="st-input" type="url" inputMode="url" value={imageUrlDraft} onChange={(event) => setImageUrlDraft(event.target.value)} placeholder="https://example.com/image.png" disabled={!canEdit} />
+                  </label>
+                  <label className="st-field">
+                    <span>Alt text (optional)</span>
+                    <input className="st-input" value={imageAltDraft} onChange={(event) => setImageAltDraft(event.target.value)} placeholder="Describe the image" disabled={!canEdit} />
+                  </label>
+                  <button type="button" className="st-btn st-btn--primary" onClick={addImageFromUrl} disabled={!canEdit || !imageUrlDraft.trim() || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS}>Insert image on canvas</button>
                   <span className="st-label">Blocks</span>
                   <div className="st-insert-grid">
                     {insertTiles.filter(({ label }) => insertMatches(label)).map(({ type, label, icon: Icon }) => (
@@ -924,6 +1026,11 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             style={{
               width: pageDims.width,
               minHeight: pageDims.height,
+              backgroundColor: activePage?.bg ?? '#ffffff',
+              backgroundImage: activePage?.backgroundImage ? `url(${JSON.stringify(activePage.backgroundImage.src)})` : undefined,
+              backgroundSize: activePage?.backgroundImage ? 'cover' : undefined,
+              backgroundPosition: activePage?.backgroundImage ? 'center' : undefined,
+              backgroundRepeat: activePage?.backgroundImage ? 'no-repeat' : undefined,
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom / 100})`,
             }}
             onClick={(event) => { if (event.target === frameRef.current) setSelectedId(null); }}
@@ -986,10 +1093,11 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                           onPointerDown={(event) => {
                             event.stopPropagation();
                             (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-                            freeResize.current = { id: block.id, dir, startX: event.clientX, startY: event.clientY, origin: { ...geo } };
+                            freeResize.current = { id: block.id, dir, startX: event.clientX, startY: event.clientY, origin: { ...geo }, next: { ...geo } };
                           }}
                           onPointerMove={(event) => onFreeResizeMove(event, block.id, dir)}
-                          onPointerUp={() => { const resize = freeResize.current; freeResize.current = null; if (resize) patchBlock(block.id, { geometry: resize.geometry }); }}
+                          onPointerUp={() => finishFreeResize(block.id)}
+                          onPointerCancel={() => finishFreeResize(block.id)}
                         />
                       ))
                     ) : null}
@@ -1019,12 +1127,12 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       style={{ cursor: block.locked ? 'not-allowed' : undefined }}
                     >
                       {block.type === 'heading' ? (
-                        <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
+                        <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
                           <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} />
                         </div>
                       ) : null}
                       {block.type === 'text' ? (
-                        <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
+                        <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
                           <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} />
                         </div>
                       ) : null}
@@ -1105,6 +1213,15 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     </div>
                   </div>
                   <div className="st-field">
+                    <span>Page background image</span>
+                    <input className="st-input" type="url" inputMode="url" value={backgroundImageUrl} onChange={(event) => setBackgroundImageUrl(event.target.value)} placeholder="https://example.com/background.jpg" disabled={!canEdit || previewMode} />
+                    <div className="st-field-row">
+                      <button type="button" className="st-btn" style={{ height: 30 }} onClick={applyBackgroundImageUrl} disabled={!canEdit || previewMode || !backgroundImageUrl.trim()}>Apply image</button>
+                      <button type="button" className="st-quiet-link" onClick={() => { setPageBackgroundImage(null); setBackgroundImageUrl(''); }} disabled={!canEdit || previewMode || !activePage?.backgroundImage}>Remove image</button>
+                    </div>
+                    <span className="editor-hint">Use a publicly reachable HTTP(S) image URL. The background is stored independently from image layers.</span>
+                  </div>
+                  <div className="st-field">
                     <span>Margins</span>
                     <div className="st-field-row">
                       <input type="range" className="st-range" style={{ ['--p' as string]: '40%' }} defaultValue={40} disabled aria-label="Page margins (preview)" />
@@ -1180,6 +1297,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                         <span>Alt text</span>
                         <input className="st-input" value={selected.alt} onChange={(event) => patchBlock(selected.id, { alt: event.target.value })} disabled={!canEditBlock(selected)} placeholder="Describe the image" />
                       </label>
+                      <button type="button" className="st-btn st-btn--primary" onClick={() => useImageAsBackground(selected)} disabled={!canEditBlock(selected)} title="Use this image as the page background instead of a separate layer">Set as page background</button>
                     </>
                   ) : null}
                   {selected.type === 'button' ? (
@@ -1187,6 +1305,21 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       <span>Destination URL</span>
                       <input className="st-input" value={selected.href ?? ''} onChange={(event) => patchBlock(selected.id, { href: event.target.value })} disabled={!canEditBlock(selected)} inputMode="url" placeholder="https://destination (optional)" />
                     </label>
+                  ) : null}
+                  {selected.type === 'heading' || selected.type === 'text' ? (
+                    <>
+                      <label className="st-field">
+                        <span>Font family</span>
+                        <select className="st-select" value={selected.fontFamily ?? ''} disabled={!canEditBlock(selected)} onChange={(event) => patchBlock(selected.id, { fontFamily: event.target.value || undefined })}>
+                          <option value="">Theme default</option>
+                          {Array.from(new Set([...brand.fonts, 'Arial', 'Georgia', 'Inter', 'Roboto', 'Verdana', 'Trebuchet MS'])).map((font) => <option key={font} value={font}>{font}</option>)}
+                        </select>
+                      </label>
+                      <label className="st-field">
+                        <span>Font size · px</span>
+                        <input className="st-input" type="number" min={8} max={160} step={1} value={selected.fontSize ?? defaultFontSize(selected)} disabled={!canEditBlock(selected)} onChange={(event) => patchBlock(selected.id, { fontSize: Math.max(8, Math.min(160, Math.round(Number(event.target.value) || 8))) })} />
+                      </label>
+                    </>
                   ) : null}
                   {selected.type === 'heading' ? (
                     <div className="st-field">
@@ -1246,6 +1379,23 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       ))}
                     </div>
                   </div>
+                  {freeMode ? (
+                    <div className="st-field">
+                      <span>Position and size · canvas px</span>
+                      {([
+                        ['x', 'X'],
+                        ['y', 'Y'],
+                        ['w', 'Width'],
+                        ['h', 'Height'],
+                      ] as const).map(([key, label]) => (
+                        <label key={key} className="st-field" style={{ marginTop: 6 }}>
+                          <span>{label}</span>
+                          <input className="st-input" type="number" min={key === 'w' || key === 'h' ? 24 : -2000} max={4000} step={1} value={selectedGeometry[key]} disabled={!canEditBlock(selected) || previewMode} onChange={(event) => updateBlockGeometry(selected, key, Number(event.target.value))} />
+                        </label>
+                      ))}
+                      <span className="editor-hint">Each element has its own X/Y position and width/height. Drag any handle to resize visually, or enter exact dimensions here.</span>
+                    </div>
+                  ) : null}
                   {selected.type === 'image' || selected.type === 'button' || selected.type === 'shape' ? (
                     <label className="st-field">
                       <span>Width · {selected.width ?? (selected.type === 'shape' ? 60 : 80)}%</span>

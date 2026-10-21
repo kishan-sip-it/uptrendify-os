@@ -35,6 +35,25 @@ const multiPageDoc = (): ContentDocument => ({
 const singlePageDoc = (): ContentDocument => ({ kind: 'uptrendify-doc', version: 1, pages: [{ id: 'p1', size: 'a4', blocks: BLOCKS }] });
 
 describe('content document body format', () => {
+  it('round-trips independent geometry, numeric typography, and a page background image', () => {
+    const doc: ContentDocument = {
+      kind: 'uptrendify-doc',
+      version: 1,
+      mode: 'free',
+      pages: [{
+        id: 'free-page',
+        size: 'square',
+        backgroundImage: { src: 'https://cdn.example.com/background.png', alt: 'Background' },
+        blocks: [
+          { id: 'free-heading', type: 'heading', text: 'Canvas title', level: 1, align: 'left', color: '#112233', bg: null, bold: true, italic: false, underline: false, fontSize: 54, fontFamily: 'Georgia', geometry: { x: 30, y: 44, w: 520, h: 128 } },
+          { id: 'free-text', type: 'text', text: 'Independently resizable copy', align: 'left', color: null, bg: '#f5f5f5', size: 'md', bold: false, italic: false, underline: false, fontSize: 19, fontFamily: 'Arial', geometry: { x: 42, y: 220, w: 360, h: 92 } },
+        ],
+      }],
+    };
+    const body = serializeContentDocument(doc);
+    expect(parseContentBody(body)).toEqual(doc);
+  });
+
   it('serializes a single-page document in the flat blocks form and re-parses it exactly', () => {
     const body = serializeContentDocument(singlePageDoc());
     expect(body).toContain('"blocks"');
