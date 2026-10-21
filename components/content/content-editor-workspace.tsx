@@ -1649,6 +1649,15 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       )}
 
       {floatToolbar}
+      {isUploadingImage ? (
+        <div className="studio-upload-overlay" role="status" aria-live="polite" aria-label="Uploading image">
+          <div className="studio-upload-dialog">
+            <LoaderCircle size={22} className="studio-upload-spinner" />
+            <strong>Uploading image</strong>
+            <span>Keep this editor open until the image has been added to the canvas.</span>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 

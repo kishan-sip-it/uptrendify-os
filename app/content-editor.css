@@ -387,3 +387,42 @@ div[class*="level-1"] { font-weight: 800; }
 .st-handle-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
 .st-handle-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
 .studio-page-bg-controls { display: grid; gap: 6px; }
+
+
+/* Keep the free canvas touch-friendly; handles are independently pointer-captured. */
+.editor-free-block { touch-action: none; user-select: none; }
+.editor-free-block .editor-inline-edit { user-select: text; }
+.st-free-handle { touch-action: none; }
+.studio-upload-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--st-bg, #111318) 72%, transparent);
+  backdrop-filter: blur(3px);
+}
+.studio-upload-dialog {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(360px, 100%);
+  padding: 24px;
+  border: 1px solid var(--st-line-strong);
+  border-radius: 16px;
+  color: var(--st-text);
+  background: var(--st-panel);
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,.24);
+}
+.studio-upload-dialog span {
+  color: var(--st-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.studio-upload-spinner { animation: studio-upload-spin 1s linear infinite; }
+@keyframes studio-upload-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .studio-upload-spinner { animation: none; }
+}
