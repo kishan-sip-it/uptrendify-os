@@ -16,11 +16,11 @@ describe('Canva SVG template import', () => {
     expect(imported).not.toBeNull();
     expect(imported?.detectedElements).toBe(3);
     expect(imported?.page.size).toBe('wide');
-    expect(imported?.page.blocks.map((block) => block.type)).toEqual(['shape', 'text', 'shape']);
+    expect(imported?.page.blocks.map((block) => block.type)).toEqual(['shape', 'heading', 'shape']);
 
     const headline = imported?.page.blocks[1];
-    expect(headline?.type).toBe('text');
-    if (headline?.type === 'text') {
+    expect(headline?.type).toBe('heading');
+    if (headline?.type === 'heading') {
       expect(headline.text).toBe('Editable launch title');
       expect(headline.bold).toBe(true);
       expect(headline.geometry?.w).toBeGreaterThan(100);
@@ -53,7 +53,7 @@ describe('Canva SVG template import', () => {
   });
 
   it('uploads embedded raster references separately instead of persisting data URLs', () => {
-    const svg = '<svg width="200" height="100" viewBox="0 0 200 100"><image x="20" y="10" width="100" height="60" href="data:image/png;base64,aGVsbG8=" /></svg>';
+    const svg = '<svg width="200" height="100" viewBox="0 0 200 100"><image x="20" y="10" width="100" height="60" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xv8AAAAASUVORK5CYII=" /></svg>';
     const imported = importSvgTemplate(svg);
     expect(imported?.embeddedImages).toHaveLength(1);
     expect(imported?.page.blocks[0]?.type).toBe('image');
