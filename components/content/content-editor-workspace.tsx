@@ -321,6 +321,8 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   currentVersionId: string | null;
 }) {
   const router = useRouter();
+  const studioRootRef = useRef<HTMLDivElement | null>(null);
+  const [studioHeight, setStudioHeight] = useState<number | null>(null);
   const isStoryboard = contentType === 'video_script';
   const initialDoc = useMemo(() => {
     const saved = parseContentBody(body);
@@ -401,6 +403,29 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   }, []);
   const activePage = pages[activePageIndex] ?? pages[0];
   const pageDims = CONTENT_PAGE_SIZES[(activePage?.size ?? 'a4') as keyof typeof CONTENT_PAGE_SIZES] ?? CONTENT_PAGE_SIZES.a4;
+
+  // Give Studio a stable viewport-sized workspace on desktop. Panel contents
+  // scroll inside their own panes; they must never push the footer off-screen.
+  useEffect(() => {
+    const updateHeight = () => {
+      if (window.innerWidth <= 1100) {
+        setStudioHeight(null);
+        return;
+      }
+      const root = studioRootRef.current;
+      if (!root) return;
+      const top = Math.max(8, root.getBoundingClientRect().top);
+      const next = Math.max(620, Math.floor(window.innerHeight - top - 8));
+      setStudioHeight((current) => current === next ? current : next);
+    };
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    window.addEventListener('scroll', updateHeight, true);
+    return () => {
+      window.removeEventListener('resize', updateHeight);
+      window.removeEventListener('scroll', updateHeight, true);
+    };
+  }, []);
 
   useEffect(() => {
     setBackgroundImageUrl(activePage?.backgroundImage?.src ?? '');
@@ -794,26 +819,41 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
 
   useEffect(() => {
     if (zoomManual) return;
-    const stage = stageRef.current;
-    if (!stage) return;
-    const observer = new ResizeObserver(() => {
-      const rect = { w: stage.clientWidth, h: stage.clientHeight };
-      const z = Math.max(0.05, fitZoom(rect, { w: pageDims.width, h: pageDims.height }));
-      setZoom(Math.round(z * 100));
-      setOffset(centerOffset(rect, { w: pageDims.width, h: pageDims.height }, z));
-    });
-    observer.observe(stage);
-    // First paint: the grid may not have sized the stage yet when the observer
-    // fires once with a collapsed box — refit on the next frame regardless.
+    // Fit once on initial load (and when page size changes), but do not
+    // refit merely because a panel or inspector selection changes dimensions.
     const initial = window.setTimeout(() => refit(), 60);
-    return () => { observer.disconnect(); window.clearTimeout(initial); };
+    return () => window.clearTimeout(initial);
   }, [zoomManual, pageDims.width, pageDims.height, refit]);
 
-  const setManualZoom = (next: number) => {
+  const zoomCanvas = useCallback((requestedZoom: number, clientPoint?: { x: number; y: number }) => {
+    const stage = stageRef.current;
+    const nextZoom = Math.max(20, Math.min(300, Math.round(requestedZoom)));
+    if (!stage || nextZoom === zoom) {
+      if (nextZoom !== zoom) setZoom(nextZoom);
+      return;
+    }
+    const rect = stage.getBoundingClientRect();
+    const pointerIsOverStage = stage.matches(':hover');
+    const client = clientPoint ?? (pointerIsOverStage ? stagePointerRef.current : {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    });
+    const cx = Math.max(0, Math.min(rect.width, client.x - rect.left));
+    const cy = Math.max(0, Math.min(rect.height, client.y - rect.top));
+    const oldScale = zoom / 100;
+    const nextScale = nextZoom / 100;
+    const nextOffset = {
+      x: cx - (cx - offsetRef.current.x) * (nextScale / oldScale),
+      y: cy - (cy - offsetRef.current.y) * (nextScale / oldScale),
+    };
     manualZoomRef.current = true;
     setZoomManual(true);
-    setZoom(Math.max(20, Math.min(300, Math.round(next))));
-  };
+    setZoom(nextZoom);
+    offsetRef.current = nextOffset;
+    setOffset(nextOffset);
+  }, [zoom]);
+
+  const setManualZoom = (next: number) => zoomCanvas(next);
   const fitNow = () => { manualZoomRef.current = false; refit(); };
 
   // Overflow detection on the active page (frame content taller than the frame).
@@ -980,49 +1020,62 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, previewMode, pages, activePageIndex, history, historyIndex, focusMode]);
 
-  // Override browser-level Ctrl/⌘ +/- only while the pointer is over the canvas.
-  // Keep zoom anchored at the pointer so the design does not jump around.
+  // Canvas zoom is handled by the editor's own controls and wheel listener.
+  // Use a non-passive native listener so Ctrl/⌘+wheel cannot zoom the browser page.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = stage.getBoundingClientRect();
+      if (event.ctrlKey || event.metaKey) {
+        zoomCanvas(zoom + (event.deltaY < 0 ? 10 : -10), { x: event.clientX, y: event.clientY });
+        return;
+      }
+      const horizontal = event.shiftKey ? event.deltaY : event.deltaX;
+      const vertical = event.shiftKey ? 0 : event.deltaY;
+      const nextOffset = {
+        x: offsetRef.current.x - horizontal,
+        y: offsetRef.current.y - vertical,
+      };
+      offsetRef.current = nextOffset;
+      setOffset(nextOffset);
+      if (frameRef.current) frameRef.current.style.transform = `translate(${nextOffset.x}px, ${nextOffset.y}px) scale(${zoom / 100})`;
+      stagePointerRef.current = { x: event.clientX, y: event.clientY };
+      void rect;
+    };
+    stage.addEventListener('wheel', onWheel, { passive: false });
+    return () => stage.removeEventListener('wheel', onWheel);
+  }, [zoom, zoomCanvas]);
+
+  // Keep keyboard shortcuts inside the canvas where the browser dispatches them.
+  // The visible +/- controls and Ctrl/⌘+wheel remain the reliable zoom paths.
   useEffect(() => {
     const onCanvasZoomShortcut = (event: KeyboardEvent) => {
       const stage = stageRef.current;
-      if (!stage || !stage.matches(':hover') || !(event.ctrlKey || event.metaKey)) return;
-
+      if (!stage || !stage.matches(':hover')) return;
+      const target = event.target as HTMLElement | null;
+      const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+      if (typing) return;
+      const hasModifier = event.ctrlKey || event.metaKey;
       const zoomIn = event.key === '+' || event.key === '=' || event.code === 'NumpadAdd';
       const zoomOut = event.key === '-' || event.key === '_' || event.code === 'NumpadSubtract';
       const zoomReset = event.key === '0' || event.code === 'Numpad0';
-      if (!zoomIn && !zoomOut && !zoomReset) return;
-
+      if ((!hasModifier && !zoomIn && !zoomOut && !zoomReset) || (!zoomIn && !zoomOut && !zoomReset)) return;
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       if (zoomReset) {
         manualZoomRef.current = false;
         setZoomManual(false);
         refit();
         return;
       }
-
-      const nextZoom = Math.max(20, Math.min(300, zoom + (zoomIn ? 10 : -10)));
-      if (nextZoom === zoom) return;
-      const rect = stage.getBoundingClientRect();
-      const cx = Math.max(0, Math.min(rect.width, stagePointerRef.current.x - rect.left));
-      const cy = Math.max(0, Math.min(rect.height, stagePointerRef.current.y - rect.top));
-      const oldScale = zoom / 100;
-      const nextScale = nextZoom / 100;
-      const nextOffset = {
-        x: cx - (cx - offsetRef.current.x) * (nextScale / oldScale),
-        y: cy - (cy - offsetRef.current.y) * (nextScale / oldScale),
-      };
-
-      manualZoomRef.current = true;
-      setZoomManual(true);
-      setZoom(nextZoom);
-      offsetRef.current = nextOffset;
-      setOffset(nextOffset);
+      zoomCanvas(zoom + (zoomIn ? 10 : -10), stagePointerRef.current);
     };
-
     document.addEventListener('keydown', onCanvasZoomShortcut, true);
     return () => document.removeEventListener('keydown', onCanvasZoomShortcut, true);
-  }, [zoom, refit]);
+  }, [zoom, refit, zoomCanvas]);
 
   const dockItems = [
     { id: 'layers' as const, label: 'Layers', icon: Layers },
@@ -1174,7 +1227,11 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
 
   return (
-    <div className={`studio${focusMode ? ' is-focus' : ''}`}>
+    <div
+      ref={studioRootRef}
+      className={`studio${focusMode ? ' is-focus' : ''}`}
+      style={!focusMode && studioHeight !== null ? { height: studioHeight } : undefined}
+    >
       {/* ---------- top bar ---------- */}
       <div className="studio-topbar">
         <button type="button" className="st-icon" aria-label="Back to content" title="Back to content (Esc closes panels)" onClick={() => router.push(`/brands/${brandId}/content/${contentId}`)}>
@@ -1442,36 +1499,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             panRef.current = null;
             setOffset(next);
           }}
-          onWheel={(event) => {
-            // While the pointer is over the canvas, wheel input belongs to the
-            // canvas instead of scrolling or zooming the surrounding page.
-            event.preventDefault();
-            const stage = stageRef.current;
-            if (!stage) return;
-            const rect = stage.getBoundingClientRect();
-            const cx = event.clientX - rect.left;
-            const cy = event.clientY - rect.top;
-            if (!(event.ctrlKey || event.metaKey)) {
-              const horizontal = event.shiftKey ? event.deltaY : event.deltaX;
-              const vertical = event.shiftKey ? 0 : event.deltaY;
-              const nextOffset = {
-                x: offsetRef.current.x - horizontal,
-                y: offsetRef.current.y - vertical,
-              };
-              offsetRef.current = nextOffset;
-              setOffset(nextOffset);
-              if (frameRef.current) frameRef.current.style.transform = `translate(${nextOffset.x}px, ${nextOffset.y}px) scale(${zoom / 100})`;
-              return;
-            }
-            const oldScale = zoom / 100;
-            const nextScale = Math.max(0.2, Math.min(3, oldScale * (event.deltaY < 0 ? 1.1 : 0.9)));
-            const nextOffset = { x: cx - (cx - offsetRef.current.x) * (nextScale / oldScale), y: cy - (cy - offsetRef.current.y) * (nextScale / oldScale) };
-            manualZoomRef.current = true;
-            setZoomManual(true);
-            setZoom(Math.round(nextScale * 100));
-            offsetRef.current = nextOffset;
-            setOffset(nextOffset);
-          }}
         >
           <div
             ref={frameRef}
@@ -1558,7 +1585,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       if (el) { el.style.left = `${drag.origin.x}px`; el.style.top = `${drag.origin.y}px`; }
                     }}
                   >
-                    {renderBlockInner(block)}
+                    <div className="editor-free-block-content" style={{ opacity: block.opacity ?? 1 }}>
+                      {renderBlockInner(block)}
+                    </div>
                     {isSelected && canEdit && !block.locked ? (
                       (['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const).map((dir) => (
                         <span
