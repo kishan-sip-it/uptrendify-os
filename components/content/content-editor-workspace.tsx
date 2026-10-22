@@ -3001,13 +3001,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       const richText = block.richText?.map((run) => run.fontSize === undefined
         ? run
         : { ...run, fontSize: Math.max(8, Math.min(160, Math.round(run.fontSize * resize.scale!))) });
-      patchBlock(id, { ...geometryPatch, fontSize: scaledSize, ...(richText ? { richText } : {}) });
+      patchBlock(id, { ...geometryPatch, fontSize: scaledSize, ...(richText ? { richText } : {}) } as Partial<Extract<EditorBlock, { type: 'heading' }>>);
     } else if (resize.dir.length === 2 && resize.scale && block?.type === 'text') {
       const scaledSize = Math.max(8, Math.min(160, Math.round((block.fontSize ?? defaultFontSize(block)) * resize.scale)));
       const richText = block.richText?.map((run) => run.fontSize === undefined
         ? run
         : { ...run, fontSize: Math.max(8, Math.min(160, Math.round(run.fontSize * resize.scale!))) });
-      patchBlock(id, { ...geometryPatch, fontSize: scaledSize, ...(richText ? { richText } : {}) });
+      patchBlock(id, { ...geometryPatch, fontSize: scaledSize, ...(richText ? { richText } : {}) } as Partial<Extract<EditorBlock, { type: 'text' }>>);
     } else {
       patchBlock(id, geometryPatch);
     }
