@@ -1046,7 +1046,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           : 'No text was changed: the estimated text colour did not match enough source pixels. Adjust the region bounds or leave that text embedded.');
       }
 
-      context.putImageData(new ImageData(cleaned.data, review.width, review.height), 0, 0);
+      const cleanedPixels = context.createImageData(review.width, review.height);
+      cleanedPixels.data.set(cleaned.data);
+      context.putImageData(cleanedPixels, 0, 0);
       const bytesInDataUrl = (value: string) => Math.floor((value.split(',')[1]?.length ?? 0) * 0.75);
       let cleanedDataUrl = canvas.toDataURL(review.mimeType, review.mimeType === 'image/png' ? undefined : 0.92);
       if (bytesInDataUrl(cleanedDataUrl) > 2 * 1024 * 1024) cleanedDataUrl = canvas.toDataURL('image/webp', 0.88);
