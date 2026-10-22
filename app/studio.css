@@ -840,6 +840,9 @@
   white-space: pre-wrap;
 }
 
+/* Inline character-format controls replace the block-level floating toolbar while typing. */
+.studio:has(.editor-inline-edit) .studio-float { display: none; }
+
 /* While editing, long copy must remain visible instead of becoming a nested scroller
    in both free-canvas and flow/page editing modes. */
 .studio-page-frame .content-doc-heading:has(.editor-inline-edit),
