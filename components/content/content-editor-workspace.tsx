@@ -175,6 +175,19 @@ type InlineTextToolbarState = {
   fontFamily: string;
   fontSize: number;
 };
+type InlineTextFormatAction = (key: InlineTextFormatKey, explicitValue?: InlineTextFormatValue) => void;
+type InlineTextToolbarPrepare = () => void;
+type InlineTextToolbarChange = (
+  state: InlineTextToolbarState | null,
+  apply: InlineTextFormatAction,
+  prepare: InlineTextToolbarPrepare,
+) => void;
+type ActiveInlineTextToolbar = {
+  blockId: string;
+  state: InlineTextToolbarState;
+  apply: InlineTextFormatAction;
+  prepare: InlineTextToolbarPrepare;
+};
 
 function inlineRunStyle(run: InlineTextRun): React.CSSProperties {
   return {
@@ -469,6 +482,7 @@ function CanvasText({
   onCommit,
   onClick,
   onDraftInput,
+  onInlineToolbarChange,
   editOnDoubleClick = false,
   editRequest = 0,
   onEditingEnd,
@@ -481,20 +495,42 @@ function CanvasText({
   onCommit: (next: string, runs?: InlineTextRun[]) => void;
   onClick: () => void;
   onDraftInput?: (next: string, runs?: InlineTextRun[]) => void;
+  onInlineToolbarChange?: InlineTextToolbarChange;
   editOnDoubleClick?: boolean;
   editRequest?: number;
   onEditingEnd?: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const toolbarRef = useRef<HTMLDivElement | null>(null);
   const savedRangeRef = useRef<Range | null>(null);
   const selectWordOnEditRef = useRef(false);
   const preserveSelectionRef = useRef(false);
   const [editing, setEditing] = useState(false);
-  const [inlineToolbar, setInlineToolbar] = useState<InlineTextToolbarState | null>(null);
   const editPoint = useRef<{ x: number; y: number } | null>(null);
   const baseStyleRef = useRef(baseStyle);
   baseStyleRef.current = baseStyle;
+  const onDraftInputRef = useRef(onDraftInput);
+  onDraftInputRef.current = onDraftInput;
+  const onInlineToolbarChangeRef = useRef(onInlineToolbarChange);
+  onInlineToolbarChangeRef.current = onInlineToolbarChange;
+  const applyInlineFormatRef = useRef<InlineTextFormatAction>(() => {});
+  const prepareToolbarInteractionRef = useRef<InlineTextToolbarPrepare>(() => {});
+  const notifyInlineToolbarChange = (state: InlineTextToolbarState | null) => {
+    onInlineToolbarChangeRef.current?.(state, applyInlineFormatRef.current, prepareToolbarInteractionRef.current);
+  };
+  const isInlineToolbarFocused = () => {
+    const toolbar = document.querySelector('.studio-float[data-inline-selection="true"]');
+    return Boolean(toolbar?.contains(document.activeElement));
+  };
+  const prepareToolbarInteraction = () => {
+    preserveSelectionRef.current = true;
+    const editable = ref.current;
+    const selection = window.getSelection();
+    if (editable && selection?.rangeCount && !selection.isCollapsed) {
+      const range = selection.getRangeAt(0);
+      if (editable.contains(range.commonAncestorContainer)) savedRangeRef.current = range.cloneRange();
+    }
+  };
+  prepareToolbarInteractionRef.current = prepareToolbarInteraction;
 
   const refreshInlineToolbar = (rangeOverride?: Range | null) => {
     const editable = ref.current;
@@ -502,13 +538,13 @@ function CanvasText({
     const selection = window.getSelection();
     const range = rangeOverride ?? (selection?.rangeCount ? selection.getRangeAt(0) : null);
     if (!range || range.collapsed || !editable.contains(range.commonAncestorContainer)) {
-      if (preserveSelectionRef.current && toolbarRef.current?.contains(document.activeElement)) return;
-      setInlineToolbar(null);
+      if (preserveSelectionRef.current && isInlineToolbarFocused()) return;
+      notifyInlineToolbarChange(null);
       return;
     }
     savedRangeRef.current = range.cloneRange();
     const next = getInlineToolbarState(editable, range, baseStyleRef.current ?? {});
-    setInlineToolbar(next);
+    notifyInlineToolbarChange(next);
   };
 
   const beginEditing = (event?: React.MouseEvent<HTMLDivElement>, selectWord = false) => {
@@ -538,7 +574,7 @@ function CanvasText({
     const rawRuns = editable ? readInlineTextRunsFromDom(editable) : compatibleInlineTextRuns(value, richText);
     const normalized = normalizeInlineTextRuns(rawRuns);
     setEditing(false);
-    setInlineToolbar(null);
+    notifyInlineToolbarChange(null);
     savedRangeRef.current = null;
     preserveSelectionRef.current = false;
     onEditingEnd?.();
@@ -552,7 +588,7 @@ function CanvasText({
     if (selection?.rangeCount && !selection.isCollapsed && editable.contains(selection.getRangeAt(0).commonAncestorContainer)) {
       savedRangeRef.current = selection.getRangeAt(0).cloneRange();
     }
-    onDraftInput?.(next, runs);
+    onDraftInputRef.current?.(next, runs);
   };
 
   const applyInlineFormat = (key: InlineTextFormatKey, explicitValue?: InlineTextFormatValue) => {
@@ -589,9 +625,11 @@ function CanvasText({
       refreshInlineToolbar(nextRange);
     }
     preserveSelectionRef.current = false;
-    onDraftInput?.(nextText, formatted);
+    onDraftInputRef.current?.(nextText, formatted);
     editable.focus({ preventScroll: true });
   };
+
+  applyInlineFormatRef.current = applyInlineFormat;
 
   const insertNewlineAtSelection = (editable: HTMLElement) => {
     const selection = window.getSelection();
@@ -691,21 +729,21 @@ function CanvasText({
 
   useEffect(() => {
     if (!editing) {
-      setInlineToolbar(null);
+      notifyInlineToolbarChange(null);
       return;
     }
     const updateSelection = () => {
       const editable = ref.current;
       if (!editable) return;
-      if (preserveSelectionRef.current && toolbarRef.current?.contains(document.activeElement)) return;
+      if (preserveSelectionRef.current && isInlineToolbarFocused()) return;
       const selection = window.getSelection();
       if (!selection?.rangeCount || selection.isCollapsed) {
-        if (!(toolbarRef.current?.contains(document.activeElement))) setInlineToolbar(null);
+        if (!isInlineToolbarFocused()) notifyInlineToolbarChange(null);
         return;
       }
       const range = selection.getRangeAt(0);
       if (!editable.contains(range.commonAncestorContainer)) {
-        if (!(toolbarRef.current?.contains(document.activeElement))) setInlineToolbar(null);
+        if (!isInlineToolbarFocused()) notifyInlineToolbarChange(null);
         return;
       }
       refreshInlineToolbar(range);
@@ -716,109 +754,44 @@ function CanvasText({
   }, [editing]);
 
   if (editing) {
-    const inlineToolbarPortal = inlineToolbar && !disabled && typeof document !== 'undefined'
-      ? createPortal(
-          <div
-            ref={toolbarRef}
-            className="studio-inline-format-toolbar"
-            role="toolbar"
-            aria-label="Selected text formatting"
-            style={{ position: 'fixed', left: inlineToolbar.left, top: inlineToolbar.top }}
-            onMouseDown={(event) => {
-              const target = event.target as HTMLElement;
-              if (target.closest('button')) event.preventDefault();
-              preserveSelectionRef.current = true;
-              const selection = window.getSelection();
-              if (selection?.rangeCount && !selection.isCollapsed) savedRangeRef.current = selection.getRangeAt(0).cloneRange();
-            }}
-            onBlurCapture={() => {
-              window.setTimeout(() => {
-                const active = document.activeElement;
-                if (ref.current?.contains(active) || toolbarRef.current?.contains(active)) return;
-                preserveSelectionRef.current = false;
-                finishEditing();
-              }, 0);
-            }}
-          >
-            <button type="button" className={inlineToolbar.bold ? 'is-on' : ''} title="Bold selected text" aria-label="Bold selected text" onClick={() => applyInlineFormat('bold')}><strong>B</strong></button>
-            <button type="button" className={inlineToolbar.italic ? 'is-on' : ''} title="Italic selected text" aria-label="Italic selected text" onClick={() => applyInlineFormat('italic')}><em>I</em></button>
-            <button type="button" className={inlineToolbar.underline ? 'is-on' : ''} title="Underline selected text" aria-label="Underline selected text" onClick={() => applyInlineFormat('underline')}><u>U</u></button>
-            <label className="studio-inline-color-control" title="Font colour">
-              <span aria-hidden="true">A</span>
-              <input type="color" value={inlineToolbar.color} aria-label="Selected text colour" onPointerDown={() => { preserveSelectionRef.current = true; }} onChange={(event) => applyInlineFormat('color', event.currentTarget.value)} />
-            </label>
-            <label className="studio-inline-color-control is-highlight" title="Text background/highlight">
-              <span aria-hidden="true">▰</span>
-              <input type="color" value={inlineToolbar.bg} aria-label="Selected text background colour" onPointerDown={() => { preserveSelectionRef.current = true; }} onChange={(event) => applyInlineFormat('bg', event.currentTarget.value)} />
-            </label>
-            <select
-              aria-label="Selected text font"
-              title="Font family"
-              value={inlineToolbar.fontFamily}
-              onPointerDown={() => { preserveSelectionRef.current = true; }}
-              onChange={(event) => applyInlineFormat('fontFamily', event.currentTarget.value)}
-            >
-              {['Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'monospace'].map((font) => <option key={font} value={font}>{font}</option>)}
-            </select>
-            <input
-              className="studio-inline-font-size"
-              type="number"
-              min={8}
-              max={160}
-              step={1}
-              aria-label="Selected text font size"
-              title="Font size"
-              value={inlineToolbar.fontSize}
-              onPointerDown={() => { preserveSelectionRef.current = true; }}
-              onChange={(event) => {
-                const next = Number(event.currentTarget.value);
-                if (Number.isFinite(next) && next >= 8 && next <= 160) applyInlineFormat('fontSize', Math.round(next));
-              }}
-            />
-            <button type="button" className="studio-inline-reset" title="Reset selected text colour" aria-label="Reset selected text colour" onClick={() => applyInlineFormat('color', null)}>A×</button>
-            <button type="button" className="studio-inline-reset" title="Clear selected text background" aria-label="Clear selected text background" onClick={() => applyInlineFormat('bg', null)}>▧×</button>
-          </div>,
-          document.body,
-        )
-      : null;
-
     return (
-      <>
-        <div
-          ref={ref}
-          role="textbox"
-          tabIndex={0}
-          contentEditable={!disabled}
-          suppressContentEditableWarning
-          className="editor-inline-edit"
-          onMouseUp={() => refreshInlineToolbar()}
-          onKeyUp={() => refreshInlineToolbar()}
-          onInput={(event) => updateDraftFromDom(event.currentTarget)}
-          onBlur={(event) => {
-            if (toolbarRef.current?.contains(event.relatedTarget as Node | null)) return;
-            finishEditing();
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              if (ref.current) appendInlineTextRuns(ref.current, compatibleInlineTextRuns(value, richText));
-              setEditing(false);
-              setInlineToolbar(null);
-              onEditingEnd?.();
-            } else if (event.key === 'Enter' && multiline && event.shiftKey) {
-              event.preventDefault();
+      <div
+        ref={ref}
+        role="textbox"
+        tabIndex={0}
+        contentEditable={!disabled}
+        suppressContentEditableWarning
+        className="editor-inline-edit"
+        onMouseUp={() => refreshInlineToolbar()}
+        onKeyUp={() => refreshInlineToolbar()}
+        onInput={(event) => updateDraftFromDom(event.currentTarget)}
+        onBlur={(event) => {
+          const toolbar = document.querySelector('.studio-float[data-inline-selection="true"]');
+          if (event.relatedTarget instanceof Node && toolbar?.contains(event.relatedTarget)) return;
+          finishEditing();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            if (ref.current) appendInlineTextRuns(ref.current, compatibleInlineTextRuns(value, richText));
+            setEditing(false);
+            notifyInlineToolbarChange(null);
+            savedRangeRef.current = null;
+            preserveSelectionRef.current = false;
+            onEditingEnd?.();
+          } else if (event.key === 'Enter') {
+            event.preventDefault();
+            if (multiline) {
               insertNewlineAtSelection(event.currentTarget);
               updateDraftFromDom(event.currentTarget);
               refreshInlineToolbar();
-            } else if (event.key === 'Enter') {
-              event.preventDefault();
+            } else {
               (event.currentTarget as HTMLElement).blur();
             }
-            event.stopPropagation();
-          }}
-        />
-        {inlineToolbarPortal}
-      </>
+          }
+          event.stopPropagation();
+        }}
+      />
     );
   }
 
@@ -1083,6 +1056,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
   const templateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [floatAnchor, setFloatAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [inlineSelectionToolbar, setInlineSelectionToolbar] = useState<ActiveInlineTextToolbar | null>(null);
   const dragIndex = useRef<number | null>(null);
   const freeDrag = useRef<{ id: string; startX: number; startY: number; origin: CanvasGeometry } | null>(null);
   const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: CanvasGeometry; next: CanvasGeometry } | null>(null);
@@ -2650,10 +2624,71 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const insertMatches = (label: string) => !searchNeedle || label.toLowerCase().includes(searchNeedle);
   const activeBlocks = (activePage?.blocks ?? []).filter(layerMatches);
 
+  const bindInlineToolbar = (blockId: string): InlineTextToolbarChange => (state, apply, prepare) => {
+    setInlineSelectionToolbar((current) => state
+      ? { blockId, state, apply, prepare }
+      : current?.blockId === blockId ? null : current);
+  };
+
   const floatToolbar = (() => {
-    if (!floatAnchor || previewMode) return null;
+    if (previewMode) return null;
     const block = selected;
     if (!block || !canEditBlock(block)) return null;
+
+    const inline = inlineSelectionToolbar?.blockId === block.id ? inlineSelectionToolbar : null;
+    if (inline && (block.type === 'text' || block.type === 'heading')) {
+      const state = inline.state;
+      return (
+        <div
+          className="studio-float"
+          data-inline-selection="true"
+          role="toolbar"
+          aria-label="Selected text formatting"
+          style={{ position: 'fixed', left: state.left, top: state.top, width: 'max-content', maxWidth: 'calc(100vw - 16px)' }}
+          onMouseDown={(event) => {
+            if ((event.target as HTMLElement).closest('button')) event.preventDefault();
+            inline.prepare();
+          }}
+        >
+          <span className="st-float-group" aria-label="Selected text emphasis">
+            <button type="button" className={state.bold ? 'is-on' : ''} onClick={() => inline.apply('bold')} title="Bold selected text" aria-label="Bold selected text"><strong>B</strong></button>
+            <button type="button" className={state.italic ? 'is-on' : ''} onClick={() => inline.apply('italic')} title="Italic selected text" aria-label="Italic selected text"><em>I</em></button>
+            <button type="button" className={state.underline ? 'is-on' : ''} onClick={() => inline.apply('underline')} title="Underline selected text" aria-label="Underline selected text"><u>U</u></button>
+          </span>
+          <span className="st-float-group" aria-label="Selected text colours">
+            <input type="color" value={state.color} onChange={(event) => inline.apply('color', event.currentTarget.value)} title="Font colour" aria-label="Selected text font colour" />
+            <input type="color" value={state.bg} onChange={(event) => inline.apply('bg', event.currentTarget.value)} title="Text highlight colour" aria-label="Selected text highlight colour" />
+          </span>
+          <select
+            className="st-inline-range-select"
+            aria-label="Selected text font family"
+            title="Font family"
+            value={state.fontFamily}
+            onChange={(event) => inline.apply('fontFamily', event.currentTarget.value)}
+          >
+            {['Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'monospace'].map((font) => <option key={font} value={font}>{font}</option>)}
+          </select>
+          <input
+            className="st-inline-range-size"
+            type="number"
+            min={8}
+            max={160}
+            step={1}
+            aria-label="Selected text font size"
+            title="Font size"
+            value={state.fontSize}
+            onChange={(event) => {
+              const next = Number(event.currentTarget.value);
+              if (Number.isFinite(next) && next >= 8 && next <= 160) inline.apply('fontSize', Math.round(next));
+            }}
+          />
+          <button type="button" className="st-inline-range-reset" title="Reset selected text colour" aria-label="Reset selected text colour" onClick={() => inline.apply('color', null)}>A×</button>
+          <button type="button" className="st-inline-range-reset" title="Clear selected text highlight" aria-label="Clear selected text highlight" onClick={() => inline.apply('bg', null)}>▧×</button>
+        </div>
+      );
+    }
+
+    if (!floatAnchor) return null;
     return (
       <div className="studio-float" role="toolbar" aria-label="Text formatting" style={{ left: typeof window !== 'undefined' ? Math.max(8, Math.min(floatAnchor.x, window.innerWidth - 420)) : floatAnchor.x, top: Math.max(8, floatAnchor.y - 46), width: 'max-content', maxWidth: 'calc(100vw - 16px)' }}>
         {block.type === 'text' ? (
@@ -2704,13 +2739,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       case 'heading':
         return (
           <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden', opacity: block.opacity ?? 1 }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={freeMode} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={freeMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
           </div>
         );
       case 'text':
         return (
           <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={freeMode} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={freeMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
           </div>
         );
       case 'image':
@@ -3219,12 +3254,12 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     >
                       {block.type === 'heading' ? (
                         <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs, link: undefined })} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={freeMode} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+                          <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs, link: undefined })} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={freeMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
                         </div>
                       ) : null}
                       {block.type === 'text' ? (
                         <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs, link: undefined })} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={freeMode} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+                          <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs, link: undefined })} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={freeMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
                         </div>
                       ) : null}
                       {block.type === 'image' ? (
