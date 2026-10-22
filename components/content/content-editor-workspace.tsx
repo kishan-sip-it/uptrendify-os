@@ -1075,7 +1075,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [inlineSelectionToolbar, setInlineSelectionToolbar] = useState<ActiveInlineTextToolbar | null>(null);
   const dragIndex = useRef<number | null>(null);
   const freeDrag = useRef<{ id: string; pointerId: number; startX: number; startY: number; scale: number; moved: boolean; origin: CanvasGeometry } | null>(null);
-  const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: CanvasGeometry; next: CanvasGeometry } | null>(null);
+  const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: CanvasGeometry; next: CanvasGeometry; scale?: number } | null>(null);
   const saveInFlight = useRef(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const stagePointerRef = useRef({ x: 0, y: 0 });
@@ -2899,32 +2899,113 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     }
   };
 
-  /** Resize gesture: dir decides which edges move; writes DOM during drag, commits on release. */
+  /** Side handles reflow text; corner handles preserve ratio and scale text size. */
   const onFreeResizeMove = (event: React.PointerEvent, id: string, dir: string) => {
     const resize = freeResize.current;
     if (!resize || resize.id !== id) return;
     const dx = (event.clientX - resize.startX) / (zoom / 100);
     const dy = (event.clientY - resize.startY) / (zoom / 100);
-    let { x, y, w, h } = resize.origin;
-    if (dir.includes('e')) w = clampCanvasSize(resize.origin.w + dx);
-    if (dir.includes('s')) h = clampCanvasSize(resize.origin.h + dy);
-    if (dir.includes('w')) { w = clampCanvasSize(resize.origin.w - dx); x = resize.origin.x + resize.origin.w - w; }
-    if (dir.includes('n')) { h = clampCanvasSize(resize.origin.h - dy); y = resize.origin.y + resize.origin.h - h; }
-    const next: CanvasGeometry = { ...resize.origin, x: clampCanvasCoordinate(x), y: clampCanvasCoordinate(y), w: clampCanvasSize(w), h: clampCanvasSize(h) };
+    const { origin } = resize;
+    let x = origin.x;
+    let y = origin.y;
+    let w = origin.w;
+    let h = origin.h;
+    let resizeScale = 1;
+    const isCorner = dir.length === 2;
+
+    if (isCorner) {
+      // Project the dragged corner onto the original diagonal so one scale factor
+      // drives both axes and the opposite corner remains anchored.
+      const targetWidth = origin.w + (dir.includes('w') ? -dx : dx);
+      const targetHeight = origin.h + (dir.includes('n') ? -dy : dy);
+      const diagonal = origin.w * origin.w + origin.h * origin.h;
+      const proposedScale = diagonal > 0
+        ? (targetWidth * origin.w + targetHeight * origin.h) / diagonal
+        : 1;
+      const minScale = Math.max(24 / origin.w, 24 / origin.h);
+      const maxScale = Math.min(4000 / origin.w, 4000 / origin.h);
+      resizeScale = Math.max(minScale, Math.min(maxScale, proposedScale));
+      w = clampCanvasSize(origin.w * resizeScale);
+      h = clampCanvasSize(origin.h * resizeScale);
+      if (dir.includes('w')) x = origin.x + origin.w - w;
+      if (dir.includes('n')) y = origin.y + origin.h - h;
+    } else {
+      if (dir.includes('e')) w = clampCanvasSize(origin.w + dx);
+      if (dir.includes('s')) h = clampCanvasSize(origin.h + dy);
+      if (dir.includes('w')) { w = clampCanvasSize(origin.w - dx); x = origin.x + origin.w - w; }
+      if (dir.includes('n')) { h = clampCanvasSize(origin.h - dy); y = origin.y + origin.h - h; }
+    }
+
+    let next: CanvasGeometry = {
+      ...origin,
+      x: clampCanvasCoordinate(x),
+      y: clampCanvasCoordinate(y),
+      w: clampCanvasSize(w),
+      h: clampCanvasSize(h),
+    };
     const el = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${id}"]`);
+    const block = pages[activePageIndex]?.blocks.find((item) => item.id === id);
     if (el) {
       el.style.left = `${next.x}px`;
       el.style.top = `${next.y}px`;
       el.style.width = `${next.w}px`;
       el.style.height = `${next.h}px`;
+
+      if (isCorner && block && (block.type === 'heading' || block.type === 'text')) {
+        const baseSize = block.fontSize ?? defaultFontSize(block);
+        const scaledBaseSize = Math.max(8, Math.min(160, Math.round(baseSize * resizeScale)));
+        const textElement = el.querySelector<HTMLElement>('.content-doc-heading, .content-doc-text');
+        if (textElement) {
+          textElement.style.fontSize = `${scaledBaseSize}px`;
+          const canvasText = textElement.querySelector<HTMLElement>('.editor-canvas-text');
+          const runNodes = canvasText?.children;
+          if (runNodes && block.richText?.length) {
+            block.richText.forEach((run, index) => {
+              if (run.fontSize === undefined) return;
+              const runNode = runNodes.item(index) as HTMLElement | null;
+              if (runNode) runNode.style.fontSize = `${Math.max(8, Math.min(160, Math.round(run.fontSize * resizeScale)))}px`;
+            });
+          }
+        }
+      }
+
+      // Horizontal text-box resizing keeps the type size intact and expands its
+      // height to the wrapped content instead of clipping the new line.
+      if (!isCorner && (dir === 'e' || dir === 'w') && block && (block.type === 'heading' || block.type === 'text')) {
+        const textElement = el.querySelector<HTMLElement>('.content-doc-heading, .content-doc-text');
+        const canvasText = textElement?.querySelector<HTMLElement>('.editor-canvas-text');
+        if (textElement) {
+          textElement.style.height = 'auto';
+          textElement.style.overflow = 'visible';
+          if (canvasText) {
+            canvasText.style.maxHeight = 'none';
+            canvasText.style.overflow = 'visible';
+          }
+          const contentHeight = clampCanvasSize(Math.ceil(textElement.scrollHeight));
+          next = { ...next, h: contentHeight };
+          el.style.height = `${contentHeight}px`;
+        }
+      }
     }
-    freeResize.current = { ...resize, next };
+    freeResize.current = { ...resize, next, scale: isCorner ? resizeScale : 1 };
   };
+
   const finishFreeResize = (id: string) => {
     const resize = freeResize.current;
     if (!resize || resize.id !== id) return;
     freeResize.current = null;
-    patchBlock(id, { geometry: resize.next });
+    const block = pages[activePageIndex]?.blocks.find((item) => item.id === id);
+    const patch: Partial<EditorBlock> = { geometry: resize.next };
+    if (resize.dir.length === 2 && resize.scale && block && (block.type === 'heading' || block.type === 'text')) {
+      const scaledSize = Math.max(8, Math.min(160, Math.round((block.fontSize ?? defaultFontSize(block)) * resize.scale)));
+      patch.fontSize = scaledSize;
+      if (block.richText?.length) {
+        patch.richText = block.richText.map((run) => run.fontSize === undefined
+          ? run
+          : { ...run, fontSize: Math.max(8, Math.min(160, Math.round(run.fontSize * resize.scale!))) });
+      }
+    }
+    patchBlock(id, patch);
   };
 
   return (
@@ -3303,6 +3384,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                               startY: event.clientY,
                               origin: { ...geo },
                               next: { ...geo },
+                              scale: 1,
                             };
                           }}
                           onPointerMove={(event) => onFreeResizeMove(event, block.id, dir)}
