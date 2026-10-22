@@ -1677,6 +1677,25 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       if (meta && event.key.toLowerCase() === 'k' && selectedBlock && (selectedBlock.type === 'heading' || selectedBlock.type === 'text')) {
         event.preventDefault(); editTextLink(selectedBlock.id); return;
       }
+      if (meta && !event.altKey && event.key.toLowerCase() === 'c' && selectedBlock && (selectedBlock.type === 'heading' || selectedBlock.type === 'text')) {
+        const highlightedText = window.getSelection()?.toString();
+        if (!highlightedText) {
+          event.preventDefault();
+          void copyTextFromBlock(selectedBlock.id);
+          return;
+        }
+      }
+      if (meta && !event.altKey && event.key.toLowerCase() === 'v' && selectedBlock && (selectedBlock.type === 'heading' || selectedBlock.type === 'text')) {
+        event.preventDefault();
+        void pasteTextIntoBlock(selectedBlock.id);
+        return;
+      }
+      if (event.altKey && event.shiftKey && event.key.toLowerCase() === 'l' && selectedBlock) {
+        event.preventDefault();
+        patchBlock(selectedBlock.id, { locked: !selectedBlock.locked });
+        setNotice(selectedBlock.locked ? 'Text unlocked.' : 'Text locked.');
+        return;
+      }
       if (meta && ['b', 'i', 'u'].includes(event.key.toLowerCase()) && selectedBlock && (selectedBlock.type === 'text' || selectedBlock.type === 'heading')) {
         event.preventDefault();
         const key = event.key.toLowerCase() as 'b' | 'i' | 'u';
