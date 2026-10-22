@@ -962,3 +962,143 @@
     grid-row: 3;
   }
 }
+
+
+/* Inline text selection toolbar: lives above the canvas and styles only the selected range. */
+.studio-inline-format-toolbar {
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: calc(100vw - 16px);
+  padding: 6px;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 11px;
+  color: var(--text, #1e293b);
+  background: var(--surface-elevated, #ffffff);
+  box-shadow: 0 14px 42px rgba(15, 23, 42, .24);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.studio-inline-format-toolbar > button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 29px;
+  height: 29px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--text, #1e293b);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+
+.studio-inline-format-toolbar > button:hover,
+.studio-inline-format-toolbar > button.is-on {
+  border-color: var(--border-strong, #94a3b8);
+  color: var(--text-strong, #0f172a);
+  background: var(--surface-hover, #f1f5f9);
+}
+
+.studio-inline-format-toolbar > button:focus-visible,
+.studio-inline-format-toolbar select:focus-visible,
+.studio-inline-format-toolbar input:focus-visible {
+  outline: 2px solid var(--focus, #3b82f6);
+  outline-offset: 2px;
+}
+
+.studio-inline-format-toolbar select {
+  flex: 0 1 112px;
+  width: 112px;
+  min-width: 78px;
+  height: 29px;
+  padding: 0 6px;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 7px;
+  color: var(--text, #1e293b);
+  background: var(--surface-raised, #ffffff);
+  font-size: 11px;
+}
+
+.studio-inline-format-toolbar .studio-inline-font-size {
+  flex: 0 0 55px;
+  width: 55px;
+  min-width: 55px;
+  height: 29px;
+  padding: 0 4px;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 7px;
+  color: var(--text, #1e293b);
+  background: var(--surface-raised, #ffffff);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.studio-inline-color-control {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 31px;
+  align-items: center;
+  justify-content: center;
+  width: 31px;
+  height: 29px;
+  overflow: hidden;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 7px;
+  color: var(--text, #1e293b);
+  background: var(--surface-raised, #ffffff);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.studio-inline-color-control > span {
+  pointer-events: none;
+}
+
+.studio-inline-color-control input[type="color"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  opacity: .015;
+  cursor: pointer;
+}
+
+.studio-inline-color-control.is-highlight {
+  font-size: 12px;
+}
+
+.studio-inline-format-toolbar > .studio-inline-reset {
+  min-width: 31px;
+  padding-inline: 4px;
+  color: var(--text-muted, #64748b);
+  font-size: 10px;
+}
+
+@media (max-width: 520px) {
+  .studio-inline-format-toolbar {
+    gap: 3px;
+    padding: 5px;
+  }
+
+  .studio-inline-format-toolbar select {
+    flex-basis: 92px;
+    width: 92px;
+    min-width: 72px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-inline-format-toolbar > button {
+    transition: none;
+  }
+}
