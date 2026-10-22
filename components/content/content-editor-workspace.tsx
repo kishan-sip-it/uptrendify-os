@@ -989,12 +989,19 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           Math.abs(Math.log(best[1].width / best[1].height / ratio)) ? current : best,
         )[0];
       const dimensions = CONTENT_PAGE_SIZES[size];
-      const blocks: EditorBlock[] = components.slice(0, CONTENT_DOC_MAX_BLOCKS).map((component, index) => {
-        const x = Math.round(component.bounds.x * dimensions.width / 1000);
-        const y = Math.round(component.bounds.y * dimensions.height / 1000);
-        const w = Math.max(24, Math.round(component.bounds.w * dimensions.width / 1000));
-        const h = Math.max(24, Math.round(component.bounds.h * dimensions.height / 1000));
-        const fontSize = Math.max(8, Math.min(160, Math.round(component.fontSize * dimensions.height / 1000)));
+      // Match the contain background exactly: source pixels remain uncropped,
+      // with any aspect-ratio difference letterboxed around the original image.
+      const imageScale = Math.min(dimensions.width / bitmap.width, dimensions.height / bitmap.height);
+      const imageWidth = bitmap.width * imageScale;
+      const imageHeight = bitmap.height * imageScale;
+      const imageOffsetX = (dimensions.width - imageWidth) / 2;
+      const imageOffsetY = (dimensions.height - imageHeight) / 2;
+      const blocks: EditorBlock[] = components.slice(0, CONTENT_DOC_MAX_BLOCKS).map((component) => {
+        const x = Math.round(imageOffsetX + component.bounds.x * imageWidth / 1000);
+        const y = Math.round(imageOffsetY + component.bounds.y * imageHeight / 1000);
+        const w = Math.max(24, Math.round(component.bounds.w * imageWidth / 1000));
+        const h = Math.max(24, Math.round(component.bounds.h * imageHeight / 1000));
+        const fontSize = Math.max(8, Math.min(160, Math.round(component.fontSize * imageHeight / 1000)));
         const fontFamily = (component.fontFamily ?? 'Arial').replace(/[^a-zA-Z0-9 ,'-]/g, '').slice(0, 120) || 'Arial';
         const common = {
           id: newBlockId('text'),
@@ -1021,7 +1028,8 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       installImportedPages([{
         id: newBlockId('page'),
         size,
-        backgroundImage: { src: sourceUrl, alt: file.name.slice(0, 300) },
+        bg: '#ffffff',
+        backgroundImage: { src: sourceUrl, alt: file.name.slice(0, 300), fit: 'contain' },
         blocks,
       }], `AI recognized ${blocks.length} editable text layer(s). The original image is retained as the page background; review approximate fonts and text-area cover colors before saving.${notes.length ? ' Notes: ' + notes.slice(0, 2).join(' ') : ''}`);
     } catch (cause) {
@@ -1936,7 +1944,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               minHeight: pageDims.height,
               backgroundColor: activePage?.bg ?? '#ffffff',
               backgroundImage: activePage?.backgroundImage ? `url(${JSON.stringify(activePage.backgroundImage.src)})` : undefined,
-              backgroundSize: activePage?.backgroundImage ? 'cover' : undefined,
+              backgroundSize: activePage?.backgroundImage ? (activePage.backgroundImage.fit ?? 'cover') : undefined,
               backgroundPosition: activePage?.backgroundImage ? 'center' : undefined,
               backgroundRepeat: activePage?.backgroundImage ? 'no-repeat' : undefined,
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom / 100})`,

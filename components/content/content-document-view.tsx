@@ -29,7 +29,7 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
             ...(page.bg ? { background: page.bg, borderRadius: 10 } : {}),
             ...(page.backgroundImage ? {
               backgroundImage: `url(${JSON.stringify(page.backgroundImage.src)})`,
-              backgroundSize: 'cover',
+              backgroundSize: page.backgroundImage.fit ?? 'cover',
               backgroundPosition: 'center',
               backgroundRepeat: 'no-repeat',
             } : {}),

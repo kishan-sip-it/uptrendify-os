@@ -105,6 +105,8 @@ const geometry = z.object({
 const backgroundImage = z.object({
   src: imageSource,
   alt: z.string().max(300).nullish().transform((value) => value ?? ''),
+  /** Preserve the whole source raster when it is used as a reconstruction reference. */
+  fit: z.enum(['cover', 'contain']).optional(),
 });
 
 const svgVectorBounds = z.object({

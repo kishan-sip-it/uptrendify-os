@@ -63,7 +63,7 @@ describe('content document body format', () => {
       pages: [{
         id: 'free-page',
         size: 'square',
-        backgroundImage: { src: 'https://cdn.example.com/background.png', alt: 'Background' },
+        backgroundImage: { src: 'https://cdn.example.com/background.png', alt: 'Background', fit: 'contain' },
         blocks: [
           { id: 'free-heading', type: 'heading', text: 'Canvas title', level: 1, align: 'left', color: '#112233', bg: null, bold: true, italic: false, underline: false, fontSize: 54, fontFamily: 'Georgia', geometry: { x: 30, y: 44, w: 520, h: 128 } },
           { id: 'free-text', type: 'text', text: 'Independently resizable copy', align: 'left', color: null, bg: '#f5f5f5', size: 'md', bold: false, italic: false, underline: false, fontSize: 19, fontFamily: 'Arial', geometry: { x: 42, y: 220, w: 360, h: 92 } },
