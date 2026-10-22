@@ -507,6 +507,7 @@ function CanvasText({
   const selectWordOnEditRef = useRef(false);
   const preserveSelectionRef = useRef(false);
   const [editing, setEditing] = useState(false);
+  const finishInProgressRef = useRef(false);
   const editPoint = useRef<{ x: number; y: number } | null>(null);
   const baseStyleRef = useRef(baseStyle);
   baseStyleRef.current = baseStyle;
@@ -553,6 +554,7 @@ function CanvasText({
   const beginEditing = (event?: React.MouseEvent<HTMLDivElement>, selectWord = false) => {
     if (event) editPoint.current = { x: event.clientX, y: event.clientY };
     selectWordOnEditRef.current = selectWord;
+    finishInProgressRef.current = false;
     setEditing(true);
   };
 
@@ -577,13 +579,22 @@ function CanvasText({
   };
 
   useEffect(() => {
-    if (editRequest > 0 && !disabled) setEditing(true);
+    if (editRequest > 0 && !disabled) {
+      finishInProgressRef.current = false;
+      setEditing(true);
+    }
   }, [editRequest, disabled]);
 
   const finishEditing = () => {
+    // Blur can be triggered by both browser focus changes and editor state changes.
+    // Commit once and remove imperative contentEditable children before React renders
+    // its own spans; otherwise React appends a second visible copy of the same text.
+    if (finishInProgressRef.current) return;
+    finishInProgressRef.current = true;
     const editable = ref.current;
     const rawRuns = editable ? readInlineTextRunsFromDom(editable) : compatibleInlineTextRuns(value, richText);
     const normalized = normalizeInlineTextRuns(rawRuns);
+    editable?.replaceChildren();
     setEditing(false);
     notifyInlineToolbarChange(null);
     savedRangeRef.current = null;
@@ -805,7 +816,10 @@ function CanvasText({
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             event.preventDefault();
-            if (ref.current) appendInlineTextRuns(ref.current, compatibleInlineTextRuns(value, richText));
+            finishInProgressRef.current = true;
+            // Cancel by discarding imperative editor children; React will render the
+            // unchanged committed value when editing mode exits.
+            ref.current?.replaceChildren();
             setEditing(false);
             notifyInlineToolbarChange(null);
             savedRangeRef.current = null;
