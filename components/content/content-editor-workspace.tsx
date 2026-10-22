@@ -744,7 +744,8 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       if (page.backgroundImage?.src) {
         const image = new Image();
         image.crossOrigin = 'anonymous';
-        image.src = page.backgroundImage.src;
+        const studioAssetPath = normalizeStudioAssetPath(page.backgroundImage.src);
+        image.src = studioAssetPath ? `${studioAssetPath}?raw=1` : page.backgroundImage.src;
         try {
           await image.decode();
         } catch {
