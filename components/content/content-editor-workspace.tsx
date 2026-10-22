@@ -56,6 +56,7 @@ import {
 import { ContentDocumentView } from '@/components/content/content-document-view';
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
 import { importSvgTemplate, type SvgTemplateImport } from '@/lib/studio/import-template';
+import { eraseRasterTextPixels, type RasterTextBounds } from '@/lib/studio/raster-text';
 import { storyboardPagesFromScript } from '@/lib/content/parse-script';
 import { lintBlocks, healthScore, channelLimit, type BrandLintIssue } from '@/lib/studio/brand-lint';
 import { reflowPage, resolveBlockText } from '@/lib/content/document';
@@ -88,6 +89,30 @@ type LocalStudioDraft = {
   baseVersionId: string | null;
   activePageIndex: number;
   savedAt: number;
+};
+type RasterTextCandidate = {
+  text: string;
+  bounds: RasterTextBounds;
+  fontSize: number;
+  fontFamily?: string;
+  fontWeight?: 'normal' | 'bold';
+  italic?: boolean;
+  underline?: boolean;
+  color: string;
+  align: 'left' | 'center' | 'right';
+  backgroundKind?: 'solid' | 'gradient' | 'photo' | 'unknown';
+  backgroundColor?: string | null;
+  confidence: number;
+  selected: boolean;
+};
+type RasterTextReview = {
+  fileName: string;
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+  dataUrl: string;
+  width: number;
+  height: number;
+  components: RasterTextCandidate[];
+  notes: string[];
 };
 
 const HISTORY_LIMIT = 80;
@@ -214,53 +239,6 @@ function normalizeStudioAssetPath(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const path = value.trim();
   return /^\/api\/brands\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/content\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(path) ? path : null;
-}
-
-/** Estimate a local cover color from pixels just outside a recognized text box. */
-function sampleRasterBackgroundColor(
-  bitmap: ImageBitmap,
-  bounds: { x: number; y: number; w: number; h: number },
-): string | null {
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) return null;
-    context.drawImage(bitmap, 0, 0);
-    const width = bitmap.width;
-    const height = bitmap.height;
-    const x0 = Math.max(0, Math.min(width - 1, Math.round(bounds.x * width / 1000)));
-    const y0 = Math.max(0, Math.min(height - 1, Math.round(bounds.y * height / 1000)));
-    const x1 = Math.max(x0 + 1, Math.min(width - 1, Math.round((bounds.x + bounds.w) * width / 1000)));
-    const y1 = Math.max(y0 + 1, Math.min(height - 1, Math.round((bounds.y + bounds.h) * height / 1000)));
-    const pixels: Array<[number, number, number]> = [];
-    const stepX = Math.max(1, Math.floor((x1 - x0) / 24));
-    const stepY = Math.max(1, Math.floor((y1 - y0) / 24));
-    const add = (x: number, y: number) => {
-      if (x < 0 || y < 0 || x >= width || y >= height) return;
-      const rgba = context.getImageData(x, y, 1, 1).data;
-      if (rgba[3] >= 220) pixels.push([rgba[0]!, rgba[1]!, rgba[2]!]);
-    };
-    for (const pad of [2, 4, 7]) {
-      for (let x = x0; x <= x1; x += stepX) {
-        add(x, y0 - pad);
-        add(x, y1 + pad);
-      }
-      for (let y = y0; y <= y1; y += stepY) {
-        add(x0 - pad, y);
-        add(x1 + pad, y);
-      }
-    }
-    if (!pixels.length) return null;
-    const median = (channel: 0 | 1 | 2) => {
-      const values = pixels.map((pixel) => pixel[channel]).sort((a, b) => a - b);
-      return values[Math.floor(values.length / 2)]!;
-    };
-    return '#' + [0, 1, 2].map((channel) => median(channel as 0 | 1 | 2).toString(16).padStart(2, '0')).join('');
-  } catch {
-    return null;
-  }
 }
 
 function clampCanvasCoordinate(value: number): number {
@@ -420,6 +398,8 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [backgroundImageUrl, setBackgroundImageUrl] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isImportingTemplate, setIsImportingTemplate] = useState(false);
+  const [rasterReview, setRasterReview] = useState<RasterTextReview | null>(null);
+  const [isApplyingRasterText, setIsApplyingRasterText] = useState(false);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
   const templateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [floatAnchor, setFloatAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -913,7 +893,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
 
   const importRasterFile = async (file: File) => {
-    if (!canEdit || isImportingTemplate) return;
+    if (!canEdit || isImportingTemplate || rasterReview) return;
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       setError('Choose a PNG, JPG, or WEBP image for AI text recognition.');
       return;
@@ -932,75 +912,178 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         binary += String.fromCharCode(...rawBytes.subarray(offset, Math.min(offset + 0x8000, rawBytes.length)));
       }
       const data = btoa(binary);
-      const recognitionResponse = await fetch(`/api/brands/${brandId}/content/${contentId}/recognize-image`, {
+      const dataUrl = `data:${file.type};base64,${data}`;
+      const bitmap = await createImageBitmap(file);
+      const width = bitmap.width;
+      const height = bitmap.height;
+      bitmap.close();
+
+      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/recognize-image`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ mimeType: file.type, data }),
       });
-      const recognition = await recognitionResponse.json().catch(() => null) as {
-        components?: Array<{
-          text: string;
-          bounds: { x: number; y: number; w: number; h: number };
-          fontSize: number;
-          fontFamily?: string;
-          fontWeight?: 'normal' | 'bold';
-          italic?: boolean;
-          underline?: boolean;
-          color: string;
-          align: 'left' | 'center' | 'right';
-          backgroundKind?: 'solid' | 'gradient' | 'photo' | 'unknown';
-          backgroundColor?: string | null;
-          confidence: number;
-        }>;
+      const recognition = await response.json().catch(() => null) as {
+        components?: Array<Omit<RasterTextCandidate, 'selected'>>;
         notes?: string[];
         error?: string;
       } | null;
-      if (!recognitionResponse.ok) throw new Error(recognition?.error || 'AI could not recognize text in this image.');
-      const components = (recognition?.components ?? []).filter((component) => component.text.trim() && component.confidence >= 0.45);
-      if (!components.length) {
-        setNotice('No readable text was confidently detected. The original image will be inserted as one image layer instead.');
-        setIsImportingTemplate(false);
-        await addImageFromFile(file);
-        return;
+      if (!response.ok) throw new Error(recognition?.error || 'AI could not recognize text in this image.');
+
+      const components: RasterTextCandidate[] = (recognition?.components ?? [])
+        .filter((component) => component.text.trim() && component.confidence >= 0.3)
+        .slice(0, CONTENT_DOC_MAX_BLOCKS)
+        .map((component) => {
+          const x = Math.max(0, Math.min(999, Math.round(component.bounds.x)));
+          const y = Math.max(0, Math.min(999, Math.round(component.bounds.y)));
+          return {
+            ...component,
+            bounds: {
+              x,
+              y,
+              w: Math.max(1, Math.min(1000 - x, Math.round(component.bounds.w))),
+              h: Math.max(1, Math.min(1000 - y, Math.round(component.bounds.h))),
+            },
+            selected: false,
+          };
+        });
+
+      // Recognition is preview-only until the user reviews and selects boxes.
+      // A model guess is never automatically rendered over the original artwork.
+      setRasterReview({
+        fileName: file.name,
+        mimeType: file.type as RasterTextReview['mimeType'],
+        dataUrl,
+        width,
+        height,
+        components,
+        notes: recognition?.notes ?? [],
+      });
+      setNotice(components.length
+        ? 'Review the detected regions. Only selected text is made editable; unselected content stays in the source image.'
+        : 'No readable text was confidently detected. You can still use the original image unchanged.');
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'AI image recognition failed.');
+    } finally {
+      setIsImportingTemplate(false);
+      if (templateFileInputRef.current) templateFileInputRef.current.value = '';
+    }
+  };
+
+  const patchRasterCandidate = (index: number, patch: Partial<RasterTextCandidate>) => {
+    setRasterReview((current) => current ? ({
+      ...current,
+      components: current.components.map((component, componentIndex) =>
+        componentIndex === index ? { ...component, ...patch } : component),
+    }) : current);
+  };
+
+  const installRasterImageUnchanged = async () => {
+    const review = rasterReview;
+    if (!review || isApplyingRasterText) return;
+    setIsApplyingRasterText(true);
+    setError(null);
+    try {
+      const sourceUrl = await uploadTemplateRaster({
+        blockId: 'raster-original',
+        dataUrl: review.dataUrl,
+        fileName: review.fileName,
+      });
+      if (!sourceUrl) throw new Error('The original image could not be stored securely.');
+      const ratio = review.width / Math.max(1, review.height);
+      const size = (Object.entries(CONTENT_PAGE_SIZES) as Array<[ContentPageSizeId, { width: number; height: number }]>)
+        .reduce((best, current) =>
+          Math.abs(Math.log(current[1].width / current[1].height / ratio)) <
+          Math.abs(Math.log(best[1].width / best[1].height / ratio)) ? current : best,
+        )[0];
+      installImportedPages([{
+        id: newBlockId('page'),
+        size,
+        bg: '#ffffff',
+        backgroundImage: { src: sourceUrl, alt: review.fileName.slice(0, 300), fit: 'contain' },
+        blocks: [],
+      }], 'Original image imported unchanged. Use SVG/Studio JSON for source-level editable layers, or Grab Text to selectively extract readable text.');
+      setRasterReview(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not import the original image.');
+    } finally {
+      setIsApplyingRasterText(false);
+    }
+  };
+
+  const applyRasterTextReview = async () => {
+    const review = rasterReview;
+    if (!review || isApplyingRasterText) return;
+    const selected = review.components.filter((component) => component.selected);
+    if (!selected.length) {
+      setError('Select at least one detected text region before grabbing it.');
+      return;
+    }
+    setIsApplyingRasterText(true);
+    setError(null);
+    try {
+      const image = new Image();
+      image.src = review.dataUrl;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = review.width;
+      canvas.height = review.height;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) throw new Error('This browser could not prepare the image for text editing.');
+      context.drawImage(image, 0, 0);
+      const sourcePixels = context.getImageData(0, 0, review.width, review.height);
+      const cleaned = eraseRasterTextPixels(
+        { width: review.width, height: review.height, data: sourcePixels.data },
+        selected.map(({ bounds, color }) => ({ bounds, color })),
+      );
+      const successful = selected.filter((_, index) => cleaned.regions[index]?.status === 'erased');
+      const skipped = selected.filter((_, index) => cleaned.regions[index]?.status !== 'erased');
+      if (!successful.length) {
+        const unsafe = cleaned.regions.some((region) => region.status === 'unsafe-coverage');
+        throw new Error(unsafe
+          ? 'No text was changed: a selected box covered too much of the image to erase safely. Adjust the region bounds or leave that text embedded.'
+          : 'No text was changed: the estimated text colour did not match enough source pixels. Adjust the region bounds or leave that text embedded.');
       }
 
-      // The source stays as the page background. Only recognized text boxes get
-      // editable overlays; their small background patches cover the old glyphs.
-      // The user is asked before this reconstruction because exact fonts/background
-      // data cannot be recovered from a flattened raster file.
-      const complexBackgrounds = components.filter((component) => component.backgroundKind === 'photo' || component.backgroundKind === 'unknown').length;
-      const gradientBackgrounds = components.filter((component) => component.backgroundKind === 'gradient').length;
-      const warning = complexBackgrounds || gradientBackgrounds
-        ? ` ${complexBackgrounds} text region(s) lie over photo/unknown backgrounds and ${gradientBackgrounds} over gradients; the mask color is approximate and may need manual adjustment.`
-        : '';
-      if (!window.confirm(
-        `AI detected ${components.length} text element(s). It will keep the original image as the page background and add editable text layers. To cover the old words, each detected text box uses an estimated local background color; some fonts and background patches may need correction.${warning}\n\nContinue with editable reconstruction?`,
-      )) return;
+      context.putImageData(new ImageData(cleaned.data, review.width, review.height), 0, 0);
+      const bytesInDataUrl = (value: string) => Math.floor((value.split(',')[1]?.length ?? 0) * 0.75);
+      let cleanedDataUrl = canvas.toDataURL(review.mimeType, review.mimeType === 'image/png' ? undefined : 0.92);
+      if (bytesInDataUrl(cleanedDataUrl) > 2 * 1024 * 1024) cleanedDataUrl = canvas.toDataURL('image/webp', 0.88);
+      if (bytesInDataUrl(cleanedDataUrl) > 2 * 1024 * 1024) cleanedDataUrl = canvas.toDataURL('image/webp', 0.78);
+      if (bytesInDataUrl(cleanedDataUrl) > 2 * 1024 * 1024) {
+        throw new Error('The cleaned image exceeds the 2 MB asset limit. Use a smaller source image.');
+      }
 
-      const imageDataUrl = `data:${file.type};base64,${data}`;
-      const sourceUrl = await uploadTemplateRaster({ blockId: 'raster-original', dataUrl: imageDataUrl, fileName: file.name });
-      if (!sourceUrl) throw new Error('The original image could not be stored securely.');
+      const sourceUrl = await uploadTemplateRaster({
+        blockId: 'raster-cleaned',
+        dataUrl: cleanedDataUrl,
+        fileName: review.fileName.replace(/\.[^.]+$/, '') + '-text-cleaned.webp',
+      });
+      if (!sourceUrl) throw new Error('The cleaned image could not be stored securely.');
 
-      const bitmap = await createImageBitmap(file);
-      const ratio = bitmap.width / Math.max(1, bitmap.height);
+      const ratio = review.width / Math.max(1, review.height);
       const size = (Object.entries(CONTENT_PAGE_SIZES) as Array<[ContentPageSizeId, { width: number; height: number }]>)
         .reduce((best, current) =>
           Math.abs(Math.log(current[1].width / current[1].height / ratio)) <
           Math.abs(Math.log(best[1].width / best[1].height / ratio)) ? current : best,
         )[0];
       const dimensions = CONTENT_PAGE_SIZES[size];
-      // Match the contain background exactly: source pixels remain uncropped,
-      // with any aspect-ratio difference letterboxed around the original image.
-      const imageScale = Math.min(dimensions.width / bitmap.width, dimensions.height / bitmap.height);
-      const imageWidth = bitmap.width * imageScale;
-      const imageHeight = bitmap.height * imageScale;
+      const imageScale = Math.min(dimensions.width / review.width, dimensions.height / review.height);
+      const imageWidth = review.width * imageScale;
+      const imageHeight = review.height * imageScale;
       const imageOffsetX = (dimensions.width - imageWidth) / 2;
       const imageOffsetY = (dimensions.height - imageHeight) / 2;
-      const blocks: EditorBlock[] = components.slice(0, CONTENT_DOC_MAX_BLOCKS).map((component) => {
-        const x = Math.round(imageOffsetX + component.bounds.x * imageWidth / 1000);
-        const y = Math.round(imageOffsetY + component.bounds.y * imageHeight / 1000);
-        const w = Math.max(24, Math.round(component.bounds.w * imageWidth / 1000));
-        const h = Math.max(24, Math.round(component.bounds.h * imageHeight / 1000));
+
+      const blocks: EditorBlock[] = successful.map((component) => {
+        const xNorm = Math.max(0, Math.min(1000, component.bounds.x));
+        const yNorm = Math.max(0, Math.min(1000, component.bounds.y));
+        const wNorm = Math.max(1, Math.min(1000 - xNorm, component.bounds.w));
+        const hNorm = Math.max(1, Math.min(1000 - yNorm, component.bounds.h));
+        const x = Math.round(imageOffsetX + xNorm * imageWidth / 1000);
+        const y = Math.round(imageOffsetY + yNorm * imageHeight / 1000);
+        const w = Math.max(24, Math.round(wNorm * imageWidth / 1000));
+        const h = Math.max(24, Math.round(hNorm * imageHeight / 1000));
         const fontSize = Math.max(8, Math.min(160, Math.round(component.fontSize * imageHeight / 1000)));
         const fontFamily = (component.fontFamily ?? 'Arial').replace(/[^a-zA-Z0-9 ,'-]/g, '').slice(0, 120) || 'Arial';
         const common = {
@@ -1008,7 +1091,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           text: component.text,
           align: component.align,
           color: component.color,
-          bg: component.backgroundColor ?? sampleRasterBackgroundColor(bitmap, component.bounds),
+          bg: null,
           bold: component.fontWeight === 'bold',
           italic: component.italic ?? false,
           underline: component.underline ?? false,
@@ -1022,21 +1105,28 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         }
         return { ...common, type: 'text', size: fontSize >= 22 ? 'lg' as const : 'md' as const };
       });
-      bitmap.close();
-      const notes = [...(recognition?.notes ?? [])];
-      if (complexBackgrounds || gradientBackgrounds) notes.push('Background cover colors are estimates; check each reconstructed text box against the source.');
+
+      const warning = skipped.length
+        ? ` ${skipped.length} selected region(s) stayed embedded because pixel cleanup was not safe; those text layers were not added.`
+        : '';
+      const textured = successful.some((component) =>
+        component.backgroundKind === 'photo' || component.backgroundKind === 'unknown' || component.backgroundKind === 'gradient',
+      );
+      const textureNote = textured
+        ? ' Text over photo/gradient backgrounds can need manual cleanup; inspect before saving.'
+        : '';
       installImportedPages([{
         id: newBlockId('page'),
         size,
         bg: '#ffffff',
-        backgroundImage: { src: sourceUrl, alt: file.name.slice(0, 300), fit: 'contain' },
+        backgroundImage: { src: sourceUrl, alt: review.fileName.slice(0, 300), fit: 'contain' },
         blocks,
-      }], `AI recognized ${blocks.length} editable text layer(s). The original image is retained as the page background; review approximate fonts and text-area cover colors before saving.${notes.length ? ' Notes: ' + notes.slice(0, 2).join(' ') : ''}`);
+      }], `Grabbed ${blocks.length} selected text layer(s). Only glyph-like pixels in selected boxes were reconstructed; unselected image content was retained.${warning}${textureNote}`);
+      setRasterReview(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'AI image import failed.');
+      setError(cause instanceof Error ? cause.message : 'Could not safely grab the selected text.');
     } finally {
-      setIsImportingTemplate(false);
-      if (templateFileInputRef.current) templateFileInputRef.current.value = '';
+      setIsApplyingRasterText(false);
     }
   };
 
@@ -2479,6 +2569,132 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       )}
 
       {floatToolbar}
+      {rasterReview ? (
+        <div className="studio-upload-overlay" role="presentation" style={{ zIndex: 100100, alignItems: 'center', justifyContent: 'center', padding: 18, overflowY: 'auto' }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="raster-text-review-title" className="studio-upload-dialog" style={{
+            width: 'min(1180px, 96vw)', maxWidth: 1180, maxHeight: '94vh', overflow: 'auto', gap: 12,
+            alignItems: 'stretch', background: 'var(--st-panel, #121821)', color: 'var(--st-text, #eef2f7)',
+            border: '1px solid var(--st-border, #334155)', padding: 18,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <strong id="raster-text-review-title" style={{ fontSize: 18 }}>Grab text from image</strong>
+                <p className="editor-hint" style={{ margin: '6px 0 0' }}>Nothing is changed yet. Select only the text you want to edit; correct the detected wording or region bounds first.</p>
+              </div>
+              <button type="button" className="st-icon" onClick={() => setRasterReview(null)} disabled={isApplyingRasterText} aria-label="Cancel text recognition">×</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{
+                  width: '100%', maxHeight: '52vh', aspectRatio: `${rasterReview.width} / ${rasterReview.height}`,
+                  position: 'relative', overflow: 'hidden', background: '#0b0f15',
+                  border: '1px solid var(--st-border, #334155)', borderRadius: 8,
+                }}>
+                  <img src={rasterReview.dataUrl} alt="Original image text-recognition preview" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+                  {rasterReview.components.map((component, index) => (
+                    <button key={index} type="button"
+                      aria-label={`${component.selected ? 'Deselect' : 'Select'} region ${index + 1}: ${component.text}`}
+                      aria-pressed={component.selected}
+                      onClick={() => patchRasterCandidate(index, { selected: !component.selected })}
+                      style={{
+                        position: 'absolute',
+                        left: `${Math.max(0, Math.min(1000, component.bounds.x)) / 10}%`,
+                        top: `${Math.max(0, Math.min(1000, component.bounds.y)) / 10}%`,
+                        width: `${Math.max(1, Math.min(1000 - component.bounds.x, component.bounds.w)) / 10}%`,
+                        height: `${Math.max(1, Math.min(1000 - component.bounds.y, component.bounds.h)) / 10}%`,
+                        minWidth: 16, minHeight: 12, padding: 0, borderRadius: 3,
+                        border: component.selected ? '2px solid #22c55e' : '1px solid #38bdf8',
+                        background: component.selected ? 'rgba(34,197,94,.12)' : 'rgba(56,189,248,.06)',
+                        color: '#fff', fontSize: 10, fontWeight: 700, textShadow: '0 1px 2px #000', cursor: 'pointer',
+                      }} title={component.text}>{index + 1}</button>
+                  ))}
+                </div>
+                <div className="editor-hint" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
+                  <span><span style={{ color: '#38bdf8' }}>□</span> detected</span>
+                  <span><span style={{ color: '#22c55e' }}>□</span> selected to grab</span>
+                  <span>Click a numbered region to toggle.</span>
+                </div>
+                {rasterReview.notes.length ? <div style={{ marginTop: 10, padding: 10, borderRadius: 6, background: 'var(--st-surface, #0b0f15)', fontSize: 12 }}>
+                  <strong>Recognition notes</strong>
+                  {rasterReview.notes.slice(0, 4).map((note, index) => <p key={index} style={{ margin: '5px 0 0' }}>{note}</p>)}
+                </div> : null}
+              </div>
+              <div style={{ minWidth: 0, maxHeight: '61vh', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 9 }}>
+                {rasterReview.components.length ? rasterReview.components.map((component, index) => (
+                  <div key={index} style={{
+                    border: `1px solid ${component.selected ? '#22c55e' : 'var(--st-border, #334155)'}`,
+                    borderRadius: 8, padding: 10,
+                    background: component.selected ? 'rgba(34,197,94,.06)' : 'var(--st-surface, #0b0f15)',
+                    display: 'flex', flexDirection: 'column', gap: 7,
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={component.selected} onChange={(event) => patchRasterCandidate(index, { selected: event.target.checked })} style={{ marginTop: 3 }} />
+                      <span style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.4 }}>#{index + 1} · {component.text || 'Empty text'}</span>
+                      <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: 'var(--st-muted, #9ca3af)' }}>{Math.round(component.confidence * 100)}%</span>
+                    </label>
+                    <label className="st-field"><span>Text (correct OCR before grabbing)</span>
+                      <input className="st-input" value={component.text} onChange={(event) => patchRasterCandidate(index, { text: event.target.value })} />
+                    </label>
+                    <div className="st-field-row" style={{ gap: 8, alignItems: 'end' }}>
+                      <label className="st-field" style={{ flex: 1, minWidth: 80 }}><span>Estimated font</span>
+                        <input className="st-input" value={component.fontFamily ?? 'Arial'} onChange={(event) => patchRasterCandidate(index, { fontFamily: event.target.value })} />
+                      </label>
+                      <label className="st-field" style={{ width: 82 }}><span>Size</span>
+                        <input className="st-input" type="number" min={1} max={300} value={component.fontSize} onChange={(event) => patchRasterCandidate(index, { fontSize: Math.max(1, Math.min(300, Number(event.target.value) || 1)) })} />
+                      </label>
+                      <label className="st-field" style={{ width: 56 }}><span>Color</span>
+                        <input type="color" value={component.color} onChange={(event) => patchRasterCandidate(index, { color: event.target.value })} aria-label={`Text color for region ${index + 1}`} style={{ width: '100%', height: 34 }} />
+                      </label>
+                    </div>
+                    <div className="st-field-row" style={{ gap: 8, alignItems: 'end' }}>
+                      <label className="st-field" style={{ flex: 1 }}><span>Alignment</span>
+                        <select className="st-select" value={component.align} onChange={(event) => patchRasterCandidate(index, { align: event.target.value as RasterTextCandidate['align'] })}>
+                          <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+                        </select>
+                      </label>
+                      <label className="st-field" style={{ flex: 1 }}><span>Weight</span>
+                        <select className="st-select" value={component.fontWeight ?? 'normal'} onChange={(event) => patchRasterCandidate(index, { fontWeight: event.target.value as 'normal' | 'bold' })}>
+                          <option value="normal">Regular</option><option value="bold">Bold</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="st-field"><span>Region bounds (0–1000: X, Y, W, H)</span>
+                      <div className="st-field-row" style={{ gap: 5 }}>
+                        {(['x', 'y', 'w', 'h'] as const).map((key) => (
+                          <label key={key} className="st-field" style={{ width: 0, flex: '1 1 0' }}><span>{key.toUpperCase()}</span>
+                            <input className="st-input" type="number" min={key === 'w' || key === 'h' ? 1 : 0} max={1000} value={component.bounds[key]}
+                              onChange={(event) => {
+                                const min = key === 'w' || key === 'h' ? 1 : 0;
+                                const value = Math.max(min, Math.min(1000, Math.round(Number(event.target.value) || min)));
+                                const next = { ...component.bounds, [key]: value };
+                                next.w = Math.max(1, Math.min(1000 - next.x, next.w));
+                                next.h = Math.max(1, Math.min(1000 - next.y, next.h));
+                                patchRasterCandidate(index, { bounds: next });
+                              }} />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="editor-hint" style={{ margin: 0 }}>Background: {component.backgroundKind ?? 'unknown'} · {component.italic ? 'italic' : 'not italic'}.</div>
+                  </div>
+                )) : <p className="editor-hint">No readable text was recognized confidently. Use the image unchanged, or cancel and try a clearer source.</p>}
+              </div>
+            </div>
+            <p className="editor-hint" style={{ margin: 0 }}>
+              Only selected text boxes are changed. Cleanup touches glyph-like pixels inside reviewed bounds; decorative lettering or photo/gradient backgrounds can still need manual correction. Unselected image content remains embedded.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', paddingTop: 4 }}>
+              <button type="button" className="st-btn" onClick={() => setRasterReview(null)} disabled={isApplyingRasterText}>Cancel</button>
+              <button type="button" className="st-btn" onClick={() => void installRasterImageUnchanged()} disabled={isApplyingRasterText}>Use image unchanged</button>
+              <button type="button" className="st-btn st-btn--primary" onClick={() => void applyRasterTextReview()} disabled={isApplyingRasterText || (rasterReview?.components.filter((component) => component.selected).length ?? 0) === 0}>
+                {isApplyingRasterText ? <LoaderCircle size={13} className="studio-upload-spinner" /> : null}
+                Grab selected text ({rasterReview.components.filter((component) => component.selected).length})
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {isUploadingImage ? (
         <div className="studio-upload-overlay" role="status" aria-live="polite" aria-label="Uploading image">
           <div className="studio-upload-dialog">
