@@ -808,9 +808,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
 
   const confirmImportedCanvasReplacement = () => {
-    const hasCurrentContent = (activePage?.blocks.length ?? 0) > 0;
+    const hasCurrentContent = pages.some((page) => page.blocks.length > 0 || Boolean(page.bg) || Boolean(page.backgroundImage));
     if (!dirty && !hasCurrentContent) return true;
-    return window.confirm('Import this template as a new editable canvas? The current canvas will be replaced. Save your current work first if you need to keep it.');
+    return window.confirm('Import this template as a new editable canvas? The current canvas will be replaced. You can restore it with Undo (Ctrl+Z). Save a new version first if you need a permanent checkpoint.');
   };
 
   const importSvgMarkup = async (markup: string) => {
@@ -928,7 +928,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       : 'Flow layout enabled. Element geometry is preserved and can be restored by switching back to Free canvas.');
   };
   const insertTemplate = (templateId: string) => {
-    const currentHasContent = (activePage?.blocks.length ?? 0) > 0 || pages.length > 1;
+    const currentHasContent = pages.length > 1 || pages.some((entry) => entry.blocks.length > 0 || Boolean(entry.bg) || Boolean(entry.backgroundImage));
     if ((dirty || currentHasContent) && !window.confirm('Replace the current canvas with this template? The previous canvas will remain available with Undo (Ctrl+Z). Save your current work as a version first if you need a permanent checkpoint.')) return;
     const page = buildTemplatePage(templateId, brand.colors[0] ?? '#7c7cff');
     if (!page) return;
@@ -2021,6 +2021,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                   {selected.type !== 'image' && selected.type !== 'shape' ? (
                     <label className="st-field">
                       <span>{selected.type === 'button' ? 'Button text' : 'Text'}</span>
+                      <span className="editor-hint">Replace placeholder copy here, or double-click the text on the canvas to edit it directly. Changes are undoable.</span>
                       {selected.type === 'text' ? (
                         <textarea className="st-textarea" value={selected.text} onChange={(event) => patchBlock(selected.id, { text: event.target.value })} disabled={!canEditBlock(selected)} rows={4} />
                       ) : (
