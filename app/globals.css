@@ -2833,3 +2833,38 @@ html[data-theme="system"]:not(.theme-dark) {
 .st-text-assist-generate { display:inline-flex; align-items:center; gap:7px; }
 .editor-inline-edit { outline:2px solid rgba(129,140,248,.78); outline-offset:2px; border-radius:2px; min-width:1ch; }
 @media (max-width:620px) { .st-text-assist-controls { grid-template-columns:1fr; } .st-context-menu { max-width:calc(100vw - 16px); } }
+
+
+/* Visual background-image preview: no internal asset URLs displayed to users. */
+.st-background-image-card { display:grid; gap:8px; }
+.st-background-image-preview {
+  display:flex; align-items:center; gap:12px; width:100%; min-width:0;
+  border:1px solid var(--st-line,#293548); border-radius:10px; padding:8px;
+  background:var(--st-surface,#0b111c); color:var(--st-text,#eef2f7); text-align:left; cursor:pointer;
+}
+.st-background-image-preview img {
+  width:58px; height:58px; flex:0 0 58px; object-fit:cover; border-radius:7px;
+  border:1px solid rgba(148,163,184,.25);
+}
+.st-background-image-preview span { display:inline-flex; align-items:center; gap:7px; font-weight:700; font-size:12px; }
+.st-background-image-preview:hover:not(:disabled) { border-color:var(--st-accent,#818cf8); background:var(--st-panel-2,#111a29); }
+.st-background-preview-overlay {
+  position:fixed; inset:0; z-index:100600; display:flex; align-items:center; justify-content:center;
+  padding:24px; background:rgba(3,7,18,.82); backdrop-filter:blur(10px);
+}
+.st-background-preview-dialog {
+  display:flex; flex-direction:column; gap:12px; width:min(1000px,94vw); max-height:92vh;
+  padding:14px; border:1px solid rgba(148,163,184,.32); border-radius:16px;
+  background:#0c1220; box-shadow:0 30px 90px rgba(0,0,0,.55);
+}
+.st-background-preview-head { display:flex; align-items:center; justify-content:space-between; gap:12px; color:#f1f5f9; }
+.st-background-preview-head > div { display:flex; flex-direction:column; gap:3px; }
+.st-background-preview-head strong { font-size:14px; }
+.st-background-preview-head span { color:#94a3b8; font-size:11px; }
+.st-background-preview-dialog > img { display:block; width:100%; max-height:calc(92vh - 80px); object-fit:contain; border-radius:8px; }
+.st-inline-edit-hint { border:1px solid var(--st-line,#293548); border-radius:10px; padding:10px 12px; background:var(--st-surface,#0b111c); }
+.st-context-feature-hint { border:1px solid var(--st-line,#293548); border-radius:10px; padding:10px 12px; }
+@media (max-width:620px) {
+  .st-background-preview-overlay { padding:10px; }
+  .st-background-preview-dialog { width:100%; max-height:96vh; }
+}

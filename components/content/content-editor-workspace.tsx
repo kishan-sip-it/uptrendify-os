@@ -492,6 +492,34 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [loadedSnapshot, setLoadedSnapshot] = useState<string>(() => serializeContentDocument(initialDoc));
 
   useEffect(() => { offsetRef.current = offset; }, [offset]);
+  useLayoutEffect(() => {
+    if (!textContextMenu || !contextMenuRef.current) return;
+    const menu = contextMenuRef.current;
+    const menuRect = menu.getBoundingClientRect();
+    const left = Math.max(8, Math.min(textContextMenu.left, window.innerWidth - menuRect.width - 8));
+    const top = Math.max(8, Math.min(textContextMenu.top, window.innerHeight - menuRect.height - 8));
+    let submenuLeft = textContextMenu.submenuLeft;
+    let submenuTop = textContextMenu.submenuTop;
+    if (textContextMenu.submenu && contextSubmenuRef.current) {
+      const submenuRect = contextSubmenuRef.current.getBoundingClientRect();
+      const trigger = menu.querySelector<HTMLElement>(`[data-submenu-trigger="${textContextMenu.submenu}"]`);
+      const triggerRect = trigger?.getBoundingClientRect();
+      const nextMenuRight = left + menuRect.width + 8;
+      const roomRight = window.innerWidth - nextMenuRight - 8;
+      submenuLeft = roomRight >= submenuRect.width ? nextMenuRight : Math.max(8, left - submenuRect.width - 8);
+      const triggerOffsetTop = triggerRect ? triggerRect.top - menuRect.top : 0;
+      submenuTop = Math.max(8, Math.min(top + triggerOffsetTop, window.innerHeight - submenuRect.height - 8));
+    }
+    const nextLeft = Math.round(left);
+    const nextTop = Math.round(top);
+    const nextSubLeft = submenuLeft === undefined ? undefined : Math.round(submenuLeft);
+    const nextSubTop = submenuTop === undefined ? undefined : Math.round(submenuTop);
+    if (Math.abs(nextLeft - textContextMenu.left) > 1 || Math.abs(nextTop - textContextMenu.top) > 1 ||
+        nextSubLeft !== textContextMenu.submenuLeft || nextSubTop !== textContextMenu.submenuTop) {
+      setTextContextMenu((current) => current ? { ...current, left: nextLeft, top: nextTop, submenuLeft: nextSubLeft, submenuTop: nextSubTop } : current);
+    }
+  }, [textContextMenu]);
+
   useEffect(() => {
     if (!textContextMenu) return;
     const closeOutside = (event: PointerEvent) => {
@@ -2636,12 +2664,31 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                   </div>
                   <div className="st-field">
                     <span>Page background image</span>
-                    <input className="st-input" type="url" inputMode="url" value={backgroundImageUrl} onChange={(event) => setBackgroundImageUrl(event.target.value)} placeholder="https://example.com/background.jpg" disabled={!canEdit || previewMode} />
-                    <div className="st-field-row">
-                      <button type="button" className="st-btn" style={{ height: 30 }} onClick={applyBackgroundImageUrl} disabled={!canEdit || previewMode || !backgroundImageUrl.trim()}>Apply image</button>
-                      <button type="button" className="st-quiet-link" onClick={() => { setPageBackgroundImage(null); setBackgroundImageUrl(''); }} disabled={!canEdit || previewMode || !activePage?.backgroundImage}>Remove image</button>
-                    </div>
-                    <span className="editor-hint">Use a publicly reachable HTTP(S) image URL. The background is stored independently from image layers.</span>
+                    {activePage?.backgroundImage ? (
+                      <div className="st-background-image-card">
+                        <button type="button" className="st-background-image-preview" onClick={() => setBackgroundPreviewOpen(true)} disabled={previewMode} aria-label="Preview page background image" title="Click to preview the image">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={activePage.backgroundImage.src} alt={activePage.backgroundImage.alt || 'Page background preview'} />
+                          <span><Eye size={13} /> Preview image</span>
+                        </button>
+                        <div className="st-field-row">
+                          <button type="button" className="st-btn" style={{ height: 30 }} onClick={() => { setBackgroundImageUrl(''); setShowBackgroundImageUrlInput(true); }} disabled={!canEdit || previewMode}>Change image</button>
+                          <button type="button" className="st-quiet-link" onClick={() => { setPageBackgroundImage(null); setBackgroundImageUrl(''); setShowBackgroundImageUrlInput(false); }} disabled={!canEdit || previewMode}>Remove image</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="editor-hint">No background image. Add an image URL to place an image behind the canvas elements.</p>
+                    )}
+                    {(!activePage?.backgroundImage || showBackgroundImageUrlInput) ? (
+                      <>
+                        <input className="st-input" type="url" inputMode="url" value={backgroundImageUrl} onChange={(event) => setBackgroundImageUrl(event.target.value)} placeholder="Paste image URL (HTTP or HTTPS)" disabled={!canEdit || previewMode} />
+                        <div className="st-field-row">
+                          <button type="button" className="st-btn" style={{ height: 30 }} onClick={applyBackgroundImageUrl} disabled={!canEdit || previewMode || !backgroundImageUrl.trim()}>Apply image</button>
+                          {activePage?.backgroundImage ? <button type="button" className="st-quiet-link" onClick={() => { setShowBackgroundImageUrlInput(false); setBackgroundImageUrl(''); }}>Cancel</button> : null}
+                        </div>
+                      </>
+                    ) : null}
+                    <span className="editor-hint">The current image opens in a visual preview; internal asset paths are never shown.</span>
                   </div>
                   <div className="st-field">
                     <span>Margins</span>
@@ -3081,6 +3128,20 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             AI edits are previewed before replacing text. Components are stored locally for this brand in this browser.
           </div>
         </div>
+      ) : null}
+
+      {backgroundPreviewOpen && activePage?.backgroundImage ? createPortal(
+        <div className="st-background-preview-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setBackgroundPreviewOpen(false); }}>
+          <section className="st-background-preview-dialog" role="dialog" aria-modal="true" aria-label="Page background image preview">
+            <div className="st-background-preview-head">
+              <div><strong>Page background</strong><span>Image preview</span></div>
+              <button type="button" className="st-icon" onClick={() => setBackgroundPreviewOpen(false)} aria-label="Close background preview">×</button>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={activePage.backgroundImage.src} alt={activePage.backgroundImage.alt || 'Page background image'} />
+          </section>
+        </div>,
+        document.body
       ) : null}
 
       {textAssist ? (
