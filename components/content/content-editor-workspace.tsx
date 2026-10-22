@@ -3680,7 +3680,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} onClick={() => { duplicateBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={contextMenuItemStyle}>
             <span>Duplicate</span><span style={contextMenuShortcutStyle}>Ctrl+D</span>
           </button>
-          <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || ((activePage?.blocks.length ?? 0) <= 1 && pages.length === 1)} onClick={() => { removeBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={{ ...contextMenuItemStyle, color: '#fca5a5' }}>
+          <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || ((activePage?.blocks.length ?? 0) <= 1 && pages.length === 1)} onClick={() => { removeBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={{ ...contextMenuItemStyle, color: 'var(--text-danger, #b42318)' }}>
             <span>Delete</span><span style={contextMenuShortcutStyle}>Del</span>
           </button>
           {contextMenuBlock.type === 'heading' ? (
