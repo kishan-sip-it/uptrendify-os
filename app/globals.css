@@ -69,7 +69,22 @@ html[data-theme="system"] {
     --muted: #8ca0bc;
     --accent: #B794F6;
     --accent-2: #F472B6;
+    --surface-sidebar: #070b12;
+    --surface-card: #0d131f;
+    --surface-card-2: #111a29;
+    --surface-muted: #0b111c;
+    --surface-hover: #111a29;
+    --surface-inset: #070b12;
+    --surface-input: #0b111c;
+    --surface-overlay: rgba(7,11,18,.96);
+    --surface-progress: #182337;
+    --surface-skeleton: #141d30;
+    --text-inverse: #07100c;
+    --text-danger: #f87171;
+    --text-warning: #fbbf24;
+    --text-info: #b9adff;
     --text-success: #86d7b1;
+    --text-neutral: #8ca0bc;
   }
 }
 * { box-sizing: border-box; }
