@@ -29,7 +29,7 @@ Authenticated App Router / Route Handlers
                               |
                      Provider / Adapter Layer
                   /       |        |        \
-              Groq    OpenAI   Anthropic   Gemini
+              Groq    OpenAI   Anthropic
                   \       |        |        /
                    Optional external adapters
               Semrush / Surfer / Jasper / GHL
@@ -207,7 +207,6 @@ Initial live providers:
 - Groq
 - OpenAI
 - Anthropic
-- Gemini
 
 The default selection is configured through environment variables. Provider failures must be classified and retried only when safe.
 

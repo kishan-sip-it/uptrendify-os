@@ -31,6 +31,8 @@ export const CONTENT_PAGE_SIZES = {
   letter: { label: 'US Letter', width: 816, height: 1056 },
   square: { label: 'Square post', width: 760, height: 760 },
   story: { label: 'Story 9:16', width: 760, height: 1351 },
+  landscape: { label: 'A4 landscape', width: 1123, height: 794 },
+  wide: { label: 'Presentation 16:9', width: 1280, height: 720 },
 } as const;
 export type ContentPageSizeId = keyof typeof CONTENT_PAGE_SIZES;
 export const CONTENT_PAGE_SIZE_IDS = Object.keys(CONTENT_PAGE_SIZES) as ContentPageSizeId[];
@@ -56,6 +58,24 @@ export function defaultPageSizeForType(contentType: string | null | undefined): 
 const align = z.enum(['left', 'center', 'right']).nullish().transform((value) => value ?? 'left');
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/).nullish().transform((value) => value ?? null);
 const text = z.string().max(CONTENT_DOC_MAX_TEXT);
+
+/**
+ * Optional character-range formatting inside a text block. The owning block's
+ * existing text remains canonical; concatenating run.text values must equal it.
+ * Null color/background values deliberately reset that property to inheritance.
+ */
+const inlineTextRunSchema = z.object({
+  text: z.string().max(CONTENT_DOC_MAX_TEXT),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  bg: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  fontSize: z.coerce.number().int().min(8).max(160).optional(),
+  fontFamily: z.string().max(120).refine((value) => !/[;{}<>]/.test(value)).optional(),
+});
+const inlineTextRuns = z.array(inlineTextRunSchema).max(512);
+export type InlineTextRun = z.infer<typeof inlineTextRunSchema>;
 const blockId = z.string().min(1).max(64);
 const widthPct = z.coerce.number().min(20).max(100).nullish().transform((value) => (value == null ? null : Math.round(value)));
 const safeUrl = z
@@ -90,7 +110,12 @@ const emphasis = {
 export const CONTENT_SHAPE_KINDS = ['rectangle', 'square', 'circle', 'triangle', 'star', 'pyramid'] as const;
 const shapeKind = z.enum(CONTENT_SHAPE_KINDS);
 
+export function headingFontSizeForLevel(level: 1 | 2 | 3): number {
+  return level === 1 ? 36 : level === 2 ? 28 : 22;
+}
+
 const linkedField = z.enum(['title', 'cta']).optional();
+const externalHref = z.string().max(2048).url().refine((value) => /^https?:\/\//i.test(value), 'Only HTTP and HTTPS links are allowed.').optional();
 
 const geometry = z.object({
   x: z.coerce.number().min(-2000).max(4000),
@@ -103,6 +128,23 @@ const geometry = z.object({
 const backgroundImage = z.object({
   src: imageSource,
   alt: z.string().max(300).nullish().transform((value) => value ?? ''),
+  /** Preserve the whole source raster when it is used as a reconstruction reference. */
+  fit: z.enum(['cover', 'contain']).optional(),
+});
+
+const svgVectorBounds = z.object({
+  x: z.coerce.number().min(-100_000).max(100_000),
+  y: z.coerce.number().min(-100_000).max(100_000),
+  w: z.coerce.number().positive().max(100_000),
+  h: z.coerce.number().positive().max(100_000),
+});
+const svgVectorMatrix = z.object({
+  a: z.coerce.number().min(-100_000).max(100_000),
+  b: z.coerce.number().min(-100_000).max(100_000),
+  c: z.coerce.number().min(-100_000).max(100_000),
+  d: z.coerce.number().min(-100_000).max(100_000),
+  e: z.coerce.number().min(-100_000).max(100_000),
+  f: z.coerce.number().min(-100_000).max(100_000),
 });
 
 const flags = {
@@ -110,6 +152,8 @@ const flags = {
   hidden: z.boolean().optional(),
   /** Locked blocks render but reject edits in the editor. */
   locked: z.boolean().optional(),
+  /** Per-element visual opacity; 1 is fully opaque and 0 is transparent. */
+  opacity: z.coerce.number().min(0).max(1).optional(),
 };
 
 export const contentDocBlockSchema = z.discriminatedUnion('type', [
@@ -117,6 +161,7 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     id: blockId,
     type: z.literal('heading'),
     text,
+    richText: inlineTextRuns.optional(),
     level: z.coerce.number().int().min(1).max(3).nullish().transform((value) => (value == null ? 2 : value) as 1 | 2 | 3),
     fontSize: z.coerce.number().int().min(8).max(160).optional(),
     fontFamily: z.string().max(120).refine((value) => !/[;{}<>]/.test(value)).optional(),
@@ -125,6 +170,7 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     bg: color,
     ...emphasis,
     link: linkedField,
+    href: externalHref,
     geometry: geometry.optional(),
     ...flags,
   }),
@@ -132,6 +178,7 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     id: blockId,
     type: z.literal('text'),
     text,
+    richText: inlineTextRuns.optional(),
     align,
     color,
     bg: color,
@@ -140,6 +187,7 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     fontFamily: z.string().max(120).refine((value) => !/[;{}<>]/.test(value)).optional(),
     ...emphasis,
     link: linkedField,
+    href: externalHref,
     geometry: geometry.optional(),
     ...flags,
   }),
@@ -161,6 +209,13 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     align,
     width: widthPct,
     height: z.coerce.number().int().min(24).max(480).nullish().transform((value) => value ?? 120),
+    /** Sanitized SVG path data imported as a separately editable vector layer. */
+    svgPath: z.string().max(50_000).refine((value) => !/[<>]/.test(value)).optional(),
+    svgBounds: svgVectorBounds.optional(),
+    svgMatrix: svgVectorMatrix.optional(),
+    svgFillNone: z.boolean().optional(),
+    svgStroke: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+    svgStrokeWidth: z.coerce.number().min(0).max(1000).optional(),
     geometry: geometry.optional(),
     ...flags,
   }),
@@ -203,6 +258,18 @@ export type ContentDocument = z.infer<typeof contentDocumentSchema>;
 
 const rawDocumentSchema = z.object({ kind: z.unknown(), version: z.unknown() }).passthrough();
 
+/** Remove absent optional fields from parsed JSON so round-trips stay canonical. */
+function omitUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => omitUndefinedDeep(item)) as T;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => [key, omitUndefinedDeep(item)]);
+    return Object.fromEntries(entries) as T;
+  }
+  return value;
+}
+
 /**
  * Parse a stored version body. Accepts the current `pages` form and the
  * original flat single-page `blocks` form. Returns null for plain-text
@@ -221,7 +288,7 @@ export function parseContentBody(body: string): ContentDocument | null {
 
   if (Array.isArray(source.pages)) {
     const parsed = contentDocumentSchema.safeParse({ kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, mode: source.mode, backgroundImage: source.backgroundImage, pages: source.pages });
-    return parsed.success ? parsed.data : null;
+    return parsed.success ? omitUndefinedDeep(parsed.data) : null;
   }
   if (Array.isArray(source.blocks)) {
     // The flat single-page form never allowed an empty block list; treat an
@@ -230,7 +297,7 @@ export function parseContentBody(body: string): ContentDocument | null {
     const pageId = typeof source.pageId === 'string' && source.pageId.trim() ? source.pageId : 'page-1';
     const parsed = contentDocPageSchema.safeParse({ id: pageId, size: source.size, backgroundImage: source.backgroundImage, blocks: source.blocks });
     if (!parsed.success) return null;
-    return { kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, mode: source.mode === 'free' ? 'free' : undefined, pages: [parsed.data] };
+    return omitUndefinedDeep({ kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, mode: source.mode === 'free' ? 'free' as const : undefined, pages: [parsed.data] });
   }
   return null;
 }

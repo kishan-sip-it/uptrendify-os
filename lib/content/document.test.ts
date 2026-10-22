@@ -13,6 +13,7 @@ import {
   serializeContentDocument,
   type ContentDocBlock,
   type ContentDocument,
+  headingFontSizeForLevel,
 } from './document';
 
 const BLOCKS: ContentDocBlock[] = [
@@ -35,6 +36,52 @@ const multiPageDoc = (): ContentDocument => ({
 const singlePageDoc = (): ContentDocument => ({ kind: 'uptrendify-doc', version: 1, pages: [{ id: 'p1', size: 'a4', blocks: BLOCKS }] });
 
 describe('content document body format', () => {
+  it('round-trips opacity for every block type and rejects out-of-range values', () => {
+    const original = singlePageDoc();
+    const opacityDoc: ContentDocument = {
+      ...original,
+      mode: 'free',
+      pages: original.pages.map((page) => ({
+        ...page,
+        blocks: page.blocks.map((block) => ({ ...block, opacity: 0.35 })),
+      })),
+    };
+    const body = serializeContentDocument(opacityDoc);
+    expect(parseContentBody(body)).toEqual(opacityDoc);
+
+    const raw = JSON.parse(body) as { blocks: Array<Record<string, unknown>> };
+    raw.blocks[0]!.opacity = 1.01;
+    expect(parseContentBody(JSON.stringify(raw))).toBeNull();
+    raw.blocks[0]!.opacity = -0.01;
+    expect(parseContentBody(JSON.stringify(raw))).toBeNull();
+  });
+
+  it('round-trips external links for text and heading and rejects unsafe protocols', () => {
+    const original: ContentDocument = {
+      kind: 'uptrendify-doc',
+      version: 1,
+      mode: 'free',
+      pages: [{
+        id: 'linked-page',
+        size: 'square',
+        blocks: [
+          { id: 'linked-heading', type: 'heading', text: 'Open homepage', level: 2, align: 'left', color: '#111111', bg: null, bold: false, italic: false, underline: false, href: 'https://example.com/' },
+          { id: 'linked-text', type: 'text', text: 'Read details', align: 'left', color: null, bg: null, size: 'md', bold: false, italic: false, underline: false, href: 'http://example.com/details' },
+        ],
+      }],
+    };
+    expect(parseContentBody(serializeContentDocument(original))).toEqual(original);
+    const unsafe = JSON.parse(serializeContentDocument(original)) as { blocks: Array<Record<string, unknown>> };
+    unsafe.blocks[0]!.href = 'javascript:alert(1)';
+    expect(parseContentBody(JSON.stringify(unsafe))).toBeNull();
+  });
+
+  it('maps heading levels to visibly distinct sizes', () => {
+    expect(headingFontSizeForLevel(1)).toBe(36);
+    expect(headingFontSizeForLevel(2)).toBe(28);
+    expect(headingFontSizeForLevel(3)).toBe(22);
+  });
+
   it('round-trips independent geometry, numeric typography, and a page background image', () => {
     const doc: ContentDocument = {
       kind: 'uptrendify-doc',
@@ -43,7 +90,7 @@ describe('content document body format', () => {
       pages: [{
         id: 'free-page',
         size: 'square',
-        backgroundImage: { src: 'https://cdn.example.com/background.png', alt: 'Background' },
+        backgroundImage: { src: 'https://cdn.example.com/background.png', alt: 'Background', fit: 'contain' },
         blocks: [
           { id: 'free-heading', type: 'heading', text: 'Canvas title', level: 1, align: 'left', color: '#112233', bg: null, bold: true, italic: false, underline: false, fontSize: 54, fontFamily: 'Georgia', geometry: { x: 30, y: 44, w: 520, h: 128 } },
           { id: 'free-text', type: 'text', text: 'Independently resizable copy', align: 'left', color: null, bg: '#f5f5f5', size: 'md', bold: false, italic: false, underline: false, fontSize: 19, fontFamily: 'Arial', geometry: { x: 42, y: 220, w: 360, h: 92 } },

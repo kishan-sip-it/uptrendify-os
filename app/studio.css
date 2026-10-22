@@ -3,13 +3,17 @@
  * Kept scoped to .studio so this does not restyle other UpTrendifyOS routes.
  */
 .studio {
-  --st-bg: var(--surface-muted, var(--bg, #0b1120));
-  --st-panel: var(--surface-card, var(--panel, #101827));
-  --st-panel-2: var(--surface-card-2, var(--panel-2, #172033));
-  --st-text: var(--text, #edf2ff);
-  --st-ink-2: var(--muted, #a3aec2);
+  --st-bg: var(--surface-muted, var(--bg, #fffdf8));
+  --st-panel: var(--surface-card, var(--panel, #fffdf8));
+  --st-panel-2: var(--surface-card-2, var(--panel-2, #f0ebe1));
+  --st-surface: var(--surface-inset, var(--surface-muted, #fffdf8));
+  --st-text: var(--text, #292820);
+  --st-muted: var(--muted, #756f63);
+  --st-ink-2: var(--muted, #756f63);
   --st-ink-3: color-mix(in srgb, var(--st-ink-2) 76%, transparent);
-  --st-line-strong: var(--line, #354157);
+  --st-line: var(--line, #e2dbcf);
+  --st-border: var(--line, #e2dbcf);
+  --st-line-strong: var(--line, #e2dbcf);
   --st-accent: var(--accent, #8b5cf6);
   --st-ok: var(--text-success, #2e9d70);
   --st-warn: var(--text-warning, #b7791f);
@@ -17,10 +21,12 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  position: relative;
+  position: sticky;
+  top: 8px;
+  z-index: 5;
   width: 100%;
   min-width: 0;
-  min-height: min(900px, calc(100dvh - 150px));
+  min-height: 0;
   color: var(--st-text);
   font-family: Inter, var(--font-sans, system-ui), sans-serif;
   font-size: 13px;
@@ -205,12 +211,14 @@
 /* Editor panels, stage and inspector share one stable grid. */
 .studio-body {
   display: grid;
-  flex: 1 1 auto;
-  grid-template-columns: 44px minmax(190px, 238px) minmax(320px, 1fr) minmax(225px, 270px);
+  flex: 1 1 0;
+  grid-template-columns: 44px minmax(215px, 278px) minmax(320px, 1fr) minmax(225px, 270px);
+  grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
   gap: 9px;
   min-width: 0;
-  min-height: 620px;
+  min-height: 0;
+  overflow: hidden;
 }
 .studio-dock {
   display: flex;
@@ -247,6 +255,10 @@
   border-color: color-mix(in srgb, var(--st-accent) 42%, var(--st-line-strong));
   background: color-mix(in srgb, var(--st-accent) 14%, var(--st-panel));
   color: var(--st-text);
+}
+.studio-drawer-placeholder {
+  min-width: 0;
+  min-height: 0;
 }
 .studio-drawer,
 .studio-inspector {
@@ -304,9 +316,13 @@
 }
 .st-layer-row {
   display: grid;
-  grid-template-columns: 13px minmax(0, 1fr) auto;
+  grid-template-columns: 12px minmax(0, 1fr) 55px;
   align-items: center;
   gap: 7px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   min-height: 48px;
   padding: 6px 7px;
   border: 1px solid transparent;
@@ -330,7 +346,10 @@
   line-height: 1.35;
   text-overflow: ellipsis;
   overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
+.st-layer-row > span:nth-child(2) { min-width: 0; overflow: hidden; }
 .st-layer-kind { display: block; margin-top: 2px; color: var(--st-ink-3); font-size: 9.5px; text-transform: capitalize; }
 .st-layer-actions { display: inline-flex; align-items: center; gap: 3px; }
 .st-layer-actions .st-icon { width: 26px !important; height: 26px !important; border-radius: 7px; }
@@ -433,7 +452,7 @@
 .studio-inspector-body > .st-label:not(:first-child) { margin-top: 3px; }
 .studio-inspector-body .st-field + .st-field { margin-top: 2px; }
 .studio-inspector-body .editor-shapes-row { display: flex; flex-wrap: wrap; gap: 5px; }
-.studio-inspector-body .editor-shape-swatch { width: 20px; height: 20px; display: inline-block; }
+.studio-inspector-body .editor-shape-swatch { width: 24px; height: 24px; display: inline-block; flex: 0 0 auto; }
 .studio-inspector-body input[type="number"] { font-variant-numeric: tabular-nums; }
 
 /* Central canvas area: a contained work surface, not an unstyled document flow. */
@@ -441,8 +460,10 @@
   position: relative;
   isolation: isolate;
   min-width: 0;
-  min-height: 620px;
+  min-height: 0;
+  height: 100%;
   overflow: hidden;
+  overscroll-behavior: contain;
   border: 1px solid var(--st-line-strong);
   border-radius: 12px;
   background-color: var(--st-bg);
@@ -470,6 +491,14 @@
   color: #202635;
   box-shadow: 0 18px 60px rgba(0, 0, 0, .28), 0 2px 6px rgba(0, 0, 0, .12);
   cursor: default;
+}
+/* Keep the page label outside the clipped sheet, but clip design elements
+   to the paper bounds just like a typical visual canvas editor. */
+.studio-page-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 2px;
 }
 .studio-page-label {
   position: absolute;
@@ -534,6 +563,15 @@
   object-fit: cover;
 }
 .editor-free-block { position: absolute; box-sizing: border-box; }
+.editor-free-block-content { position: absolute; inset: 0; min-width: 0; min-height: 0; }
+.editor-free-block-content > svg,
+.content-doc-shape > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
 .editor-free-block.is-ghost { opacity: .38; }
 .editor-free-block.is-selected { z-index: 30; outline: 2px solid var(--st-accent); outline-offset: 2px; }
 .editor-free-block .content-doc-heading,
@@ -570,10 +608,10 @@
   gap: 4px;
   max-width: calc(100% - 16px);
   padding: 5px;
-  border: 1px solid #30394a;
+  border: 1px solid var(--line, #e2dbcf);
   border-radius: 10px;
-  background: #141b28;
-  color: #f7f8fc;
+  background: var(--surface-card, var(--panel, #fffdf8));
+  color: var(--text, #292820);
   box-shadow: 0 8px 28px rgba(0,0,0,.24);
 }
 .st-float-group { display: inline-flex; align-items: center; gap: 2px; }
@@ -590,13 +628,69 @@
   color: inherit;
   font-size: 10px;
   font-weight: 750;
+  flex-shrink: 0;
   cursor: pointer;
 }
 .studio-float button:hover:not(:disabled),
-.studio-float button.is-on { border-color: #59647a; background: #2b3548; }
-.studio-float button.is-danger { color: #ff858e; }
+.studio-float button.is-on { border-color: var(--line, #e2dbcf); background: var(--surface-hover, var(--panel-2, #f0ebe1)); }
+.studio-float button.is-danger { color: var(--text-danger, #b42318); }
 .studio-float button:disabled { opacity: .4; cursor: not-allowed; }
-.studio-float input[type="color"] { width: 25px; height: 25px; padding: 2px; border: 1px solid #59647a; border-radius: 5px; background: #202a3b; }
+.studio-float input[type="color"] {
+  display: inline-block;
+  flex: 0 0 25px;
+  width: 25px;
+  min-width: 25px;
+  max-width: 25px;
+  height: 25px;
+  padding: 2px;
+  border: 1px solid var(--line, #e2dbcf);
+  border-radius: 5px;
+  background: var(--surface-input, var(--panel, #fffdf8));
+}
+
+/* The same floating toolbar hosts selected-range controls; don't create a second bar. */
+.studio-float[data-inline-selection="true"] {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-width: min(660px, calc(100vw - 16px));
+}
+.studio .studio-float select.st-inline-range-select,
+.studio .studio-float input.st-inline-range-size {
+  display: inline-block;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  height: 26px;
+  min-height: 26px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--st-line-strong);
+  border-radius: 6px;
+  background: var(--st-bg);
+  color: var(--st-text);
+  font-size: 11px;
+}
+.studio .studio-float select.st-inline-range-select {
+  width: 108px;
+  min-width: 108px;
+  max-width: 108px;
+}
+.studio .studio-float input.st-inline-range-size {
+  width: 54px;
+  min-width: 54px;
+  max-width: 54px;
+  padding-inline: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.studio .studio-float .st-inline-range-reset {
+  flex: 0 0 28px;
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 26px;
+  padding-inline: 4px;
+  font-size: 10px;
+}
 
 /* Storyboard strip and document controls */
 .studio-filmstrip {
@@ -646,16 +740,19 @@
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 7px;
   min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   padding: 8px 10px;
   border: 1px solid var(--st-line-strong);
   border-radius: 12px;
   background: color-mix(in srgb, var(--st-panel) 96%, transparent);
   box-shadow: 0 8px 24px rgba(0,0,0,.10);
 }
-.studio-page-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.studio-page-tabs { display: flex; flex: 0 0 auto; align-items: center; flex-wrap: nowrap; gap: 4px; min-width: 0; }
 .studio-page-tab {
   display: inline-flex;
   align-items: center;
@@ -675,7 +772,7 @@
 .studio-page-tab.is-active { border-color: color-mix(in srgb, var(--st-accent) 46%, var(--st-line-strong)); background: color-mix(in srgb, var(--st-accent) 12%, var(--st-panel)); color: var(--st-text); }
 .studio-page-tab.is-add { border-style: dashed; border-color: var(--st-line-strong); }
 .studio-page-tab.is-danger { color: var(--st-danger); }
-.studio-bottombar .spacer { flex: 1 1 auto; }
+.studio-bottombar .spacer { flex: 1 0 6px; }
 .studio-exit-focus {
   position: fixed;
   z-index: 1000;
@@ -697,17 +794,18 @@
 /* Keep the screen usable at laptop widths without letting controls push the
    canvas out of view; narrower screens convert side panels into compact rows. */
 @media (max-width: 1350px) {
-  .studio-body { grid-template-columns: 42px minmax(175px, 215px) minmax(280px, 1fr) minmax(205px, 235px); gap: 7px; }
+  .studio-body { grid-template-columns: 42px minmax(195px, 235px) minmax(260px, 1fr) minmax(205px, 235px); gap: 7px; }
   .studio-topbar { gap: 6px; padding: 8px; }
   .st-btn { padding-inline: 9px; }
 }
 @media (max-width: 1100px) {
   .studio { min-height: 0; }
-  .studio-body { grid-template-columns: 40px minmax(175px, 215px) minmax(0, 1fr); min-height: 640px; }
+  .studio-body { grid-template-columns: 40px minmax(190px, 225px) minmax(0, 1fr); grid-template-rows: auto auto; min-height: 640px; overflow: visible; }
   .studio-inspector { grid-column: 2 / -1; min-height: 240px; max-height: 42vh; }
   .studio-stage { min-height: 640px; }
 }
 @media (max-width: 760px) {
+  .studio-drawer-placeholder { display: none; }
   .studio { gap: 8px; }
   .studio-topbar { border-radius: 10px; padding: 7px; }
   .studio-title-input { order: 2; flex: 1 1 calc(100% - 46px); max-width: none; }
@@ -760,7 +858,7 @@
     max-height: min(420px, 55vh);
   }
   .studio-inspector-body { padding: 10px; }
-  .studio-bottombar { position: sticky; bottom: 0; padding: 6px; gap: 5px; }
+  .studio-bottombar { position: sticky; bottom: 0; flex-wrap: wrap; padding: 6px; gap: 5px; }
   .studio-page-tab { min-height: 29px; padding: 5px 7px; font-size: 10px; }
   .studio-filmstrip-meta { flex-basis: 82px; }
   .studio-filmstrip-thumb { flex-basis: 112px; }
@@ -797,9 +895,18 @@
 .editor-inline-edit {
   display: block;
   width: 100%;
-  max-height: 100%;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   white-space: pre-wrap;
+}
+
+
+/* While editing, long copy must remain visible instead of becoming a nested scroller
+   in both free-canvas and flow/page editing modes. */
+.studio-page-frame .content-doc-heading:has(.editor-inline-edit),
+.studio-page-frame .content-doc-text:has(.editor-inline-edit) {
+  max-height: none !important;
+  overflow: visible !important;
 }
 .editor-free-block > .content-doc-heading,
 .editor-free-block > .content-doc-text {
@@ -875,4 +982,44 @@
   width: 100% !important;
   height: 100% !important;
   max-width: 100%;
+}
+
+
+/* Let the canvas reclaim the drawer column when Layers/Insert/Brand/AI closes. */
+@media (min-width: 1101px) {
+  .studio-body.is-drawer-closed {
+    grid-template-columns: 44px minmax(0, 1fr) minmax(225px, 270px);
+    gap: 12px;
+  }
+
+  .studio-body.is-drawer-closed > .studio-drawer-placeholder {
+    display: none;
+  }
+}
+
+/* Laptop/tablet layout: keep the closed drawer from reserving a full column. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .studio-body.is-drawer-closed {
+    grid-template-columns: 40px minmax(0, 1fr);
+    column-gap: 10px;
+  }
+
+  .studio-body.is-drawer-closed > .studio-drawer-placeholder {
+    display: none;
+  }
+}
+
+/* Mobile: closing the drawer must also remove its empty grid row. */
+@media (max-width: 760px) {
+  .studio:not(.is-focus) .studio-body.is-drawer-closed {
+    grid-template-rows: auto minmax(500px, 1fr) auto;
+  }
+
+  .studio:not(.is-focus) .studio-body.is-drawer-closed > .studio-stage {
+    grid-row: 2;
+  }
+
+  .studio:not(.is-focus) .studio-body.is-drawer-closed > .studio-inspector {
+    grid-row: 3;
+  }
 }

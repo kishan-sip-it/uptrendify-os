@@ -19,6 +19,7 @@ import './workflow-checklist.css';
 import './content-document.css';
 import './content-editor.css';
 import './studio.css';
+import './ui-ux-foundation.css';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { NetworkStatus } from '@/components/ui/NetworkStatus';
 import { GlobalWorkflowChecklist } from '@/components/ui/global-workflow-checklist';
