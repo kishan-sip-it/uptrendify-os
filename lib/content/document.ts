@@ -185,7 +185,7 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     svgBounds: svgVectorBounds.optional(),
     svgMatrix: svgVectorMatrix.optional(),
     svgFillNone: z.boolean().optional(),
-    svgStroke: color.optional(),
+    svgStroke: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
     svgStrokeWidth: z.coerce.number().min(0).max(1000).optional(),
     geometry: geometry.optional(),
     ...flags,
@@ -229,6 +229,18 @@ export type ContentDocument = z.infer<typeof contentDocumentSchema>;
 
 const rawDocumentSchema = z.object({ kind: z.unknown(), version: z.unknown() }).passthrough();
 
+/** Remove absent optional fields from parsed JSON so round-trips stay canonical. */
+function omitUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => omitUndefinedDeep(item)) as T;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => [key, omitUndefinedDeep(item)]);
+    return Object.fromEntries(entries) as T;
+  }
+  return value;
+}
+
 /**
  * Parse a stored version body. Accepts the current `pages` form and the
  * original flat single-page `blocks` form. Returns null for plain-text
@@ -247,7 +259,7 @@ export function parseContentBody(body: string): ContentDocument | null {
 
   if (Array.isArray(source.pages)) {
     const parsed = contentDocumentSchema.safeParse({ kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, mode: source.mode, backgroundImage: source.backgroundImage, pages: source.pages });
-    return parsed.success ? parsed.data : null;
+    return parsed.success ? omitUndefinedDeep(parsed.data) : null;
   }
   if (Array.isArray(source.blocks)) {
     // The flat single-page form never allowed an empty block list; treat an
@@ -256,7 +268,7 @@ export function parseContentBody(body: string): ContentDocument | null {
     const pageId = typeof source.pageId === 'string' && source.pageId.trim() ? source.pageId : 'page-1';
     const parsed = contentDocPageSchema.safeParse({ id: pageId, size: source.size, backgroundImage: source.backgroundImage, blocks: source.blocks });
     if (!parsed.success) return null;
-    return { kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, mode: source.mode === 'free' ? 'free' : undefined, pages: [parsed.data] };
+    return omitUndefinedDeep({ kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, mode: source.mode === 'free' ? 'free' as const : undefined, pages: [parsed.data] });
   }
   return null;
 }
