@@ -492,7 +492,6 @@ function CanvasText({
   const preserveSelectionRef = useRef(false);
   const [editing, setEditing] = useState(false);
   const [inlineToolbar, setInlineToolbar] = useState<InlineTextToolbarState | null>(null);
-  const lastCanvasClickAt = useRef(0);
   const editPoint = useRef<{ x: number; y: number } | null>(null);
   const baseStyleRef = useRef(baseStyle);
   baseStyleRef.current = baseStyle;
@@ -520,17 +519,8 @@ function CanvasText({
 
   const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
     onClick();
-    if (disabled) return;
-    if (!editOnDoubleClick) { beginEditing(event); return; }
-    const now = Date.now();
-    if (now - lastCanvasClickAt.current < 650) {
-      event.preventDefault();
-      event.stopPropagation();
-      beginEditing(event, true);
-      lastCanvasClickAt.current = 0;
-    } else {
-      lastCanvasClickAt.current = now;
-    }
+    if (disabled || editOnDoubleClick) return;
+    beginEditing(event);
   };
 
   const handleCanvasDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -2699,10 +2689,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             ))}
           </span>
         ) : null}
-        <span className="st-float-group" aria-label="Element actions">
-          <button type="button" onClick={() => duplicateBlock(block.id)} disabled={(activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} aria-label="Duplicate element" title="Duplicate"><Copy size={13} /></button>
-          <button type="button" onClick={() => removeBlock(block.id)} disabled={(activePage?.blocks.length ?? 0) <= 1 && pages.length === 1} aria-label="Delete element" title="Delete"><Trash2 size={13} /></button>
-        </span>
       </div>
     );
   })();
