@@ -2734,7 +2734,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             value={state.fontFamily}
             onChange={(event) => inline.apply('fontFamily', event.currentTarget.value)}
           >
-            {['Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'monospace'].map((font) => <option key={font} value={font}>{font}</option>)}
+            {Array.from(new Set([state.fontFamily, 'Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'monospace'])).map((font) => <option key={font} value={font}>{font}</option>)}
           </select>
           <input
             className="st-inline-range-size"
@@ -3958,7 +3958,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               <div style={{ minWidth: 0 }}>
                 <div style={{
                   width: '100%', aspectRatio: `${rasterReview.width} / ${rasterReview.height}`,
-                  position: 'relative', overflow: 'hidden', background: '#0b0f15',
+                  position: 'relative', overflow: 'hidden', background: 'var(--st-surface)',
                   border: '1px solid var(--st-border, #334155)', borderRadius: 8,
                 }}>
                   <img src={rasterReview.dataUrl} alt="Original image text-recognition preview" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
