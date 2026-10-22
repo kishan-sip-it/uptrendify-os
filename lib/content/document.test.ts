@@ -55,6 +55,26 @@ describe('content document body format', () => {
     expect(parseContentBody(JSON.stringify(raw))).toBeNull();
   });
 
+  it('round-trips external links for text and heading and rejects unsafe protocols', () => {
+    const original: ContentDocument = {
+      kind: 'uptrendify-doc',
+      version: 1,
+      mode: 'free',
+      pages: [{
+        id: 'linked-page',
+        size: 'square',
+        blocks: [
+          { id: 'linked-heading', type: 'heading', text: 'Open homepage', level: 2, align: 'left', color: '#111111', bg: null, bold: false, italic: false, underline: false, href: 'https://example.com/' },
+          { id: 'linked-text', type: 'text', text: 'Read details', align: 'left', color: null, bg: null, size: 'md', bold: false, italic: false, underline: false, href: 'http://example.com/details' },
+        ],
+      }],
+    };
+    expect(parseContentBody(serializeContentDocument(original))).toEqual(original);
+    const unsafe = JSON.parse(serializeContentDocument(original)) as { blocks: Array<Record<string, unknown>> };
+    unsafe.blocks[0]!.href = 'javascript:alert(1)';
+    expect(parseContentBody(JSON.stringify(unsafe))).toBeNull();
+  });
+
   it('round-trips independent geometry, numeric typography, and a page background image', () => {
     const doc: ContentDocument = {
       kind: 'uptrendify-doc',

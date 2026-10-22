@@ -82,6 +82,20 @@ const BLOCK_LABEL: Record<EditorBlock['type'], string> = {
 
 type EditorBlock = ContentDocBlock;
 type CanvasGeometry = NonNullable<EditorBlock['geometry']>;
+type TextStyleSnapshot = {
+  color?: string | null;
+  bg?: string | null;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  align?: 'left' | 'center' | 'right';
+  fontSize?: number;
+  fontFamily?: string;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  level?: 1 | 2 | 3;
+  opacity?: number;
+};
+type TextContextSubmenu = 'layer' | 'align' | null;
 type LocalStudioDraft = {
   schemaVersion: 1;
   body: string;
@@ -235,11 +249,36 @@ function normalizeHttpImageUrl(value: string): string | null {
   }
 }
 
+function normalizeHttpLinkUrl(value: string): string | null {
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 function normalizeStudioAssetPath(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const path = value.trim();
   return /^\/api\/brands\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/content\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(path) ? path : null;
 }
+
+const contextMenuItemStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+  width: '100%', minHeight: 32, padding: '7px 9px', border: 0, borderRadius: 5,
+  background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: 12,
+};
+const contextMenuShortcutStyle: React.CSSProperties = {
+  marginLeft: 'auto', color: 'var(--st-muted, #9aa6b5)', fontSize: 10, whiteSpace: 'nowrap',
+};
+const contextMenuDividerStyle: React.CSSProperties = {
+  height: 1, margin: '5px 5px', background: 'var(--st-line, #2c3542)',
+};
+const contextMenuSubmenuStyle: React.CSSProperties = {
+  margin: '2px 0 4px 10px', paddingLeft: 5, borderLeft: '2px solid var(--st-line, #2c3542)',
+};
 
 function clampCanvasCoordinate(value: number): number {
   return Math.max(-2000, Math.min(4000, Math.round(value)));
@@ -400,6 +439,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [isImportingTemplate, setIsImportingTemplate] = useState(false);
   const [rasterReview, setRasterReview] = useState<RasterTextReview | null>(null);
   const [isApplyingRasterText, setIsApplyingRasterText] = useState(false);
+  const [textContextMenu, setTextContextMenu] = useState<{ blockId: string; left: number; top: number; submenu: TextContextSubmenu } | null>(null);
+  const [copiedTextStyle, setCopiedTextStyle] = useState<TextStyleSnapshot | null>(null);
+  const internalTextClipboardRef = useRef<string | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
   const templateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [floatAnchor, setFloatAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -420,6 +462,23 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [loadedSnapshot, setLoadedSnapshot] = useState<string>(() => serializeContentDocument(initialDoc));
 
   useEffect(() => { offsetRef.current = offset; }, [offset]);
+  useEffect(() => {
+    if (!textContextMenu) return;
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-studio-text-context-menu]')) return;
+      setTextContextMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setTextContextMenu(null);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [textContextMenu]);
 
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? (window.visualViewport as VisualViewport | null) : null;
@@ -631,6 +690,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const linkedValues = useMemo(() => ({ title: documentTitle, cta: itemCta ?? undefined }), [documentTitle, itemCta]);
   const charLimit = channelLimit(channel);
   const selected = activePage?.blocks.find((block) => block.id === selectedId) ?? null;
+  const contextMenuBlock = textContextMenu ? pages[activePageIndex]?.blocks.find((block) => block.id === textContextMenu.blockId) ?? null : null;
   const selectedGeometry = selected?.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
   const selectedIndex = activePage?.blocks.findIndex((block) => block.id === selectedId) ?? -1;
 
@@ -1257,6 +1317,129 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     setSelectedId(id);
   };
 
+  const isEditableTextBlock = (block: EditorBlock | null | undefined): block is Extract<EditorBlock, { type: 'heading' | 'text' }> =>
+    Boolean(block && (block.type === 'heading' || block.type === 'text'));
+
+  const copyTextStyle = (blockId: string) => {
+    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    if (!isEditableTextBlock(block)) return;
+    setCopiedTextStyle({
+      color: block.color, bg: block.bg, bold: block.bold, italic: block.italic,
+      underline: block.underline, align: block.align, fontSize: block.fontSize,
+      fontFamily: block.fontFamily, opacity: block.opacity,
+      ...(block.type === 'text' ? { size: block.size } : { level: block.level }),
+    });
+    setNotice('Text style copied. Right-click another text block and choose Paste style.');
+    setTextContextMenu(null);
+  };
+
+  const pasteTextStyle = (blockId: string) => {
+    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    if (!isEditableTextBlock(block) || !copiedTextStyle || !canEditBlock(block)) return;
+    const patch: Partial<EditorBlock> = {
+      color: copiedTextStyle.color, bg: copiedTextStyle.bg, bold: copiedTextStyle.bold,
+      italic: copiedTextStyle.italic, underline: copiedTextStyle.underline,
+      align: copiedTextStyle.align, fontSize: copiedTextStyle.fontSize,
+      fontFamily: copiedTextStyle.fontFamily, opacity: copiedTextStyle.opacity,
+    };
+    if (block.type === 'text') patch.size = copiedTextStyle.size ?? block.size;
+    if (block.type === 'heading') patch.level = copiedTextStyle.level ?? block.level;
+    patchBlock(blockId, patch);
+    setSelectedId(blockId);
+    setNotice('Copied text styling applied.');
+    setTextContextMenu(null);
+  };
+
+  const copyTextFromBlock = async (blockId: string) => {
+    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    if (!isEditableTextBlock(block)) return;
+    const text = resolveBlockText(block, linkedValues);
+    internalTextClipboardRef.current = text;
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice('Text copied to the system clipboard.');
+    } catch {
+      setNotice('Text copied inside Studio. Browser permission prevented system clipboard access.');
+    }
+    setTextContextMenu(null);
+  };
+
+  const pasteTextIntoBlock = async (blockId: string) => {
+    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    if (!isEditableTextBlock(block) || !canEditBlock(block)) return;
+    let pasted = '';
+    try { pasted = await navigator.clipboard.readText(); } catch { /* use Studio clipboard fallback */ }
+    if (!pasted && internalTextClipboardRef.current !== null) pasted = internalTextClipboardRef.current;
+    if (pasted === '') {
+      setError('No text was available to paste. Copy text in Studio first or allow browser clipboard access.');
+      setTextContextMenu(null);
+      return;
+    }
+    patchBlock(blockId, { text: pasted, link: undefined });
+    setSelectedId(blockId);
+    setNotice('Text pasted into the selected block.');
+    setTextContextMenu(null);
+  };
+
+  const alignTextToPage = (blockId: string, position: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
+    const page = pages[activePageIndex];
+    const block = page?.blocks.find((entry) => entry.id === blockId);
+    if (!page || !isEditableTextBlock(block) || !canEditBlock(block) || !freeMode) return;
+    const size = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
+    const current = block.geometry ?? defaultGeometryForNewBlock(block, page);
+    const maxX = Math.max(0, size.width - current.w);
+    const maxY = Math.max(0, size.height - current.h);
+    const geometry = {
+      ...current,
+      x: position === 'left' ? 0 : position === 'right' ? maxX : position === 'center' ? Math.round(maxX / 2) : current.x,
+      y: position === 'top' ? 0 : position === 'bottom' ? maxY : position === 'middle' ? Math.round(maxY / 2) : current.y,
+    };
+    patchBlock(blockId, { geometry });
+    setSelectedId(blockId);
+    setNotice(`Text aligned to page ${position}.`);
+    setTextContextMenu(null);
+  };
+
+  const editTextLink = (blockId: string) => {
+    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    if (!isEditableTextBlock(block) || !canEditBlock(block)) return;
+    const entered = window.prompt('Enter a web link (https:// or http://). Leave empty to remove the link.', block.href ?? '');
+    if (entered === null) return;
+    if (!entered.trim()) {
+      patchBlock(blockId, { href: undefined });
+      setNotice('Text link removed.');
+      setTextContextMenu(null);
+      return;
+    }
+    const href = normalizeHttpLinkUrl(entered);
+    if (!href) {
+      setError('Enter a valid HTTP or HTTPS URL.');
+      setTextContextMenu(null);
+      return;
+    }
+    patchBlock(blockId, { href });
+    setNotice('Web link added to this text block. It opens in a new tab in the document view.');
+    setTextContextMenu(null);
+  };
+
+  const openTextContextMenu = (event: React.MouseEvent, block: EditorBlock) => {
+    if (previewMode || !canEdit || !isEditableTextBlock(block)) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest('.editor-inline-edit, [contenteditable="true"]')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedId(block.id);
+    setInspectorTab('design');
+    const menuWidth = 282;
+    const menuHeight = 440;
+    setTextContextMenu({
+      blockId: block.id,
+      left: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
+      top: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+      submenu: null,
+    });
+  };
+
   // Fit-to-screen: auto until the user zooms manually; refits on panel toggles and resizes.
   const refit = useCallback(() => {
     const stage = stageRef.current;
@@ -1485,6 +1668,15 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       }
       if (!selectedId || previewMode) return;
       const selectedBlock = pages[activePageIndex]?.blocks.find((block) => block.id === selectedId);
+      if (event.ctrlKey && event.altKey && event.key.toLowerCase() === 'c' && selectedBlock && (selectedBlock.type === 'heading' || selectedBlock.type === 'text')) {
+        event.preventDefault(); copyTextStyle(selectedBlock.id); return;
+      }
+      if (event.ctrlKey && event.altKey && event.key.toLowerCase() === 'v' && selectedBlock && (selectedBlock.type === 'heading' || selectedBlock.type === 'text')) {
+        event.preventDefault(); pasteTextStyle(selectedBlock.id); return;
+      }
+      if (meta && event.key.toLowerCase() === 'k' && selectedBlock && (selectedBlock.type === 'heading' || selectedBlock.type === 'text')) {
+        event.preventDefault(); editTextLink(selectedBlock.id); return;
+      }
       if (meta && ['b', 'i', 'u'].includes(event.key.toLowerCase()) && selectedBlock && (selectedBlock.type === 'text' || selectedBlock.type === 'heading')) {
         event.preventDefault();
         const key = event.key.toLowerCase() as 'b' | 'i' | 'u';
@@ -2107,6 +2299,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       if (moved) patchBlock(block.id, { geometry: { ...drag.origin, x: clampCanvasCoordinate(drag.origin.x + dx), y: clampCanvasCoordinate(drag.origin.y + dy) } });
                       else setSelectedId(block.id);
                     }}
+                    onContextMenu={(event) => openTextContextMenu(event, block)}
                     onPointerCancel={() => {
                       const drag = freeDrag.current;
                       if (!drag || drag.id !== block.id) return;
@@ -2160,6 +2353,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       className={`editor-block${isSelected ? ' is-selected' : ''}${block.hidden ? ' is-ghost' : ''}`}
                       onClick={() => setSelectedId(block.id)}
                       data-block-name={`${BLOCK_LABEL[block.type]}: ${blockName(block)}`}
+                      onContextMenu={(event) => openTextContextMenu(event, block)}
                       draggable={editable}
                       onDragStart={(event) => { dragIndex.current = index; event.dataTransfer.effectAllowed = 'move'; }}
                       onDragOver={(event) => { if (dragIndex.current !== null) { event.preventDefault(); setDropTarget({ index, below: event.clientY > (event.currentTarget as HTMLElement).getBoundingClientRect().bottom - 14 }); } }}
@@ -2592,6 +2786,83 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       )}
 
       {floatToolbar}
+      {textContextMenu && contextMenuBlock && isEditableTextBlock(contextMenuBlock) ? (
+        <div data-studio-text-context-menu role="menu" aria-label="Text actions"
+          onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
+          style={{
+            position: 'fixed', left: textContextMenu.left, top: textContextMenu.top, zIndex: 100300,
+            width: 282, maxWidth: 'calc(100vw - 16px)', maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
+            padding: 5, borderRadius: 9, border: '1px solid var(--st-line-strong, #394556)',
+            background: 'var(--st-panel, #121821)', boxShadow: '0 14px 38px rgba(0,0,0,.42)',
+            color: 'var(--st-text, #eef2f7)', fontSize: 12,
+          }}>
+          {[
+            { label: 'Copy', shortcut: 'Ctrl+C', action: () => void copyTextFromBlock(contextMenuBlock.id), disabled: false },
+            { label: 'Paste', shortcut: 'Ctrl+V', action: () => void pasteTextIntoBlock(contextMenuBlock.id), disabled: !canEditBlock(contextMenuBlock) },
+          ].map((item) => (
+            <button key={item.label} type="button" role="menuitem" disabled={item.disabled} onClick={item.action} style={contextMenuItemStyle}>
+              <span>{item.label}</span><span style={contextMenuShortcutStyle}>{item.shortcut}</span>
+            </button>
+          ))}
+          <div style={contextMenuDividerStyle} />
+          <button type="button" role="menuitem" onClick={() => copyTextStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
+            <span>Copy style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+C</span>
+          </button>
+          <button type="button" role="menuitem" disabled={!copiedTextStyle || !canEditBlock(contextMenuBlock)} onClick={() => pasteTextStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
+            <span>Paste style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+V</span>
+          </button>
+          <div style={contextMenuDividerStyle} />
+          <button type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} onClick={() => { duplicateBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={contextMenuItemStyle}>
+            <span>Duplicate</span><span style={contextMenuShortcutStyle}>Ctrl+D</span>
+          </button>
+          <button type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || ((activePage?.blocks.length ?? 0) <= 1 && pages.length === 1)} onClick={() => { removeBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={{ ...contextMenuItemStyle, color: '#fca5a5' }}>
+            <span>Delete</span><span style={contextMenuShortcutStyle}>Del</span>
+          </button>
+          <div style={contextMenuDividerStyle} />
+          <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'layer'}
+            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'layer' ? null : 'layer' } : current)} style={contextMenuItemStyle}>
+            <span>Layer</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'layer' ? '⌄' : '›'}</span>
+          </button>
+          {textContextMenu.submenu === 'layer' ? (
+            <div role="menu" aria-label="Layer order" style={contextMenuSubmenuStyle}>
+              {([
+                ['Bring to front', 'front'], ['Bring forward', 'forward'],
+                ['Send backward', 'backward'], ['Send to back', 'back'],
+              ] as const).map(([label, destination]) => (
+                <button key={destination} type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) < 2}
+                  onClick={() => { changeLayerOrder(contextMenuBlock.id, destination); setTextContextMenu(null); }} style={contextMenuItemStyle}>{label}</button>
+              ))}
+            </div>
+          ) : null}
+          <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'align'}
+            disabled={!freeMode || !canEditBlock(contextMenuBlock)}
+            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'align' ? null : 'align' } : current)} style={contextMenuItemStyle}>
+            <span>Align to page</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'align' ? '⌄' : '›'}</span>
+          </button>
+          {textContextMenu.submenu === 'align' ? (
+            <div role="menu" aria-label="Align to page" style={contextMenuSubmenuStyle}>
+              {([
+                ['Left', 'left'], ['Center horizontally', 'center'], ['Right', 'right'],
+                ['Top', 'top'], ['Middle vertically', 'middle'], ['Bottom', 'bottom'],
+              ] as const).map(([label, position]) => (
+                <button key={position} type="button" role="menuitem" disabled={!freeMode || !canEditBlock(contextMenuBlock)}
+                  onClick={() => alignTextToPage(contextMenuBlock.id, position)} style={contextMenuItemStyle}>{label}</button>
+              ))}
+            </div>
+          ) : null}
+          <div style={contextMenuDividerStyle} />
+          <button type="button" role="menuitem" onClick={() => { patchBlock(contextMenuBlock.id, { locked: !contextMenuBlock.locked }); setNotice(contextMenuBlock.locked ? 'Text unlocked.' : 'Text locked.'); setTextContextMenu(null); }} style={contextMenuItemStyle}>
+            <span>{contextMenuBlock.locked ? 'Unlock' : 'Lock'}</span><span style={contextMenuShortcutStyle}>Alt+Shift+L</span>
+          </button>
+          <button type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => editTextLink(contextMenuBlock.id)} style={contextMenuItemStyle}>
+            <span>{contextMenuBlock.href ? 'Edit link…' : 'Link…'}</span><span style={contextMenuShortcutStyle}>Ctrl+K</span>
+          </button>
+          <p style={{ margin: '7px 9px 5px', paddingTop: 7, borderTop: '1px solid var(--st-line, #2c3542)', color: 'var(--st-muted, #9aa6b5)', fontSize: 10, lineHeight: 1.45 }}>
+            Reusable components, element timing, Magic Write and translation need separate capabilities and are not presented as working actions yet.
+          </p>
+        </div>
+      ) : null}
+
       {rasterReview ? (
         <div className="studio-upload-overlay" role="presentation" style={{ zIndex: 100100, alignItems: 'center', justifyContent: 'center', padding: 18, overflowY: 'auto' }}>
           <section role="dialog" aria-modal="true" aria-labelledby="raster-text-review-title" className="studio-upload-dialog" style={{

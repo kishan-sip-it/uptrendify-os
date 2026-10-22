@@ -93,6 +93,7 @@ export const CONTENT_SHAPE_KINDS = ['rectangle', 'square', 'circle', 'triangle',
 const shapeKind = z.enum(CONTENT_SHAPE_KINDS);
 
 const linkedField = z.enum(['title', 'cta']).optional();
+const externalHref = z.string().max(2048).url().refine((value) => /^https?:\/\//i.test(value), 'Only HTTP and HTTPS links are allowed.').optional();
 
 const geometry = z.object({
   x: z.coerce.number().min(-2000).max(4000),
@@ -146,6 +147,7 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     bg: color,
     ...emphasis,
     link: linkedField,
+    href: externalHref,
     geometry: geometry.optional(),
     ...flags,
   }),
@@ -161,6 +163,7 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     fontFamily: z.string().max(120).refine((value) => !/[;{}<>]/.test(value)).optional(),
     ...emphasis,
     link: linkedField,
+    href: externalHref,
     geometry: geometry.optional(),
     ...flags,
   }),

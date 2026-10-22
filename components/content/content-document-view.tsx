@@ -71,7 +71,7 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
                     textDecoration: block.underline ? 'underline' : undefined,
                   }}
                 >
-                  {resolveBlockText(block, linkedValues)}
+                  {block.href ? <a href={block.href} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'inherit' }}>{resolveBlockText(block, linkedValues)}</a> : resolveBlockText(block, linkedValues)}
                 </Tag>
               );
             }
@@ -89,7 +89,7 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
                     textDecoration: block.underline ? 'underline' : undefined,
                   }}
                 >
-                  {resolveBlockText(block, linkedValues)}
+                  {block.href ? <a href={block.href} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'inherit' }}>{resolveBlockText(block, linkedValues)}</a> : resolveBlockText(block, linkedValues)}
                 </p>
               );
             }
