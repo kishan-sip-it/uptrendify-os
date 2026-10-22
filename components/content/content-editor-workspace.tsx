@@ -865,6 +865,126 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     installImportedPages(document.pages, 'Imported Studio document with ' + document.pages.length + ' page(s). All supported text, shape and image layers are editable.');
   };
 
+  const importRasterFile = async (file: File) => {
+    if (!canEdit || isImportingTemplate) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setError('Choose a PNG, JPG, or WEBP image for AI text recognition.');
+      return;
+    }
+    if (file.size <= 0 || file.size > 2 * 1024 * 1024) {
+      setError('AI editable image imports are limited to 2 MB. Canva SVG exports retain more exact editable properties.');
+      return;
+    }
+    if (!confirmImportedCanvasReplacement()) return;
+    setIsImportingTemplate(true);
+    setError(null);
+    try {
+      const rawBytes = new Uint8Array(await file.arrayBuffer());
+      let binary = '';
+      for (let offset = 0; offset < rawBytes.length; offset += 0x8000) {
+        binary += String.fromCharCode(...rawBytes.subarray(offset, Math.min(offset + 0x8000, rawBytes.length)));
+      }
+      const data = btoa(binary);
+      const recognitionResponse = await fetch(`/api/brands/${brandId}/content/${contentId}/recognize-image`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mimeType: file.type, data }),
+      });
+      const recognition = await recognitionResponse.json().catch(() => null) as {
+        components?: Array<{
+          text: string;
+          bounds: { x: number; y: number; w: number; h: number };
+          fontSize: number;
+          fontFamily?: string;
+          fontWeight?: 'normal' | 'bold';
+          italic?: boolean;
+          underline?: boolean;
+          color: string;
+          align: 'left' | 'center' | 'right';
+          backgroundKind?: 'solid' | 'gradient' | 'photo' | 'unknown';
+          backgroundColor?: string | null;
+          confidence: number;
+        }>;
+        notes?: string[];
+        error?: string;
+      } | null;
+      if (!recognitionResponse.ok) throw new Error(recognition?.error || 'AI could not recognize text in this image.');
+      const components = (recognition?.components ?? []).filter((component) => component.text.trim() && component.confidence >= 0.45);
+      if (!components.length) {
+        setNotice('No readable text was confidently detected. The original image will be inserted as one image layer instead.');
+        setIsImportingTemplate(false);
+        await addImageFromFile(file);
+        return;
+      }
+
+      // The source stays as the page background. Only recognized text boxes get
+      // editable overlays; their small background patches cover the old glyphs.
+      // The user is asked before this reconstruction because exact fonts/background
+      // data cannot be recovered from a flattened raster file.
+      const complexBackgrounds = components.filter((component) => component.backgroundKind === 'photo' || component.backgroundKind === 'unknown').length;
+      const gradientBackgrounds = components.filter((component) => component.backgroundKind === 'gradient').length;
+      const warning = complexBackgrounds || gradientBackgrounds
+        ? ` ${complexBackgrounds} text region(s) lie over photo/unknown backgrounds and ${gradientBackgrounds} over gradients; the mask color is approximate and may need manual adjustment.`
+        : '';
+      if (!window.confirm(
+        `AI detected ${components.length} text element(s). It will keep the original image as the page background and add editable text layers. To cover the old words, each detected text box uses an estimated local background color; some fonts and background patches may need correction.${warning}\n\nContinue with editable reconstruction?`,
+      )) return;
+
+      const imageDataUrl = `data:${file.type};base64,${data}`;
+      const sourceUrl = await uploadTemplateRaster({ blockId: 'raster-original', dataUrl: imageDataUrl, fileName: file.name });
+      if (!sourceUrl) throw new Error('The original image could not be stored securely.');
+
+      const bitmap = await createImageBitmap(file);
+      const ratio = bitmap.width / Math.max(1, bitmap.height);
+      bitmap.close();
+      const size = (Object.entries(CONTENT_PAGE_SIZES) as Array<[ContentPageSizeId, { width: number; height: number }]>)
+        .reduce((best, current) =>
+          Math.abs(Math.log(current[1].width / current[1].height / ratio)) <
+          Math.abs(Math.log(best[1].width / best[1].height / ratio)) ? current : best,
+        )[0];
+      const dimensions = CONTENT_PAGE_SIZES[size];
+      const blocks: EditorBlock[] = components.slice(0, CONTENT_DOC_MAX_BLOCKS).map((component, index) => {
+        const x = Math.round(component.bounds.x * dimensions.width / 1000);
+        const y = Math.round(component.bounds.y * dimensions.height / 1000);
+        const w = Math.max(24, Math.round(component.bounds.w * dimensions.width / 1000));
+        const h = Math.max(24, Math.round(component.bounds.h * dimensions.height / 1000));
+        const fontSize = Math.max(8, Math.min(160, Math.round(component.fontSize * dimensions.height / 1000)));
+        const fontFamily = (component.fontFamily ?? 'Arial').replace(/[^a-zA-Z0-9 ,'-]/g, '').slice(0, 120) || 'Arial';
+        const common = {
+          id: newBlockId('text'),
+          text: component.text,
+          align: component.align,
+          color: component.color,
+          bg: component.backgroundColor ?? null,
+          bold: component.fontWeight === 'bold',
+          italic: component.italic ?? false,
+          underline: component.underline ?? false,
+          fontSize,
+          fontFamily,
+          geometry: { x, y, w, h },
+          opacity: 1,
+        };
+        if (fontSize >= 38) {
+          return { ...common, type: 'heading', level: (fontSize >= 58 ? 1 : fontSize >= 46 ? 2 : 3) as 1 | 2 | 3 };
+        }
+        return { ...common, type: 'text', size: fontSize >= 22 ? 'lg' as const : 'md' as const };
+      });
+      const notes = [...(recognition?.notes ?? [])];
+      if (complexBackgrounds || gradientBackgrounds) notes.push('Background cover colors are estimates; check each reconstructed text box against the source.');
+      installImportedPages([{
+        id: newBlockId('page'),
+        size,
+        backgroundImage: { src: sourceUrl, alt: file.name.slice(0, 300) },
+        blocks,
+      }], `AI recognized ${blocks.length} editable text layer(s). The original image is retained as the page background; review approximate fonts and text-area cover colors before saving.${notes.length ? ' Notes: ' + notes.slice(0, 2).join(' ') : ''}`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'AI image import failed.');
+    } finally {
+      setIsImportingTemplate(false);
+      if (templateFileInputRef.current) templateFileInputRef.current.value = '';
+    }
+  };
+
   const importTemplateFile = async (file: File) => {
     if (file.size <= 0 || file.size > 5 * 1024 * 1024) {
       setError('Template files must be 5 MB or smaller.');
@@ -877,8 +997,10 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         await importNativeDocument(await file.text());
       } else if (name.endsWith('.svg') || file.type === 'image/svg+xml') {
         await importSvgMarkup(await file.text());
+      } else if (['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || /\\.(png|jpe?g|webp)$/i.test(name)) {
+        await importRasterFile(file);
       } else {
-        setError('Use a Canva SVG export for editable layers, or a native UpTrendifyOS Studio JSON file. PNG/JPG files are flattened images and do not contain recoverable original layers.');
+        setError('This file type is not supported yet. Use Canva SVG for the best editable vector/text import, Studio JSON, or PNG/JPG/WEBP for AI-assisted text reconstruction. PDF, DOCX and PPTX import are not available yet.');
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Template import failed.');
@@ -1605,12 +1727,12 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                 <>
                   <span className="st-label">Import editable template</span>
                   <label className="st-field">
-                    <span>Canva SVG export or Studio JSON · max 5 MB</span>
+                    <span>SVG / Studio JSON / PNG-JPG-WEBP · raster AI import max 2 MB</span>
                     <input
                       ref={templateFileInputRef}
                       className="st-input"
                       type="file"
-                      accept=".svg,image/svg+xml,.json,application/json"
+                      accept=".svg,image/svg+xml,.json,application/json,image/png,image/jpeg,image/webp"
                       disabled={!canEdit || isImportingTemplate || isUploadingImage}
                       onChange={(event) => {
                         const file = event.currentTarget.files?.[0];
@@ -1618,7 +1740,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       }}
                     />
                   </label>
-                  <p className="editor-hint">SVG imports detect separate text, vector shapes and images. You can also paste SVG markup onto the canvas. Text outlined by Canva remains a vector shape. PNG/JPG and flattened PDF exports do not expose original layers.</p>
+                  <p className="editor-hint">SVG/Studio JSON retain editable layers where the source exposes them. PNG/JPG/WEBP can use Gemini vision to detect text and create editable text layers over the original image; fonts and small background cover patches are estimates and need review. PDF/DOCX/PPTX import is not supported yet.</p>
                   {isImportingTemplate ? <p className="editor-hint" role="status">Detecting template layers and importing embedded images…</p> : null}
                   <span className="st-label">Add image</span>
                   <label className="st-field">
