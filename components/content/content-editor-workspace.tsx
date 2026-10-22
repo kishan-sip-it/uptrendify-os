@@ -46,6 +46,7 @@ import {
   newPage,
   parseContentBody,
   reorderBlocks,
+  headingFontSizeForLevel,
   serializeContentDocument,
   type ContentDocBlock,
   type ContentDocPage,
@@ -95,7 +96,10 @@ type TextStyleSnapshot = {
   level?: 1 | 2 | 3;
   opacity?: number;
 };
-type TextContextSubmenu = 'layer' | 'align' | null;
+type TextAssistAction = 'rewrite' | 'shorten' | 'expand' | 'tone' | 'translate';
+type TextContextSubmenu = 'layer' | 'align' | 'heading' | 'component' | null;
+type TextAssistState = { blockId: string; originalText: string; action: TextAssistAction; tone: string; targetLanguage: string; result: string; loading: boolean; error: string | null };
+type StoredReusableTextComponent = { id: string; name: string; createdAt: number; type: 'heading' | 'text'; text: string; style: TextStyleSnapshot };
 type LocalStudioDraft = {
   schemaVersion: 1;
   body: string;
@@ -160,7 +164,16 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
-    if (editing && ref.current && ref.current.innerText !== value) ref.current.innerText = value;
+    if (!editing || !ref.current) return;
+    const editable = ref.current;
+    if (editable.innerText !== value) editable.innerText = value;
+    editable.focus();
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(editable);
+    range.collapse(false);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
 
@@ -199,7 +212,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
       <div
         className="editor-canvas-text is-empty"
         onClick={() => { onClick(); if (!disabled && !editOnDoubleClick) setEditing(true); }} onDoubleClick={() => { if (!disabled) setEditing(true); }}
-        title={disabled ? undefined : 'Click to add text'}
+        title={disabled ? undefined : editOnDoubleClick ? 'Double-click to write directly on the canvas' : 'Click to write directly'}
       >
         Empty text block — click to write.
       </div>
@@ -210,7 +223,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
       className="editor-canvas-text is-editable"
       style={{ whiteSpace: 'pre-wrap' }}
       onClick={() => { onClick(); if (!disabled && !editOnDoubleClick) setEditing(true); }} onDoubleClick={() => { if (!disabled) setEditing(true); }}
-      title={disabled ? undefined : 'Click to edit text'}
+      title={disabled ? undefined : editOnDoubleClick ? 'Double-click to edit text directly on the canvas' : 'Click to edit text directly'}
     >
       {value}
     </div>
@@ -235,7 +248,7 @@ function blockName(block: EditorBlock): string {
 }
 
 function defaultFontSize(block: EditorBlock): number {
-  if (block.type === 'heading') return block.level === 1 ? 36 : block.level === 2 ? 28 : 22;
+  if (block.type === 'heading') return headingFontSizeForLevel(block.level);
   if (block.type === 'text') return block.size === 'sm' ? 13 : block.size === 'md' ? 15 : block.size === 'lg' ? 18 : 24;
   return 16;
 }
@@ -442,6 +455,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [textContextMenu, setTextContextMenu] = useState<{ blockId: string; left: number; top: number; submenu: TextContextSubmenu } | null>(null);
   const [copiedTextStyle, setCopiedTextStyle] = useState<TextStyleSnapshot | null>(null);
   const internalTextClipboardRef = useRef<string | null>(null);
+  const [textAssist, setTextAssist] = useState<TextAssistState | null>(null);
+  const reusableTextComponentsKey = `uptrendify-studio-components-v1:${brandId}`;
+  const [reusableTextComponents, setReusableTextComponents] = useState<StoredReusableTextComponent[]>([]);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
   const templateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [floatAnchor, setFloatAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -479,6 +495,22 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [textContextMenu]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(reusableTextComponentsKey);
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      const valid = Array.isArray(parsed) ? parsed.filter((entry): entry is StoredReusableTextComponent =>
+        Boolean(entry && typeof entry === 'object' &&
+          typeof entry.id === 'string' && typeof entry.name === 'string' &&
+          (entry.type === 'text' || entry.type === 'heading') && typeof entry.text === 'string' &&
+          entry.style && typeof entry.style === 'object'),
+      ).slice(0, 50) : [];
+      setReusableTextComponents(valid);
+    } catch {
+      setReusableTextComponents([]);
+    }
+  }, [reusableTextComponentsKey]);
 
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? (window.visualViewport as VisualViewport | null) : null;
@@ -1422,6 +1454,139 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     setTextContextMenu(null);
   };
 
+  const openTextAssist = (blockId: string, action: TextAssistAction) => {
+    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    if (!isEditableTextBlock(block) || !canEditBlock(block)) return;
+    setTextAssist({
+      blockId,
+      originalText: resolveBlockText(block, linkedValues),
+      action,
+      tone: 'friendly and clear',
+      targetLanguage: 'Hindi',
+      result: '',
+      loading: false,
+      error: null,
+    });
+    setTextContextMenu(null);
+  };
+
+  const runTextAssist = async () => {
+    if (!textAssist || textAssist.loading) return;
+    const current = textAssist;
+    setTextAssist({ ...current, loading: true, error: null, result: '' });
+    try {
+      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/text-assist`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: current.action,
+          text: current.originalText,
+          ...(current.action === 'tone' ? { tone: current.tone } : {}),
+          ...(current.action === 'translate' ? { targetLanguage: current.targetLanguage } : {}),
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { text?: string; error?: string } | null;
+      if (!response.ok || !payload?.text) throw new Error(payload?.error || 'The AI could not transform this text.');
+      setTextAssist((latest) => latest && latest.blockId === current.blockId
+        ? { ...latest, result: payload.text!, loading: false, error: null }
+        : latest);
+    } catch (cause) {
+      setTextAssist((latest) => latest && latest.blockId === current.blockId
+        ? { ...latest, loading: false, error: cause instanceof Error ? cause.message : 'Text assist failed.' }
+        : latest);
+    }
+  };
+
+  const applyTextAssistResult = () => {
+    if (!textAssist?.result.trim()) return;
+    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === textAssist.blockId);
+    if (!isEditableTextBlock(block) || !canEditBlock(block)) {
+      setError('This text block is no longer editable. Reopen text assist on an editable block.');
+      setTextAssist(null);
+      return;
+    }
+    patchBlock(block.id, { text: textAssist.result.trim(), link: undefined });
+    setSelectedId(block.id);
+    setNotice('AI text applied in place. Review it before saving the new version.');
+    setTextAssist(null);
+  };
+
+  const createReusableTextComponent = (blockId: string) => {
+    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    if (!isEditableTextBlock(block) || !canEditBlock(block)) return;
+    const suggested = blockName(block).slice(0, 60);
+    const name = window.prompt('Name this reusable text component (saved locally for this brand in this browser).', suggested);
+    if (name === null) return;
+    const cleanName = name.trim().slice(0, 80);
+    if (!cleanName) {
+      setError('Enter a name for the reusable component.');
+      setTextContextMenu(null);
+      return;
+    }
+    const component: StoredReusableTextComponent = {
+      id: crypto.randomUUID(),
+      name: cleanName,
+      createdAt: Date.now(),
+      type: block.type,
+      text: resolveBlockText(block, linkedValues),
+      style: {
+        color: block.color, bg: block.bg, bold: block.bold, italic: block.italic,
+        underline: block.underline, align: block.align, fontSize: block.fontSize,
+        fontFamily: block.fontFamily, opacity: block.opacity,
+        ...(block.type === 'text' ? { size: block.size } : { level: block.level }),
+      },
+    };
+    const next = [component, ...reusableTextComponents.filter((entry) => entry.name.toLowerCase() !== cleanName.toLowerCase())].slice(0, 50);
+    setReusableTextComponents(next);
+    try {
+      window.localStorage.setItem(reusableTextComponentsKey, JSON.stringify(next));
+      setNotice(`Reusable component “${cleanName}” saved for this brand in this browser.`);
+    } catch {
+      setNotice('Component added for this editing session, but browser storage is unavailable so it will not persist after closing Studio.');
+    }
+    setTextContextMenu(null);
+  };
+
+  const insertReusableTextComponent = (component: StoredReusableTextComponent) => {
+    const page = pages[activePageIndex];
+    if (!page || !canEdit || page.blocks.length >= CONTENT_DOC_MAX_BLOCKS) {
+      setError('This page cannot accept another block.');
+      setTextContextMenu(null);
+      return;
+    }
+    const common = {
+      align: component.style.align ?? 'left',
+      color: component.style.color ?? null,
+      bg: component.style.bg ?? null,
+      bold: component.style.bold ?? false,
+      italic: component.style.italic ?? false,
+      underline: component.style.underline ?? false,
+      ...(component.style.fontSize ? { fontSize: component.style.fontSize } : {}),
+      ...(component.style.fontFamily ? { fontFamily: component.style.fontFamily } : {}),
+      ...(component.style.opacity !== undefined ? { opacity: component.style.opacity } : {}),
+    };
+    let block: EditorBlock;
+    if (component.type === 'heading') {
+      block = { id: newBlockId('heading'), type: 'heading', text: component.text, level: component.style.level ?? 2, ...common };
+    } else {
+      block = { id: newBlockId('text'), type: 'text', text: component.text, size: component.style.size ?? 'md', ...common };
+    }
+    if (freeMode) {
+      const dims = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
+      const source = contextMenuBlock?.geometry ?? defaultGeometryForNewBlock(block, page);
+      const base = defaultGeometryForNewBlock(block, page);
+      const x = source.x + 24 + base.w <= dims.width ? source.x + 24 : Math.max(0, source.x - 24);
+      const y = source.y + 24 + base.h <= dims.height ? source.y + 24 : Math.max(0, source.y - 24);
+      block = { ...block, geometry: { ...base, x, y } } as EditorBlock;
+    }
+    const nextPages = pages.map((entry, index) => index === activePageIndex ? { ...entry, blocks: [...entry.blocks, block] } : entry);
+    commit(nextPages, freeMode ? 'free' : 'flow');
+    setSelectedId(block.id);
+    setInspectorTab('design');
+    setNotice(`Inserted reusable component “${component.name}”. It is an independent editable block.`);
+    setTextContextMenu(null);
+  };
+
   const openTextContextMenu = (event: React.MouseEvent, block: EditorBlock) => {
     if (previewMode || !canEdit || !isEditableTextBlock(block)) return;
     const target = event.target;
@@ -1815,7 +1980,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         {block.type === 'heading' ? (
           <span className="st-float-group">
             {([1, 2, 3] as const).map((level) => (
-              <button key={level} type="button" className={block.level === level ? 'is-on' : ''} onClick={() => patchBlock(block.id, { level })} disabled={!canEditBlock(block)}>H{level}</button>
+              <button key={level} type="button" className={block.level === level ? 'is-on' : ''} onClick={() => patchBlock(block.id, { level, fontSize: headingFontSizeForLevel(level) })} disabled={!canEditBlock(block)}>H{level}</button>
             ))}
           </span>
         ) : null}
@@ -1867,7 +2032,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     switch (block.type) {
       case 'heading':
         return (
-          <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden', opacity: block.opacity ?? 1 }}>
+          <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden', opacity: block.opacity ?? 1 }}>
             <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
           </div>
         );
@@ -2292,7 +2457,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       setSelectedId(block.id);
                       if ((event.target as HTMLElement).closest('.editor-inline-edit, [contenteditable="true"]')) return;
                       if (canEdit && !block.locked) {
-                        event.preventDefault();
+                        // Let native click/double-click reach the text; pointer capture still handles dragging.
                         // Keep pointer events on the block even after it moves out from under the cursor.
                         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
                         freeDrag.current = { id: block.id, startX: event.clientX, startY: event.clientY, origin: { ...geo } };
@@ -2381,7 +2546,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       style={{ cursor: block.locked ? 'not-allowed' : undefined, opacity: block.opacity ?? 1 }}
                     >
                       {block.type === 'heading' ? (
-                        <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
+                        <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
                           <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
                         </div>
                       ) : null}
@@ -2806,39 +2971,62 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
 
       {floatToolbar}
       {textContextMenu && contextMenuBlock && isEditableTextBlock(contextMenuBlock) ? (
-        <div data-studio-text-context-menu role="menu" aria-label="Text actions"
+        <div className="st-context-menu" data-studio-text-context-menu role="menu" aria-label="Text actions"
           onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
           style={{
             position: 'fixed', left: textContextMenu.left, top: textContextMenu.top, zIndex: 100300,
-            width: 282, maxWidth: 'calc(100vw - 16px)', maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
-            padding: 5, borderRadius: 9, border: '1px solid var(--st-line-strong, #394556)',
-            background: 'var(--st-panel, #121821)', boxShadow: '0 14px 38px rgba(0,0,0,.42)',
-            color: 'var(--st-text, #eef2f7)', fontSize: 12,
+            width: 300, maxWidth: 'calc(100vw - 16px)', maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
+            padding: 8, borderRadius: 14, border: '1px solid rgba(148,163,184,.38)',
+            background: 'linear-gradient(155deg, rgba(32,43,61,.99), rgba(13,19,31,.99) 75%)',
+            boxShadow: '0 24px 60px rgba(0,0,0,.48), 0 0 0 1px rgba(255,255,255,.035) inset',
+            backdropFilter: 'blur(20px)', color: '#eef4ff', fontSize: 12,
           }}>
-          {[
-            { label: 'Copy', shortcut: 'Ctrl+C', action: () => void copyTextFromBlock(contextMenuBlock.id), disabled: false },
-            { label: 'Paste', shortcut: 'Ctrl+V', action: () => void pasteTextIntoBlock(contextMenuBlock.id), disabled: !canEditBlock(contextMenuBlock) },
-          ].map((item) => (
-            <button key={item.label} type="button" role="menuitem" disabled={item.disabled} onClick={item.action} style={contextMenuItemStyle}>
-              <span>{item.label}</span><span style={contextMenuShortcutStyle}>{item.shortcut}</span>
-            </button>
-          ))}
+          <div className="st-context-menu-heading">
+            <span className="st-context-menu-icon"><Type size={15} /></span>
+            <span><strong>TEXT ACTIONS</strong><small>{contextMenuBlock.text.trim().slice(0, 34) || 'Selected text'}{contextMenuBlock.text.trim().length > 34 ? '…' : ''}</small></span>
+          </div>
+          <button className="st-context-item" type="button" role="menuitem" onClick={() => void copyTextFromBlock(contextMenuBlock.id)} style={contextMenuItemStyle}>
+            <span>Copy</span><span style={contextMenuShortcutStyle}>Ctrl+C</span>
+          </button>
+          <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => void pasteTextIntoBlock(contextMenuBlock.id)} style={contextMenuItemStyle}>
+            <span>Paste</span><span style={contextMenuShortcutStyle}>Ctrl+V</span>
+          </button>
           <div style={contextMenuDividerStyle} />
-          <button type="button" role="menuitem" onClick={() => copyTextStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
+          <button className="st-context-item" type="button" role="menuitem" onClick={() => copyTextStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
             <span>Copy style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+C</span>
           </button>
-          <button type="button" role="menuitem" disabled={!copiedTextStyle || !canEditBlock(contextMenuBlock)} onClick={() => pasteTextStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
+          <button className="st-context-item" type="button" role="menuitem" disabled={!copiedTextStyle || !canEditBlock(contextMenuBlock)} onClick={() => pasteTextStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
             <span>Paste style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+V</span>
           </button>
           <div style={contextMenuDividerStyle} />
-          <button type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} onClick={() => { duplicateBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={contextMenuItemStyle}>
+          <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} onClick={() => { duplicateBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={contextMenuItemStyle}>
             <span>Duplicate</span><span style={contextMenuShortcutStyle}>Ctrl+D</span>
           </button>
-          <button type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || ((activePage?.blocks.length ?? 0) <= 1 && pages.length === 1)} onClick={() => { removeBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={{ ...contextMenuItemStyle, color: '#fca5a5' }}>
+          <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || ((activePage?.blocks.length ?? 0) <= 1 && pages.length === 1)} onClick={() => { removeBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={{ ...contextMenuItemStyle, color: '#fca5a5' }}>
             <span>Delete</span><span style={contextMenuShortcutStyle}>Del</span>
           </button>
+          {contextMenuBlock.type === 'heading' ? (
+            <>
+              <div style={contextMenuDividerStyle} />
+              <button className="st-context-item" type="button" role="menuitem" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'heading'}
+                onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'heading' ? null : 'heading' } : current)} style={contextMenuItemStyle}>
+                <span>Heading level</span><span style={contextMenuShortcutStyle}>H{contextMenuBlock.level} · ›</span>
+              </button>
+              {textContextMenu.submenu === 'heading' ? (
+                <div role="menu" aria-label="Heading level" style={contextMenuSubmenuStyle}>
+                  {([1, 2, 3] as const).map((level) => (
+                    <button className="st-context-item" key={level} type="button" role="menuitem" aria-checked={contextMenuBlock.level === level}
+                      onClick={() => { patchBlock(contextMenuBlock.id, { level, fontSize: headingFontSizeForLevel(level) }); setTextContextMenu(null); }}
+                      style={{ ...contextMenuItemStyle, fontWeight: contextMenuBlock.level === level ? 800 : 600 }}>
+                      <span>H{level}</span><span style={contextMenuShortcutStyle}>{headingFontSizeForLevel(level)} px</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : null}
           <div style={contextMenuDividerStyle} />
-          <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'layer'}
+          <button className="st-context-item" type="button" role="menuitem" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'layer'}
             onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'layer' ? null : 'layer' } : current)} style={contextMenuItemStyle}>
             <span>Layer</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'layer' ? '⌄' : '›'}</span>
           </button>
@@ -2848,12 +3036,12 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                 ['Bring to front', 'front'], ['Bring forward', 'forward'],
                 ['Send backward', 'backward'], ['Send to back', 'back'],
               ] as const).map(([label, destination]) => (
-                <button key={destination} type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) < 2}
+                <button className="st-context-item" key={destination} type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) < 2}
                   onClick={() => { changeLayerOrder(contextMenuBlock.id, destination); setTextContextMenu(null); }} style={contextMenuItemStyle}>{label}</button>
               ))}
             </div>
           ) : null}
-          <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'align'}
+          <button className="st-context-item" type="button" role="menuitem" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'align'}
             disabled={!freeMode || !canEditBlock(contextMenuBlock)}
             onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'align' ? null : 'align' } : current)} style={contextMenuItemStyle}>
             <span>Align to page</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'align' ? '⌄' : '›'}</span>
@@ -2864,21 +3052,108 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                 ['Left', 'left'], ['Center horizontally', 'center'], ['Right', 'right'],
                 ['Top', 'top'], ['Middle vertically', 'middle'], ['Bottom', 'bottom'],
               ] as const).map(([label, position]) => (
-                <button key={position} type="button" role="menuitem" disabled={!freeMode || !canEditBlock(contextMenuBlock)}
+                <button className="st-context-item" key={position} type="button" role="menuitem" disabled={!freeMode || !canEditBlock(contextMenuBlock)}
                   onClick={() => alignTextToPage(contextMenuBlock.id, position)} style={contextMenuItemStyle}>{label}</button>
               ))}
             </div>
           ) : null}
           <div style={contextMenuDividerStyle} />
-          <button type="button" role="menuitem" onClick={() => { patchBlock(contextMenuBlock.id, { locked: !contextMenuBlock.locked }); setNotice(contextMenuBlock.locked ? 'Text unlocked.' : 'Text locked.'); setTextContextMenu(null); }} style={contextMenuItemStyle}>
+          <button className="st-context-item" type="button" role="menuitem" onClick={() => { patchBlock(contextMenuBlock.id, { locked: !contextMenuBlock.locked }); setNotice(contextMenuBlock.locked ? 'Text unlocked.' : 'Text locked.'); setTextContextMenu(null); }} style={contextMenuItemStyle}>
             <span>{contextMenuBlock.locked ? 'Unlock' : 'Lock'}</span><span style={contextMenuShortcutStyle}>Alt+Shift+L</span>
           </button>
-          <button type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => editTextLink(contextMenuBlock.id)} style={contextMenuItemStyle}>
+          <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => editTextLink(contextMenuBlock.id)} style={contextMenuItemStyle}>
             <span>{contextMenuBlock.href ? 'Edit link…' : 'Link…'}</span><span style={contextMenuShortcutStyle}>Ctrl+K</span>
           </button>
-          <p style={{ margin: '7px 9px 5px', paddingTop: 7, borderTop: '1px solid var(--st-line, #2c3542)', color: 'var(--st-muted, #9aa6b5)', fontSize: 10, lineHeight: 1.45 }}>
-            Reusable components, element timing, Magic Write and translation need separate capabilities and are not presented as working actions yet.
-          </p>
+          <div style={contextMenuDividerStyle} />
+          <button className="st-context-item st-context-ai-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => openTextAssist(contextMenuBlock.id, 'rewrite')} style={{ ...contextMenuItemStyle, minHeight: 42 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}><Sparkles size={15} /> Magic Write</span><span style={contextMenuShortcutStyle}>AI</span>
+          </button>
+          <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => openTextAssist(contextMenuBlock.id, 'translate')} style={contextMenuItemStyle}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>文A <span>Translate text…</span></span><span style={contextMenuShortcutStyle}>AI</span>
+          </button>
+          <div style={contextMenuDividerStyle} />
+          <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => createReusableTextComponent(contextMenuBlock.id)} style={contextMenuItemStyle}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}><Layers size={15} /> Create component…</span><span style={contextMenuShortcutStyle}>Save</span>
+          </button>
+          <button className="st-context-item" type="button" role="menuitem" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'component'} disabled={!reusableTextComponents.length || !canEdit}
+            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'component' ? null : 'component' } : current)} style={contextMenuItemStyle}>
+            <span>Insert reusable component</span><span style={contextMenuShortcutStyle}>{reusableTextComponents.length ? reusableTextComponents.length : 'None'} · ›</span>
+          </button>
+          {textContextMenu.submenu === 'component' ? (
+            <div role="menu" aria-label="Reusable text components" style={contextMenuSubmenuStyle}>
+              {reusableTextComponents.map((component) => (
+                <button className="st-context-item" key={component.id} type="button" role="menuitem" disabled={!canEdit}
+                  onClick={() => insertReusableTextComponent(component)} style={{ ...contextMenuItemStyle, display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 2 }}>
+                  <strong style={{ overflowWrap: 'anywhere' }}>{component.name}</strong>
+                  <span style={{ color: 'var(--st-muted, #9aa6b5)', fontSize: 10 }}>{component.type === 'heading' ? 'Heading' : 'Text'} · {component.text.slice(0, 44)}{component.text.length > 44 ? '…' : ''}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="st-context-menu-footnote">
+            AI edits are previewed before replacing text. Components are stored locally for this brand in this browser.
+          </div>
+        </div>
+      ) : null}
+
+      {textAssist ? (
+        <div className="studio-upload-overlay st-text-assist-overlay" role="presentation" style={{ zIndex: 100250, alignItems: 'center', justifyContent: 'center', padding: 18, overflowY: 'auto' }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="text-assist-title" className="studio-upload-dialog st-text-assist-dialog" style={{
+            width: 'min(760px, 96vw)', maxWidth: 760, maxHeight: '92vh', overflow: 'auto', gap: 14,
+            alignItems: 'stretch', background: 'var(--st-panel, #121821)', color: 'var(--st-text, #eef2f7)',
+            border: '1px solid var(--st-border, #334155)', padding: 20, borderRadius: 16,
+            boxShadow: '0 28px 90px rgba(0,0,0,.5)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <span className="st-text-assist-icon"><Sparkles size={20} /></span>
+                <div>
+                  <strong id="text-assist-title" style={{ fontSize: 19, letterSpacing: '-.02em' }}>{textAssist.action === 'translate' ? 'Translate text' : 'Magic Write'}</strong>
+                  <p className="editor-hint" style={{ margin: '5px 0 0' }}>Preview first. The canvas changes only when you choose Replace text.</p>
+                </div>
+              </div>
+              <button type="button" className="st-icon" onClick={() => setTextAssist(null)} disabled={textAssist.loading} aria-label="Close text assist">×</button>
+            </div>
+            <div className="st-text-assist-source">
+              <span>ORIGINAL TEXT</span><p>{textAssist.originalText}</p>
+            </div>
+            {textAssist.action === 'translate' ? (
+              <label className="st-field"><span>Translate into</span>
+                <select className="st-select" value={textAssist.targetLanguage} onChange={(event) => setTextAssist({ ...textAssist, targetLanguage: event.target.value, result: '', error: null })} disabled={textAssist.loading}>
+                  {['Hindi', 'English', 'Spanish', 'French', 'German', 'Portuguese', 'Italian', 'Japanese', 'Korean', 'Chinese (Simplified)', 'Arabic', 'Bengali', 'Gujarati', 'Marathi', 'Tamil', 'Telugu', 'Urdu', 'Indonesian', 'Thai', 'Vietnamese', 'Dutch', 'Russian'].map((language) => <option key={language} value={language}>{language}</option>)}
+                </select>
+              </label>
+            ) : (
+              <div className="st-text-assist-controls">
+                <label className="st-field"><span>Writing action</span>
+                  <select className="st-select" value={textAssist.action} onChange={(event) => setTextAssist({ ...textAssist, action: event.target.value as TextAssistAction, result: '', error: null })} disabled={textAssist.loading}>
+                    <option value="rewrite">Rewrite clearly</option><option value="shorten">Shorten</option><option value="expand">Expand</option><option value="tone">Change tone</option>
+                  </select>
+                </label>
+                {textAssist.action === 'tone' ? (
+                  <label className="st-field"><span>Tone</span>
+                    <select className="st-select" value={textAssist.tone} onChange={(event) => setTextAssist({ ...textAssist, tone: event.target.value, result: '', error: null })} disabled={textAssist.loading}>
+                      {['friendly and clear', 'professional', 'bold and confident', 'playful', 'minimal', 'premium and elegant', 'persuasive but factual', 'warm and human'].map((tone) => <option key={tone} value={tone}>{tone}</option>)}
+                    </select>
+                  </label>
+                ) : null}
+              </div>
+            )}
+            {textAssist.error ? <div className="st-text-assist-error" role="alert">{textAssist.error}</div> : null}
+            {textAssist.result ? (
+              <label className="st-field"><span>AI RESULT · REVIEW BEFORE APPLYING</span>
+                <textarea className="st-textarea st-text-assist-result" value={textAssist.result} onChange={(event) => setTextAssist({ ...textAssist, result: event.target.value })} rows={5} disabled={textAssist.loading} />
+              </label>
+            ) : null}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button type="button" className="st-btn" onClick={() => setTextAssist(null)} disabled={textAssist.loading}>Cancel</button>
+              <button type="button" className="st-btn st-btn--primary st-text-assist-generate" onClick={() => void runTextAssist()} disabled={textAssist.loading || (textAssist.action === 'translate' && !textAssist.targetLanguage.trim())}>
+                {textAssist.loading ? <LoaderCircle size={14} className="studio-upload-spinner" /> : <Sparkles size={14} />}
+                {textAssist.loading ? 'Working…' : textAssist.result ? 'Regenerate' : 'Generate preview'}
+              </button>
+              <button type="button" className="st-btn st-btn--primary" onClick={applyTextAssistResult} disabled={!textAssist.result.trim() || textAssist.loading}>Replace text</button>
+            </div>
+          </section>
         </div>
       ) : null}
 
