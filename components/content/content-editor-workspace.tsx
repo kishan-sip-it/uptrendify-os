@@ -3004,12 +3004,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       )}
 
       {floatToolbar}
-      {textContextMenu && contextMenuBlock && isEditableTextBlock(contextMenuBlock) ? (
-        <div className="st-context-menu" data-studio-text-context-menu role="menu" aria-label="Text actions"
+      {textContextMenu && contextMenuBlock && isEditableTextBlock(contextMenuBlock) ? createPortal(
+        <>
+        <div ref={contextMenuRef} className="st-context-menu" data-studio-text-context-menu role="menu" aria-label="Text actions"
           onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
           style={{
             position: 'fixed', left: textContextMenu.left, top: textContextMenu.top, zIndex: 100300,
-            width: 300, maxWidth: 'calc(100vw - 16px)', maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
+            width: 276, maxWidth: 'calc(100vw - 16px)', maxHeight: 'min(calc(100vh - 16px), 640px)', overflowY: 'auto',
             padding: 8, borderRadius: 14, border: '1px solid rgba(148,163,184,.38)',
             background: 'linear-gradient(155deg, rgba(32,43,61,.99), rgba(13,19,31,.99) 75%)',
             boxShadow: '0 24px 60px rgba(0,0,0,.48), 0 0 0 1px rgba(255,255,255,.035) inset',
@@ -3019,6 +3020,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             <span className="st-context-menu-icon"><Type size={15} /></span>
             <span><strong>TEXT ACTIONS</strong><small>{contextMenuBlock.text.trim().slice(0, 34) || 'Selected text'}{contextMenuBlock.text.trim().length > 34 ? '…' : ''}</small></span>
           </div>
+          <button className="st-context-item st-context-item--primary" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => requestInlineTextEditing(contextMenuBlock.id)} style={contextMenuItemStyle}>
+            <span>Edit text on canvas</span><span style={contextMenuShortcutStyle}>Enter</span>
+          </button>
           <button className="st-context-item" type="button" role="menuitem" onClick={() => void copyTextFromBlock(contextMenuBlock.id)} style={contextMenuItemStyle}>
             <span>Copy</span><span style={contextMenuShortcutStyle}>Ctrl+C</span>
           </button>
@@ -3042,55 +3046,23 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           {contextMenuBlock.type === 'heading' ? (
             <>
               <div style={contextMenuDividerStyle} />
-              <button className="st-context-item" type="button" role="menuitem" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'heading'}
-                onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'heading' ? null : 'heading' } : current)} style={contextMenuItemStyle}>
+              <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="heading" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'heading'}
+                onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'heading' ? null : 'heading', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
                 <span>Heading level</span><span style={contextMenuShortcutStyle}>H{contextMenuBlock.level} · ›</span>
               </button>
-              {textContextMenu.submenu === 'heading' ? (
-                <div role="menu" aria-label="Heading level" style={contextMenuSubmenuStyle}>
-                  {([1, 2, 3] as const).map((level) => (
-                    <button className="st-context-item" key={level} type="button" role="menuitem" aria-checked={contextMenuBlock.level === level}
-                      onClick={() => { patchBlock(contextMenuBlock.id, { level, fontSize: headingFontSizeForLevel(level) }); setTextContextMenu(null); }}
-                      style={{ ...contextMenuItemStyle, fontWeight: contextMenuBlock.level === level ? 800 : 600 }}>
-                      <span>H{level}</span><span style={contextMenuShortcutStyle}>{headingFontSizeForLevel(level)} px</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+
             </>
           ) : null}
           <div style={contextMenuDividerStyle} />
-          <button className="st-context-item" type="button" role="menuitem" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'layer'}
-            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'layer' ? null : 'layer' } : current)} style={contextMenuItemStyle}>
+          <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="layer" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'layer'}
+            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'layer' ? null : 'layer', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
             <span>Layer</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'layer' ? '⌄' : '›'}</span>
           </button>
-          {textContextMenu.submenu === 'layer' ? (
-            <div role="menu" aria-label="Layer order" style={contextMenuSubmenuStyle}>
-              {([
-                ['Bring to front', 'front'], ['Bring forward', 'forward'],
-                ['Send backward', 'backward'], ['Send to back', 'back'],
-              ] as const).map(([label, destination]) => (
-                <button className="st-context-item" key={destination} type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) < 2}
-                  onClick={() => { changeLayerOrder(contextMenuBlock.id, destination); setTextContextMenu(null); }} style={contextMenuItemStyle}>{label}</button>
-              ))}
-            </div>
-          ) : null}
-          <button className="st-context-item" type="button" role="menuitem" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'align'}
+          <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="align" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'align'}
             disabled={!freeMode || !canEditBlock(contextMenuBlock)}
-            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'align' ? null : 'align' } : current)} style={contextMenuItemStyle}>
+            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'align' ? null : 'align', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
             <span>Align to page</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'align' ? '⌄' : '›'}</span>
           </button>
-          {textContextMenu.submenu === 'align' ? (
-            <div role="menu" aria-label="Align to page" style={contextMenuSubmenuStyle}>
-              {([
-                ['Left', 'left'], ['Center horizontally', 'center'], ['Right', 'right'],
-                ['Top', 'top'], ['Middle vertically', 'middle'], ['Bottom', 'bottom'],
-              ] as const).map(([label, position]) => (
-                <button className="st-context-item" key={position} type="button" role="menuitem" disabled={!freeMode || !canEditBlock(contextMenuBlock)}
-                  onClick={() => alignTextToPage(contextMenuBlock.id, position)} style={contextMenuItemStyle}>{label}</button>
-              ))}
-            </div>
-          ) : null}
           <div style={contextMenuDividerStyle} />
           <button className="st-context-item" type="button" role="menuitem" onClick={() => { patchBlock(contextMenuBlock.id, { locked: !contextMenuBlock.locked }); setNotice(contextMenuBlock.locked ? 'Text unlocked.' : 'Text locked.'); setTextContextMenu(null); }} style={contextMenuItemStyle}>
             <span>{contextMenuBlock.locked ? 'Unlock' : 'Lock'}</span><span style={contextMenuShortcutStyle}>Alt+Shift+L</span>
@@ -3109,25 +3081,68 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => createReusableTextComponent(contextMenuBlock.id)} style={contextMenuItemStyle}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}><Layers size={15} /> Create component…</span><span style={contextMenuShortcutStyle}>Save</span>
           </button>
-          <button className="st-context-item" type="button" role="menuitem" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'component'} disabled={!reusableTextComponents.length || !canEdit}
-            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'component' ? null : 'component' } : current)} style={contextMenuItemStyle}>
+          <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="component" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'component'} disabled={!reusableTextComponents.length || !canEdit}
+            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'component' ? null : 'component', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
             <span>Insert reusable component</span><span style={contextMenuShortcutStyle}>{reusableTextComponents.length ? reusableTextComponents.length : 'None'} · ›</span>
           </button>
-          {textContextMenu.submenu === 'component' ? (
-            <div role="menu" aria-label="Reusable text components" style={contextMenuSubmenuStyle}>
-              {reusableTextComponents.map((component) => (
+          <div className="st-context-menu-footnote">
+            AI edits are previewed before replacing text. Components are stored locally for this brand in this browser.
+          </div>
+        </div>
+        {textContextMenu.submenu ? (
+          <div ref={contextSubmenuRef} className="st-context-menu st-context-submenu" data-studio-text-context-menu role="menu" aria-label="Text action options"
+            onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
+            style={{
+              position: 'fixed', left: textContextMenu.submenuLeft ?? textContextMenu.left + 284,
+              top: textContextMenu.submenuTop ?? textContextMenu.top, zIndex: 100301,
+              width: 232, maxWidth: 'calc(100vw - 16px)', maxHeight: 'min(calc(100vh - 16px), 480px)', overflowY: 'auto',
+              padding: 8, borderRadius: 14, border: '1px solid rgba(148,163,184,.38)',
+              background: 'linear-gradient(155deg, rgba(32,43,61,.99), rgba(13,19,31,.99) 75%)',
+              boxShadow: '0 24px 60px rgba(0,0,0,.48)', color: '#eef4ff', fontSize: 12,
+            }}>
+            <div className="st-context-menu-subtitle">
+              {textContextMenu.submenu === 'heading' ? 'HEADING LEVEL' : textContextMenu.submenu === 'layer' ? 'LAYER ORDER' : textContextMenu.submenu === 'align' ? 'ALIGN TO PAGE' : 'REUSABLE COMPONENTS'}
+            </div>
+            {textContextMenu.submenu === 'heading' && contextMenuBlock.type === 'heading' ? (
+              ([1, 2, 3] as const).map((level) => (
+                <button className="st-context-item" key={level} type="button" role="menuitem" aria-checked={contextMenuBlock.level === level}
+                  onClick={() => { patchBlock(contextMenuBlock.id, { level, fontSize: headingFontSizeForLevel(level) }); setTextContextMenu(null); }}
+                  style={{ ...contextMenuItemStyle, fontWeight: contextMenuBlock.level === level ? 800 : 600 }}>
+                  <span>H{level}</span><span style={contextMenuShortcutStyle}>{headingFontSizeForLevel(level)} px</span>
+                </button>
+              ))
+            ) : null}
+            {textContextMenu.submenu === 'layer' ? (
+              ([
+                ['Bring to front', 'front'], ['Bring forward', 'forward'],
+                ['Send backward', 'backward'], ['Send to back', 'back'],
+              ] as const).map(([label, destination]) => (
+                <button className="st-context-item" key={destination} type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) < 2}
+                  onClick={() => { changeLayerOrder(contextMenuBlock.id, destination); setTextContextMenu(null); }} style={contextMenuItemStyle}>{label}</button>
+              ))
+            ) : null}
+            {textContextMenu.submenu === 'align' ? (
+              ([
+                ['Left', 'left'], ['Center horizontally', 'center'], ['Right', 'right'],
+                ['Top', 'top'], ['Middle vertically', 'middle'], ['Bottom', 'bottom'],
+              ] as const).map(([label, position]) => (
+                <button className="st-context-item" key={position} type="button" role="menuitem" disabled={!freeMode || !canEditBlock(contextMenuBlock)}
+                  onClick={() => alignTextToPage(contextMenuBlock.id, position)} style={contextMenuItemStyle}>{label}</button>
+              ))
+            ) : null}
+            {textContextMenu.submenu === 'component' ? (
+              reusableTextComponents.map((component) => (
                 <button className="st-context-item" key={component.id} type="button" role="menuitem" disabled={!canEdit}
                   onClick={() => insertReusableTextComponent(component)} style={{ ...contextMenuItemStyle, display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 2 }}>
                   <strong style={{ overflowWrap: 'anywhere' }}>{component.name}</strong>
                   <span style={{ color: 'var(--st-muted, #9aa6b5)', fontSize: 10 }}>{component.type === 'heading' ? 'Heading' : 'Text'} · {component.text.slice(0, 44)}{component.text.length > 44 ? '…' : ''}</span>
                 </button>
-              ))}
-            </div>
-          ) : null}
-          <div className="st-context-menu-footnote">
-            AI edits are previewed before replacing text. Components are stored locally for this brand in this browser.
+              ))
+            ) : null}
           </div>
-        </div>
+        ) : null}
+        </>,
+        document.body
       ) : null}
 
       {backgroundPreviewOpen && activePage?.backgroundImage ? createPortal(
