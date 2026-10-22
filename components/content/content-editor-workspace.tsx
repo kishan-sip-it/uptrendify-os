@@ -911,13 +911,13 @@ const contextMenuItemStyle: React.CSSProperties = {
   background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: 12,
 };
 const contextMenuShortcutStyle: React.CSSProperties = {
-  marginLeft: 'auto', color: 'var(--st-muted, #9aa6b5)', fontSize: 10, whiteSpace: 'nowrap',
+  marginLeft: 'auto', color: 'var(--muted, #756f63)', fontSize: 10, whiteSpace: 'nowrap',
 };
 const contextMenuDividerStyle: React.CSSProperties = {
-  height: 1, margin: '5px 5px', background: 'var(--st-line, #2c3542)',
+  height: 1, margin: '5px 5px', background: 'var(--line, #e2dbcf)',
 };
 const contextMenuSubmenuStyle: React.CSSProperties = {
-  margin: '2px 0 4px 10px', paddingLeft: 5, borderLeft: '2px solid var(--st-line, #2c3542)',
+  margin: '2px 0 4px 10px', paddingLeft: 5, borderLeft: '2px solid var(--line, #e2dbcf)',
 };
 
 function clampCanvasCoordinate(value: number): number {
@@ -3665,10 +3665,10 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           style={{
             position: 'fixed', left: textContextMenu.left, top: textContextMenu.top, zIndex: 100300,
             width: 276, maxWidth: 'calc(100vw - 16px)', maxHeight: 'min(calc(100vh - 16px), 640px)', overflowY: 'auto',
-            padding: 8, borderRadius: 14, border: '1px solid rgba(148,163,184,.38)',
-            background: 'linear-gradient(155deg, rgba(32,43,61,.99), rgba(13,19,31,.99) 75%)',
-            boxShadow: '0 24px 60px rgba(0,0,0,.48), 0 0 0 1px rgba(255,255,255,.035) inset',
-            backdropFilter: 'blur(20px)', color: '#eef4ff', fontSize: 12,
+            padding: 8, borderRadius: 14, border: '1px solid var(--line, #e2dbcf)',
+            background: 'var(--surface-card, var(--panel, #fffdf8))',
+            boxShadow: '0 20px 48px rgba(15, 23, 42, .18)',
+            backdropFilter: 'blur(20px)', color: 'var(--text, #292820)', fontSize: 12,
           }}>
           <div className="st-context-menu-heading">
             <span className="st-context-menu-icon"><Type size={15} /></span>
@@ -3750,9 +3750,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               position: 'fixed', left: textContextMenu.submenuLeft ?? textContextMenu.left + 284,
               top: textContextMenu.submenuTop ?? textContextMenu.top, zIndex: 100301,
               width: 232, maxWidth: 'calc(100vw - 16px)', maxHeight: 'min(calc(100vh - 16px), 480px)', overflowY: 'auto',
-              padding: 8, borderRadius: 14, border: '1px solid rgba(148,163,184,.38)',
-              background: 'linear-gradient(155deg, rgba(32,43,61,.99), rgba(13,19,31,.99) 75%)',
-              boxShadow: '0 24px 60px rgba(0,0,0,.48)', color: '#eef4ff', fontSize: 12,
+              padding: 8, borderRadius: 14, border: '1px solid var(--line, #e2dbcf)',
+              background: 'var(--surface-card, var(--panel, #fffdf8))',
+              boxShadow: '0 20px 48px rgba(15, 23, 42, .18)', color: 'var(--text, #292820)', fontSize: 12,
             }}>
             <div className="st-context-menu-subtitle">
               {textContextMenu.submenu === 'heading' ? 'HEADING LEVEL' : textContextMenu.submenu === 'layer' ? 'LAYER ORDER' : textContextMenu.submenu === 'align' ? 'ALIGN TO PAGE' : 'REUSABLE COMPONENTS'}
@@ -3789,7 +3789,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                 <button className="st-context-item" key={component.id} type="button" role="menuitem" disabled={!canEdit}
                   onClick={() => insertReusableTextComponent(component)} style={{ ...contextMenuItemStyle, display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 2 }}>
                   <strong style={{ overflowWrap: 'anywhere' }}>{component.name}</strong>
-                  <span style={{ color: 'var(--st-muted, #9aa6b5)', fontSize: 10 }}>{component.type === 'heading' ? 'Heading' : 'Text'} · {component.text.slice(0, 44)}{component.text.length > 44 ? '…' : ''}</span>
+                  <span style={{ color: 'var(--muted, #756f63)', fontSize: 10 }}>{component.type === 'heading' ? 'Heading' : 'Text'} · {component.text.slice(0, 44)}{component.text.length > 44 ? '…' : ''}</span>
                 </button>
               ))
             ) : null}
@@ -3817,9 +3817,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         <div className="studio-upload-overlay st-text-assist-overlay" role="presentation" style={{ zIndex: 100250, alignItems: 'center', justifyContent: 'center', padding: 18, overflowY: 'auto' }}>
           <section role="dialog" aria-modal="true" aria-labelledby="text-assist-title" className="studio-upload-dialog st-text-assist-dialog" style={{
             width: 'min(760px, 96vw)', maxWidth: 760, maxHeight: '92vh', overflow: 'auto', gap: 14,
-            alignItems: 'stretch', background: 'var(--st-panel, #121821)', color: 'var(--st-text, #eef2f7)',
-            border: '1px solid var(--st-border, #334155)', padding: 20, borderRadius: 16,
-            boxShadow: '0 28px 90px rgba(0,0,0,.5)',
+            alignItems: 'stretch', background: 'var(--surface-card, var(--panel, #fffdf8))', color: 'var(--text, #292820)',
+            border: '1px solid var(--line, #e2dbcf)', padding: 20, borderRadius: 16,
+            boxShadow: '0 24px 72px rgba(15, 23, 42, .18)',
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -3878,8 +3878,8 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         <div className="studio-upload-overlay" role="presentation" style={{ zIndex: 100100, alignItems: 'center', justifyContent: 'center', padding: 18, overflowY: 'auto' }}>
           <section role="dialog" aria-modal="true" aria-labelledby="raster-text-review-title" className="studio-upload-dialog" style={{
             width: 'min(1180px, 96vw)', maxWidth: 1180, maxHeight: '94vh', overflow: 'auto', gap: 12,
-            alignItems: 'stretch', background: 'var(--st-panel, #121821)', color: 'var(--st-text, #eef2f7)',
-            border: '1px solid var(--st-border, #334155)', padding: 18,
+            alignItems: 'stretch', background: 'var(--surface-card, var(--panel, #fffdf8))', color: 'var(--text, #292820)',
+            border: '1px solid var(--line, #e2dbcf)', padding: 18,
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
               <div>
