@@ -164,6 +164,33 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
   const ref = useRef<HTMLDivElement | null>(null);
   const [editing, setEditing] = useState(false);
   const lastCanvasClickAt = useRef(0);
+  const editPoint = useRef<{ x: number; y: number } | null>(null);
+
+  const beginEditing = (event?: React.MouseEvent<HTMLDivElement>) => {
+    if (event) editPoint.current = { x: event.clientX, y: event.clientY };
+    setEditing(true);
+  };
+
+  const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    onClick();
+    if (disabled) return;
+    if (!editOnDoubleClick) { beginEditing(event); return; }
+    const now = Date.now();
+    if (now - lastCanvasClickAt.current < 650) {
+      event.preventDefault();
+      event.stopPropagation();
+      beginEditing(event);
+      lastCanvasClickAt.current = 0;
+    } else {
+      lastCanvasClickAt.current = now;
+    }
+  };
+
+  const handleCanvasDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!disabled) beginEditing(event);
+  };
 
   useEffect(() => {
     if (editRequest > 0 && !disabled) setEditing(true);
@@ -174,12 +201,27 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
     const editable = ref.current;
     if (editable.innerText !== value) editable.innerText = value;
     editable.focus();
+
     const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(editable);
-    range.collapse(false);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
+    const point = editPoint.current;
+    const caretDocument = document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    };
+    const pointRange = point && caretDocument.caretRangeFromPoint
+      ? caretDocument.caretRangeFromPoint(point.x, point.y)
+      : null;
+
+    if (pointRange && editable.contains(pointRange.startContainer)) {
+      selection?.removeAllRanges();
+      selection?.addRange(pointRange);
+    } else {
+      const range = document.createRange();
+      range.selectNodeContents(editable);
+      range.collapse(false);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+    editPoint.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
 
@@ -218,7 +260,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
     return (
       <div
         className="editor-canvas-text is-empty"
-        onClick={(event) => { onClick(); if (disabled) return; if (!editOnDoubleClick) { setEditing(true); return; } const now = Date.now(); if (now - lastCanvasClickAt.current < 650) { event.preventDefault(); event.stopPropagation(); setEditing(true); lastCanvasClickAt.current = 0; } else { lastCanvasClickAt.current = now; } }} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); if (!disabled) setEditing(true); }}
+        onClick={handleCanvasClick} onDoubleClick={handleCanvasDoubleClick}
         title={disabled ? undefined : editOnDoubleClick ? 'Double-click to write directly on the canvas' : 'Click to write directly'}
       >
         Empty text block — click to write.
@@ -229,7 +271,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
     <div
       className="editor-canvas-text is-editable"
       style={{ whiteSpace: 'pre-wrap' }}
-      onClick={(event) => { onClick(); if (disabled) return; if (!editOnDoubleClick) { setEditing(true); return; } const now = Date.now(); if (now - lastCanvasClickAt.current < 650) { event.preventDefault(); event.stopPropagation(); setEditing(true); lastCanvasClickAt.current = 0; } else { lastCanvasClickAt.current = now; } }} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); if (!disabled) setEditing(true); }}
+      onClick={handleCanvasClick} onDoubleClick={handleCanvasDoubleClick}
       title={disabled ? undefined : editOnDoubleClick ? 'Double-click to edit text directly on the canvas' : 'Click to edit text directly'}
     >
       {value}
@@ -2024,7 +2066,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     const block = selected;
     if (!block || !canEditBlock(block)) return null;
     return (
-      <div className="studio-float" role="toolbar" aria-label="Text formatting" style={{ left: floatAnchor.x, top: Math.max(8, floatAnchor.y - 46), width: 'max-content' }}>
+      <div className="studio-float" role="toolbar" aria-label="Text formatting" style={{ left: typeof window !== 'undefined' ? Math.max(8, Math.min(floatAnchor.x, window.innerWidth - 420)) : floatAnchor.x, top: Math.max(8, floatAnchor.y - 46), width: 'max-content', maxWidth: 'calc(100vw - 16px)' }}>
         {block.type === 'text' ? (
           <span className="st-float-group" aria-label="Text size">
             {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
@@ -2044,6 +2086,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             <input type="color" value={block.color ?? '#8b7cff'} onChange={(event) => patchBlock(block.id, { color: event.target.value })} disabled={!canEditBlock(block)} aria-label="Fill colour" />
           </span>
         ) : null}
+        {block.type === 'heading' ? (
+          <span className="st-float-group" aria-label="Heading level">
+            {([1, 2, 3] as const).map((level) => (
+              <button key={level} type="button" className={block.level === level ? 'is-on' : ''} onClick={() => patchBlock(block.id, { level, fontSize: headingFontSizeForLevel(level) })} disabled={!canEditBlock(block)} aria-label={`Set heading level H${level}`} title={`Heading H${level}`}>H{level}</button>
+            ))}
+          </span>
+        ) : null}
         {block.type === 'text' || block.type === 'heading' ? (
           <span className="st-float-group" aria-label="Text alignment">
             {(['left', 'center', 'right'] as const).map((option) => (
@@ -2051,6 +2100,10 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             ))}
           </span>
         ) : null}
+        <span className="st-float-group" aria-label="Element actions">
+          <button type="button" onClick={() => duplicateBlock(block.id)} disabled={(activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} aria-label="Duplicate element" title="Duplicate"><Copy size={13} /></button>
+          <button type="button" onClick={() => removeBlock(block.id)} disabled={(activePage?.blocks.length ?? 0) <= 1 && pages.length === 1} aria-label="Delete element" title="Delete"><Trash2 size={13} /></button>
+        </span>
       </div>
     );
   })();
@@ -2871,7 +2924,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                   <span className="st-label">{BLOCK_LABEL[selected.type]} · arrange</span>
                   <div className="st-field st-context-feature-hint">
                     <span>Layer order</span>
-                    <span className="editor-hint">Right-click the selected element and choose Layer to change stacking order.</span>
+                    <div className="st-field-row" style={{ flexWrap: 'wrap', gap: 5 }}>
+                      <button type="button" className="st-icon" style={{ width: 30, height: 30 }} onClick={() => changeLayerOrder(selected.id, 'front')} disabled={!canEditBlock(selected) || (activePage?.blocks.length ?? 0) < 2} aria-label="Bring to front" title="Bring to front"><BringToFront size={13} /></button>
+                      <button type="button" className="st-icon" style={{ width: 30, height: 30 }} onClick={() => changeLayerOrder(selected.id, 'forward')} disabled={!canEditBlock(selected) || (activePage?.blocks.length ?? 0) < 2} aria-label="Bring forward" title="Bring forward"><ArrowUp size={13} /></button>
+                      <button type="button" className="st-icon" style={{ width: 30, height: 30 }} onClick={() => changeLayerOrder(selected.id, 'backward')} disabled={!canEditBlock(selected) || (activePage?.blocks.length ?? 0) < 2} aria-label="Send backward" title="Send backward"><ArrowDown size={13} /></button>
+                      <button type="button" className="st-icon" style={{ width: 30, height: 30 }} onClick={() => changeLayerOrder(selected.id, 'back')} disabled={!canEditBlock(selected) || (activePage?.blocks.length ?? 0) < 2} aria-label="Send to back" title="Send to back"><SendToBack size={13} /></button>
+                    </div>
+                    <span className="editor-hint">Use the right-click Layer submenu for the same actions at the cursor.</span>
                   </div>
                   <div className="st-field">
                     <span>Alignment</span>
