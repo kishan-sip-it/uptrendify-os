@@ -1168,13 +1168,49 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       if (event.key.toLowerCase() === 'f' && !meta) { event.preventDefault(); setFocusMode((value) => !value); return; }
       if (meta && event.key.toLowerCase() === 'z') {
         event.preventDefault();
-        if (event.shiftKey) setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); } return index + 1; });
-        else setHistoryIndex((index) => { if (index <= 0) return index; const doc = parseContentBody(history[index - 1]); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); } return index - 1; });
+        if (event.shiftKey) {
+          setHistoryIndex((index) => {
+            if (index >= history.length - 1) return index;
+            const target = history[index + 1];
+            const doc = parseContentBody(target);
+            if (doc) {
+              setPages(doc.pages);
+              setFreeMode(doc.mode === 'free');
+              setActivePageIndex((current) => Math.min(current, doc.pages.length - 1));
+              setLoadedVersionId(target === loadedSnapshot ? loadedBaselineVersionIdRef.current : null);
+            }
+            return index + 1;
+          });
+        } else {
+          setHistoryIndex((index) => {
+            if (index <= 0) return index;
+            const target = history[index - 1];
+            const doc = parseContentBody(target);
+            if (doc) {
+              setPages(doc.pages);
+              setFreeMode(doc.mode === 'free');
+              setActivePageIndex((current) => Math.min(current, doc.pages.length - 1));
+              setLoadedVersionId(target === loadedSnapshot ? loadedBaselineVersionIdRef.current : null);
+            }
+            return index - 1;
+          });
+        }
         return;
       }
       if (meta && event.key.toLowerCase() === 'y') {
         event.preventDefault();
-        setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); } return index + 1; });
+        setHistoryIndex((index) => {
+          if (index >= history.length - 1) return index;
+          const target = history[index + 1];
+          const doc = parseContentBody(target);
+          if (doc) {
+            setPages(doc.pages);
+            setFreeMode(doc.mode === 'free');
+            setActivePageIndex((current) => Math.min(current, doc.pages.length - 1));
+            setLoadedVersionId(target === loadedSnapshot ? loadedBaselineVersionIdRef.current : null);
+          }
+          return index + 1;
+        });
         return;
       }
       if (!selectedId || previewMode) return;
@@ -1204,7 +1240,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     document.addEventListener('keyup', onKeyUp);
     return () => { document.removeEventListener('keydown', onKeyDown); document.removeEventListener('keyup', onKeyUp); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, previewMode, pages, activePageIndex, history, historyIndex, focusMode]);
+  }, [selectedId, previewMode, pages, activePageIndex, history, historyIndex, focusMode, loadedSnapshot]);
 
   // Canvas zoom is handled by the editor's own controls and wheel listener.
   // Use a non-passive native listener so Ctrl/⌘+wheel cannot zoom the browser page.
