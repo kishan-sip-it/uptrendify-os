@@ -362,6 +362,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadedVersionId, setLoadedVersionId] = useState<string | null>(currentVersionId);
+  const loadedBaselineVersionIdRef = useRef<string | null>(currentVersionId);
   const [displayVersion, setDisplayVersion] = useState(versionNumber);
   const [dropTarget, setDropTarget] = useState<{ index: number; below: boolean } | null>(null);
   const [overflow, setOverflow] = useState(false);
@@ -762,16 +763,12 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       return;
     }
     const nextPages = importedPages.map(layoutPageForFreeCanvas);
-    const nextBody = serializeContentDocument({ kind: 'uptrendify-doc', version: 1, mode: 'free', pages: nextPages } satisfies ContentDocument);
-    setPages(nextPages);
+    commit(nextPages, 'free');
     setActivePageIndex(0);
     setSelectedId(null);
     setFreeMode(true);
     setPreviewMode(false);
     setLoadedVersionId(null);
-    setLoadedSnapshot('');
-    setHistory([nextBody]);
-    setHistoryIndex(0);
     setSaved(false);
     setZoomManual(false);
     manualZoomRef.current = false;
@@ -900,20 +897,17 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       : 'Flow layout enabled. Element geometry is preserved and can be restored by switching back to Free canvas.');
   };
   const insertTemplate = (templateId: string) => {
-    if (dirty && !window.confirm('Discard unsaved changes and start from this template?')) return;
+    const currentHasContent = (activePage?.blocks.length ?? 0) > 0 || pages.length > 1;
+    if ((dirty || currentHasContent) && !window.confirm('Replace the current canvas with this template? The previous canvas will remain available with Undo (Ctrl+Z). Save your current work as a version first if you need a permanent checkpoint.')) return;
     const page = buildTemplatePage(templateId, brand.colors[0] ?? '#7c7cff');
     if (!page) return;
-    setPages([page]);
+    commit([page], 'free');
     setActivePageIndex(0);
     setSelectedId(null);
     setFreeMode(true);
+    setPreviewMode(false);
     setLoadedVersionId(null);
-    // A newly inserted template is an unsaved working design until the user explicitly saves a version.
-    setLoadedSnapshot('');
-    setHistory([serializeContentDocument({ kind: 'uptrendify-doc', version: 1, mode: 'free' as const, pages: [page] } satisfies ContentDocument)]);
-    setHistoryIndex(0);
-    setSaved(false);
-    setNotice('Template inserted on a free canvas. Edit any block, then save as a new version.');
+    setNotice('Template inserted as an undoable canvas change. Use Undo to restore the previous design, or edit and save as a new version.');
   };
   const duplicateBlock = (id: string) => {
     const page = pages[activePageIndex];
@@ -1034,6 +1028,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     setActivePageIndex(0);
     setSelectedId(null);
     setLoadedVersionId(versionId);
+    loadedBaselineVersionIdRef.current = versionId;
     setLoadedSnapshot(snapshot);
     setDisplayVersion(source.version);
     setHistory([snapshot]);
@@ -1059,6 +1054,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(result?.error || 'Could not save the edited content');
       setLoadedVersionId(null);
+      loadedBaselineVersionIdRef.current = null;
       setLoadedSnapshot(serialized);
       setSaved(true);
       setNotice('Saved as the new current version. Approval and publishing now read exactly what is on the canvas.');
@@ -1439,8 +1435,8 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           {health}%
         </span>
         <span style={{ flex: 1 }} />
-        <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index <= 0) return index; const doc = parseContentBody(history[index - 1]); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); } return index - 1; })} disabled={historyIndex <= 0} title="Undo (Ctrl+Z)" aria-label="Undo"><Undo2 size={15} /></button>
-        <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index >= history.length - 1) return index; const doc = parseContentBody(history[index + 1]); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); } return index + 1; })} disabled={historyIndex >= history.length - 1} title="Redo (Ctrl+Y)" aria-label="Redo"><Redo2 size={15} /></button>
+        <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index <= 0) return index; const target = history[index - 1]; const doc = parseContentBody(target); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); setActivePageIndex((current) => Math.min(current, doc.pages.length - 1)); setLoadedVersionId(target === loadedSnapshot ? loadedBaselineVersionIdRef.current : null); } return index - 1; })} disabled={historyIndex <= 0} title="Undo (Ctrl+Z)" aria-label="Undo"><Undo2 size={15} /></button>
+        <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index >= history.length - 1) return index; const target = history[index + 1]; const doc = parseContentBody(target); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); setActivePageIndex((current) => Math.min(current, doc.pages.length - 1)); setLoadedVersionId(target === loadedSnapshot ? loadedBaselineVersionIdRef.current : null); } return index + 1; })} disabled={historyIndex >= history.length - 1} title="Redo (Ctrl+Y)" aria-label="Redo"><Redo2 size={15} /></button>
         <button type="button" className={`st-btn${freeMode ? ' st-btn--primary' : ''}`} onClick={toggleCanvasMode} aria-pressed={freeMode} title="Switch between stacked flow layout and independently movable/resizable canvas layers">Free canvas{freeMode ? ' ✓' : ''}</button>
         <button type="button" className="st-btn" onClick={() => setPreviewMode((value) => !value)} aria-pressed={previewMode}>{previewMode ? 'Exit preview' : 'Preview'}</button>
         <button type="button" className="st-btn" onClick={() => void save()} disabled={busy || !canEdit || !dirty} title={!canEdit ? 'Editing is available in draft, after change requests, or after rejection.' : !dirty ? 'Nothing to save yet — the canvas matches the saved version.' : 'Save these edits as a new version'}>
