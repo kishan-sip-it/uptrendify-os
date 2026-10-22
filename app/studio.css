@@ -628,20 +628,41 @@
   color: inherit;
   font-size: 10px;
   font-weight: 750;
+  flex-shrink: 0;
   cursor: pointer;
 }
 .studio-float button:hover:not(:disabled),
 .studio-float button.is-on { border-color: var(--line, #e2dbcf); background: var(--surface-hover, var(--panel-2, #f0ebe1)); }
 .studio-float button.is-danger { color: var(--text-danger, #b42318); }
 .studio-float button:disabled { opacity: .4; cursor: not-allowed; }
-.studio-float input[type="color"] { width: 25px; height: 25px; padding: 2px; border: 1px solid var(--line, #e2dbcf); border-radius: 5px; background: var(--surface-input, var(--panel, #fffdf8)); }
+.studio-float input[type="color"] {
+  display: inline-block;
+  flex: 0 0 25px;
+  width: 25px;
+  min-width: 25px;
+  max-width: 25px;
+  height: 25px;
+  padding: 2px;
+  border: 1px solid var(--line, #e2dbcf);
+  border-radius: 5px;
+  background: var(--surface-input, var(--panel, #fffdf8));
+}
 
-/* The existing floating toolbar also handles character-level selections. */
-.studio-float .st-inline-range-select,
-.studio-float .st-inline-range-size {
+/* The same floating toolbar hosts selected-range controls; don't create a second bar. */
+.studio-float[data-inline-selection="true"] {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-width: min(660px, calc(100vw - 16px));
+}
+.studio .studio-float select.st-inline-range-select,
+.studio .studio-float input.st-inline-range-size {
+  display: inline-block;
   flex: 0 0 auto;
+  box-sizing: border-box;
   height: 26px;
   min-height: 26px;
+  margin: 0;
   padding: 0 6px;
   border: 1px solid var(--st-line-strong);
   border-radius: 6px;
@@ -649,9 +670,27 @@
   color: var(--st-text);
   font-size: 11px;
 }
-.studio-float .st-inline-range-select { width: 108px; min-width: 78px; }
-.studio-float .st-inline-range-size { width: 52px; padding-inline: 4px; font-variant-numeric: tabular-nums; }
-.studio-float .st-inline-range-reset { min-width: 28px; height: 26px; padding-inline: 4px; font-size: 10px; }
+.studio .studio-float select.st-inline-range-select {
+  width: 108px;
+  min-width: 108px;
+  max-width: 108px;
+}
+.studio .studio-float input.st-inline-range-size {
+  width: 54px;
+  min-width: 54px;
+  max-width: 54px;
+  padding-inline: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.studio .studio-float .st-inline-range-reset {
+  flex: 0 0 28px;
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 26px;
+  padding-inline: 4px;
+  font-size: 10px;
+}
 
 /* Storyboard strip and document controls */
 .studio-filmstrip {
