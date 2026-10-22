@@ -1703,11 +1703,32 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
 
   useEffect(() => {
     if (zoomManual) return;
-    // Fit once on initial load (and when page size changes), but do not
-    // refit merely because a panel or inspector selection changes dimensions.
     const initial = window.setTimeout(() => refit(), 60);
     return () => window.clearTimeout(initial);
   }, [zoomManual, pageDims.width, pageDims.height, refit]);
+
+  // Keep the page fitted to the actual canvas viewport while auto-fit is active.
+  // Opening/closing the left drawer changes the stage width without changing the page.
+  useEffect(() => {
+    if (zoomManual) return;
+    const stage = stageRef.current;
+    if (!stage || typeof ResizeObserver === 'undefined') return;
+
+    let frame: number | null = null;
+    const observer = new ResizeObserver(() => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        refit();
+      });
+    });
+
+    observer.observe(stage);
+    return () => {
+      observer.disconnect();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [zoomManual, refit]);
 
   const zoomCanvas = useCallback((requestedZoom: number, clientPoint?: { x: number; y: number }) => {
     const stage = stageRef.current;
@@ -2265,7 +2286,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       </div>
 
       {/* ---------- body ---------- */}
-      <div className="studio-body">
+      <div className={`studio-body${drawerOpen ? ' has-drawer' : ' is-drawer-closed'}`}>
         {!focusMode ? (
           <nav className="studio-dock" aria-label="Editor panels">
             {dockItems.map(({ id, label, icon: Icon }) => (
