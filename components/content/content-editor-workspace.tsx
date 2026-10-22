@@ -1887,7 +1887,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       }}
                     />
                   </label>
-                  <p className="editor-hint">SVG/Studio JSON retain editable layers where the source exposes them. PNG/JPG/WEBP can use Gemini vision to detect text and create editable text layers over the original image; fonts and small background cover patches are estimates and need review. PDF/DOCX/PPTX import is not supported yet.</p>
+                  <p className="editor-hint">SVG/Studio JSON retain editable layers where the source exposes them. PNG/JPG/WEBP use a review-first Groq Vision workflow: choose the text regions to grab, correct OCR/style/bounds if needed, and only selected text pixels are reconstructed. Font matching and photo/gradient backgrounds may need manual review. PDF/DOCX/PPTX import is not supported yet.</p>
                   {isImportingTemplate ? <p className="editor-hint" role="status">Detecting template layers and importing embedded images…</p> : null}
                   <span className="st-label">Add image</span>
                   <label className="st-field">
