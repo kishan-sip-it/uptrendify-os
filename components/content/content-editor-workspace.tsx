@@ -3014,6 +3014,21 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     if (!resize || resize.id !== id) return;
     freeResize.current = null;
     const block = pages[activePageIndex]?.blocks.find((item) => item.id === id);
+    // Restore temporary measurement styles; the committed geometry now owns the
+    // size. Leaving height:auto/overflow:visible inline can desync edit and preview.
+    if ((resize.dir === 'e' || resize.dir === 'w') && block && (block.type === 'heading' || block.type === 'text')) {
+      const element = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${id}"]`);
+      const textElement = element?.querySelector<HTMLElement>('.content-doc-heading, .content-doc-text');
+      const canvasText = textElement?.querySelector<HTMLElement>('.editor-canvas-text');
+      if (textElement) {
+        textElement.style.height = '100%';
+        textElement.style.overflow = 'hidden';
+      }
+      if (canvasText) {
+        canvasText.style.maxHeight = '100%';
+        canvasText.style.overflow = 'hidden';
+      }
+    }
     const geometryPatch = { geometry: resize.next };
     if (resize.dir.length === 2 && resize.scale && block?.type === 'heading') {
       const scaledSize = Math.max(8, Math.min(160, Math.round((block.fontSize ?? defaultFontSize(block)) * resize.scale)));
