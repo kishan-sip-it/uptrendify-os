@@ -55,33 +55,6 @@ describe('content document body format', () => {
     expect(parseContentBody(JSON.stringify(raw))).toBeNull();
   });
 
-  it('round-trips a sampled text background match render mode', () => {
-    const original: ContentDocument = {
-      kind: 'uptrendify-doc',
-      version: 1,
-      mode: 'free',
-      pages: [{
-        id: 'matched-bg-page',
-        size: 'square',
-        blocks: [{
-          id: 'matched-text',
-          type: 'text',
-          text: 'Matched headline',
-          align: 'left',
-          color: '#111111',
-          bg: '#e9edf2',
-          bgMatch: true,
-          size: 'lg',
-          bold: true,
-          italic: false,
-          underline: false,
-          geometry: { x: 80, y: 120, w: 360, h: 70 },
-        }],
-      }],
-    };
-    expect(parseContentBody(serializeContentDocument(original))).toEqual(original);
-  });
-
   it('round-trips independent geometry, numeric typography, and a page background image', () => {
     const doc: ContentDocument = {
       kind: 'uptrendify-doc',

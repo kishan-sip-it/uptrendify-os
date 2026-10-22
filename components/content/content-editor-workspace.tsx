@@ -57,7 +57,6 @@ import { ContentDocumentView } from '@/components/content/content-document-view'
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
 import { importSvgTemplate, type SvgTemplateImport } from '@/lib/studio/import-template';
 import { eraseRasterTextPixels, type RasterTextBounds } from '@/lib/studio/raster-text';
-import { sampleBackgroundColorFromPixels } from '@/lib/studio/background-color';
 import { storyboardPagesFromScript } from '@/lib/content/parse-script';
 import { lintBlocks, healthScore, channelLimit, type BrandLintIssue } from '@/lib/studio/brand-lint';
 import { reflowPage, resolveBlockText } from '@/lib/content/document';
@@ -401,7 +400,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [isImportingTemplate, setIsImportingTemplate] = useState(false);
   const [rasterReview, setRasterReview] = useState<RasterTextReview | null>(null);
   const [isApplyingRasterText, setIsApplyingRasterText] = useState(false);
-  const [textContextMenu, setTextContextMenu] = useState<{ blockId: string; left: number; top: number } | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
   const templateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [floatAnchor, setFloatAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -422,23 +420,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [loadedSnapshot, setLoadedSnapshot] = useState<string>(() => serializeContentDocument(initialDoc));
 
   useEffect(() => { offsetRef.current = offset; }, [offset]);
-  useEffect(() => {
-    if (!textContextMenu) return;
-    const closeOutside = (event: PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Element && target.closest('[data-studio-text-context-menu]')) return;
-      setTextContextMenu(null);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setTextContextMenu(null);
-    };
-    document.addEventListener('pointerdown', closeOutside);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOutside);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [textContextMenu]);
 
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? (window.visualViewport as VisualViewport | null) : null;
@@ -724,75 +705,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     setInspectorTab('design');
     setPreviewMode(false);
   };
-  const matchTextBackgroundWithCanvas = async (blockId: string) => {
-    const page = pages[activePageIndex];
-    const block = page?.blocks.find((entry) => entry.id === blockId);
-    if (!page || !block || (block.type !== 'heading' && block.type !== 'text') || !canEditBlock(block)) return;
-    setError(null);
-    try {
-      const dimensions = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
-      const canvas = document.createElement('canvas');
-      canvas.width = dimensions.width;
-      canvas.height = dimensions.height;
-      const context = canvas.getContext('2d', { willReadFrequently: true });
-      if (!context) throw new Error('This browser could not sample the canvas background.');
-
-      const pageColor = /^#[0-9a-f]{6}$/i.test(page.bg ?? '') ? page.bg! : '#ffffff';
-      context.fillStyle = pageColor;
-      context.fillRect(0, 0, dimensions.width, dimensions.height);
-
-      if (page.backgroundImage?.src) {
-        const image = new Image();
-        image.crossOrigin = 'anonymous';
-        const studioAssetPath = normalizeStudioAssetPath(page.backgroundImage.src);
-        image.src = studioAssetPath ? `${studioAssetPath}?raw=1` : page.backgroundImage.src;
-        try {
-          await image.decode();
-        } catch {
-          throw new Error('Could not sample this background image because browser security blocked pixel access. Re-upload it into Studio assets or use a same-origin image, then retry.');
-        }
-        const fit = page.backgroundImage.fit ?? 'cover';
-        const scale = fit === 'contain'
-          ? Math.min(dimensions.width / image.naturalWidth, dimensions.height / image.naturalHeight)
-          : Math.max(dimensions.width / image.naturalWidth, dimensions.height / image.naturalHeight);
-        const width = image.naturalWidth * scale;
-        const height = image.naturalHeight * scale;
-        context.drawImage(image, (dimensions.width - width) / 2, (dimensions.height - height) / 2, width, height);
-      }
-
-      const geometry = block.geometry ?? defaultGeometryForNewBlock(block, page);
-      const pixels = context.getImageData(0, 0, dimensions.width, dimensions.height);
-      const color = sampleBackgroundColorFromPixels(
-        { width: dimensions.width, height: dimensions.height, data: pixels.data },
-        geometry,
-      );
-      if (!color) throw new Error('Could not find readable background pixels around this text box. Move it slightly away from the page edge and retry.');
-      patchBlock(blockId, { bg: color, bgMatch: true });
-      setSelectedId(blockId);
-      setInspectorTab('design');
-      setNotice(`Matched text background to ${color} sampled from the canvas background.`);
-      setTextContextMenu(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not match the text background.');
-      setTextContextMenu(null);
-    }
-  };
-
-  const openTextContextMenu = (event: React.MouseEvent, block: EditorBlock) => {
-    if (previewMode || (block.type !== 'heading' && block.type !== 'text')) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setSelectedId(block.id);
-    setInspectorTab('design');
-    const menuWidth = 270;
-    const menuHeight = 54;
-    setTextContextMenu({
-      blockId: block.id,
-      left: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
-      top: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
-    });
-  };
-
   const setBlockGeometry = (id: string, geometry: NonNullable<EditorBlock['geometry']>) => {
     patchPage(activePageIndex, (current) => current.map((block) => (block.id === id ? ({ ...block, geometry } as EditorBlock) : block)));
   };
@@ -1750,7 +1662,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         );
       case 'text':
         return (
-          <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, ...(block.bgMatch ? { padding: 0, borderRadius: 0 } : { padding: '6px 10px', borderRadius: 8 }) } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
+          <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
             <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
           </div>
         );
@@ -2195,7 +2107,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       if (moved) patchBlock(block.id, { geometry: { ...drag.origin, x: clampCanvasCoordinate(drag.origin.x + dx), y: clampCanvasCoordinate(drag.origin.y + dy) } });
                       else setSelectedId(block.id);
                     }}
-                    onContextMenu={(event) => openTextContextMenu(event, block)}
                     onPointerCancel={() => {
                       const drag = freeDrag.current;
                       if (!drag || drag.id !== block.id) return;
@@ -2249,7 +2160,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       className={`editor-block${isSelected ? ' is-selected' : ''}${block.hidden ? ' is-ghost' : ''}`}
                       onClick={() => setSelectedId(block.id)}
                       data-block-name={`${BLOCK_LABEL[block.type]}: ${blockName(block)}`}
-                      onContextMenu={(event) => openTextContextMenu(event, block)}
                       draggable={editable}
                       onDragStart={(event) => { dragIndex.current = index; event.dataTransfer.effectAllowed = 'move'; }}
                       onDragOver={(event) => { if (dragIndex.current !== null) { event.preventDefault(); setDropTarget({ index, below: event.clientY > (event.currentTarget as HTMLElement).getBoundingClientRect().bottom - 14 }); } }}
@@ -2263,7 +2173,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                         </div>
                       ) : null}
                       {block.type === 'text' ? (
-                        <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, ...(block.bgMatch ? { padding: 0, borderRadius: 0 } : { padding: '6px 10px', borderRadius: 8 }) } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
+                        <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
                           <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
                         </div>
                       ) : null}
@@ -2508,8 +2418,27 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     <div className="st-field">
                       <span>Background</span>
                       <div className="st-field-row">
-                        <input type="color" value={selected.bg ?? '#ffffff'} onChange={(event) => patchBlock(selected.id, { bg: event.target.value, bgMatch: undefined })} disabled={!canEditBlock(selected)} aria-label="Text background colour" />
-                        <button type="button" className="st-quiet-link" onClick={() => patchBlock(selected.id, { bg: null, bgMatch: undefined })} disabled={!canEditBlock(selected) || !selected.bg}>No background</button>
+                        <input type="color" value={selected.bg ?? '#ffffff'} onChange={(event) => patchBlock(selected.id, { bg: event.target.value })} disabled={!canEditBlock(selected)} aria-label="Text background colour" />
+                        <button
+                          type="button"
+                          className={`st-btn${selected.bg == null ? ' st-btn--primary' : ''}`}
+                          onClick={() => patchBlock(selected.id, { bg: null })}
+                          disabled={!canEditBlock(selected)}
+                          aria-pressed={selected.bg == null}
+                          aria-label="Set text background to transparent"
+                          title="Make this text background transparent"
+                          style={{ height: 32, padding: '0 9px', display: 'inline-flex', alignItems: 'center', gap: 7 }}
+                        >
+                          <span aria-hidden="true" style={{
+                            width: 16, height: 16, flexShrink: 0, borderRadius: 3,
+                            border: '1px solid var(--st-line-strong, #64748b)',
+                            backgroundColor: '#ffffff',
+                            backgroundImage: 'linear-gradient(45deg, #a1a1aa 25%, transparent 25%, transparent 75%, #a1a1aa 75%), linear-gradient(45deg, #a1a1aa 25%, transparent 25%, transparent 75%, #a1a1aa 75%)',
+                            backgroundPosition: '0 0, 4px 4px',
+                            backgroundSize: '8px 8px',
+                          }} />
+                          Transparent
+                        </button>
                       </div>
                     </div>
                   ) : null}
@@ -2663,54 +2592,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       )}
 
       {floatToolbar}
-      {textContextMenu ? (
-        <div
-          data-studio-text-context-menu
-          role="menu"
-          aria-label="Text context actions"
-          style={{
-            position: 'fixed',
-            left: textContextMenu.left,
-            top: textContextMenu.top,
-            zIndex: 100200,
-            width: 270,
-            padding: 5,
-            borderRadius: 9,
-            border: '1px solid var(--st-line-strong, #394556)',
-            background: 'var(--st-panel, #121821)',
-            boxShadow: '0 14px 38px rgba(0,0,0,.38)',
-            color: 'var(--st-text, #eef2f7)',
-          }}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            disabled={!canEditBlock(pages[activePageIndex]?.blocks.find((block) => block.id === textContextMenu.blockId) ?? null)}
-            onClick={() => void matchTextBackgroundWithCanvas(textContextMenu.blockId)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              width: '100%',
-              minHeight: 40,
-              padding: '9px 10px',
-              border: 0,
-              borderRadius: 6,
-              background: 'transparent',
-              color: 'inherit',
-              textAlign: 'left',
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-            onMouseEnter={(event) => { event.currentTarget.style.background = 'var(--st-surface, #202a37)'; }}
-            onMouseLeave={(event) => { event.currentTarget.style.background = 'transparent'; }}
-          >
-            <span style={{ flex: 1 }}>Match BG color with background</span>
-            <span aria-hidden="true" style={{ marginLeft: 12, color: 'var(--st-muted, #9aa6b5)' }}>↗</span>
-          </button>
-        </div>
-      ) : null}
-
       {rasterReview ? (
         <div className="studio-upload-overlay" role="presentation" style={{ zIndex: 100100, alignItems: 'center', justifyContent: 'center', padding: 18, overflowY: 'auto' }}>
           <section role="dialog" aria-modal="true" aria-labelledby="raster-text-review-title" className="studio-upload-dialog" style={{

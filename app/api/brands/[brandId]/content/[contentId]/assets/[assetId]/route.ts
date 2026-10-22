@@ -42,7 +42,7 @@ function assetUrl(brandId: string, contentId: string, assetId: string) {
   return `/api/brands/${brandId}/content/${contentId}/assets/${assetId}`;
 }
 
-export async function GET(request: Request, { params }: { params: Promise<{ brandId: string; contentId: string; assetId: string }> }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ brandId: string; contentId: string; assetId: string }> }) {
   try {
     const { brandId, contentId, assetId } = paramsSchema.parse(await params);
     const auth = await requireOrgRole(CAN_VIEW_CONTENT);
@@ -51,28 +51,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ bran
     if (!item) return NextResponse.json({ error: 'Content not found' }, { status: 404 });
 
     const admin = createSupabaseAdminClient();
-    const returnRawImage = new URL(request.url).searchParams.get('raw') === '1';
     for (const extension of ['png', 'jpg', 'webp']) {
-      const path = storagePath(auth.context.organizationId, brandId, contentId, assetId, extension);
-      if (returnRawImage) {
-        // Same-origin pixel reads are needed for accurate canvas colour sampling.
-        // Keep this path behind the same role and tenant checks as the normal redirect.
-        const downloaded = await admin.storage.from(BUCKET).download(path);
-        if (!downloaded.error && downloaded.data) {
-          const bytes = Buffer.from(await downloaded.data.arrayBuffer());
-          const contentType = extension === 'png' ? 'image/png' : extension === 'jpg' ? 'image/jpeg' : 'image/webp';
-          return new NextResponse(bytes, {
-            headers: {
-              'Content-Type': contentType,
-              'Content-Length': String(bytes.byteLength),
-              'Cache-Control': 'private, no-store, max-age=0',
-              'X-Content-Type-Options': 'nosniff',
-            },
-          });
-        }
-        continue;
-      }
-      const signed = await admin.storage.from(BUCKET).createSignedUrl(path, 300);
+      const signed = await admin.storage.from(BUCKET).createSignedUrl(storagePath(auth.context.organizationId, brandId, contentId, assetId, extension), 300);
       if (!signed.error && signed.data?.signedUrl) {
         const response = NextResponse.redirect(signed.data.signedUrl, 302);
         response.headers.set('Cache-Control', 'private, no-store, max-age=0');
