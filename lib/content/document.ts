@@ -58,6 +58,24 @@ export function defaultPageSizeForType(contentType: string | null | undefined): 
 const align = z.enum(['left', 'center', 'right']).nullish().transform((value) => value ?? 'left');
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/).nullish().transform((value) => value ?? null);
 const text = z.string().max(CONTENT_DOC_MAX_TEXT);
+
+/**
+ * Optional character-range formatting inside a text block. The owning block's
+ * existing text remains canonical; concatenating run.text values must equal it.
+ * Null color/background values deliberately reset that property to inheritance.
+ */
+const inlineTextRunSchema = z.object({
+  text: z.string().max(CONTENT_DOC_MAX_TEXT),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  bg: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  fontSize: z.coerce.number().int().min(8).max(160).optional(),
+  fontFamily: z.string().max(120).refine((value) => !/[;{}<>]/.test(value)).optional(),
+});
+const inlineTextRuns = z.array(inlineTextRunSchema).max(512);
+export type InlineTextRun = z.infer<typeof inlineTextRunSchema>;
 const blockId = z.string().min(1).max(64);
 const widthPct = z.coerce.number().min(20).max(100).nullish().transform((value) => (value == null ? null : Math.round(value)));
 const safeUrl = z
@@ -143,6 +161,7 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     id: blockId,
     type: z.literal('heading'),
     text,
+    richText: inlineTextRuns.optional(),
     level: z.coerce.number().int().min(1).max(3).nullish().transform((value) => (value == null ? 2 : value) as 1 | 2 | 3),
     fontSize: z.coerce.number().int().min(8).max(160).optional(),
     fontFamily: z.string().max(120).refine((value) => !/[;{}<>]/.test(value)).optional(),
@@ -159,6 +178,7 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     id: blockId,
     type: z.literal('text'),
     text,
+    richText: inlineTextRuns.optional(),
     align,
     color,
     bg: color,
