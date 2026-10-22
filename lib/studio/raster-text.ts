@@ -123,7 +123,9 @@ function filterHorizontalRules(
       componentWidth >= minimumRuleWidth &&
       componentHeight <= maximumRuleHeight &&
       componentWidth / componentHeight >= 8;
-    if (!isHorizontalRule) kept.push(...component);
+    if (!isHorizontalRule) {
+      for (const pixel of component) kept.push(pixel);
+    }
   }
   return kept;
 }
