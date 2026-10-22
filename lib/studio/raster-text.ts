@@ -74,6 +74,60 @@ function sampleBackground(
   return r === null || g === null || b === null ? null : [r, g, b];
 }
 
+/** Keep long, thin horizontal design rules out of the glyph mask. */
+function filterHorizontalRules(
+  candidates: number[],
+  width: number,
+  height: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): number[] {
+  if (!candidates.length) return candidates;
+  const candidateMask = new Uint8Array(width * height);
+  const visited = new Uint8Array(width * height);
+  for (const pixel of candidates) candidateMask[pixel] = 1;
+  const kept: number[] = [];
+  const minimumRuleWidth = Math.max(24, Math.ceil((x1 - x0) * 0.22));
+  const maximumRuleHeight = Math.max(2, Math.ceil((y1 - y0) * 0.06));
+
+  for (const seed of candidates) {
+    if (visited[seed]) continue;
+    const component: number[] = [seed];
+    visited[seed] = 1;
+    let minX = seed % width, maxX = minX;
+    let minY = Math.floor(seed / width), maxY = minY;
+    for (let cursor = 0; cursor < component.length; cursor += 1) {
+      const pixel = component[cursor]!;
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx < x0 || nx >= x1 || ny < y0 || ny >= y1) continue;
+          const neighbour = ny * width + nx;
+          if (candidateMask[neighbour] && !visited[neighbour]) {
+            visited[neighbour] = 1;
+            component.push(neighbour);
+          }
+        }
+      }
+    }
+    const componentWidth = maxX - minX + 1;
+    const componentHeight = maxY - minY + 1;
+    const isHorizontalRule =
+      componentWidth >= minimumRuleWidth &&
+      componentHeight <= maximumRuleHeight &&
+      componentWidth / componentHeight >= 8;
+    if (!isHorizontalRule) kept.push(...component);
+  }
+  return kept;
+}
+
 /**
  * Conservatively removes only pixels that resemble the selected text colour
  * inside a user-reviewed OCR box. The surrounding image pixels are never
@@ -123,20 +177,21 @@ export function eraseRasterTextPixels(
       }
     }
 
-    if (candidates.length < Math.max(4, Math.floor(boxArea * 0.001))) {
-      results.push({ index, status: 'no-foreground-match', foregroundPixels: candidates.length, changedPixels: 0 });
+    const glyphCandidates = filterHorizontalRules(candidates, width, height, x0, y0, x1, y1);
+    if (glyphCandidates.length < Math.max(4, Math.floor(boxArea * 0.001))) {
+      results.push({ index, status: 'no-foreground-match', foregroundPixels: glyphCandidates.length, changedPixels: 0 });
       return;
     }
     // If most of a selected box matches the text colour, the model's region is
     // probably wrong or covers a solid graphic. Refuse to erase it.
-    if (candidates.length / boxArea > 0.58) {
-      results.push({ index, status: 'unsafe-coverage', foregroundPixels: candidates.length, changedPixels: 0 });
+    if (glyphCandidates.length / boxArea > 0.58) {
+      results.push({ index, status: 'unsafe-coverage', foregroundPixels: glyphCandidates.length, changedPixels: 0 });
       return;
     }
 
-    for (const pixel of candidates) mask[pixel] = 1;
+    for (const pixel of glyphCandidates) mask[pixel] = 1;
     // Inpaint only the detected glyph pixels; keep the mask inside the reviewed box.
-    for (const pixel of candidates) {
+    for (const pixel of glyphCandidates) {
       const x = pixel % width;
       const y = Math.floor(pixel / width);
       for (let dy = -1; dy <= 1; dy += 1) {

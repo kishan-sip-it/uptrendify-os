@@ -37,6 +37,36 @@ describe('eraseRasterTextPixels', () => {
     expect(result.data[outside + 2]).toBe(image.data[outside + 2]);
   });
 
+  it('preserves a long horizontal decorative rule inside a selected text box', () => {
+    const image = whiteImage(200, 80);
+    // A compact dark glyph group.
+    for (let y = 42; y <= 52; y += 1) {
+      for (let x = 50; x <= 59; x += 1) {
+        const offset = (y * image.width + x) * 4;
+        image.data[offset] = 15;
+        image.data[offset + 1] = 15;
+        image.data[offset + 2] = 15;
+      }
+    }
+    // A separate thin design rule in the same AI-reviewed bounds.
+    for (let x = 35; x <= 145; x += 1) {
+      const offset = (27 * image.width + x) * 4;
+      image.data[offset] = 15;
+      image.data[offset + 1] = 15;
+      image.data[offset + 2] = 15;
+    }
+    const result = eraseRasterTextPixels(image, [{
+      bounds: { x: 100, y: 250, w: 800, h: 500 },
+      color: '#0f0f0f',
+    }]);
+    expect(result.regions[0]?.status).toBe('erased');
+    const rulePixel = (27 * image.width + 100) * 4;
+    expect(result.data[rulePixel]).toBe(15);
+    expect(result.data[rulePixel + 1]).toBe(15);
+    const glyphPixel = (47 * image.width + 54) * 4;
+    expect(result.data[glyphPixel]).toBeGreaterThan(150);
+  });
+
   it('refuses to erase a box when the detected text colour covers most of it', () => {
     const image = whiteImage(20, 12);
     for (let y = 3; y < 9; y += 1) {
