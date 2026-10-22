@@ -795,14 +795,14 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     }
   };
 
-  const uploadTemplateRaster = async (embedded: SvgTemplateImport['embeddedImages'][number]): Promise<string | null> => {
+  const uploadTemplateRaster = async (embedded: SvgTemplateImport['embeddedImages'][number], maxBytes = 2 * 1024 * 1024): Promise<string | null> => {
     const match = /^data:(image\/(?:png|jpeg|webp));base64,([a-z0-9+/=\s]+)$/i.exec(embedded.dataUrl);
     if (!match) return null;
     const base64 = match[2]!.replace(/\s/g, '');
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-    if (bytes.length <= 0 || bytes.length > 2 * 1024 * 1024) return null;
+    if (bytes.length <= 0 || bytes.length > maxBytes) return null;
     const mime = match[1]!.toLowerCase();
     const extension = mime === 'image/jpeg' ? 'jpg' : mime.slice('image/'.length);
     const file = new File([bytes], 'studio-import.' + extension, { type: mime });
@@ -1049,19 +1049,19 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       const cleanedPixels = context.createImageData(review.width, review.height);
       cleanedPixels.data.set(cleaned.data);
       context.putImageData(cleanedPixels, 0, 0);
-      const bytesInDataUrl = (value: string) => Math.floor((value.split(',')[1]?.length ?? 0) * 0.75);
-      let cleanedDataUrl = canvas.toDataURL(review.mimeType, review.mimeType === 'image/png' ? undefined : 0.92);
-      if (bytesInDataUrl(cleanedDataUrl) > 2 * 1024 * 1024) cleanedDataUrl = canvas.toDataURL('image/webp', 0.88);
-      if (bytesInDataUrl(cleanedDataUrl) > 2 * 1024 * 1024) cleanedDataUrl = canvas.toDataURL('image/webp', 0.78);
-      if (bytesInDataUrl(cleanedDataUrl) > 2 * 1024 * 1024) {
-        throw new Error('The cleaned image exceeds the 2 MB asset limit. Use a smaller source image.');
+      // PNG is intentional: lossy re-encoding would change pixels outside the
+      // selected text regions. Refuse an oversized lossless output instead.
+      const cleanedDataUrl = canvas.toDataURL('image/png');
+      const bytesInDataUrl = Math.floor((cleanedDataUrl.split(',')[1]?.length ?? 0) * 0.75);
+      if (bytesInDataUrl > 4 * 1024 * 1024) {
+        throw new Error('The losslessly cleaned image exceeds the 4 MB processing limit. Use a smaller source image or choose "Use image unchanged".');
       }
 
       const sourceUrl = await uploadTemplateRaster({
         blockId: 'raster-cleaned',
         dataUrl: cleanedDataUrl,
-        fileName: review.fileName.replace(/\.[^.]+$/, '') + '-text-cleaned.webp',
-      });
+        fileName: review.fileName.replace(/\.[^.]+$/, '') + '-text-cleaned.png',
+      }, 4 * 1024 * 1024);
       if (!sourceUrl) throw new Error('The cleaned image could not be stored securely.');
 
       const ratio = review.width / Math.max(1, review.height);
@@ -2588,7 +2588,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{
-                  width: '100%', maxHeight: '52vh', aspectRatio: `${rasterReview.width} / ${rasterReview.height}`,
+                  width: '100%', aspectRatio: `${rasterReview.width} / ${rasterReview.height}`,
                   position: 'relative', overflow: 'hidden', background: '#0b0f15',
                   border: '1px solid var(--st-border, #334155)', borderRadius: 8,
                 }}>

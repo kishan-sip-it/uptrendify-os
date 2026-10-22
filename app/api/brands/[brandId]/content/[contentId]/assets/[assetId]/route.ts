@@ -9,7 +9,8 @@ import { obs } from '@/lib/obs/logger';
 export const runtime = 'nodejs';
 
 const BUCKET = 'brand-assets';
-const MAX_BYTES = 2 * 1024 * 1024;
+// Lossless cleaned-image uploads may grow beyond the source file; request size remains below Vercel's default payload ceiling.
+const MAX_BYTES = 4 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MAGIC: Record<string, Uint8Array> = {
   'image/png': Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
