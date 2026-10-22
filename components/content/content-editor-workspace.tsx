@@ -18,7 +18,6 @@ import {
   Image as ImageIcon,
   Layers,
   LoaderCircle,
-  Lock,
   Maximize,
   Minus,
   MousePointerClick,
@@ -32,7 +31,6 @@ import {
   Trash2,
   Type,
   Undo2,
-  Unlock,
   Grid3X3,
 } from 'lucide-react';
 import {
@@ -2270,9 +2268,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                           <button type="button" className="st-icon" style={{ width: 32, height: 32 }} aria-label={block.hidden ? 'Show block' : 'Hide block'} title={block.hidden ? 'Show' : 'Hide'} onClick={(event) => { event.stopPropagation(); patchBlock(block.id, { hidden: !block.hidden }); }}>
                             {block.hidden ? <EyeOff size={13} /> : <Eye size={13} />}
                           </button>
-                          <button type="button" className="st-icon" style={{ width: 32, height: 32 }} aria-label={block.locked ? 'Unlock block' : 'Lock block'} title={block.locked ? 'Unlock' : 'Lock'} onClick={(event) => { event.stopPropagation(); patchBlock(block.id, { locked: !block.locked }); }}>
-                            {block.locked ? <Lock size={13} /> : <Unlock size={13} />}
-                          </button>
+
                         </span>
                       </div>
                     );
