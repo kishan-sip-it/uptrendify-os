@@ -540,7 +540,8 @@ function CanvasText({
     const selection = window.getSelection();
     const range = rangeOverride ?? (selection?.rangeCount ? selection.getRangeAt(0) : null);
     if (!range || range.collapsed || !editable.contains(range.commonAncestorContainer)) {
-      if (preserveSelectionRef.current && isInlineToolbarFocused()) return;
+      // Prevent toolbar clicks from being mistaken for clearing a text selection.
+      if (preserveSelectionRef.current) return;
       notifyInlineToolbarChange(null);
       return;
     }
@@ -558,9 +559,9 @@ function CanvasText({
   const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
     onClick();
     if (disabled) return;
-    // First click selects the element; a subsequent click on the selected text
-    // enters editing without requiring another double-click.
-    if (!editOnDoubleClick || isSelected) beginEditing(event, false);
+    // First click selects the block; a subsequent click enters text editing.
+    // On a double-click's second click, preserve the clicked word as selection.
+    if (!editOnDoubleClick || isSelected) beginEditing(event, event.detail >= 2);
   };
 
   const handleCanvasDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -568,8 +569,6 @@ function CanvasText({
     event.stopPropagation();
     if (disabled) return;
     const point = { x: event.clientX, y: event.clientY };
-    // If the second click already entered edit mode, select the word directly.
-    // Waiting for the [editing] layout effect here loses the native double-click.
     if (editing && ref.current) {
       selectWordAtPoint(ref.current, point);
       return;
@@ -750,7 +749,7 @@ function CanvasText({
     const updateSelection = () => {
       const editable = ref.current;
       if (!editable) return;
-      if (preserveSelectionRef.current && isInlineToolbarFocused()) return;
+      if (preserveSelectionRef.current) return;
       const selection = window.getSelection();
       if (!selection?.rangeCount || selection.isCollapsed) {
         if (!isInlineToolbarFocused()) notifyInlineToolbarChange(null);
@@ -777,8 +776,26 @@ function CanvasText({
         contentEditable={!disabled}
         suppressContentEditableWarning
         className="editor-inline-edit"
-        onMouseUp={() => refreshInlineToolbar()}
-        onKeyUp={() => refreshInlineToolbar()}
+        onMouseUp={() => {
+          preserveSelectionRef.current = false;
+          refreshInlineToolbar();
+        }}
+        onKeyUp={() => {
+          preserveSelectionRef.current = false;
+          refreshInlineToolbar();
+        }}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          selectWordAtPoint(event.currentTarget, { x: event.clientX, y: event.clientY });
+        }}
+        onBeforeInput={(event) => {
+          const inputType = (event.nativeEvent as InputEvent).inputType;
+          if (inputType === 'insertParagraph' || inputType === 'insertLineBreak') {
+            // Block browser-generated paragraph nodes; Shift+Enter inserts our own newline.
+            event.preventDefault();
+          }
+        }}
         onInput={(event) => updateDraftFromDom(event.currentTarget)}
         onBlur={(event) => {
           const toolbar = document.querySelector('.studio-float[data-inline-selection="true"]');
@@ -2790,6 +2807,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               className="st-inline-range-select"
               aria-label="Selected text font family"
               title="Selected text font family"
+              style={{ flex: '0 0 108px', width: 108, minWidth: 108, maxWidth: 108, boxSizing: 'border-box' }}
               value={range.fontFamily}
               onChange={(event) => inline!.apply('fontFamily', event.currentTarget.value)}
             >
@@ -2803,14 +2821,15 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               step={1}
               aria-label="Selected text font size"
               title="Selected text font size"
+              style={{ flex: '0 0 54px', width: 54, minWidth: 54, maxWidth: 54, boxSizing: 'border-box' }}
               value={range.fontSize}
               onChange={(event) => {
                 const nextSize = Number(event.currentTarget.value);
                 if (Number.isFinite(nextSize) && nextSize >= 8 && nextSize <= 160) inline!.apply('fontSize', Math.round(nextSize));
               }}
             />
-            <button type="button" className="st-inline-range-reset" title="Reset selected text colour" aria-label="Reset selected text colour" onClick={() => inline!.apply('color', null)}>A×</button>
-            <button type="button" className="st-inline-range-reset" title="Clear selected text highlight" aria-label="Clear selected text highlight" onClick={() => inline!.apply('bg', null)}>▧×</button>
+            <button type="button" className="st-inline-range-reset" style={{ flex: '0 0 28px', width: 28, minWidth: 28, maxWidth: 28 }} title="Reset selected text colour" aria-label="Reset selected text colour" onClick={() => inline!.apply('color', null)}>A×</button>
+            <button type="button" className="st-inline-range-reset" style={{ flex: '0 0 28px', width: 28, minWidth: 28, maxWidth: 28 }} title="Clear selected text highlight" aria-label="Clear selected text highlight" onClick={() => inline!.apply('bg', null)}>▧×</button>
           </>
         ) : null}
         {block.type === 'shape' ? (
