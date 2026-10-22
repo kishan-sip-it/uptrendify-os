@@ -208,7 +208,7 @@
 .studio-body {
   display: grid;
   flex: 1 1 0;
-  grid-template-columns: 44px minmax(190px, 238px) minmax(320px, 1fr) minmax(225px, 270px);
+  grid-template-columns: 44px minmax(215px, 278px) minmax(320px, 1fr) minmax(225px, 270px);
   grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
   gap: 9px;
@@ -312,9 +312,13 @@
 }
 .st-layer-row {
   display: grid;
-  grid-template-columns: 13px minmax(0, 1fr) auto;
+  grid-template-columns: 12px minmax(0, 1fr) 55px;
   align-items: center;
   gap: 7px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   min-height: 48px;
   padding: 6px 7px;
   border: 1px solid transparent;
@@ -338,7 +342,10 @@
   line-height: 1.35;
   text-overflow: ellipsis;
   overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
+.st-layer-row > span:nth-child(2) { min-width: 0; overflow: hidden; }
 .st-layer-kind { display: block; margin-top: 2px; color: var(--st-ink-3); font-size: 9.5px; text-transform: capitalize; }
 .st-layer-actions { display: inline-flex; align-items: center; gap: 3px; }
 .st-layer-actions .st-icon { width: 26px !important; height: 26px !important; border-radius: 7px; }
@@ -441,7 +448,7 @@
 .studio-inspector-body > .st-label:not(:first-child) { margin-top: 3px; }
 .studio-inspector-body .st-field + .st-field { margin-top: 2px; }
 .studio-inspector-body .editor-shapes-row { display: flex; flex-wrap: wrap; gap: 5px; }
-.studio-inspector-body .editor-shape-swatch { width: 20px; height: 20px; display: inline-block; }
+.studio-inspector-body .editor-shape-swatch { width: 24px; height: 24px; display: inline-block; flex: 0 0 auto; }
 .studio-inspector-body input[type="number"] { font-variant-numeric: tabular-nums; }
 
 /* Central canvas area: a contained work surface, not an unstyled document flow. */
@@ -727,13 +734,13 @@
 /* Keep the screen usable at laptop widths without letting controls push the
    canvas out of view; narrower screens convert side panels into compact rows. */
 @media (max-width: 1350px) {
-  .studio-body { grid-template-columns: 42px minmax(175px, 215px) minmax(280px, 1fr) minmax(205px, 235px); gap: 7px; }
+  .studio-body { grid-template-columns: 42px minmax(195px, 235px) minmax(260px, 1fr) minmax(205px, 235px); gap: 7px; }
   .studio-topbar { gap: 6px; padding: 8px; }
   .st-btn { padding-inline: 9px; }
 }
 @media (max-width: 1100px) {
   .studio { min-height: 0; }
-  .studio-body { grid-template-columns: 40px minmax(175px, 215px) minmax(0, 1fr); grid-template-rows: auto auto; min-height: 640px; overflow: visible; }
+  .studio-body { grid-template-columns: 40px minmax(190px, 225px) minmax(0, 1fr); grid-template-rows: auto auto; min-height: 640px; overflow: visible; }
   .studio-inspector { grid-column: 2 / -1; min-height: 240px; max-height: 42vh; }
   .studio-stage { min-height: 640px; }
 }
