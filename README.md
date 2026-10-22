@@ -92,12 +92,12 @@ Strategy states: `QUEUED → RUNNING → SUCCEEDED | FAILED` with `error_code`/`
 
 ### AI provider
 
-`DEFAULT_AI_PROVIDER` selects the primary provider (`gemini` by default) with Groq/OpenAI/Anthropic as alternates; configure keys in `.env.local`:
+`DEFAULT_AI_PROVIDER` selects the primary provider (Groq by default), with configured OpenAI/Anthropic providers as alternates; configure keys in `.env.local`:
 
 ```text
-GEMINI_API_KEY=
-GROQ_MODEL=openai/gpt-oss-20b
-GEMINI_MODEL=gemini-3.7-flash
+GROQ_API_KEY=
+GROQ_MODEL=openai/gpt-oss-120b
+GROQ_VISION_MODEL=qwen/qwen3.8-27b
 DEFAULT_AI_PROVIDER=groq
 ```
 
@@ -178,8 +178,8 @@ npm run build     # next build (all app + API routes)
 Full end-to-end verification boots the app with a real provider against local Supabase:
 
 ```bash
-VERIFY_APP=http://localhost:3000 VERIFY_PROVIDER=gemini node /tmp/opencode/verify-research.cjs
-VERIFY_APP=http://localhost:3100 node /tmp/opencode/verify-strategy.cjs   # with GEMINI_MODEL=gemini-3.6-flash dev server
+VERIFY_APP=http://localhost:3000 VERIFY_PROVIDER=groq node /tmp/opencode/verify-research.cjs
+VERIFY_APP=http://localhost:3100 node /tmp/opencode/verify-strategy.cjs   # with GROQ_MODEL configured in the dev server
 ```
 
 ## AI integrations
@@ -190,7 +190,6 @@ Initial providers:
 - Groq
 - OpenAI
 - Anthropic
-- Gemini
 
 Optional adapters can be added for:
 - Semrush
