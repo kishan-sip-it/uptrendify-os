@@ -89,7 +89,7 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
         </details>
       ) : undefined} />
       {brands.length === 0 ? (
-        <EmptyState title="No brands yet" description="Add your first brand to start analyzing its public website and building strategies." action={<span className="field-note">Use <strong>Add brand</strong> in the left sidebar to create your first brand.</span>} />
+        <EmptyState title="No brands yet" description="Add your first brand to start analyzing its public website and building strategies." action={<a className="ui-empty-state-cta" href="/brands/new"><Plus size={15} aria-hidden="true" /> Create your first brand <ArrowRight size={15} aria-hidden="true" /></a>} />
       ) : (
         <div className="grid" id="brands">
           {visibleBrands.map((brand, i) => (
@@ -117,7 +117,7 @@ function ResearchActivityPanel({ activity }: { activity: ResearchActivity[] }) {
         <EmptyState
           title="No research yet"
           description="Research runs will appear here once a brand's public website has been analyzed."
-          action={<span className="field-note">Use <strong>Add brand</strong> in the left sidebar to start a research run.</span>}
+          action={<a className="ui-empty-state-cta" href="/brands/new"><Plus size={15} aria-hidden="true" /> Add a brand to start research <ArrowRight size={15} aria-hidden="true" /></a>}
         />
       ) : (
         <div className="activity-list">
@@ -146,6 +146,7 @@ function StrategyActivityPanel({ activity }: { activity: StrategyActivity[] }) {
         <EmptyState
           title="No strategies yet"
           description="Generated strategies will appear here once a brand has been researched."
+          action={<a className="ui-empty-state-cta" href="/brands/new"><Plus size={15} aria-hidden="true" /> Create a brand to build your first strategy <ArrowRight size={15} aria-hidden="true" /></a>}
         />
       ) : (
         <div className={"activity-list strategy-version-list" + (activity.length > 1 ? " is-scrollable" : "")}>
