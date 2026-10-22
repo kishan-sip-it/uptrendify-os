@@ -2995,17 +2995,22 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     if (!resize || resize.id !== id) return;
     freeResize.current = null;
     const block = pages[activePageIndex]?.blocks.find((item) => item.id === id);
-    const patch: Partial<EditorBlock> = { geometry: resize.next };
-    if (resize.dir.length === 2 && resize.scale && block && (block.type === 'heading' || block.type === 'text')) {
+    const geometryPatch = { geometry: resize.next };
+    if (resize.dir.length === 2 && resize.scale && block?.type === 'heading') {
       const scaledSize = Math.max(8, Math.min(160, Math.round((block.fontSize ?? defaultFontSize(block)) * resize.scale)));
-      patch.fontSize = scaledSize;
-      if (block.richText?.length) {
-        patch.richText = block.richText.map((run) => run.fontSize === undefined
-          ? run
-          : { ...run, fontSize: Math.max(8, Math.min(160, Math.round(run.fontSize * resize.scale!))) });
-      }
+      const richText = block.richText?.map((run) => run.fontSize === undefined
+        ? run
+        : { ...run, fontSize: Math.max(8, Math.min(160, Math.round(run.fontSize * resize.scale!))) });
+      patchBlock(id, { ...geometryPatch, fontSize: scaledSize, ...(richText ? { richText } : {}) });
+    } else if (resize.dir.length === 2 && resize.scale && block?.type === 'text') {
+      const scaledSize = Math.max(8, Math.min(160, Math.round((block.fontSize ?? defaultFontSize(block)) * resize.scale)));
+      const richText = block.richText?.map((run) => run.fontSize === undefined
+        ? run
+        : { ...run, fontSize: Math.max(8, Math.min(160, Math.round(run.fontSize * resize.scale!))) });
+      patchBlock(id, { ...geometryPatch, fontSize: scaledSize, ...(richText ? { richText } : {}) });
+    } else {
+      patchBlock(id, geometryPatch);
     }
-    patchBlock(id, patch);
   };
 
   return (
