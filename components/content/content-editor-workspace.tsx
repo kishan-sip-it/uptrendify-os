@@ -2712,79 +2712,103 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
 
   const floatToolbar = (() => {
-    if (previewMode) return null;
+    if (previewMode || !floatAnchor) return null;
     const block = selected;
     if (!block || !canEditBlock(block)) return null;
 
-    const inline = inlineSelectionToolbar?.blockId === block.id ? inlineSelectionToolbar : null;
-    if (inline && (block.type === 'text' || block.type === 'heading')) {
-      const state = inline.state;
-      return (
-        <div
-          className="studio-float"
-          data-inline-selection="true"
-          role="toolbar"
-          aria-label="Selected text formatting"
-          style={{ position: 'fixed', left: state.left, top: state.top, width: 'max-content', maxWidth: 'calc(100vw - 16px)' }}
-          onMouseDown={(event) => {
-            if ((event.target as HTMLElement).closest('button')) event.preventDefault();
-            inline.prepare();
-          }}
-        >
-          <span className="st-float-group" aria-label="Selected text emphasis">
-            <button type="button" className={state.bold ? 'is-on' : ''} onClick={() => inline.apply('bold')} title="Bold selected text" aria-label="Bold selected text"><strong>B</strong></button>
-            <button type="button" className={state.italic ? 'is-on' : ''} onClick={() => inline.apply('italic')} title="Italic selected text" aria-label="Italic selected text"><em>I</em></button>
-            <button type="button" className={state.underline ? 'is-on' : ''} onClick={() => inline.apply('underline')} title="Underline selected text" aria-label="Underline selected text"><u>U</u></button>
-          </span>
-          <span className="st-float-group" aria-label="Selected text colours">
-            <input type="color" value={state.color} onChange={(event) => inline.apply('color', event.currentTarget.value)} title="Font colour" aria-label="Selected text font colour" />
-            <input type="color" value={state.bg} onChange={(event) => inline.apply('bg', event.currentTarget.value)} title="Text highlight colour" aria-label="Selected text highlight colour" />
-          </span>
-          <select
-            className="st-inline-range-select"
-            aria-label="Selected text font family"
-            title="Font family"
-            value={state.fontFamily}
-            onChange={(event) => inline.apply('fontFamily', event.currentTarget.value)}
-          >
-            {Array.from(new Set([state.fontFamily, 'Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'monospace'])).map((font) => <option key={font} value={font}>{font}</option>)}
-          </select>
-          <input
-            className="st-inline-range-size"
-            type="number"
-            min={8}
-            max={160}
-            step={1}
-            aria-label="Selected text font size"
-            title="Font size"
-            value={state.fontSize}
-            onChange={(event) => {
-              const next = Number(event.currentTarget.value);
-              if (Number.isFinite(next) && next >= 8 && next <= 160) inline.apply('fontSize', Math.round(next));
-            }}
-          />
-          <button type="button" className="st-inline-range-reset" title="Reset selected text colour" aria-label="Reset selected text colour" onClick={() => inline.apply('color', null)}>A×</button>
-          <button type="button" className="st-inline-range-reset" title="Clear selected text highlight" aria-label="Clear selected text highlight" onClick={() => inline.apply('bg', null)}>▧×</button>
-        </div>
-      );
-    }
+    const inlineCandidate = inlineSelectionToolbar?.blockId === block.id ? inlineSelectionToolbar : null;
+    const inline = inlineCandidate && (block.type === 'text' || block.type === 'heading') ? inlineCandidate : null;
+    const range = inline?.state ?? null;
+    const left = typeof window !== 'undefined'
+      ? Math.max(8, Math.min(floatAnchor.x, window.innerWidth - 660))
+      : floatAnchor.x;
 
-    if (!floatAnchor) return null;
     return (
-      <div className="studio-float" role="toolbar" aria-label="Text formatting" style={{ left: typeof window !== 'undefined' ? Math.max(8, Math.min(floatAnchor.x, window.innerWidth - 420)) : floatAnchor.x, top: Math.max(8, floatAnchor.y - 46), width: 'max-content', maxWidth: 'calc(100vw - 16px)' }}>
+      <div
+        className="studio-float"
+        data-inline-selection={range ? 'true' : undefined}
+        role="toolbar"
+        aria-label={range ? 'Text and selected-range formatting' : 'Text formatting'}
+        style={{
+          position: 'fixed',
+          left,
+          top: Math.max(8, floatAnchor.y - 46),
+          width: 'max-content',
+          maxWidth: 'min(660px, calc(100vw - 16px))',
+        }}
+        onMouseDown={(event) => {
+          if (!inline) return;
+          if ((event.target as HTMLElement).closest('button')) event.preventDefault();
+          inline.prepare();
+        }}
+      >
         {block.type === 'text' ? (
-          <span className="st-float-group" aria-label="Text size">
+          <span className="st-float-group" aria-label="Text size preset">
             {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
-              <button key={size} type="button" className={block.size === size ? 'is-on' : ''} onClick={() => patchBlock(block.id, { size })} disabled={!canEditBlock(block)}>{size.toUpperCase()}</button>
+              <button key={size} type="button" className={block.size === size ? 'is-on' : ''} onClick={() => patchBlock(block.id, { size })} disabled={!canEditBlock(block)} title={`Set text size ${size.toUpperCase()}`}>{size.toUpperCase()}</button>
             ))}
           </span>
         ) : null}
         {block.type === 'text' || block.type === 'heading' ? (
-          <span className="st-float-group" aria-label="Text emphasis">
-            <button type="button" className={block.bold ? 'is-on' : ''} onClick={() => patchBlock(block.id, { bold: !block.bold })} disabled={!canEditBlock(block)} title="Bold"><strong>B</strong></button>
-            <button type="button" className={block.italic ? 'is-on' : ''} onClick={() => patchBlock(block.id, { italic: !block.italic })} disabled={!canEditBlock(block)} title="Italic"><em>I</em></button>
-            <button type="button" className={block.underline ? 'is-on' : ''} onClick={() => patchBlock(block.id, { underline: !block.underline })} disabled={!canEditBlock(block)} title="Underline"><u>U</u></button>
+          <span className="st-float-group" aria-label={range ? 'Format selected text' : 'Text emphasis'}>
+            <button
+              type="button"
+              className={(range ? range.bold : block.bold) ? 'is-on' : ''}
+              onClick={() => range ? inline!.apply('bold') : patchBlock(block.id, { bold: !block.bold })}
+              disabled={!canEditBlock(block)}
+              title={range ? 'Bold selected text' : 'Bold text'}
+              aria-label={range ? 'Bold selected text' : 'Bold text'}
+            ><strong>B</strong></button>
+            <button
+              type="button"
+              className={(range ? range.italic : block.italic) ? 'is-on' : ''}
+              onClick={() => range ? inline!.apply('italic') : patchBlock(block.id, { italic: !block.italic })}
+              disabled={!canEditBlock(block)}
+              title={range ? 'Italic selected text' : 'Italic text'}
+              aria-label={range ? 'Italic selected text' : 'Italic text'}
+            ><em>I</em></button>
+            <button
+              type="button"
+              className={(range ? range.underline : block.underline) ? 'is-on' : ''}
+              onClick={() => range ? inline!.apply('underline') : patchBlock(block.id, { underline: !block.underline })}
+              disabled={!canEditBlock(block)}
+              title={range ? 'Underline selected text' : 'Underline text'}
+              aria-label={range ? 'Underline selected text' : 'Underline text'}
+            ><u>U</u></button>
           </span>
+        ) : null}
+        {range ? (
+          <>
+            <span className="st-float-group" aria-label="Selected text colours">
+              <input type="color" value={range.color} onChange={(event) => inline!.apply('color', event.currentTarget.value)} title="Font colour" aria-label="Selected text font colour" />
+              <input type="color" value={range.bg} onChange={(event) => inline!.apply('bg', event.currentTarget.value)} title="Text highlight colour" aria-label="Selected text highlight colour" />
+            </span>
+            <select
+              className="st-inline-range-select"
+              aria-label="Selected text font family"
+              title="Selected text font family"
+              value={range.fontFamily}
+              onChange={(event) => inline!.apply('fontFamily', event.currentTarget.value)}
+            >
+              {Array.from(new Set([range.fontFamily, 'Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'monospace'])).map((font) => <option key={font} value={font}>{font}</option>)}
+            </select>
+            <input
+              className="st-inline-range-size"
+              type="number"
+              min={8}
+              max={160}
+              step={1}
+              aria-label="Selected text font size"
+              title="Selected text font size"
+              value={range.fontSize}
+              onChange={(event) => {
+                const nextSize = Number(event.currentTarget.value);
+                if (Number.isFinite(nextSize) && nextSize >= 8 && nextSize <= 160) inline!.apply('fontSize', Math.round(nextSize));
+              }}
+            />
+            <button type="button" className="st-inline-range-reset" title="Reset selected text colour" aria-label="Reset selected text colour" onClick={() => inline!.apply('color', null)}>A×</button>
+            <button type="button" className="st-inline-range-reset" title="Clear selected text highlight" aria-label="Clear selected text highlight" onClick={() => inline!.apply('bg', null)}>▧×</button>
+          </>
         ) : null}
         {block.type === 'shape' ? (
           <span className="st-float-group">
