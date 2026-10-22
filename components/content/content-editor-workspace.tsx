@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -151,7 +152,7 @@ function emptyBlock(type: EditorBlock['type']): EditorBlock {
 }
 
 /** Inline canvas text editing. Commits on blur or Enter (Shift+Enter = newline in multiline). */
-function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInput, editOnDoubleClick = false }: {
+function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInput, editOnDoubleClick = false, editRequest = 0, onEditingEnd }: {
   value: string;
   disabled: boolean;
   multiline: boolean;
@@ -159,11 +160,18 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
   onClick: () => void;
   onDraftInput?: (next: string) => void;
   editOnDoubleClick?: boolean;
+  editRequest?: number;
+  onEditingEnd?: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [editing, setEditing] = useState(false);
+  const lastCanvasClickAt = useRef(0);
 
   useEffect(() => {
+    if (editRequest > 0 && !disabled) setEditing(true);
+  }, [editRequest, disabled]);
+
+  useLayoutEffect(() => {
     if (!editing || !ref.current) return;
     const editable = ref.current;
     if (editable.innerText !== value) editable.innerText = value;
@@ -189,6 +197,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
         onInput={(event) => onDraftInput?.(event.currentTarget.innerText)}
         onBlur={() => {
           setEditing(false);
+          onEditingEnd?.();
           const next = (ref.current?.innerText ?? '').replace(/ /g, ' ').replace(/[ 	]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
           onCommit(next);
         }}
@@ -211,7 +220,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
     return (
       <div
         className="editor-canvas-text is-empty"
-        onClick={() => { onClick(); if (!disabled && !editOnDoubleClick) setEditing(true); }} onDoubleClick={() => { if (!disabled) setEditing(true); }}
+        onClick={(event) => { onClick(); if (disabled) return; if (!editOnDoubleClick) { setEditing(true); return; } const now = Date.now(); if (now - lastCanvasClickAt.current < 650) { event.preventDefault(); event.stopPropagation(); setEditing(true); lastCanvasClickAt.current = 0; } else { lastCanvasClickAt.current = now; } }} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); if (!disabled) setEditing(true); }}
         title={disabled ? undefined : editOnDoubleClick ? 'Double-click to write directly on the canvas' : 'Click to write directly'}
       >
         Empty text block — click to write.
@@ -222,7 +231,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
     <div
       className="editor-canvas-text is-editable"
       style={{ whiteSpace: 'pre-wrap' }}
-      onClick={() => { onClick(); if (!disabled && !editOnDoubleClick) setEditing(true); }} onDoubleClick={() => { if (!disabled) setEditing(true); }}
+      onClick={(event) => { onClick(); if (disabled) return; if (!editOnDoubleClick) { setEditing(true); return; } const now = Date.now(); if (now - lastCanvasClickAt.current < 650) { event.preventDefault(); event.stopPropagation(); setEditing(true); lastCanvasClickAt.current = 0; } else { lastCanvasClickAt.current = now; } }} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); if (!disabled) setEditing(true); }}
       title={disabled ? undefined : editOnDoubleClick ? 'Double-click to edit text directly on the canvas' : 'Click to edit text directly'}
     >
       {value}
@@ -448,11 +457,16 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [imageUrlDraft, setImageUrlDraft] = useState('');
   const [imageAltDraft, setImageAltDraft] = useState('');
   const [backgroundImageUrl, setBackgroundImageUrl] = useState('');
+  const [showBackgroundImageUrlInput, setShowBackgroundImageUrlInput] = useState(false);
+  const [backgroundPreviewOpen, setBackgroundPreviewOpen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isImportingTemplate, setIsImportingTemplate] = useState(false);
   const [rasterReview, setRasterReview] = useState<RasterTextReview | null>(null);
   const [isApplyingRasterText, setIsApplyingRasterText] = useState(false);
-  const [textContextMenu, setTextContextMenu] = useState<{ blockId: string; left: number; top: number; submenu: TextContextSubmenu } | null>(null);
+  const [textContextMenu, setTextContextMenu] = useState<{ blockId: string; left: number; top: number; submenu: TextContextSubmenu; submenuLeft?: number; submenuTop?: number } | null>(null);
+  const [inlineTextEditRequest, setInlineTextEditRequest] = useState<{ blockId: string; sequence: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const contextSubmenuRef = useRef<HTMLDivElement | null>(null);
   const [copiedTextStyle, setCopiedTextStyle] = useState<TextStyleSnapshot | null>(null);
   const internalTextClipboardRef = useRef<string | null>(null);
   const [textAssist, setTextAssist] = useState<TextAssistState | null>(null);
@@ -551,7 +565,10 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   }, []);
 
   useEffect(() => {
-    setBackgroundImageUrl(activePage?.backgroundImage?.src ?? '');
+    // Never expose internal/API asset paths as editable text by default.
+    setBackgroundImageUrl('');
+    setShowBackgroundImageUrlInput(false);
+    setBackgroundPreviewOpen(false);
   }, [activePage?.id, activePage?.backgroundImage?.src]);
   const serialized = useMemo(
     () => serializeContentDocument({ kind: 'uptrendify-doc', version: 1, ...(freeMode ? { mode: 'free' as const } : {}), pages } satisfies ContentDocument),
@@ -1268,7 +1285,8 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       return;
     }
     setPageBackgroundImage({ src, alt: '' });
-    setBackgroundImageUrl(src);
+    setBackgroundImageUrl('');
+    setShowBackgroundImageUrlInput(false);
     setError(null);
     setNotice('Page background image updated.');
   };
@@ -1587,6 +1605,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     setTextContextMenu(null);
   };
 
+  const requestInlineTextEditing = (blockId: string) => {
+    setSelectedId(blockId);
+    setInspectorTab('design');
+    setInlineTextEditRequest((current) => ({ blockId, sequence: (current?.sequence ?? 0) + 1 }));
+    setTextContextMenu(null);
+  };
+
   const openTextContextMenu = (event: React.MouseEvent, block: EditorBlock) => {
     if (previewMode || !canEdit || !isEditableTextBlock(block)) return;
     const target = event.target;
@@ -1595,14 +1620,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     event.stopPropagation();
     setSelectedId(block.id);
     setInspectorTab('design');
-    const menuWidth = 282;
-    const menuHeight = 440;
-    setTextContextMenu({
-      blockId: block.id,
-      left: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
-      top: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
-      submenu: null,
-    });
+    setTextContextMenu({ blockId: block.id, left: event.clientX, top: event.clientY, submenu: null });
   };
 
   // Fit-to-screen: auto until the user zooms manually; refits on panel toggles and resizes.
@@ -2455,7 +2473,10 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     onPointerDown={(event) => {
                       if (event.button !== 0) return;
                       setSelectedId(block.id);
-                      if ((event.target as HTMLElement).closest('.editor-inline-edit, [contenteditable="true"]')) return;
+                      const pointerTarget = event.target as HTMLElement;
+                      if (pointerTarget.closest('.editor-inline-edit, [contenteditable="true"]')) return;
+                      // Text clicks must reach CanvasText; capture drag pointers only from block padding/border.
+                      if (pointerTarget.closest('.editor-canvas-text')) return;
                       if (canEdit && !block.locked) {
                         // Let native click/double-click reach the text; pointer capture still handles dragging.
                         // Keep pointer events on the block even after it moves out from under the cursor.
