@@ -626,6 +626,34 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const patchBlock = (id: string, patch: Partial<EditorBlock>) => {
     patchPage(activePageIndex, (current) => current.map((block) => (block.id === id ? ({ ...block, ...patch } as EditorBlock) : block)));
   };
+  const geometryForVisiblePlacement = (block: EditorBlock, page: ContentDocPage, fallback?: CanvasGeometry): CanvasGeometry => {
+    const dims = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
+    const base = fallback ?? defaultGeometryForNewBlock(block, page);
+    const stage = stageRef.current;
+    if (!stage || stage.clientWidth <= 0 || stage.clientHeight <= 0) {
+      return {
+        ...base,
+        x: Math.max(0, Math.round((dims.width - base.w) / 2)),
+        y: Math.max(0, Math.round((dims.height - base.h) / 2)),
+      };
+    }
+    const scale = Math.max(0.2, zoom / 100);
+    const currentOffset = offsetRef.current;
+    const left = Math.max(0, Math.min(dims.width, (0 - currentOffset.x) / scale));
+    const right = Math.max(0, Math.min(dims.width, (stage.clientWidth - currentOffset.x) / scale));
+    const top = Math.max(0, Math.min(dims.height, (0 - currentOffset.y) / scale));
+    const bottom = Math.max(0, Math.min(dims.height, (stage.clientHeight - currentOffset.y) / scale));
+    const centerX = right > left ? (left + right) / 2 : dims.width / 2;
+    const centerY = bottom > top ? (top + bottom) / 2 : dims.height / 2;
+    const maxX = Math.max(0, dims.width - base.w);
+    const maxY = Math.max(0, dims.height - base.h);
+    return {
+      ...base,
+      x: Math.round(Math.max(0, Math.min(maxX, centerX - base.w / 2))),
+      y: Math.round(Math.max(0, Math.min(maxY, centerY - base.h / 2))),
+    };
+  };
+
   const addBlock = (type: EditorBlock['type'], shapeKind?: ContentShapeKind) => {
     if (type === 'image') {
       setDockTab('insert');
@@ -638,7 +666,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     const pageForPlacement = freeMode ? layoutPageForFreeCanvas(currentPage) : currentPage;
     const unplaced = (type === 'shape' && shapeKind ? { ...base, shape: shapeKind } : base) as EditorBlock;
     const block = freeMode
-      ? ({ ...unplaced, geometry: defaultGeometryForNewBlock(unplaced, pageForPlacement) } as EditorBlock)
+      ? ({ ...unplaced, geometry: geometryForVisiblePlacement(unplaced, pageForPlacement) } as EditorBlock)
       : unplaced;
     const existingBlocks = freeMode ? pageForPlacement.blocks : currentPage.blocks;
     const nextPages = pages.map((page, index) => index === activePageIndex
@@ -667,19 +695,22 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       return false;
     }
     const freePages = pages.map(layoutPageForFreeCanvas);
-    const block = {
+    const imageBlock = {
       id: newBlockId('image'),
       type: 'image' as const,
       url: src,
       alt,
       align: 'center' as const,
       width: 80,
-      geometry: {
-        x: Math.round(pageDims.width * 0.15),
-        y: Math.round(pageDims.height * 0.16),
+    } satisfies EditorBlock;
+    const block = {
+      ...imageBlock,
+      geometry: geometryForVisiblePlacement(imageBlock, freePages[activePageIndex] ?? activePage, {
+        x: 0,
+        y: 0,
         w: Math.round(pageDims.width * 0.7),
         h: Math.round(pageDims.height * 0.32),
-      },
+      }),
     } satisfies EditorBlock;
     const nextPages = freePages.map((page, index) => index === activePageIndex ? { ...page, blocks: [...page.blocks, block] } : page);
     commit(nextPages, 'free');
@@ -911,11 +942,28 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
   const duplicateBlock = (id: string) => {
     const page = pages[activePageIndex];
+    if (!page) return;
     const index = page.blocks.findIndex((block) => block.id === id);
     if (index === -1 || page.blocks.length >= CONTENT_DOC_MAX_BLOCKS) return;
-    const clone = { ...page.blocks[index], id: newBlockId(page.blocks[index].type) } as EditorBlock;
+    const original = page.blocks[index]!;
+    const dims = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
+    const originalGeometry = original.geometry ?? geometryForVisiblePlacement(original, page);
+    const offsetBy = 24;
+    const nextX = originalGeometry.x + offsetBy + originalGeometry.w <= dims.width
+      ? originalGeometry.x + offsetBy
+      : Math.max(0, originalGeometry.x - offsetBy);
+    const nextY = originalGeometry.y + offsetBy + originalGeometry.h <= dims.height
+      ? originalGeometry.y + offsetBy
+      : Math.max(0, originalGeometry.y - offsetBy);
+    const clone = {
+      ...original,
+      id: newBlockId(original.type),
+      ...(freeMode ? { geometry: { ...originalGeometry, x: nextX, y: nextY } } : {}),
+    } as EditorBlock;
     patchPage(activePageIndex, (current) => [...current.slice(0, index + 1), clone, ...current.slice(index + 1)]);
     setSelectedId(clone.id);
+    setInspectorTab('design');
+    setNotice('Duplicated layer selected. It is offset slightly so you can see the copy; drag it into position.');
   };
   const removeBlock = (id: string) => {
     if ((pages[activePageIndex]?.blocks.length ?? 0) <= 1 && pages.length === 1) return;
@@ -1599,11 +1647,10 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               {dockTab === 'brand' ? (
                 <>
                   <span className="st-label">Palette</span>
-                  <div className="editor-shapes-row">
+                  <div className="editor-shapes-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
                     {brand.colors.map((color) => (
-                      <button key={color} type="button" className="st-shape-tile" title={`Apply ${color}`} disabled={!selected || !canEdit} onClick={() => selected && patchBlock(selected.id, { color })}>
-                        <span className="editor-shape-swatch" style={{ background: color, borderRadius: 6 }} />
-                        {color}
+                      <button key={color} type="button" className="st-shape-tile" style={{ minHeight: 40, height: 40, padding: 4 }} title={`Apply brand colour ${color}`} aria-label={`Apply brand colour ${color}`} disabled={!selected || !canEdit} onClick={() => selected && patchBlock(selected.id, { color })}>
+                        <span className="editor-shape-swatch" style={{ background: color, width: 24, height: 24, borderRadius: 6, border: '1px solid var(--st-line-strong)' }} />
                       </button>
                     ))}
                   </div>
