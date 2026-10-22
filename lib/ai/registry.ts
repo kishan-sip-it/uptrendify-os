@@ -2,7 +2,6 @@ import { env } from '@/lib/env';
 import type { AiProvider, ProviderHealth } from './types';
 import { createGroqProvider, createOpenAiProvider } from './providers/openai-compatible';
 import { createAnthropicProvider } from './providers/anthropic';
-import { createGeminiProvider } from './providers/gemini';
 
 export class AiProviderRegistry {
   private providers = new Map<string, AiProvider>();
@@ -90,11 +89,8 @@ export async function runWithProviderFailover<T>(
 export function createDefaultRegistry(): AiProviderRegistry {
   const e = env();
 
-  // Gemini is an optional cross-vendor fallback and participates only when
-  // GEMINI_API_KEY is configured. Groq remains the default primary provider.
   return new AiProviderRegistry(e.DEFAULT_AI_PROVIDER, [
     createGroqProvider(e.GROQ_API_KEY ?? null, e.GROQ_MODEL),
-    createGeminiProvider(e.GEMINI_API_KEY ?? null, e.GEMINI_MODEL),
     createGroqProvider(e.GROQ_API_KEY_2 ?? null, e.GROQ_MODEL, 'groq-2'),
     createGroqProvider(e.GROQ_API_KEY_3 ?? null, e.GROQ_MODEL, 'groq-3'),
     createOpenAiProvider(e.OPENAI_API_KEY ?? null, e.OPENAI_MODEL),

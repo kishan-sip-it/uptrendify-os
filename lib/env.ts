@@ -48,12 +48,11 @@ export const envSchema = z.object({
   GROQ_API_KEY_2: optionalString('GROQ_API_KEY_2'),
   GROQ_API_KEY_3: optionalString('GROQ_API_KEY_3'),
   GROQ_MODEL: stringWithDefault('GROQ_MODEL', 'openai/gpt-oss-120b'),
+  GROQ_VISION_MODEL: stringWithDefault('GROQ_VISION_MODEL', 'qwen/qwen3.8-27b'),
   OPENAI_API_KEY: optionalString('OPENAI_API_KEY'),
   OPENAI_MODEL: stringWithDefault('OPENAI_MODEL', 'gpt-4o-mini'),
   ANTHROPIC_API_KEY: optionalString('ANTHROPIC_API_KEY'),
   ANTHROPIC_MODEL: stringWithDefault('ANTHROPIC_MODEL', 'claude-3-5-haiku-latest'),
-  GEMINI_API_KEY: optionalString('GEMINI_API_KEY'),
-  GEMINI_MODEL: stringWithDefault('GEMINI_MODEL', 'gemini-3.8-flash'),
   DEFAULT_AI_PROVIDER: z.preprocess(
     (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
     z.enum(['groq', 'openai', 'anthropic']).default('groq'),
