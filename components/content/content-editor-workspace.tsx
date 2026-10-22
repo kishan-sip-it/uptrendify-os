@@ -607,6 +607,9 @@ function CanvasText({
     const editable = ref.current;
     const savedRange = savedRangeRef.current;
     if (!editable || !savedRange || !editable.contains(savedRange.commonAncestorContainer)) return;
+    // Colour inputs and selects should keep focus while a user edits their value.
+    // Toolbar buttons prevent mousedown-default and can safely return focus to the canvas.
+    const returnFocusToEditable = !isInlineToolbarFocused();
     const start = textOffsetForDomPoint(editable, savedRange.startContainer, savedRange.startOffset);
     const end = textOffsetForDomPoint(editable, savedRange.endContainer, savedRange.endOffset);
     if (end <= start) return;
@@ -638,7 +641,7 @@ function CanvasText({
     }
     preserveSelectionRef.current = false;
     onDraftInputRef.current?.(nextText, formatted);
-    editable.focus({ preventScroll: true });
+    if (returnFocusToEditable) editable.focus({ preventScroll: true });
   };
 
   applyInlineFormatRef.current = applyInlineFormat;
