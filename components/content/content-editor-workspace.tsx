@@ -1058,7 +1058,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const [floatAnchor, setFloatAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [inlineSelectionToolbar, setInlineSelectionToolbar] = useState<ActiveInlineTextToolbar | null>(null);
   const dragIndex = useRef<number | null>(null);
-  const freeDrag = useRef<{ id: string; startX: number; startY: number; origin: CanvasGeometry } | null>(null);
+  const freeDrag = useRef<{ id: string; pointerId: number; startX: number; startY: number; scale: number; moved: boolean; origin: CanvasGeometry } | null>(null);
   const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: CanvasGeometry; next: CanvasGeometry } | null>(null);
   const saveInFlight = useRef(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -1373,6 +1373,74 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const patchBlock = (id: string, patch: Partial<EditorBlock>) => {
     patchPage(activePageIndex, (current) => current.map((block) => (block.id === id ? ({ ...block, ...patch } as EditorBlock) : block)));
   };
+  const patchBlockRef = useRef(patchBlock);
+  patchBlockRef.current = patchBlock;
+
+  // Start moving only after the pointer crosses a drag threshold. That preserves
+  // ordinary click/double-click text editing while letting the whole element move.
+  useEffect(() => {
+    const findBlockElement = (id: string) => {
+      const nodes = frameRef.current?.querySelectorAll<HTMLElement>('[data-bid]');
+      if (!nodes) return null;
+      for (const node of Array.from(nodes)) if (node.dataset.bid === id) return node;
+      return null;
+    };
+    const handlePointerMove = (event: PointerEvent) => {
+      const drag = freeDrag.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const screenX = event.clientX - drag.startX;
+      const screenY = event.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(screenX, screenY) < 6) return;
+      drag.moved = true;
+      event.preventDefault();
+      window.getSelection()?.removeAllRanges();
+      const nextX = clampCanvasCoordinate(drag.origin.x + screenX / drag.scale);
+      const nextY = clampCanvasCoordinate(drag.origin.y + screenY / drag.scale);
+      const element = findBlockElement(drag.id);
+      if (element) {
+        element.style.left = `${nextX}px`;
+        element.style.top = `${nextY}px`;
+      }
+    };
+    const handlePointerUp = (event: PointerEvent) => {
+      const drag = freeDrag.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      freeDrag.current = null;
+      if (!drag.moved) {
+        setSelectedId(drag.id);
+        return;
+      }
+      const dx = (event.clientX - drag.startX) / drag.scale;
+      const dy = (event.clientY - drag.startY) / drag.scale;
+      patchBlockRef.current(drag.id, {
+        geometry: {
+          ...drag.origin,
+          x: clampCanvasCoordinate(drag.origin.x + dx),
+          y: clampCanvasCoordinate(drag.origin.y + dy),
+        },
+      });
+    };
+    const handlePointerCancel = (event: PointerEvent) => {
+      const drag = freeDrag.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      freeDrag.current = null;
+      const element = findBlockElement(drag.id);
+      if (element) {
+        element.style.left = `${drag.origin.x}px`;
+        element.style.top = `${drag.origin.y}px`;
+      }
+    };
+    window.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false });
+    window.addEventListener('pointerup', handlePointerUp, true);
+    window.addEventListener('pointercancel', handlePointerCancel, true);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove, true);
+      window.removeEventListener('pointerup', handlePointerUp, true);
+      window.removeEventListener('pointercancel', handlePointerCancel, true);
+    };
+  }, []);
+
+
   const geometryForVisiblePlacement = (block: EditorBlock, page: ContentDocPage, fallback?: CanvasGeometry): CanvasGeometry => {
     const dims = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
     const base = fallback ?? defaultGeometryForNewBlock(block, page);
@@ -3160,44 +3228,21 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       if (event.button !== 0) return;
                       setSelectedId(block.id);
                       const pointerTarget = event.target as HTMLElement;
+                      // Text selection inside an active editor must win over element dragging.
                       if (pointerTarget.closest('.editor-inline-edit, [contenteditable="true"]')) return;
-                      // Text clicks must reach CanvasText; capture drag pointers only from block padding/border.
-                      if (pointerTarget.closest('.editor-canvas-text')) return;
-                      if (canEdit && !block.locked) {
-                        // Let native click/double-click reach the text; pointer capture still handles dragging.
-                        // Keep pointer events on the block even after it moves out from under the cursor.
-                        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-                        freeDrag.current = { id: block.id, startX: event.clientX, startY: event.clientY, origin: { ...geo } };
-                      }
-                    }}
-                    onPointerMove={(event) => {
-                      const drag = freeDrag.current;
-                      if (!drag || drag.id !== block.id) return;
-                      const dx = (event.clientX - drag.startX) / (zoom / 100);
-                      const dy = (event.clientY - drag.startY) / (zoom / 100);
-                      const el = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${block.id}"]`);
-                      const nextX = clampCanvasCoordinate(drag.origin.x + dx);
-                      const nextY = clampCanvasCoordinate(drag.origin.y + dy);
-                      if (el) { el.style.left = `${nextX}px`; el.style.top = `${nextY}px`; }
-                    }}
-                    onPointerUp={(event) => {
-                      const drag = freeDrag.current;
-                      if (!drag || drag.id !== block.id) return;
-                      freeDrag.current = null;
-                      const dx = (event.clientX - drag.startX) / (zoom / 100);
-                      const dy = (event.clientY - drag.startY) / (zoom / 100);
-                      const moved = Math.abs(dx) > 1 || Math.abs(dy) > 1;
-                      if (moved) patchBlock(block.id, { geometry: { ...drag.origin, x: clampCanvasCoordinate(drag.origin.x + dx), y: clampCanvasCoordinate(drag.origin.y + dy) } });
-                      else setSelectedId(block.id);
+                      if (!canEdit || block.locked) return;
+                      freeDrag.current = {
+                        id: block.id,
+                        pointerId: event.pointerId,
+                        startX: event.clientX,
+                        startY: event.clientY,
+                        scale: Math.max(0.2, zoom / 100),
+                        moved: false,
+                        origin: { ...geo },
+                      };
                     }}
                     onContextMenu={(event) => openTextContextMenu(event, block)}
-                    onPointerCancel={() => {
-                      const drag = freeDrag.current;
-                      if (!drag || drag.id !== block.id) return;
-                      freeDrag.current = null;
-                      const el = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${block.id}"]`);
-                      if (el) { el.style.left = `${drag.origin.x}px`; el.style.top = `${drag.origin.y}px`; }
-                    }}
+
                   >
                     <div className="editor-free-block-content" style={{ opacity: block.opacity ?? 1 }}>
                       {renderBlockInner(block)}
