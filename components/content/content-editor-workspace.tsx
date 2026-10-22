@@ -3225,7 +3225,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     className={`editor-free-block${isSelected ? ' is-selected' : ''}${block.hidden ? ' is-ghost' : ''}`}
                     style={{ left: geo.x, top: geo.y, width: geo.w, height: geo.h, zIndex: layerIndex + 1, transform: geo.rotation ? `rotate(${geo.rotation}deg)` : undefined, cursor: canEdit && !block.locked ? 'move' : 'default' }}
                     onPointerDown={(event) => {
-                      if (event.button !== 0) return;
+                      if (event.button !== 0 || spaceHeld.current) return;
                       setSelectedId(block.id);
                       const pointerTarget = event.target as HTMLElement;
                       // Text selection inside an active editor must win over element dragging.
