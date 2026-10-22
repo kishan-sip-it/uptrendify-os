@@ -1336,7 +1336,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const pasteTextStyle = (blockId: string) => {
     const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
     if (!isEditableTextBlock(block) || !copiedTextStyle || !canEditBlock(block)) return;
-    const patch: Partial<EditorBlock> = {
+    const patch: Partial<EditorBlock> & { size?: 'sm' | 'md' | 'lg' | 'xl'; level?: 1 | 2 | 3 } = {
       color: copiedTextStyle.color, bg: copiedTextStyle.bg, bold: copiedTextStyle.bold,
       italic: copiedTextStyle.italic, underline: copiedTextStyle.underline,
       align: copiedTextStyle.align, fontSize: copiedTextStyle.fontSize,
