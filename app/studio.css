@@ -922,3 +922,43 @@
   height: 100% !important;
   max-width: 100%;
 }
+
+
+/* Let the canvas reclaim the drawer column when Layers/Insert/Brand/AI closes. */
+@media (min-width: 1101px) {
+  .studio-body.is-drawer-closed {
+    grid-template-columns: 44px minmax(0, 1fr) minmax(225px, 270px);
+    gap: 12px;
+  }
+
+  .studio-body.is-drawer-closed > .studio-drawer-placeholder {
+    display: none;
+  }
+}
+
+/* Laptop/tablet layout: keep the closed drawer from reserving a full column. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .studio-body.is-drawer-closed {
+    grid-template-columns: 40px minmax(0, 1fr);
+    column-gap: 10px;
+  }
+
+  .studio-body.is-drawer-closed > .studio-drawer-placeholder {
+    display: none;
+  }
+}
+
+/* Mobile: closing the drawer must also remove its empty grid row. */
+@media (max-width: 760px) {
+  .studio:not(.is-focus) .studio-body.is-drawer-closed {
+    grid-template-rows: auto minmax(500px, 1fr) auto;
+  }
+
+  .studio:not(.is-focus) .studio-body.is-drawer-closed > .studio-stage {
+    grid-row: 2;
+  }
+
+  .studio:not(.is-focus) .studio-body.is-drawer-closed > .studio-inspector {
+    grid-row: 3;
+  }
+}
