@@ -1851,6 +1851,11 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       }
       if (!selectedId || previewMode) return;
       const selectedBlock = pages[activePageIndex]?.blocks.find((block) => block.id === selectedId);
+      if (event.key === 'Enter' && selectedBlock && (selectedBlock.type === 'heading' || selectedBlock.type === 'text')) {
+        event.preventDefault();
+        requestInlineTextEditing(selectedBlock.id);
+        return;
+      }
       if (event.ctrlKey && event.altKey && event.key.toLowerCase() === 'c' && selectedBlock && (selectedBlock.type === 'heading' || selectedBlock.type === 'text')) {
         event.preventDefault(); copyTextStyle(selectedBlock.id); return;
       }
@@ -1992,25 +1997,17 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     if (!floatAnchor || previewMode) return null;
     const block = selected;
     if (!block || !canEditBlock(block)) return null;
-    if (!block) return null;
     return (
-      <div className="studio-float" role="toolbar" aria-label="Selection tools" style={{ left: floatAnchor.x, top: Math.max(8, floatAnchor.y - 46), width: 'max-content' }}>
-        {block.type === 'heading' ? (
-          <span className="st-float-group">
-            {([1, 2, 3] as const).map((level) => (
-              <button key={level} type="button" className={block.level === level ? 'is-on' : ''} onClick={() => patchBlock(block.id, { level, fontSize: headingFontSizeForLevel(level) })} disabled={!canEditBlock(block)}>H{level}</button>
-            ))}
-          </span>
-        ) : null}
+      <div className="studio-float" role="toolbar" aria-label="Text formatting" style={{ left: floatAnchor.x, top: Math.max(8, floatAnchor.y - 46), width: 'max-content' }}>
         {block.type === 'text' ? (
-          <span className="st-float-group">
+          <span className="st-float-group" aria-label="Text size">
             {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
               <button key={size} type="button" className={block.size === size ? 'is-on' : ''} onClick={() => patchBlock(block.id, { size })} disabled={!canEditBlock(block)}>{size.toUpperCase()}</button>
             ))}
           </span>
         ) : null}
         {block.type === 'text' || block.type === 'heading' ? (
-          <span className="st-float-group">
+          <span className="st-float-group" aria-label="Text emphasis">
             <button type="button" className={block.bold ? 'is-on' : ''} onClick={() => patchBlock(block.id, { bold: !block.bold })} disabled={!canEditBlock(block)} title="Bold"><strong>B</strong></button>
             <button type="button" className={block.italic ? 'is-on' : ''} onClick={() => patchBlock(block.id, { italic: !block.italic })} disabled={!canEditBlock(block)} title="Italic"><em>I</em></button>
             <button type="button" className={block.underline ? 'is-on' : ''} onClick={() => patchBlock(block.id, { underline: !block.underline })} disabled={!canEditBlock(block)} title="Underline"><u>U</u></button>
@@ -2021,21 +2018,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
             <input type="color" value={block.color ?? '#8b7cff'} onChange={(event) => patchBlock(block.id, { color: event.target.value })} disabled={!canEditBlock(block)} aria-label="Fill colour" />
           </span>
         ) : null}
-        <span className="st-float-group">
-          {(['left', 'center', 'right'] as const).map((option) => (
-            <button key={option} type="button" className={block.align === option ? 'is-on' : ''} onClick={() => patchBlock(block.id, { align: option })} disabled={!canEditBlock(block)} title={`Align ${option}`}>{option === 'left' ? '⇤' : option === 'center' ? '≡' : '⇥'}</button>
-          ))}
-        </span>
-        <span className="st-float-group" role="group" aria-label="Layer order">
-          <button type="button" onClick={() => changeLayerOrder(block.id, 'back')} disabled={!canEditBlock(block) || selectedIndex <= 0} aria-label="Send to back" title="Send to back"><SendToBack size={12} /></button>
-          <button type="button" onClick={() => changeLayerOrder(block.id, 'backward')} disabled={!canEditBlock(block) || selectedIndex <= 0} aria-label="Send backward" title="Send backward"><ArrowDown size={12} /></button>
-          <button type="button" onClick={() => changeLayerOrder(block.id, 'forward')} disabled={!canEditBlock(block) || selectedIndex >= (activePage?.blocks.length ?? 1) - 1} aria-label="Bring forward" title="Bring forward"><ArrowUp size={12} /></button>
-          <button type="button" onClick={() => changeLayerOrder(block.id, 'front')} disabled={!canEditBlock(block) || selectedIndex >= (activePage?.blocks.length ?? 1) - 1} aria-label="Bring to front" title="Bring to front"><BringToFront size={12} /></button>
-        </span>
-        <span className="st-float-group">
-          <button type="button" onClick={() => duplicateBlock(block.id)} disabled={!canEditBlock(block) || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} title="Duplicate (Ctrl+D)"><Copy size={12} /></button>
-          <button type="button" className="is-danger" onClick={() => removeBlock(block.id)} disabled={!canEditBlock(block)} title="Delete"><Trash2 size={12} /></button>
-        </span>
+        {block.type === 'text' || block.type === 'heading' ? (
+          <span className="st-float-group" aria-label="Text alignment">
+            {(['left', 'center', 'right'] as const).map((option) => (
+              <button key={option} type="button" className={block.align === option ? 'is-on' : ''} onClick={() => patchBlock(block.id, { align: option })} disabled={!canEditBlock(block)} title={`Align text ${option}`}>{option === 'left' ? '⇤' : option === 'center' ? '≡' : '⇥'}</button>
+            ))}
+          </span>
+        ) : null}
       </div>
     );
   })();
@@ -2051,13 +2040,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       case 'heading':
         return (
           <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden', opacity: block.opacity ?? 1 }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
+            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
           </div>
         );
       case 'text':
         return (
           <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
+            <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
           </div>
         );
       case 'image':
@@ -2568,12 +2557,12 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                     >
                       {block.type === 'heading' ? (
                         <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
+                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
                         </div>
                       ) : null}
                       {block.type === 'text' ? (
                         <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} />
+                          <CanvasText value={resolveBlockText(block, linkedValues)} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next) => patchBlock(block.id, { text: next, link: undefined })} onDraftInput={(next) => persistInlineTextDraft(block.id, next)} editOnDoubleClick={freeMode} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
                         </div>
                       ) : null}
                       {block.type === 'image' ? (
@@ -2724,16 +2713,17 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       {selected.link ? <span style={{ fontSize: 11, color: 'var(--st-ink-3)' }}>Linked blocks follow the content field. Editing the text on canvas detaches the link.</span> : null}
                     </label>
                   ) : null}
-                  {selected.type !== 'image' && selected.type !== 'shape' ? (
+                  {selected.type === 'button' ? (
                     <label className="st-field">
-                      <span>{selected.type === 'button' ? 'Button text' : 'Text'}</span>
-                      <span className="editor-hint">Replace placeholder copy here, or double-click the text on the canvas to edit it directly. Changes are undoable.</span>
-                      {selected.type === 'text' ? (
-                        <textarea className="st-textarea" value={selected.text} onChange={(event) => patchBlock(selected.id, { text: event.target.value })} disabled={!canEditBlock(selected)} rows={4} />
-                      ) : (
-                        <input className="st-input" value={selected.text} onChange={(event) => patchBlock(selected.id, { text: event.target.value })} disabled={!canEditBlock(selected)} />
-                      )}
+                      <span>Button text</span>
+                      <input className="st-input" value={selected.text} onChange={(event) => patchBlock(selected.id, { text: event.target.value })} disabled={!canEditBlock(selected)} />
                     </label>
+                  ) : null}
+                  {selected.type === 'text' || selected.type === 'heading' ? (
+                    <div className="st-field st-inline-edit-hint">
+                      <span>Text content</span>
+                      <p className="editor-hint">Edit on the canvas: double-click the text, or right-click and choose Edit text. No separate textbox is needed.</p>
+                    </div>
                   ) : null}
                   {selected.type === 'image' ? (
                     <>
@@ -2769,16 +2759,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       </label>
                     </>
                   ) : null}
-                  {selected.type === 'heading' ? (
-                    <div className="st-field">
-                      <span>Level</span>
-                      <div className="st-field-row">
-                        {([1, 2, 3] as const).map((level) => (
-                          <button key={level} type="button" className={`st-btn${selected.level === level ? ' st-btn--primary' : ''}`} style={{ height: 32, padding: '0 10px' }} onClick={() => patchBlock(selected.id, { level })} disabled={!canEditBlock(selected)}>H{level}</button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
+
                   {selected.type === 'text' ? (
                     <div className="st-field">
                       <span>Size</span>
@@ -2845,15 +2826,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               ) : inspectorTab === 'arrange' ? (
                 <>
                   <span className="st-label">{BLOCK_LABEL[selected.type]} · arrange</span>
-                  <div className="st-field">
+                  <div className="st-field st-context-feature-hint">
                     <span>Layer order</span>
-                    <div className="st-field-row" role="group" aria-label="Layer order">
-                      <button type="button" className="st-icon" onClick={() => changeLayerOrder(selected.id, 'back')} disabled={!canEditBlock(selected) || selectedIndex <= 0} aria-label="Send to back" title="Send to back"><SendToBack size={14} /></button>
-                      <button type="button" className="st-icon" onClick={() => changeLayerOrder(selected.id, 'backward')} disabled={!canEditBlock(selected) || selectedIndex <= 0} aria-label="Send backward" title="Send backward"><ArrowDown size={14} /></button>
-                      <button type="button" className="st-icon" onClick={() => changeLayerOrder(selected.id, 'forward')} disabled={!canEditBlock(selected) || selectedIndex >= (activePage?.blocks.length ?? 1) - 1} aria-label="Bring forward" title="Bring forward"><ArrowUp size={14} /></button>
-                      <button type="button" className="st-icon" onClick={() => changeLayerOrder(selected.id, 'front')} disabled={!canEditBlock(selected) || selectedIndex >= (activePage?.blocks.length ?? 1) - 1} aria-label="Bring to front" title="Bring to front"><BringToFront size={14} /></button>
-                    </div>
-                    <span className="editor-hint">Layers higher in the stack appear in front. Select any element to change its stacking order.</span>
+                    <span className="editor-hint">Right-click the selected element and choose Layer to change stacking order.</span>
                   </div>
                   <div className="st-field">
                     <span>Alignment</span>
@@ -2898,18 +2873,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       </div>
                     </label>
                   ) : null}
-                  <div className="st-field">
-                    <span>Order on page {activePageIndex + 1}</span>
-                    <div className="st-field-row">
-                      <button type="button" className="st-btn" style={{ height: 30 }} onClick={() => { const i = selectedIndex; if (i > 0) patchPage(activePageIndex, (current) => reorderBlocks(current, i, i - 1)); }} disabled={!canEditBlock(selected) || selectedIndex <= 0}>Move up</button>
-                      <button type="button" className="st-btn" style={{ height: 30 }} onClick={() => { const i = selectedIndex; const n = activePage?.blocks.length ?? 0; if (i > -1 && i < n - 1) patchPage(activePageIndex, (current) => reorderBlocks(current, i, i + 1)); }} disabled={!canEditBlock(selected) || selectedIndex >= (activePage?.blocks.length ?? 1) - 1}>Move down</button>
-                    </div>
-                  </div>
                   <div className="st-field-row" style={{ marginTop: 4 }}>
-                    <button type="button" className="st-btn" style={{ height: 30 }} onClick={() => duplicateBlock(selected.id)} disabled={!canEditBlock(selected)}>Duplicate</button>
-                    <button type="button" className="st-icon st-danger-icon" style={{ width: 30, height: 30 }} onClick={() => removeBlock(selected.id)} disabled={!canEditBlock(selected)} aria-label="Remove block" title="Remove block"><Trash2 size={14} /></button>
                     <button type="button" className="st-icon st-danger-icon" style={{ width: 30, height: 30 }} onClick={() => patchBlock(selected.id, { hidden: !selected.hidden })} aria-label={selected.hidden ? 'Show block' : 'Hide block'} title={selected.hidden ? 'Show' : 'Hide'}>{selected.hidden ? <EyeOff size={14} /> : <Eye size={14} />}</button>
-                    <button type="button" className="st-icon st-danger-icon" style={{ width: 30, height: 30 }} onClick={() => patchBlock(selected.id, { locked: !selected.locked })} aria-label={selected.locked ? 'Unlock block' : 'Lock block'} title={selected.locked ? 'Unlock' : 'Lock'}>{selected.locked ? <Lock size={14} /> : <Unlock size={14} />}</button>
+                    <span className="editor-hint">Duplicate, Delete and Lock are available from the right-click menu.</span>
                   </div>
                 </>
               ) : inspectorTab === 'brand' ? (
