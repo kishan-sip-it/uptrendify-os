@@ -52,6 +52,7 @@ import {
   type ContentDocument,
   type ContentPageSizeId,
   type ContentShapeKind,
+  type InlineTextRun,
 } from '@/lib/content/document';
 import { ContentDocumentView } from '@/components/content/content-document-view';
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
@@ -150,24 +151,370 @@ function emptyBlock(type: EditorBlock['type']): EditorBlock {
 }
 
 /** Inline canvas text editing. Commits on blur or Enter (Shift+Enter = newline in multiline). */
-function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInput, editOnDoubleClick = false, editRequest = 0, onEditingEnd }: {
+type InlineTextBaseStyle = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  color?: string | null;
+  bg?: string | null;
+  fontSize?: number;
+  fontFamily?: string;
+};
+type InlineTextFormatKey = 'bold' | 'italic' | 'underline' | 'color' | 'bg' | 'fontSize' | 'fontFamily';
+type InlineTextFormatValue = boolean | string | number | null;
+type InlineTextToolbarState = {
+  left: number;
+  top: number;
+  start: number;
+  end: number;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  color: string;
+  bg: string;
+  fontFamily: string;
+  fontSize: number;
+};
+
+function inlineRunStyle(run: InlineTextRun): React.CSSProperties {
+  return {
+    ...(run.bold !== undefined ? { fontWeight: run.bold ? 700 : 400 } : {}),
+    ...(run.italic !== undefined ? { fontStyle: run.italic ? 'italic' : 'normal' } : {}),
+    ...(run.underline !== undefined ? { textDecoration: run.underline ? 'underline' : 'none' } : {}),
+    ...(run.color !== undefined ? { color: run.color ?? 'inherit' } : {}),
+    ...(run.bg !== undefined ? { backgroundColor: run.bg ?? 'transparent' } : {}),
+    ...(run.fontSize !== undefined ? { fontSize: String(run.fontSize) + 'px' } : {}),
+    ...(run.fontFamily ? { fontFamily: run.fontFamily } : {}),
+    whiteSpace: 'pre-wrap',
+  };
+}
+
+function inlineStyleOnly(run: InlineTextRun): Omit<InlineTextRun, 'text'> {
+  const { text: _text, ...style } = run;
+  return style;
+}
+
+function sameInlineStyle(a: InlineTextRun, b: InlineTextRun): boolean {
+  return (['bold', 'italic', 'underline', 'color', 'bg', 'fontSize', 'fontFamily'] as const)
+    .every((key) => a[key] === b[key]);
+}
+
+function coalesceInlineTextRuns(runs: InlineTextRun[]): InlineTextRun[] {
+  const result: InlineTextRun[] = [];
+  for (const run of runs) {
+    if (!run.text) continue;
+    const previous = result[result.length - 1];
+    if (previous && sameInlineStyle(previous, run)) previous.text += run.text;
+    else result.push({ ...run });
+  }
+  return result;
+}
+
+function compatibleInlineTextRuns(value: string, runs?: InlineTextRun[]): InlineTextRun[] {
+  if (runs?.length && runs.map((run) => run.text).join('') === value) return coalesceInlineTextRuns(runs);
+  return value ? [{ text: value }] : [];
+}
+
+function appendInlineTextRuns(root: HTMLElement, runs: InlineTextRun[]): void {
+  root.replaceChildren();
+  for (const run of compatibleInlineTextRuns(runs.map((part) => part.text).join(''), runs)) {
+    const styled = Object.keys(inlineStyleOnly(run)).some((key) => (run as unknown as Record<string, unknown>)[key] !== undefined);
+    if (!styled) {
+      root.appendChild(document.createTextNode(run.text));
+      continue;
+    }
+    const span = document.createElement('span');
+    const style = inlineRunStyle(run);
+    if (style.fontWeight !== undefined) span.style.fontWeight = String(style.fontWeight);
+    if (style.fontStyle !== undefined) span.style.fontStyle = String(style.fontStyle);
+    if (style.textDecoration !== undefined) span.style.textDecoration = String(style.textDecoration);
+    if (style.color !== undefined) span.style.color = String(style.color);
+    if (style.backgroundColor !== undefined) span.style.backgroundColor = String(style.backgroundColor);
+    if (style.fontSize !== undefined) span.style.fontSize = String(style.fontSize);
+    if (style.fontFamily !== undefined) span.style.fontFamily = String(style.fontFamily);
+    span.style.whiteSpace = 'pre-wrap';
+    span.appendChild(document.createTextNode(run.text));
+    root.appendChild(span);
+  }
+}
+
+function cssColorToHex(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (/^#[0-9a-f]{6}$/i.test(trimmed)) return trimmed.toLowerCase();
+  if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
+    return ('#' + trimmed[1] + trimmed[1] + trimmed[2] + trimmed[2] + trimmed[3] + trimmed[3]).toLowerCase();
+  }
+  const match = trimmed.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i);
+  if (!match) return null;
+  const rgb = match.slice(1, 4).map((entry) => Math.max(0, Math.min(255, Number(entry))));
+  return '#' + rgb.map((part) => part.toString(16).padStart(2, '0')).join('');
+}
+
+function readInlineTextRunsFromDom(root: HTMLElement): InlineTextRun[] {
+  const collected: InlineTextRun[] = [];
+  const push = (text: string, style: Omit<InlineTextRun, 'text'>) => {
+    if (!text) return;
+    const run = { text, ...style } as InlineTextRun;
+    const previous = collected[collected.length - 1];
+    if (previous && sameInlineStyle(previous, run)) previous.text += text;
+    else collected.push(run);
+  };
+
+  const visit = (node: Node, inherited: Omit<InlineTextRun, 'text'> = {}) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      push(node.nodeValue ?? '', inherited);
+      return;
+    }
+    if (!(node instanceof HTMLElement)) return;
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'br') {
+      push('\n', inherited);
+      return;
+    }
+
+    const style: Omit<InlineTextRun, 'text'> = { ...inherited };
+    if (tag === 'b' || tag === 'strong') style.bold = true;
+    if (tag === 'i' || tag === 'em') style.italic = true;
+    if (tag === 'u') style.underline = true;
+    if (tag === 'mark') style.bg = cssColorToHex(node.style.backgroundColor) ?? '#ffff00';
+
+    const weight = node.style.fontWeight;
+    if (weight) style.bold = weight === 'bold' || Number(weight) >= 600;
+    const fontStyle = node.style.fontStyle;
+    if (fontStyle) style.italic = fontStyle === 'italic';
+    const decoration = node.style.textDecoration || node.style.textDecorationLine;
+    if (decoration) style.underline = decoration.split(/\s+/).includes('underline');
+    const color = cssColorToHex(node.style.color || node.getAttribute('color'));
+    if (color) style.color = color;
+    else if (node.style.color === 'inherit') style.color = null;
+    const background = cssColorToHex(node.style.backgroundColor);
+    if (background) style.bg = background;
+    else if (node.style.backgroundColor === 'transparent') style.bg = null;
+    const family = (node.style.fontFamily || node.getAttribute('face') || '').trim().replace(/^['"]|['"]$/g, '');
+    if (family && !/[;{}<>]/.test(family)) style.fontFamily = family.slice(0, 120);
+    const size = node.style.fontSize?.match(/^(\d+(?:\.\d+)?)px$/);
+    if (size) style.fontSize = Math.max(8, Math.min(160, Math.round(Number(size[1]))));
+
+    const isBlock = node !== root && (tag === 'div' || tag === 'p' || tag === 'li');
+    if (isBlock && collected.length && !collected[collected.length - 1]!.text.endsWith('\n')) push('\n', inherited);
+    for (const child of Array.from(node.childNodes)) visit(child, style);
+  };
+
+  for (const child of Array.from(root.childNodes)) visit(child);
+  return coalesceInlineTextRuns(collected);
+}
+
+function normalizeInlineTextRuns(inputRuns: InlineTextRun[]): { text: string; runs: InlineTextRun[] } {
+  type Unit = { char: string; style: Omit<InlineTextRun, 'text'> };
+  const source: Unit[] = [];
+  for (const run of inputRuns) {
+    const style = inlineStyleOnly(run);
+    for (let index = 0; index < run.text.length; index += 1) {
+      source.push({ char: run.text[index]!, style });
+    }
+  }
+  const normalized: Unit[] = [];
+  for (let index = 0; index < source.length; index += 1) {
+    const unit = source[index]!;
+    if (unit.char === '\r') {
+      if (source[index + 1]?.char === '\n') index += 1;
+      unit.char = '\n';
+    }
+    if (unit.char === '\n') {
+      while (normalized.length && (normalized[normalized.length - 1]!.char === ' ' || normalized[normalized.length - 1]!.char === '\t')) normalized.pop();
+      let trailingNewlines = 0;
+      for (let cursor = normalized.length - 1; cursor >= 0 && normalized[cursor]!.char === '\n'; cursor -= 1) trailingNewlines += 1;
+      if (trailingNewlines < 2) normalized.push(unit);
+      continue;
+    }
+    normalized.push(unit);
+  }
+  while (normalized.length && normalized[normalized.length - 1]!.char.trim() === '') normalized.pop();
+  while (normalized.length && normalized[0]!.char.trim() === '') normalized.shift();
+
+  const output: InlineTextRun[] = [];
+  for (const unit of normalized) {
+    const run = { text: unit.char, ...unit.style } as InlineTextRun;
+    const previous = output[output.length - 1];
+    if (previous && sameInlineStyle(previous, run)) previous.text += run.text;
+    else output.push(run);
+  }
+  return { text: output.map((run) => run.text).join(''), runs: output };
+}
+
+function textOffsetForDomPoint(root: HTMLElement, container: Node, offset: number): number {
+  const range = document.createRange();
+  range.selectNodeContents(root);
+  try {
+    range.setEnd(container, offset);
+    return range.toString().length;
+  } catch {
+    return 0;
+  }
+}
+
+function domRangeForTextOffsets(root: HTMLElement, start: number, end: number): Range | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let current = walker.nextNode();
+  while (current) {
+    textNodes.push(current as Text);
+    current = walker.nextNode();
+  }
+  if (!textNodes.length) {
+    const range = document.createRange();
+    range.selectNodeContents(root);
+    range.collapse(true);
+    return range;
+  }
+  const locate = (offset: number): { node: Text; offset: number } => {
+    let remaining = Math.max(0, offset);
+    for (const node of textNodes) {
+      if (remaining <= node.data.length) return { node, offset: remaining };
+      remaining -= node.data.length;
+    }
+    const last = textNodes[textNodes.length - 1]!;
+    return { node: last, offset: last.data.length };
+  };
+  const range = document.createRange();
+  const first = locate(start);
+  const last = locate(end);
+  range.setStart(first.node, first.offset);
+  range.setEnd(last.node, last.offset);
+  return range;
+}
+
+function inlineSegmentsBetween(runs: InlineTextRun[], start: number, end: number) {
+  const segments: Array<{ run: InlineTextRun; start: number; end: number }> = [];
+  let cursor = 0;
+  for (const run of runs) {
+    const runEnd = cursor + run.text.length;
+    if (runEnd > start && cursor < end) segments.push({ run, start: cursor, end: runEnd });
+    cursor = runEnd;
+  }
+  return segments;
+}
+
+function formatInlineRuns(runs: InlineTextRun[], start: number, end: number, key: InlineTextFormatKey, value: InlineTextFormatValue): InlineTextRun[] {
+  const updated: InlineTextRun[] = [];
+  let cursor = 0;
+  for (const run of runs) {
+    const runStart = cursor;
+    const runEnd = cursor + run.text.length;
+    cursor = runEnd;
+    if (runEnd <= start || runStart >= end) {
+      updated.push({ ...run });
+      continue;
+    }
+    const selectedStart = Math.max(0, start - runStart);
+    const selectedEnd = Math.min(run.text.length, end - runStart);
+    if (selectedStart > 0) updated.push({ ...run, text: run.text.slice(0, selectedStart) });
+    updated.push({ ...run, text: run.text.slice(selectedStart, selectedEnd), [key]: value } as InlineTextRun);
+    if (selectedEnd < run.text.length) updated.push({ ...run, text: run.text.slice(selectedEnd) });
+  }
+  return coalesceInlineTextRuns(updated);
+}
+
+function getInlineToolbarState(root: HTMLElement, range: Range, baseStyle: InlineTextBaseStyle): InlineTextToolbarState | null {
+  const start = textOffsetForDomPoint(root, range.startContainer, range.startOffset);
+  const end = textOffsetForDomPoint(root, range.endContainer, range.endOffset);
+  if (end <= start) return null;
+  const runs = readInlineTextRunsFromDom(root);
+  const segments = inlineSegmentsBetween(runs, start, end);
+  if (!segments.length) return null;
+  const computed = window.getComputedStyle(root);
+  const computedColor = cssColorToHex(computed.color) ?? '#111827';
+  const computedSize = Number.parseInt(computed.fontSize, 10) || 16;
+  const computedFamily = computed.fontFamily.split(',')[0]?.trim().replace(/^['"]|['"]$/g, '') || 'Inter';
+  const base = {
+    bold: baseStyle.bold ?? false,
+    italic: baseStyle.italic ?? false,
+    underline: baseStyle.underline ?? false,
+    color: baseStyle.color ?? computedColor,
+    bg: baseStyle.bg ?? null,
+    fontSize: baseStyle.fontSize ?? computedSize,
+    fontFamily: baseStyle.fontFamily ?? computedFamily,
+  };
+  const all = <K extends InlineTextFormatKey,>(key: K): Array<InlineTextRun[K]> =>
+    segments.map(({ run }) => (run[key] === undefined ? base[key] : run[key]) as InlineTextRun[K]);
+  const common = <T,>(values: T[]): T | undefined => values.every((value) => value === values[0]) ? values[0] : undefined;
+  const color = common(all('color').map((value) => value == null ? base.color : value)) ?? base.color;
+  const bgValue = common(all('bg').map((value) => value === undefined ? base.bg : value));
+  const fontSize = common(all('fontSize').map((value) => value ?? base.fontSize)) ?? base.fontSize;
+  const fontFamily = common(all('fontFamily').map((value) => value ?? base.fontFamily)) ?? base.fontFamily;
+  const rect = range.getBoundingClientRect();
+  return {
+    left: Math.max(8, Math.min(window.innerWidth - 440, rect.left + rect.width / 2 - 216)),
+    top: Math.max(8, rect.top - 52),
+    start,
+    end,
+    bold: all('bold').every((value) => value === true),
+    italic: all('italic').every((value) => value === true),
+    underline: all('underline').every((value) => value === true),
+    color: typeof color === 'string' ? color : '#111827',
+    bg: typeof bgValue === 'string' ? bgValue : '#fff59d',
+    fontFamily,
+    fontSize,
+  };
+}
+
+/** Inline canvas editor. Selected ranges get their own formatting runs, not block-level styles. */
+function CanvasText({
+  value,
+  richText,
+  baseStyle,
+  disabled,
+  multiline,
+  onCommit,
+  onClick,
+  onDraftInput,
+  editOnDoubleClick = false,
+  editRequest = 0,
+  onEditingEnd,
+}: {
   value: string;
+  richText?: InlineTextRun[];
+  baseStyle?: InlineTextBaseStyle;
   disabled: boolean;
   multiline: boolean;
-  onCommit: (next: string) => void;
+  onCommit: (next: string, runs?: InlineTextRun[]) => void;
   onClick: () => void;
-  onDraftInput?: (next: string) => void;
+  onDraftInput?: (next: string, runs?: InlineTextRun[]) => void;
   editOnDoubleClick?: boolean;
   editRequest?: number;
   onEditingEnd?: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const savedRangeRef = useRef<Range | null>(null);
+  const selectWordOnEditRef = useRef(false);
+  const preserveSelectionRef = useRef(false);
   const [editing, setEditing] = useState(false);
+  const [inlineToolbar, setInlineToolbar] = useState<InlineTextToolbarState | null>(null);
   const lastCanvasClickAt = useRef(0);
   const editPoint = useRef<{ x: number; y: number } | null>(null);
+  const baseStyleRef = useRef(baseStyle);
+  baseStyleRef.current = baseStyle;
 
-  const beginEditing = (event?: React.MouseEvent<HTMLDivElement>) => {
+  const refreshInlineToolbar = (rangeOverride?: Range | null) => {
+    const editable = ref.current;
+    if (!editable) return;
+    const selection = window.getSelection();
+    const range = rangeOverride ?? (selection?.rangeCount ? selection.getRangeAt(0) : null);
+    if (!range || range.collapsed || !editable.contains(range.commonAncestorContainer)) {
+      if (preserveSelectionRef.current && toolbarRef.current?.contains(document.activeElement)) return;
+      setInlineToolbar(null);
+      return;
+    }
+    savedRangeRef.current = range.cloneRange();
+    const next = getInlineToolbarState(editable, range, baseStyleRef.current ?? {});
+    setInlineToolbar(next);
+  };
+
+  const beginEditing = (event?: React.MouseEvent<HTMLDivElement>, selectWord = false) => {
     if (event) editPoint.current = { x: event.clientX, y: event.clientY };
+    selectWordOnEditRef.current = selectWord;
     setEditing(true);
   };
 
@@ -179,7 +526,7 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
     if (now - lastCanvasClickAt.current < 650) {
       event.preventDefault();
       event.stopPropagation();
-      beginEditing(event);
+      beginEditing(event, true);
       lastCanvasClickAt.current = 0;
     } else {
       lastCanvasClickAt.current = now;
@@ -189,18 +536,134 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
   const handleCanvasDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    if (!disabled) beginEditing(event);
+    if (!disabled) beginEditing(event, true);
   };
 
   useEffect(() => {
     if (editRequest > 0 && !disabled) setEditing(true);
   }, [editRequest, disabled]);
 
+  const finishEditing = () => {
+    const editable = ref.current;
+    const rawRuns = editable ? readInlineTextRunsFromDom(editable) : compatibleInlineTextRuns(value, richText);
+    const normalized = normalizeInlineTextRuns(rawRuns);
+    setEditing(false);
+    setInlineToolbar(null);
+    savedRangeRef.current = null;
+    preserveSelectionRef.current = false;
+    onEditingEnd?.();
+    onCommit(normalized.text, normalized.runs);
+  };
+
+  const updateDraftFromDom = (editable: HTMLElement) => {
+    const runs = readInlineTextRunsFromDom(editable);
+    const next = runs.map((run) => run.text).join('');
+    const selection = window.getSelection();
+    if (selection?.rangeCount && !selection.isCollapsed && editable.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+      savedRangeRef.current = selection.getRangeAt(0).cloneRange();
+    }
+    onDraftInput?.(next, runs);
+  };
+
+  const applyInlineFormat = (key: InlineTextFormatKey, explicitValue?: InlineTextFormatValue) => {
+    const editable = ref.current;
+    const savedRange = savedRangeRef.current;
+    if (!editable || !savedRange || !editable.contains(savedRange.commonAncestorContainer)) return;
+    const start = textOffsetForDomPoint(editable, savedRange.startContainer, savedRange.startOffset);
+    const end = textOffsetForDomPoint(editable, savedRange.endContainer, savedRange.endOffset);
+    if (end <= start) return;
+    const currentRuns = readInlineTextRunsFromDom(editable);
+    const segments = inlineSegmentsBetween(currentRuns, start, end);
+    if (!segments.length) return;
+
+    let nextValue = explicitValue;
+    if (nextValue === undefined) {
+      const base = baseStyleRef.current ?? {};
+      const allActive = segments.every(({ run }) => {
+        const runValue = run[key];
+        const baseValue = base[key];
+        return (runValue === undefined ? baseValue : runValue) === true;
+      });
+      nextValue = !allActive;
+    }
+
+    const formatted = formatInlineRuns(currentRuns, start, end, key, nextValue);
+    const nextText = formatted.map((run) => run.text).join('');
+    appendInlineTextRuns(editable, formatted);
+    const nextRange = domRangeForTextOffsets(editable, start, end);
+    if (nextRange) {
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(nextRange);
+      savedRangeRef.current = nextRange.cloneRange();
+      refreshInlineToolbar(nextRange);
+    }
+    preserveSelectionRef.current = false;
+    onDraftInput?.(nextText, formatted);
+    editable.focus({ preventScroll: true });
+  };
+
+  const insertNewlineAtSelection = (editable: HTMLElement) => {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (!editable.contains(range.commonAncestorContainer)) return;
+    range.deleteContents();
+    const newline = document.createTextNode('\n');
+    range.insertNode(newline);
+    range.setStartAfter(newline);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+  const selectWordAtPoint = (editable: HTMLElement, point: { x: number; y: number } | null) => {
+    if (!point) return false;
+    const caretDocument = document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    };
+    let caretRange = caretDocument.caretRangeFromPoint?.(point.x, point.y) ?? null;
+    if (!caretRange && caretDocument.caretPositionFromPoint) {
+      const position = caretDocument.caretPositionFromPoint(point.x, point.y);
+      if (position) {
+        caretRange = document.createRange();
+        caretRange.setStart(position.offsetNode, position.offset);
+        caretRange.collapse(true);
+      }
+    }
+    if (!caretRange || !editable.contains(caretRange.startContainer)) return false;
+    const offset = textOffsetForDomPoint(editable, caretRange.startContainer, caretRange.startOffset);
+    const rawText = readInlineTextRunsFromDom(editable).map((run) => run.text).join('');
+    let chosen: { start: number; end: number } | null = null;
+    const wordPattern = /[\p{L}\p{N}_]+/gu;
+    for (const match of rawText.matchAll(wordPattern)) {
+      const start = match.index ?? 0;
+      const end = start + match[0].length;
+      if ((offset >= start && offset < end) || (offset === end && start > 0)) {
+        chosen = { start, end };
+        break;
+      }
+    }
+    if (!chosen) return false;
+    const range = domRangeForTextOffsets(editable, chosen.start, chosen.end);
+    if (!range) return false;
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    savedRangeRef.current = range.cloneRange();
+    refreshInlineToolbar(range);
+    return true;
+  };
+
   useLayoutEffect(() => {
     if (!editing || !ref.current) return;
     const editable = ref.current;
-    if (editable.innerText !== value) editable.innerText = value;
-    editable.focus();
+    const compatible = compatibleInlineTextRuns(value, richText);
+    if (editable.childNodes.length === 0 || readInlineTextRunsFromDom(editable).map((run) => run.text).join('') !== value) {
+      appendInlineTextRuns(editable, compatible);
+    }
+    editable.focus({ preventScroll: true });
 
     const selection = window.getSelection();
     const point = editPoint.current;
@@ -210,10 +673,11 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
     const pointRange = point && caretDocument.caretRangeFromPoint
       ? caretDocument.caretRangeFromPoint(point.x, point.y)
       : null;
-
+    let insertedSelection = false;
     if (pointRange && editable.contains(pointRange.startContainer)) {
       selection?.removeAllRanges();
       selection?.addRange(pointRange);
+      insertedSelection = true;
     } else {
       const range = document.createRange();
       range.selectNodeContents(editable);
@@ -221,41 +685,153 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
       selection?.removeAllRanges();
       selection?.addRange(range);
     }
+
+    if (selectWordOnEditRef.current && point) {
+      if (!selectWordAtPoint(editable, point)) {
+        if (!insertedSelection && selection?.rangeCount) {
+          const fallbackRange = selection.getRangeAt(0);
+          savedRangeRef.current = fallbackRange.cloneRange();
+        }
+      }
+    }
     editPoint.current = null;
+    selectWordOnEditRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
+
+  useEffect(() => {
+    if (!editing) {
+      setInlineToolbar(null);
+      return;
+    }
+    const updateSelection = () => {
+      const editable = ref.current;
+      if (!editable) return;
+      if (preserveSelectionRef.current && toolbarRef.current?.contains(document.activeElement)) return;
+      const selection = window.getSelection();
+      if (!selection?.rangeCount || selection.isCollapsed) {
+        if (!(toolbarRef.current?.contains(document.activeElement))) setInlineToolbar(null);
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      if (!editable.contains(range.commonAncestorContainer)) {
+        if (!(toolbarRef.current?.contains(document.activeElement))) setInlineToolbar(null);
+        return;
+      }
+      refreshInlineToolbar(range);
+    };
+    document.addEventListener('selectionchange', updateSelection);
+    return () => document.removeEventListener('selectionchange', updateSelection);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
 
   if (editing) {
+    const inlineToolbarPortal = inlineToolbar && !disabled && typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            ref={toolbarRef}
+            className="studio-inline-format-toolbar"
+            role="toolbar"
+            aria-label="Selected text formatting"
+            style={{ position: 'fixed', left: inlineToolbar.left, top: inlineToolbar.top }}
+            onMouseDown={(event) => {
+              const target = event.target as HTMLElement;
+              if (target.closest('button')) event.preventDefault();
+              preserveSelectionRef.current = true;
+              const selection = window.getSelection();
+              if (selection?.rangeCount && !selection.isCollapsed) savedRangeRef.current = selection.getRangeAt(0).cloneRange();
+            }}
+            onBlurCapture={() => {
+              window.setTimeout(() => {
+                const active = document.activeElement;
+                if (ref.current?.contains(active) || toolbarRef.current?.contains(active)) return;
+                preserveSelectionRef.current = false;
+                finishEditing();
+              }, 0);
+            }}
+          >
+            <button type="button" className={inlineToolbar.bold ? 'is-on' : ''} title="Bold selected text" aria-label="Bold selected text" onClick={() => applyInlineFormat('bold')}><strong>B</strong></button>
+            <button type="button" className={inlineToolbar.italic ? 'is-on' : ''} title="Italic selected text" aria-label="Italic selected text" onClick={() => applyInlineFormat('italic')}><em>I</em></button>
+            <button type="button" className={inlineToolbar.underline ? 'is-on' : ''} title="Underline selected text" aria-label="Underline selected text" onClick={() => applyInlineFormat('underline')}><u>U</u></button>
+            <label className="studio-inline-color-control" title="Font colour">
+              <span aria-hidden="true">A</span>
+              <input type="color" value={inlineToolbar.color} aria-label="Selected text colour" onPointerDown={() => { preserveSelectionRef.current = true; }} onChange={(event) => applyInlineFormat('color', event.currentTarget.value)} />
+            </label>
+            <label className="studio-inline-color-control is-highlight" title="Text background/highlight">
+              <span aria-hidden="true">▰</span>
+              <input type="color" value={inlineToolbar.bg} aria-label="Selected text background colour" onPointerDown={() => { preserveSelectionRef.current = true; }} onChange={(event) => applyInlineFormat('bg', event.currentTarget.value)} />
+            </label>
+            <select
+              aria-label="Selected text font"
+              title="Font family"
+              value={inlineToolbar.fontFamily}
+              onPointerDown={() => { preserveSelectionRef.current = true; }}
+              onChange={(event) => applyInlineFormat('fontFamily', event.currentTarget.value)}
+            >
+              {['Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'monospace'].map((font) => <option key={font} value={font}>{font}</option>)}
+            </select>
+            <input
+              className="studio-inline-font-size"
+              type="number"
+              min={8}
+              max={160}
+              step={1}
+              aria-label="Selected text font size"
+              title="Font size"
+              value={inlineToolbar.fontSize}
+              onPointerDown={() => { preserveSelectionRef.current = true; }}
+              onChange={(event) => {
+                const next = Number(event.currentTarget.value);
+                if (Number.isFinite(next) && next >= 8 && next <= 160) applyInlineFormat('fontSize', Math.round(next));
+              }}
+            />
+            <button type="button" className="studio-inline-reset" title="Reset selected text colour" aria-label="Reset selected text colour" onClick={() => applyInlineFormat('color', null)}>A×</button>
+            <button type="button" className="studio-inline-reset" title="Clear selected text background" aria-label="Clear selected text background" onClick={() => applyInlineFormat('bg', null)}>▧×</button>
+          </div>,
+          document.body,
+        )
+      : null;
+
     return (
-      <div
-        ref={ref}
-        role="textbox"
-        tabIndex={0}
-        contentEditable={!disabled}
-        suppressContentEditableWarning
-        className="editor-inline-edit"
-        onInput={(event) => onDraftInput?.(event.currentTarget.innerText)}
-        onBlur={() => {
-          setEditing(false);
-          onEditingEnd?.();
-          const next = (ref.current?.innerText ?? '').replace(/ /g, ' ').replace(/[ 	]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
-          onCommit(next);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            if (ref.current) ref.current.innerText = value;
-            setEditing(false);
-          }
-          if (event.key === 'Enter' && (!multiline || !event.shiftKey)) {
-            event.preventDefault();
-            (event.currentTarget as HTMLElement).blur();
-          }
-          event.stopPropagation();
-        }}
-      />
+      <>
+        <div
+          ref={ref}
+          role="textbox"
+          tabIndex={0}
+          contentEditable={!disabled}
+          suppressContentEditableWarning
+          className="editor-inline-edit"
+          onMouseUp={() => refreshInlineToolbar()}
+          onKeyUp={() => refreshInlineToolbar()}
+          onInput={(event) => updateDraftFromDom(event.currentTarget)}
+          onBlur={(event) => {
+            if (toolbarRef.current?.contains(event.relatedTarget as Node | null)) return;
+            finishEditing();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              if (ref.current) appendInlineTextRuns(ref.current, compatibleInlineTextRuns(value, richText));
+              setEditing(false);
+              setInlineToolbar(null);
+              onEditingEnd?.();
+            } else if (event.key === 'Enter' && multiline && event.shiftKey) {
+              event.preventDefault();
+              insertNewlineAtSelection(event.currentTarget);
+              updateDraftFromDom(event.currentTarget);
+              refreshInlineToolbar();
+            } else if (event.key === 'Enter') {
+              event.preventDefault();
+              (event.currentTarget as HTMLElement).blur();
+            }
+            event.stopPropagation();
+          }}
+        />
+        {inlineToolbarPortal}
+      </>
     );
   }
+
   if (!value.trim()) {
     return (
       <div
@@ -274,7 +850,9 @@ function CanvasText({ value, disabled, multiline, onCommit, onClick, onDraftInpu
       onClick={handleCanvasClick} onDoubleClick={handleCanvasDoubleClick}
       title={disabled ? undefined : editOnDoubleClick ? 'Double-click to edit text directly on the canvas' : 'Click to edit text directly'}
     >
-      {value}
+      {compatibleInlineTextRuns(value, richText).map((run, index) => (
+        <span key={index} style={inlineRunStyle(run)}>{run.text}</span>
+      ))}
     </div>
   );
 }
