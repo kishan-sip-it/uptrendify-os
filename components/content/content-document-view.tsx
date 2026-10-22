@@ -1,9 +1,31 @@
 'use client';
 
-import { CONTENT_PAGE_SIZES, headingFontSizeForLevel, parseContentBody, resolveBlockText, type ContentDocument, type ContentDocBlock } from '@/lib/content/document';
+import { CONTENT_PAGE_SIZES, headingFontSizeForLevel, parseContentBody, resolveBlockText, type ContentDocument, type ContentDocBlock, type InlineTextRun } from '@/lib/content/document';
 
 /** A document is paper: white with fixed dark ink; a page may set its own background. */
 const PAPER: React.CSSProperties = { background: '#ffffff', color: '#1d2634' };
+
+function renderInlineText(value: string, runs?: InlineTextRun[]) {
+  const useRuns = Boolean(runs?.length && runs.map((run) => run.text).join('') === value);
+  const displayRuns = useRuns ? runs! : [{ text: value }];
+  return displayRuns.map((run, index) => (
+    <span
+      key={index}
+      style={{
+        ...(run.bold !== undefined ? { fontWeight: run.bold ? 700 : 400 } : {}),
+        ...(run.italic !== undefined ? { fontStyle: run.italic ? 'italic' : 'normal' } : {}),
+        ...(run.underline !== undefined ? { textDecoration: run.underline ? 'underline' : 'none' } : {}),
+        ...(run.color !== undefined ? { color: run.color ?? 'inherit' } : {}),
+        ...(run.bg !== undefined ? { backgroundColor: run.bg ?? 'transparent' } : {}),
+        ...(run.fontSize !== undefined ? { fontSize: `${run.fontSize}px` } : {}),
+        ...(run.fontFamily ? { fontFamily: run.fontFamily } : {}),
+        whiteSpace: 'pre-wrap',
+      }}
+    >
+      {run.text}
+    </span>
+  ));
+}
 
 /**
  * The single structured-document renderer for saved content bodies.
@@ -71,7 +93,7 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
                     textDecoration: block.underline ? 'underline' : undefined,
                   }}
                 >
-                  {block.href ? <a href={block.href} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'inherit' }}>{resolveBlockText(block, linkedValues)}</a> : resolveBlockText(block, linkedValues)}
+                  {block.href ? <a href={block.href} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'inherit' }}>{renderInlineText(resolveBlockText(block, linkedValues), block.richText)}</a> : renderInlineText(resolveBlockText(block, linkedValues), block.richText)}
                 </Tag>
               );
             }
@@ -89,7 +111,7 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
                     textDecoration: block.underline ? 'underline' : undefined,
                   }}
                 >
-                  {block.href ? <a href={block.href} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'inherit' }}>{resolveBlockText(block, linkedValues)}</a> : resolveBlockText(block, linkedValues)}
+                  {block.href ? <a href={block.href} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'inherit' }}>{renderInlineText(resolveBlockText(block, linkedValues), block.richText)}</a> : renderInlineText(resolveBlockText(block, linkedValues), block.richText)}
                 </p>
               );
             }
