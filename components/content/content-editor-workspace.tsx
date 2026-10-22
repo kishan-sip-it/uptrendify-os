@@ -216,6 +216,53 @@ function normalizeStudioAssetPath(value: unknown): string | null {
   return /^\/api\/brands\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/content\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(path) ? path : null;
 }
 
+/** Estimate a local cover color from pixels just outside a recognized text box. */
+function sampleRasterBackgroundColor(
+  bitmap: ImageBitmap,
+  bounds: { x: number; y: number; w: number; h: number },
+): string | null {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return null;
+    context.drawImage(bitmap, 0, 0);
+    const width = bitmap.width;
+    const height = bitmap.height;
+    const x0 = Math.max(0, Math.min(width - 1, Math.round(bounds.x * width / 1000)));
+    const y0 = Math.max(0, Math.min(height - 1, Math.round(bounds.y * height / 1000)));
+    const x1 = Math.max(x0 + 1, Math.min(width - 1, Math.round((bounds.x + bounds.w) * width / 1000)));
+    const y1 = Math.max(y0 + 1, Math.min(height - 1, Math.round((bounds.y + bounds.h) * height / 1000)));
+    const pixels: Array<[number, number, number]> = [];
+    const stepX = Math.max(1, Math.floor((x1 - x0) / 24));
+    const stepY = Math.max(1, Math.floor((y1 - y0) / 24));
+    const add = (x: number, y: number) => {
+      if (x < 0 || y < 0 || x >= width || y >= height) return;
+      const rgba = context.getImageData(x, y, 1, 1).data;
+      if (rgba[3] >= 220) pixels.push([rgba[0]!, rgba[1]!, rgba[2]!]);
+    };
+    for (const pad of [2, 4, 7]) {
+      for (let x = x0; x <= x1; x += stepX) {
+        add(x, y0 - pad);
+        add(x, y1 + pad);
+      }
+      for (let y = y0; y <= y1; y += stepY) {
+        add(x0 - pad, y);
+        add(x1 + pad, y);
+      }
+    }
+    if (!pixels.length) return null;
+    const median = (channel: 0 | 1 | 2) => {
+      const values = pixels.map((pixel) => pixel[channel]).sort((a, b) => a - b);
+      return values[Math.floor(values.length / 2)]!;
+    };
+    return '#' + [0, 1, 2].map((channel) => median(channel as 0 | 1 | 2).toString(16).padStart(2, '0')).join('');
+  } catch {
+    return null;
+  }
+}
+
 function clampCanvasCoordinate(value: number): number {
   return Math.max(-2000, Math.min(4000, Math.round(value)));
 }
@@ -936,7 +983,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
 
       const bitmap = await createImageBitmap(file);
       const ratio = bitmap.width / Math.max(1, bitmap.height);
-      bitmap.close();
       const size = (Object.entries(CONTENT_PAGE_SIZES) as Array<[ContentPageSizeId, { width: number; height: number }]>)
         .reduce((best, current) =>
           Math.abs(Math.log(current[1].width / current[1].height / ratio)) <
@@ -955,7 +1001,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           text: component.text,
           align: component.align,
           color: component.color,
-          bg: component.backgroundColor ?? null,
+          bg: component.backgroundColor ?? sampleRasterBackgroundColor(bitmap, component.bounds),
           bold: component.fontWeight === 'bold',
           italic: component.italic ?? false,
           underline: component.underline ?? false,
@@ -969,6 +1015,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         }
         return { ...common, type: 'text', size: fontSize >= 22 ? 'lg' as const : 'md' as const };
       });
+      bitmap.close();
       const notes = [...(recognition?.notes ?? [])];
       if (complexBackgrounds || gradientBackgrounds) notes.push('Background cover colors are estimates; check each reconstructed text box against the source.');
       installImportedPages([{
@@ -997,7 +1044,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         await importNativeDocument(await file.text());
       } else if (name.endsWith('.svg') || file.type === 'image/svg+xml') {
         await importSvgMarkup(await file.text());
-      } else if (['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || /\\.(png|jpe?g|webp)$/i.test(name)) {
+      } else if (['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || /\.(png|jpe?g|webp)$/i.test(name)) {
         await importRasterFile(file);
       } else {
         setError('This file type is not supported yet. Use Canva SVG for the best editable vector/text import, Studio JSON, or PNG/JPG/WEBP for AI-assisted text reconstruction. PDF, DOCX and PPTX import are not available yet.');
