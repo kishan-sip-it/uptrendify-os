@@ -92,6 +92,10 @@ const emphasis = {
 export const CONTENT_SHAPE_KINDS = ['rectangle', 'square', 'circle', 'triangle', 'star', 'pyramid'] as const;
 const shapeKind = z.enum(CONTENT_SHAPE_KINDS);
 
+export function headingFontSizeForLevel(level: 1 | 2 | 3): number {
+  return level === 1 ? 36 : level === 2 ? 28 : 22;
+}
+
 const linkedField = z.enum(['title', 'cta']).optional();
 const externalHref = z.string().max(2048).url().refine((value) => /^https?:\/\//i.test(value), 'Only HTTP and HTTPS links are allowed.').optional();
 

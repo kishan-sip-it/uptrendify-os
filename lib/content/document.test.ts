@@ -13,6 +13,7 @@ import {
   serializeContentDocument,
   type ContentDocBlock,
   type ContentDocument,
+  headingFontSizeForLevel,
 } from './document';
 
 const BLOCKS: ContentDocBlock[] = [
@@ -73,6 +74,12 @@ describe('content document body format', () => {
     const unsafe = JSON.parse(serializeContentDocument(original)) as { blocks: Array<Record<string, unknown>> };
     unsafe.blocks[0]!.href = 'javascript:alert(1)';
     expect(parseContentBody(JSON.stringify(unsafe))).toBeNull();
+  });
+
+  it('maps heading levels to visibly distinct sizes', () => {
+    expect(headingFontSizeForLevel(1)).toBe(36);
+    expect(headingFontSizeForLevel(2)).toBe(28);
+    expect(headingFontSizeForLevel(3)).toBe(22);
   });
 
   it('round-trips independent geometry, numeric typography, and a page background image', () => {

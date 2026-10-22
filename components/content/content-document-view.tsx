@@ -1,6 +1,6 @@
 'use client';
 
-import { CONTENT_PAGE_SIZES, parseContentBody, resolveBlockText, type ContentDocument, type ContentDocBlock } from '@/lib/content/document';
+import { CONTENT_PAGE_SIZES, headingFontSizeForLevel, parseContentBody, resolveBlockText, type ContentDocument, type ContentDocBlock } from '@/lib/content/document';
 
 /** A document is paper: white with fixed dark ink; a page may set its own background. */
 const PAPER: React.CSSProperties = { background: '#ffffff', color: '#1d2634' };
@@ -66,7 +66,7 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
                     ...geoStyle,
                     ...(block.color ? { color: block.color } : {}),
                     ...(block.bg ? { background: block.bg } : {}),
-                    fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined,
+                    fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined,
                     fontStyle: block.italic ? 'italic' : undefined,
                     textDecoration: block.underline ? 'underline' : undefined,
                   }}
