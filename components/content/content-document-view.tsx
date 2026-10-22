@@ -83,7 +83,7 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
                   style={{
                     ...geoStyle,
                     ...(block.color ? { color: block.color } : {}),
-                    ...(block.bg ? { background: block.bg, ...(block.bgMatch ? { padding: 0, borderRadius: 0 } : {}) } : {})
+                    ...(block.bg ? { background: block.bg, ...(block.bgMatch ? { padding: 0, borderRadius: 0 } : {}) } : {}),
                     fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined,
                     fontStyle: block.italic ? 'italic' : undefined,
                     textDecoration: block.underline ? 'underline' : undefined,
