@@ -835,9 +835,16 @@
 .editor-inline-edit {
   display: block;
   width: 100%;
-  max-height: 100%;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   white-space: pre-wrap;
+}
+
+/* While editing, long copy must remain visible instead of becoming a nested scroller. */
+.editor-free-block:has(.editor-inline-edit) .content-doc-heading,
+.editor-free-block:has(.editor-inline-edit) .content-doc-text {
+  max-height: none !important;
+  overflow: visible !important;
 }
 .editor-free-block > .content-doc-heading,
 .editor-free-block > .content-doc-text {
