@@ -2503,8 +2503,9 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
 
   const openTextContextMenu = (event: React.MouseEvent, block: EditorBlock) => {
     if (previewMode || !canEdit || !isEditableTextBlock(block)) return;
-    const target = event.target;
-    if (target instanceof Element && target.closest('.editor-inline-edit, [contenteditable="true"]')) return;
+    // Always use Studio's text-action menu, even while the inline editor has focus.
+    // Otherwise the browser's native context menu replaces Studio's actions whenever
+    // the caret is blinking inside the editable text.
     event.preventDefault();
     event.stopPropagation();
     setSelectedId(block.id);
