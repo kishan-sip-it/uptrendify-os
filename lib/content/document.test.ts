@@ -5,6 +5,8 @@ import {
   defaultPageSizeForType,
   defaultPageSizeForChannel,
   fitDocumentBodyToChannelFormat,
+  reflowPage,
+  updateBlockInPages,
   createDocumentFromText,
   documentToPlainText,
   isContentDocumentBody,
@@ -14,6 +16,7 @@ import {
   reorderBlocks,
   serializeContentDocument,
   type ContentDocBlock,
+  type ContentDocPage,
   type ContentDocument,
   headingFontSizeForLevel,
 } from './document';
@@ -226,6 +229,45 @@ describe('canvas page sizes', () => {
     expect(CONTENT_PAGE_SIZES.portrait.width / CONTENT_PAGE_SIZES.portrait.height).toBeCloseTo(4 / 5, 2);
     expect(CONTENT_PAGE_SIZES.story.width / CONTENT_PAGE_SIZES.story.height).toBeCloseTo(9 / 16, 2);
     expect(CONTENT_PAGE_SIZES.landscapeSocial.width / CONTENT_PAGE_SIZES.landscapeSocial.height).toBeCloseTo(1.91, 1);
+  });
+
+  it('updates the requested page when legacy duplicate block IDs exist', () => {
+    const first: ContentDocBlock = {
+      id: 'shared-legacy-id', type: 'text', text: 'Page one stays intact',
+      align: 'left', color: null, bg: null, size: 'md',
+      bold: false, italic: false, underline: false,
+    };
+    const second: ContentDocBlock = { ...first, text: 'Page two content' };
+    const pages = [
+      { id: 'page-one', size: 'square' as const, blocks: [first] },
+      { id: 'page-two', size: 'portrait' as const, blocks: [second] },
+    ];
+    const updated = updateBlockInPages(
+      pages,
+      'shared-legacy-id',
+      (block) => ({ ...block, text: 'Edited on page two' } as ContentDocBlock),
+      1,
+    );
+    const pageOneBlock = updated[0]!.blocks[0]!;
+    const pageTwoBlock = updated[1]!.blocks[0]!;
+    expect(pageOneBlock.type === 'text' ? pageOneBlock.text : null).toBe('Page one stays intact');
+    expect(pageTwoBlock.type === 'text' ? pageTwoBlock.text : null).toBe('Edited on page two');
+  });
+
+  it('duplicates a page with independent block IDs', () => {
+    const source: ContentDocPage = {
+      id: 'source-page',
+      size: 'square',
+      blocks: [
+        { id: 'source-heading', type: 'heading', text: 'Headline', level: 2, align: 'left', color: null, bg: null, bold: false, italic: false, underline: false },
+        { id: 'source-text', type: 'text', text: 'Caption', align: 'left', color: null, bg: null, size: 'md', bold: false, italic: false, underline: false },
+      ],
+    };
+    const copied = reflowPage(source, 'portrait');
+    expect(copied.id).not.toBe(source.id);
+    expect(copied.blocks.map((block) => block.id)).not.toEqual(source.blocks.map((block) => block.id));
+    expect(new Set([...source.blocks, ...copied.blocks].map((block) => block.id)).size).toBe(4);
+    expect(copied.blocks.map((block) => block.type)).toEqual(source.blocks.map((block) => block.type));
   });
 
   it('fits a preview copy to the selected channel without changing the saved body', () => {
