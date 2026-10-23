@@ -3705,7 +3705,27 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       data-block-name={`${BLOCK_LABEL[block.type]}: ${blockName(block)}`}
                       onContextMenu={(event) => openTextContextMenu(event, block)}
                       draggable={editable}
-                      onDragStart={(event) => { dragIndex.current = index; event.dataTransfer.effectAllowed = 'move'; }}
+                      onDragStart={(event) => {
+                        const target = event.target;
+                        const selection = window.getSelection();
+                        const selectionInsideBlock = Boolean(
+                          selection && !selection.isCollapsed &&
+                          event.currentTarget.contains(selection.anchorNode) &&
+                          event.currentTarget.contains(selection.focusNode),
+                        );
+                        // Text editing/selection must not trigger native block reordering.
+                        // A static block remains draggable when no text is being selected.
+                        if (
+                          (target instanceof Element && target.closest('.editor-inline-edit, [contenteditable="true"]')) ||
+                          selectionInsideBlock
+                        ) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          return;
+                        }
+                        dragIndex.current = index;
+                        event.dataTransfer.effectAllowed = 'move';
+                      }}
                       onDragOver={(event) => { if (dragIndex.current !== null) { event.preventDefault(); setDropTarget({ index, below: event.clientY > (event.currentTarget as HTMLElement).getBoundingClientRect().bottom - 14 }); } }}
                       onDragLeave={() => setDropTarget((current) => (current?.index === index ? null : current))}
                       onDrop={(event) => canvasDrop(index, event)}
@@ -4006,14 +4026,9 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                   <span className="st-label">{BLOCK_LABEL[selected.type]} · arrange</span>
                   <div className="st-field st-context-feature-hint">
                     <span>Layer order</span>
-                    <div className="st-field-row" style={{ flexWrap: 'wrap', gap: 5 }}>
-                      <button type="button" className="st-icon" style={{ width: 30, height: 30 }} onClick={() => changeLayerOrder(selected.id, 'front')} disabled={!canEditBlock(selected) || (activePage?.blocks.length ?? 0) < 2} aria-label="Bring to front" title="Bring to front"><BringToFront size={13} /></button>
-                      <button type="button" className="st-icon" style={{ width: 30, height: 30 }} onClick={() => changeLayerOrder(selected.id, 'forward')} disabled={!canEditBlock(selected) || (activePage?.blocks.length ?? 0) < 2} aria-label="Bring forward" title="Bring forward"><ArrowUp size={13} /></button>
-                      <button type="button" className="st-icon" style={{ width: 30, height: 30 }} onClick={() => changeLayerOrder(selected.id, 'backward')} disabled={!canEditBlock(selected) || (activePage?.blocks.length ?? 0) < 2} aria-label="Send backward" title="Send backward"><ArrowDown size={13} /></button>
-                      <button type="button" className="st-icon" style={{ width: 30, height: 30 }} onClick={() => changeLayerOrder(selected.id, 'back')} disabled={!canEditBlock(selected) || (activePage?.blocks.length ?? 0) < 2} aria-label="Send to back" title="Send to back"><SendToBack size={13} /></button>
-                    </div>
-                    <span className="editor-hint">Use the right-click Layer submenu for the same actions at the cursor.</span>
+                    <p className="editor-hint">Bring forward, send backward, and related actions are available in the selected element's right-click Layer menu.</p>
                   </div>
+
                   <div className="st-field">
                     <span>Alignment</span>
                     <div className="st-field-row">
