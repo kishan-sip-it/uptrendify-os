@@ -130,7 +130,7 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
 
   it('approves content in review and records the decision', async () => {
     mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'APPROVER', userId: USER_ID } });
-    const client = makeClient(actQueues('IN_REVIEW'));
+    const client = makeClient([...actQueues('IN_REVIEW'), ['content_versions', { data: { body: artworkBody(completeSnapshot()) }, error: null }]]);
     mocks.createSupabaseServerClient.mockResolvedValue(client);
 
     const res = await POST(new NextRequest('http://localhost/api/review', { method: 'POST', body: JSON.stringify({ action: 'approve', comment: 'Tone is on brand' }) }), {
@@ -170,6 +170,32 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ status: 'IN_REVIEW' });
+  });
+
+  it('blocks approval and publishing transitions when saved artwork snapshots are missing', async () => {
+    const scenarios = [
+      { action: 'approve', status: 'IN_REVIEW' },
+      { action: 'queue_for_publish', status: 'APPROVED' },
+    ] as const;
+
+    for (const scenario of scenarios) {
+      mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'APPROVER', userId: USER_ID } });
+      const client = makeClient([
+        ['content_items', contentRow(scenario.status)],
+        ['content_versions', { data: { body: artworkBody() }, error: null }],
+      ]);
+      mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+      const res = await POST(new NextRequest('http://localhost/api/review', {
+        method: 'POST',
+        body: JSON.stringify({ action: scenario.action }),
+      }), {
+        params: Promise.resolve({ brandId: BRAND_ID, contentId: CONTENT_ID }),
+      });
+
+      expect(res.status).toBe(409);
+      expect(client.rpc).not.toHaveBeenCalled();
+    }
   });
 
   it('blocks submitting legacy plain-text content until Studio saves its first artwork snapshot', async () => {
@@ -311,7 +337,7 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
 
   it('queues an approved item for publishing and pins the decision to the exact version', async () => {
     mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'APPROVER', userId: USER_ID } });
-    const client = makeClient(actQueues('APPROVED', 'READY_TO_PUBLISH'));
+    const client = makeClient([...actQueues('APPROVED', 'READY_TO_PUBLISH'), ['content_versions', { data: { body: artworkBody(completeSnapshot()) }, error: null }]]);
     mocks.createSupabaseServerClient.mockResolvedValue(client);
 
     const res = await POST(new NextRequest('http://localhost/api/review', {

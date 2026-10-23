@@ -97,22 +97,33 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       );
     }
 
-    if (body.action === 'submit' && item.current_version_id) {
-      const versionResult = await supabase
-        .from('content_versions')
-        .select('body')
-        .eq('id', item.current_version_id)
-        .eq('organization_id', auth.context.organizationId)
-        .maybeSingle();
-      if (versionResult.error) throw versionResult.error;
-      if (!versionResult.data) {
-        return NextResponse.json({ error: 'The current content version could not be found. Reload and try again.' }, { status: 409 });
-      }
-      if (hasMissingArtworkSnapshot(versionResult.data.body)) {
+    if (['submit', 'approve', 'queue_for_publish'].includes(body.action)) {
+      if (!item.current_version_id && body.action === 'approve') {
         return NextResponse.json(
-          { error: 'Save the artwork image for every page before submitting this version for approval.' },
+          { error: 'Save a content version with its artwork before approving this item.' },
           { status: 409 },
         );
+      }
+      if (item.current_version_id) {
+        const versionResult = await supabase
+          .from('content_versions')
+          .select('body')
+          .eq('id', item.current_version_id)
+          .eq('organization_id', auth.context.organizationId)
+          .maybeSingle();
+        if (versionResult.error) throw versionResult.error;
+        if (!versionResult.data) {
+          return NextResponse.json({ error: 'The current content version could not be found. Reload and try again.' }, { status: 409 });
+        }
+        if (hasMissingArtworkSnapshot(versionResult.data.body)) {
+          const label = body.action === 'submit' ? 'submitting this version for approval'
+            : body.action === 'approve' ? 'approving this version'
+              : 'queuing this version for publishing';
+          return NextResponse.json(
+            { error: `Save the artwork image for every page before ${label}.` },
+            { status: 409 },
+          );
+        }
       }
     }
 
