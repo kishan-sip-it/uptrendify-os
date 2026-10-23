@@ -235,6 +235,7 @@ export function PublishPreview({
   const body = item.currentVersion?.body ?? '';
   const originalDocument = parseContentBody(body);
   const isDocument = originalDocument !== null;
+  const hasImmutableSnapshots = Boolean(originalDocument?.pages.length && originalDocument.pages.every((page) => Boolean(page.snapshot?.path)));
   const paragraphs = splitBody(body);
   const channel = item.channel ?? 'selected channel';
   const textOnPrimary = contrastText(primary);
@@ -253,9 +254,11 @@ export function PublishPreview({
   const previewPageBody = previewDocument
     ? serializeContentDocument({ ...previewDocument, pages: [previewDocument.pages[currentPreviewPageIndex]!] })
     : channelFormattedBody;
-  const formatPageSize = formatMode === 'channel'
-    ? defaultPageSizeForChannel(item.type, channel)
-    : originalDocument?.pages[0]?.size ?? defaultPageSizeForChannel(item.type, channel);
+  const formatPageSize = hasImmutableSnapshots
+    ? originalDocument!.pages[currentPreviewPageIndex]!.size
+    : formatMode === 'channel'
+      ? defaultPageSizeForChannel(item.type, channel)
+      : originalDocument?.pages[0]?.size ?? defaultPageSizeForChannel(item.type, channel);
   const formatPage = CONTENT_PAGE_SIZES[formatPageSize];
   const renderDocument = isDocument
     ? previewDocument?.mode === 'free'
@@ -345,14 +348,16 @@ export function PublishPreview({
                   <div className="eyebrow">Channel preview</div>
                   {isDocument ? (
                     <div className="activity-meta" style={{ marginTop: 4 }}>
-                      {formatMode === 'channel'
-                        ? `Auto-fit · ${formatPage.label}`
-                        : `Saved canvas · ${CONTENT_PAGE_SIZES[originalDocument?.pages[0]?.size ?? 'a4'].label}`}
-                      {' · '}preview only; saved version is unchanged
+                      {hasImmutableSnapshots
+                        ? `Exact saved artwork · ${formatPage.label}`
+                        : formatMode === 'channel'
+                          ? `Auto-fit · ${formatPage.label}`
+                          : `Saved canvas · ${CONTENT_PAGE_SIZES[originalDocument?.pages[0]?.size ?? 'a4'].label}`}
+                      {' · '}the saved version is unchanged
                     </div>
                   ) : null}
                 </div>
-                {isDocument ? (
+                {isDocument && !hasImmutableSnapshots ? (
                   <select
                     aria-label="Preview format"
                     className="content-filter-input"
