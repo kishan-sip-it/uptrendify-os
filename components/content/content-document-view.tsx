@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import {
   CONTENT_PAGE_SIZES,
   DEFAULT_CONTENT_SHAPE_COLOR,
@@ -9,11 +10,84 @@ import {
   parseContentBody,
   resolveBlockText,
   type ContentDocBlock,
+  type ContentDocPage,
   type InlineTextRun,
 } from '@/lib/content/document';
 
 /** A document is paper: white with fixed dark ink; a page may set its own background. */
 const PAPER: React.CSSProperties = { background: '#ffffff', color: '#1d2634' };
+
+/**
+ * Load the exact private image saved with this content version. When an image
+ * cannot be loaded, show an explicit error rather than rebuilding different pixels.
+ */
+function SavedArtworkImage({
+  snapshot,
+  alt,
+}: {
+  snapshot: NonNullable<ContentDocPage['snapshot']>;
+  alt: string;
+}) {
+  const [state, setState] = useState<{ src: string | null; status: 'loading' | 'error' }>({ src: null, status: 'loading' });
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    setState({ src: null, status: 'loading' });
+
+    void (async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data, error } = await supabase.storage.from('brand-assets').download(snapshot.path);
+        if (error || !data) throw error ?? new Error('Saved artwork was not found');
+        objectUrl = URL.createObjectURL(data);
+        if (active) setState({ src: objectUrl, status: 'loading' });
+        else URL.revokeObjectURL(objectUrl);
+      } catch {
+        if (active) setState({ src: null, status: 'error' });
+      }
+    })();
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [snapshot.path]);
+
+  if (!state.src) {
+    return (
+      <div
+        role={state.status === 'error' ? 'alert' : 'status'}
+        aria-label={state.status === 'error' ? 'Saved artwork unavailable' : 'Loading saved artwork'}
+        style={{
+          display: 'grid',
+          placeItems: 'center',
+          width: '100%',
+          height: '100%',
+          minHeight: 120,
+          padding: 16,
+          background: '#f1f5f9',
+          color: '#475569',
+          fontSize: 12,
+          textAlign: 'center',
+        }}
+      >
+        {state.status === 'error' ? 'The saved artwork image could not be loaded. The editable source has not been substituted.' : 'Loading saved artwork…'}
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      className="content-doc-saved-artwork-image"
+      src={state.src}
+      alt={alt}
+      draggable={false}
+      style={{ display: 'block', width: '100%', height: '100%', objectFit: 'fill', margin: 0, padding: 0, border: 0, borderRadius: 0 }}
+    />
+  );
+}
 
 function renderInlineText(value: string, runs?: InlineTextRun[]) {
   const useRuns = Boolean(runs?.length && runs.map((run) => run.text).join('') === value);
@@ -115,9 +189,13 @@ export function ContentDocumentView({
             } : {}),
           }}
         >
-          {pageIndex > 0 ? <div className="content-doc-page-break">Page {pageIndex + 1}</div> : null}
-          {page.blocks.length === 0 && doc.mode !== 'free' ? <p className="content-doc-page-empty">Empty page</p> : null}
-          {page.blocks.filter((block) => !block.hidden).map((block) => {
+          {page.snapshot ? (
+            <SavedArtworkImage snapshot={page.snapshot} alt={`Saved artwork, page ${pageIndex + 1}`} />
+          ) : (
+            <>
+              {pageIndex > 0 ? <div className="content-doc-page-break">Page {pageIndex + 1}</div> : null}
+              {page.blocks.length === 0 && doc.mode !== 'free' ? <p className="content-doc-page-empty">Empty page</p> : null}
+              {page.blocks.filter((block) => !block.hidden).map((block) => {
             const geoStyle = {
               ...(doc.mode === 'free' && block.geometry ? {
                 position: 'absolute' as const,
@@ -213,7 +291,9 @@ export function ContentDocumentView({
                 </span>
               </div>
             );
-          })}
+              })}
+            </>
+          )}
         </div>
       ))}
     </div>
