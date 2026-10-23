@@ -34,7 +34,6 @@ function makeClient(overrides: Array<[string, unknown]> = []) {
       const queue = queues.get(table) ?? [];
       const next = queue.shift();
       if (next !== undefined) return Promise.resolve(next);
-      if (table === 'content_versions') return Promise.resolve({ data: { body: 'Legacy plain-text content' }, error: null });
       return Promise.resolve({ data: null, error: { message: `No mock result queued for ${table}` } });
     };
     const thenable: PromiseLike<unknown> = { then: (onFul) => execute().then(onFul) };
@@ -157,9 +156,12 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
     expect(await res.json()).toMatchObject({ status: 'REJECTED' });
   });
 
-  it('allows an editor to submit a draft for review', async () => {
+  it('allows an editor to submit a draft after its artwork snapshot is saved', async () => {
     mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'EDITOR', userId: USER_ID } });
-    const client = makeClient(actQueues('DRAFT'));
+    const client = makeClient([
+      ['content_items', contentRow('DRAFT')],
+      ['content_versions', { data: { body: artworkBody(completeSnapshot()) }, error: null }],
+    ]);
     mocks.createSupabaseServerClient.mockResolvedValue(client);
 
     const res = await POST(new NextRequest('http://localhost/api/review', { method: 'POST', body: JSON.stringify({ action: 'submit' }) }), {
@@ -168,6 +170,25 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ status: 'IN_REVIEW' });
+  });
+
+  it('blocks submitting legacy plain-text content until Studio saves its first artwork snapshot', async () => {
+    mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'EDITOR', userId: USER_ID } });
+    const client = makeClient([
+      ['content_items', contentRow('DRAFT')],
+      ['content_versions', { data: { body: 'Existing legacy content has not been saved as artwork yet.' }, error: null }],
+    ]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const res = await POST(new NextRequest('http://localhost/api/review', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'submit' }),
+    }), {
+      params: Promise.resolve({ brandId: BRAND_ID, contentId: CONTENT_ID }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(client.rpc).not.toHaveBeenCalled();
   });
 
   it('blocks submitting a Studio document when any page lacks its saved artwork snapshot', async () => {
@@ -188,29 +209,6 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ error: 'Save the artwork image for every page before submitting this version for approval.' });
     expect(client.rpc).not.toHaveBeenCalled();
-  });
-
-  it('allows submitting a Studio document after its immutable snapshot has been saved', async () => {
-    mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'EDITOR', userId: USER_ID } });
-    const client = makeClient([
-      ['content_items', contentRow('DRAFT')],
-      ['content_versions', { data: { body: artworkBody(completeSnapshot()) }, error: null }],
-    ]);
-    mocks.createSupabaseServerClient.mockResolvedValue(client);
-
-    const res = await POST(new NextRequest('http://localhost/api/review', {
-      method: 'POST',
-      body: JSON.stringify({ action: 'submit' }),
-    }), {
-      params: Promise.resolve({ brandId: BRAND_ID, contentId: CONTENT_ID }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ok: true, status: 'IN_REVIEW' });
-    expect(client.rpc).toHaveBeenCalledWith('apply_content_review_transition', expect.objectContaining({
-      p_action: 'submit',
-      p_expected_version_id: VERSION_ID,
-    }));
   });
 
   it('requires a generated version before submitting a draft for review', async () => {

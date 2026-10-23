@@ -43,19 +43,12 @@ const TRANSITIONS: Record<ReviewAction, { from: string[]; to: string }> = {
 const REVIEWER_ACTIONS: ReviewAction[] = ['approve', 'reject', 'changes_requested', 'queue_for_publish', 'back_to_approved'];
 
 /**
- * Structured Studio artwork must be saved with an immutable image for every
- * page before entering review. Plain-text legacy bodies keep their existing
- * workflow and can be converted by opening and saving them in Studio.
+ * Every version submitted through Studio must include the immutable artwork
+ * image for each page. Legacy text and structured documents without snapshots
+ * remain editable; saving from Studio creates the first snapshot version.
  */
 function hasMissingArtworkSnapshot(body: unknown): boolean {
-  if (typeof body !== 'string') return false;
-  let raw: unknown;
-  try {
-    raw = JSON.parse(body);
-  } catch {
-    return false;
-  }
-  if (!raw || typeof raw !== 'object' || (raw as { kind?: unknown }).kind !== 'uptrendify-doc') return false;
+  if (typeof body !== 'string') return true;
   const document = parseContentBody(body);
   return !document || document.pages.some((page) => !page.snapshot?.path);
 }

@@ -28,7 +28,7 @@ function SavedArtworkImage({
   snapshot: NonNullable<ContentDocPage['snapshot']>;
   alt: string;
 }) {
-  const [state, setState] = useState<{ src: string | null; status: 'loading' | 'error' }>({ src: null, status: 'loading' });
+  const [state, setState] = useState<{ src: string | null; status: 'loading' | 'error'; message?: string }>({ src: null, status: 'loading' });
 
   useEffect(() => {
     let active = true;
@@ -49,8 +49,11 @@ function SavedArtworkImage({
         objectUrl = URL.createObjectURL(new Blob([bytes], { type: snapshot.mimeType }));
         if (active) setState({ src: objectUrl, status: 'loading' });
         else URL.revokeObjectURL(objectUrl);
-      } catch {
-        if (active) setState({ src: null, status: 'error' });
+      } catch (error) {
+        const message = error instanceof Error && /integrity check failed/i.test(error.message)
+          ? 'Saved artwork failed its SHA-256 integrity check. Do not approve or publish this version; ask an editor to save a new version.'
+          : 'Saved artwork could not be downloaded or verified. The editable source was not substituted. Check access to the private artwork file; ask an editor to save a new version if the problem persists.';
+        if (active) setState({ src: null, status: 'error', message });
       }
     })();
 
@@ -78,7 +81,7 @@ function SavedArtworkImage({
           textAlign: 'center',
         }}
       >
-        {state.status === 'error' ? 'The saved artwork image could not be loaded. The editable source has not been substituted.' : 'Loading saved artwork…'}
+        {state.status === 'error' ? (state.message ?? 'Saved artwork could not be loaded or verified. The editable source has not been substituted.') : 'Loading saved artwork…'}
       </div>
     );
   }
