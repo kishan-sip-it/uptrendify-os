@@ -58,6 +58,7 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
     <>
       <ContentEditorWorkspace
         brandId={brandId}
+        organizationId={auth.context.organizationId}
         contentId={contentId}
         documentTitle={item.title}
         contentType={item.type}
