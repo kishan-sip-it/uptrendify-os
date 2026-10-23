@@ -120,3 +120,16 @@
   .publish-preview-dialog { width: calc(100vw - 12px) !important; height: calc(100dvh - 12px) !important; max-height: calc(100dvh - 12px) !important; }
   .publish-preview-document-stage { height: clamp(280px, 48vh, 420px); }
 }
+
+/* Immutable raster artwork uses its own pixels in every theme and review surface. */
+.content-doc-saved-artwork-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: fill;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  padding: 0;
+}
