@@ -42,6 +42,8 @@ import {
   createDocumentFromText,
   defaultPageSizeForChannel,
   DEFAULT_CONTENT_SHAPE_COLOR,
+  DEFAULT_CONTENT_TEXT_COLOR,
+  updateBlockInPages,
   newBlockId,
   newPage,
   parseContentBody,
@@ -1054,9 +1056,22 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       pages: source.pages.map((page) => layoutPageForFreeCanvas(page)),
     };
   }, [body, contentType, channel, isStoryboard]);
-  const [pages, setPages] = useState<ContentDocPage[]>(() => initialDoc.pages);
+  const [pages, setPagesState] = useState<ContentDocPage[]>(() => initialDoc.pages);
+  const pagesRef = useRef<ContentDocPage[]>(initialDoc.pages);
+  const setPages = useCallback((nextPages: ContentDocPage[]) => {
+    pagesRef.current = nextPages;
+    setPagesState(nextPages);
+  }, []);
   const [freeMode, setFreeMode] = useState(initialDoc.mode === 'free');
-  const [activePageIndex, setActivePageIndex] = useState(0);
+  const [activePageIndex, setActivePageIndexState] = useState(0);
+  const activePageIndexRef = useRef(activePageIndex);
+  const setActivePageIndex = useCallback((nextIndex: number | ((current: number) => number)) => {
+    const resolved = typeof nextIndex === 'function'
+      ? nextIndex(activePageIndexRef.current)
+      : nextIndex;
+    activePageIndexRef.current = resolved;
+    setActivePageIndexState(resolved);
+  }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
   const [zoom, setZoom] = useState(100);
@@ -1359,11 +1374,12 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const persistInlineTextDraft = useCallback((id: string, value: string, richText?: InlineTextRun[]) => {
     if (!localDraftReady) return;
     try {
-      const nextPages = pages.map((page, index) => index === activePageIndex
-        ? { ...page, blocks: page.blocks.map((block) => block.id === id
-            ? ({ ...block, text: value, ...(richText !== undefined ? { richText } : {}), link: undefined } as EditorBlock)
-            : block) }
-        : page);
+      const nextPages = updateBlockInPages(
+        pagesRef.current,
+        id,
+        (block) => ({ ...block, text: value, ...(richText !== undefined ? { richText } : {}), link: undefined } as ContentDocBlock),
+        activePageIndexRef.current,
+      );
       const body = serializeContentDocument({
         kind: 'uptrendify-doc',
         version: 1,
@@ -1380,7 +1396,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         body,
         baseSnapshot: loadedSnapshot,
         baseVersionId: loadedVersionId ?? currentVersionId,
-        activePageIndex,
+        activePageIndex: activePageIndexRef.current,
         savedAt: Date.now(),
       };
       window.localStorage.setItem(localDraftKey, JSON.stringify(draft));
@@ -1417,10 +1433,29 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   }, [historyIndex, freeMode]);
 
   const patchPage = (pageIndex: number, transformer: (blocks: EditorBlock[]) => EditorBlock[]) => {
-    commit(pages.map((page, index) => (index === pageIndex ? { ...page, blocks: transformer(page.blocks) } : page)));
+    const currentPages = pagesRef.current;
+    if (!currentPages[pageIndex]) return;
+    commit(currentPages.map((page, index) => (index === pageIndex ? { ...page, blocks: transformer(page.blocks) } : page)));
   };
   const patchBlock = (id: string, patch: Partial<EditorBlock>) => {
-    patchPage(activePageIndex, (current) => current.map((block) => (block.id === id ? ({ ...block, ...patch } as EditorBlock) : block)));
+    const currentPages = pagesRef.current;
+    const nextPages = updateBlockInPages(
+      currentPages,
+      id,
+      (block) => ({ ...block, ...patch } as ContentDocBlock),
+      activePageIndexRef.current,
+    );
+    if (nextPages !== currentPages) commit(nextPages);
+  };
+  const findPageIndexForBlock = (id: string) => {
+    const currentPages = pagesRef.current;
+    const preferredIndex = activePageIndexRef.current;
+    if (currentPages[preferredIndex]?.blocks.some((block) => block.id === id)) return preferredIndex;
+    return currentPages.findIndex((page) => page.blocks.some((block) => block.id === id));
+  };
+  const findBlockById = (id: string): EditorBlock | null => {
+    const pageIndex = findPageIndexForBlock(id);
+    return pageIndex < 0 ? null : pagesRef.current[pageIndex]?.blocks.find((block) => block.id === id) ?? null;
   };
   const patchBlockRef = useRef(patchBlock);
   patchBlockRef.current = patchBlock;
@@ -1525,7 +1560,9 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       return;
     }
     const base = emptyBlock(type);
-    const currentPage = pages[activePageIndex] ?? activePage;
+    const currentPages = pagesRef.current;
+    const currentIndex = activePageIndexRef.current;
+    const currentPage = currentPages[currentIndex] ?? currentPages[0];
     if (!currentPage) return;
     const pageForPlacement = freeMode ? layoutPageForFreeCanvas(currentPage) : currentPage;
     const unplaced = (type === 'shape' && shapeKind ? { ...base, shape: shapeKind } : base) as EditorBlock;
@@ -1533,7 +1570,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       ? ({ ...unplaced, geometry: geometryForVisiblePlacement(unplaced, pageForPlacement) } as EditorBlock)
       : unplaced;
     const existingBlocks = freeMode ? pageForPlacement.blocks : currentPage.blocks;
-    const nextPages = pages.map((page, index) => index === activePageIndex
+    const nextPages = currentPages.map((page, index) => index === currentIndex
       ? { ...page, blocks: [...existingBlocks, block] }
       : page);
     commit(nextPages, freeMode ? 'free' : 'flow');
@@ -1542,7 +1579,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     setPreviewMode(false);
   };
   const setBlockGeometry = (id: string, geometry: NonNullable<EditorBlock['geometry']>) => {
-    patchPage(activePageIndex, (current) => current.map((block) => (block.id === id ? ({ ...block, geometry } as EditorBlock) : block)));
+    patchBlock(id, { geometry });
   };
   const updateBlockGeometry = (block: EditorBlock, key: 'x' | 'y' | 'w' | 'h', rawValue: number) => {
     const current = block.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
@@ -1551,14 +1588,19 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     setBlockGeometry(block.id, { ...current, [key]: value });
   };
   const setPageBackgroundImage = (image: { src: string; alt: string } | null) => {
-    commit(pages.map((page, index) => (index === activePageIndex ? { ...page, backgroundImage: image ?? undefined } : page)));
+    const currentIndex = activePageIndexRef.current;
+    commit(pagesRef.current.map((page, index) => (index === currentIndex ? { ...page, backgroundImage: image ?? undefined } : page)));
   };
   const insertImageBlock = (src: string, alt: string): boolean => {
     if (!canEdit || !activePage || activePage.blocks.length >= CONTENT_DOC_MAX_BLOCKS) {
       setError('This page has reached its element limit or is not editable.');
       return false;
     }
-    const freePages = pages.map(layoutPageForFreeCanvas);
+    const currentPages = pagesRef.current;
+    const currentIndex = activePageIndexRef.current;
+    const currentPage = currentPages[currentIndex];
+    if (!currentPage) return false;
+    const freePages = currentPages.map(layoutPageForFreeCanvas);
     const imageBlock = {
       id: newBlockId('image'),
       type: 'image' as const,
@@ -1572,11 +1614,11 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       geometry: geometryForVisiblePlacement(imageBlock, freePages[activePageIndex] ?? activePage, {
         x: 0,
         y: 0,
-        w: Math.round(pageDims.width * 0.7),
-        h: Math.round(pageDims.height * 0.32),
+        w: Math.round(CONTENT_PAGE_SIZES[currentPage.size ?? 'a4'].width * 0.7),
+        h: Math.round(CONTENT_PAGE_SIZES[currentPage.size ?? 'a4'].height * 0.32),
       }),
     } satisfies EditorBlock;
-    const nextPages = freePages.map((page, index) => index === activePageIndex ? { ...page, blocks: [...page.blocks, block] } : page);
+    const nextPages = freePages.map((page, index) => index === currentIndex ? { ...page, blocks: [...page.blocks, block] } : page);
     commit(nextPages, 'free');
     setFreeMode(true);
     setSelectedId(block.id);
@@ -2019,7 +2061,10 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
   const useImageAsBackground = (block: EditorBlock) => {
     if (block.type !== 'image' || !canEditBlock(block)) return;
-    commit(pages.map((page, index) => index === activePageIndex
+    const currentPages = pagesRef.current;
+    const targetIndex = findPageIndexForBlock(block.id);
+    if (targetIndex < 0) return;
+    commit(currentPages.map((page, index) => index === targetIndex
       ? { ...page, backgroundImage: { src: block.url, alt: block.alt }, blocks: page.blocks.filter((entry) => entry.id !== block.id) }
       : page));
     setSelectedId(null);
@@ -2027,7 +2072,8 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
   const toggleCanvasMode = () => {
     const nextFreeMode = !freeMode;
-    const nextPages = nextFreeMode ? pages.map(layoutPageForFreeCanvas) : pages;
+    const currentPages = pagesRef.current;
+    const nextPages = nextFreeMode ? currentPages.map(layoutPageForFreeCanvas) : currentPages;
     commit(nextPages, nextFreeMode ? 'free' : 'flow');
     setFreeMode(nextFreeMode);
     setNotice(nextFreeMode
@@ -2067,14 +2113,14 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       id: newBlockId(original.type),
       ...(freeMode ? { geometry: { ...originalGeometry, x: nextX, y: nextY } } : {}),
     } as EditorBlock;
-    patchPage(activePageIndex, (current) => [...current.slice(0, index + 1), clone, ...current.slice(index + 1)]);
+    patchPage(activePageIndexRef.current, (current) => [...current.slice(0, index + 1), clone, ...current.slice(index + 1)]);
     setSelectedId(clone.id);
     setInspectorTab('design');
     setNotice('Duplicated layer selected. It is offset slightly so you can see the copy; drag it into position.');
   };
   const removeBlock = (id: string) => {
     if ((pages[activePageIndex]?.blocks.length ?? 0) <= 1 && pages.length === 1) return;
-    patchPage(activePageIndex, (current) => current.filter((block) => block.id !== id));
+    patchPage(activePageIndexRef.current, (current) => current.filter((block) => block.id !== id));
     if (selectedId === id) setSelectedId(null);
   };
 
@@ -2090,7 +2136,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           ? Math.min(blocks.length - 1, from + 1)
           : Math.max(0, from - 1);
     if (from === to) return;
-    patchPage(activePageIndex, (current) => reorderBlocks(current, from, to));
+    patchPage(activePageIndexRef.current, (current) => reorderBlocks(current, from, to));
     setSelectedId(id);
   };
 
@@ -2098,7 +2144,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     Boolean(block && (block.type === 'heading' || block.type === 'text'));
 
   const copyTextStyle = (blockId: string) => {
-    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    const block = findBlockById(blockId);
     if (!isEditableTextBlock(block)) return;
     setCopiedTextStyle({
       color: block.color, bg: block.bg, bold: block.bold, italic: block.italic,
@@ -2111,7 +2157,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
 
   const pasteTextStyle = (blockId: string) => {
-    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    const block = findBlockById(blockId);
     if (!isEditableTextBlock(block) || !copiedTextStyle || !canEditBlock(block)) return;
     const patch: Partial<EditorBlock> & { size?: 'sm' | 'md' | 'lg' | 'xl'; level?: 1 | 2 | 3 } = {
       color: copiedTextStyle.color, bg: copiedTextStyle.bg, bold: copiedTextStyle.bold,
@@ -2128,7 +2174,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
 
   const copyTextFromBlock = async (blockId: string) => {
-    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    const block = findBlockById(blockId);
     if (!isEditableTextBlock(block)) return;
     const text = resolveBlockText(block, linkedValues);
     internalTextClipboardRef.current = text;
@@ -2142,7 +2188,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
 
   const pasteTextIntoBlock = async (blockId: string) => {
-    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    const block = findBlockById(blockId);
     if (!isEditableTextBlock(block) || !canEditBlock(block)) return;
     let pasted = '';
     try { pasted = await navigator.clipboard.readText(); } catch { /* use Studio clipboard fallback */ }
@@ -2178,7 +2224,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
 
   const editTextLink = (blockId: string) => {
-    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    const block = findBlockById(blockId);
     if (!isEditableTextBlock(block) || !canEditBlock(block)) return;
     const entered = window.prompt('Enter a web link (https:// or http://). Leave empty to remove the link.', block.href ?? '');
     if (entered === null) return;
@@ -2200,7 +2246,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
 
   const openTextAssist = (blockId: string, action: TextAssistAction) => {
-    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    const block = findBlockById(blockId);
     if (!isEditableTextBlock(block) || !canEditBlock(block)) return;
     setTextAssist({
       blockId,
@@ -2244,7 +2290,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
 
   const applyTextAssistResult = () => {
     if (!textAssist?.result.trim()) return;
-    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === textAssist.blockId);
+    const block = findBlockById(textAssist.blockId);
     if (!isEditableTextBlock(block) || !canEditBlock(block)) {
       setError('This text block is no longer editable. Reopen text assist on an editable block.');
       setTextAssist(null);
@@ -2257,7 +2303,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
 
   const createReusableTextComponent = (blockId: string) => {
-    const block = pages[activePageIndex]?.blocks.find((entry) => entry.id === blockId);
+    const block = findBlockById(blockId);
     if (!isEditableTextBlock(block) || !canEditBlock(block)) return;
     const suggested = blockName(block).slice(0, 60);
     const name = window.prompt('Name this reusable text component (saved locally for this brand in this browser).', suggested);
@@ -2436,7 +2482,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
 
   /** One-click "Fit text": step every oversized text block down one size until it fits. */
   const fitText = () => {
-    patchPage(activePageIndex, (current) => current.map((block) => {
+    patchPage(activePageIndexRef.current, (current) => current.map((block) => {
       if (block.type === 'text') return { ...block, size: block.size === 'xl' ? 'lg' : block.size === 'lg' ? 'md' : 'sm' };
       if (block.type === 'heading') return { ...block, level: block.level === 1 ? 2 : 3 };
       return block;
@@ -2881,14 +2927,14 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     switch (block.type) {
       case 'heading':
         return (
-          <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden', opacity: block.opacity ?? 1 }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+          <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden', opacity: block.opacity ?? 1 }}>
+            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
           </div>
         );
       case 'text':
         return (
-          <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+          <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
+            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
           </div>
         );
       case 'image':
@@ -2979,7 +3025,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
       h: clampCanvasSize(h),
     };
     const el = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${id}"]`);
-    const block = pages[activePageIndex]?.blocks.find((item) => item.id === id);
+    const block = findBlockById(id);
     if (el) {
       el.style.left = `${next.x}px`;
       el.style.top = `${next.y}px`;
@@ -3029,7 +3075,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     const resize = freeResize.current;
     if (!resize || resize.id !== id) return;
     freeResize.current = null;
-    const block = pages[activePageIndex]?.blocks.find((item) => item.id === id);
+    const block = findBlockById(id);
     // Restore temporary measurement styles; the committed geometry now owns the
     // size. Leaving height:auto/overflow:visible inline can desync edit and preview.
     if ((resize.dir === 'e' || resize.dir === 'w') && block && (block.type === 'heading' || block.type === 'text')) {
@@ -3172,7 +3218,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                         draggable={canEdit && !block.locked}
                         onDragStart={(event) => { dragIndex.current = realIndex; event.dataTransfer.effectAllowed = 'move'; }}
                         onDragOver={(event) => event.preventDefault()}
-                        onDrop={(event) => { event.preventDefault(); if (dragIndex.current !== null) { patchPage(activePageIndex, (current) => reorderBlocks(current, dragIndex.current ?? realIndex, realIndex)); dragIndex.current = null; } }}
+                        onDrop={(event) => { event.preventDefault(); if (dragIndex.current !== null) { patchPage(activePageIndexRef.current, (current) => reorderBlocks(current, dragIndex.current ?? realIndex, realIndex)); dragIndex.current = null; } }}
                         role="button"
                         tabIndex={0}
                       >
@@ -3373,6 +3419,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               {CONTENT_PAGE_SIZES[activePage?.size ?? 'a4'].label + ' · ' + CONTENT_PAGE_SIZES[activePage?.size ?? 'a4'].width + '×' + CONTENT_PAGE_SIZES[activePage?.size ?? 'a4'].height}
             </span>
             <div
+              key={activePage?.id ?? 'empty-page'}
               className="studio-page-clip"
               onClick={(event) => { if (event.target === event.currentTarget) setSelectedId(null); }}
             >
@@ -3475,13 +3522,13 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       style={{ cursor: block.locked ? 'not-allowed' : undefined, opacity: block.opacity ?? 1 }}
                     >
                       {block.type === 'heading' ? (
-                        <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs, link: undefined })} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+                        <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
+                          <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs, link: undefined })} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
                         </div>
                       ) : null}
                       {block.type === 'text' ? (
-                        <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ ...(block.color ? { color: block.color } : {}), ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs, link: undefined })} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+                        <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
+                          <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs, link: undefined })} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
                         </div>
                       ) : null}
                       {block.type === 'image' ? (
@@ -3540,7 +3587,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                   <span className="st-label">Page settings</span>
                   <label className="st-field">
                     <span>Canvas size</span>
-                    <select className="st-select" value={activePage?.size ?? 'a4'} disabled={!canEdit || previewMode} onChange={(event) => { const size = event.target.value as ContentPageSizeId; commit(pages.map((page, index) => (index === activePageIndex ? { ...page, size } : page))); }}>
+                    <select className="st-select" value={activePage?.size ?? 'a4'} disabled={!canEdit || previewMode} onChange={(event) => { const size = event.target.value as ContentPageSizeId; commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current ? { ...page, size } : page))); }}>
                       {CONTENT_PAGE_SIZE_IDS.map((id) => (
                         <option key={id} value={id}>{CONTENT_PAGE_SIZES[id].label} · {CONTENT_PAGE_SIZES[id].width}×{CONTENT_PAGE_SIZES[id].height}</option>
                       ))}
@@ -3549,8 +3596,8 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                   <div className="st-field">
                     <span>Page background</span>
                     <div className="st-field-row">
-                      <input type="color" value={activePage?.bg ?? '#ffffff'} disabled={!canEdit || previewMode} onChange={(event) => commit(pages.map((page, index) => (index === activePageIndex ? { ...page, bg: event.target.value } : page)))} aria-label="Page background colour" />
-                      <button type="button" className="st-quiet-link" onClick={() => commit(pages.map((page, index) => (index === activePageIndex ? { ...page, bg: undefined } : page)))} disabled={!canEdit || !activePage?.bg}>Reset to white</button>
+                      <input type="color" value={activePage?.bg ?? '#ffffff'} disabled={!canEdit || previewMode} onChange={(event) => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current ? { ...page, bg: event.target.value } : page)))} aria-label="Page background colour" />
+                      <button type="button" className="st-quiet-link" onClick={() => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current ? { ...page, bg: undefined } : page)))} disabled={!canEdit || !activePage?.bg}>Reset to white</button>
                     </div>
                   </div>
                   <div className="st-field">
@@ -3597,12 +3644,15 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                         ))}
                       </select>
                       <button type="button" className="st-btn" style={{ height: 32 }} disabled={!canEdit} onClick={() => {
-                        const page = pages[activePageIndex];
-                        if (!page) return;
+                        const currentPages = pagesRef.current;
+                        const currentIndex = activePageIndexRef.current;
+                        const page = currentPages[currentIndex];
+                        if (!page || currentPages.length >= CONTENT_DOC_MAX_PAGES) return;
                         const copy = reflowPage(page, duplicateSize);
-                        commit([...pages, copy]);
-                        setActivePageIndex(pages.length);
-                        setNotice(`Added ${CONTENT_PAGE_SIZES[duplicateSize].label} copy of page ${activePageIndex + 1}. Text sizes were re-fit for the new canvas.`);
+                        commit([...currentPages, copy]);
+                        setActivePageIndex(currentPages.length);
+                        setSelectedId(null);
+                        setNotice(`Added ${CONTENT_PAGE_SIZES[duplicateSize].label} copy of page ${currentIndex + 1}. Text sizes were re-fit for the new canvas.`);
                       }}>Duplicate as format</button>
                     </div>
                   </div>
@@ -3869,18 +3919,34 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                 Page {index + 1}{page.blocks.length ? '' : ' ·'}
               </button>
             ))}
-            <button type="button" className="studio-page-tab is-add" onClick={() => { if (pages.length >= CONTENT_DOC_MAX_PAGES) return; const page = newPage(activePage?.size ?? 'a4'); commit([...pages, page]); setActivePageIndex(pages.length); setSelectedId(null); }} disabled={!canEdit || pages.length >= CONTENT_DOC_MAX_PAGES} title="Add a page">
+            <button type="button" className="studio-page-tab is-add" onClick={() => {
+              const currentPages = pagesRef.current;
+              const currentIndex = activePageIndexRef.current;
+              if (currentPages.length >= CONTENT_DOC_MAX_PAGES) return;
+              const page = newPage(currentPages[currentIndex]?.size ?? 'a4');
+              commit([...currentPages, page]);
+              setActivePageIndex(currentPages.length);
+              setSelectedId(null);
+            }} disabled={!canEdit || pages.length >= CONTENT_DOC_MAX_PAGES} title="Add a page">
               <Plus size={11} /> Add page
             </button>
             {pages.length > 1 ? (
-              <button type="button" className="studio-page-tab is-danger" onClick={() => { if (!window.confirm(`Delete page ${activePageIndex + 1}? Its blocks are removed from the document.`)) return; commit(pages.filter((_, index) => index !== activePageIndex)); setActivePageIndex(0); setSelectedId(null); }} disabled={!canEdit} title="Delete this page">
+              <button type="button" className="studio-page-tab is-danger" onClick={() => {
+                const currentPages = pagesRef.current;
+                const currentIndex = activePageIndexRef.current;
+                if (!window.confirm(`Delete page ${currentIndex + 1}? Its blocks are removed from the document.`)) return;
+                const nextPages = currentPages.filter((_, index) => index !== currentIndex);
+                commit(nextPages);
+                setActivePageIndex(Math.max(0, Math.min(currentIndex, nextPages.length - 1)));
+                setSelectedId(null);
+              }} disabled={!canEdit} title="Delete this page">
                 <Trash2 size={11} />
               </button>
             ) : null}
           </span>
           <label className="editor-size-picker" title="Canvas size">
             <span className="st-label">Size</span>
-            <select className="studio-select" value={activePage?.size ?? 'a4'} disabled={!canEdit || previewMode} onChange={(event) => { const size = event.target.value as ContentPageSizeId; commit(pages.map((page, index) => (index === activePageIndex ? { ...page, size } : page))); }}>
+            <select className="studio-select" value={activePage?.size ?? 'a4'} disabled={!canEdit || previewMode} onChange={(event) => { const size = event.target.value as ContentPageSizeId; commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current ? { ...page, size } : page))); }}>
               {CONTENT_PAGE_SIZE_IDS.map((id) => (
                 <option key={id} value={id}>{CONTENT_PAGE_SIZES[id].label}</option>
               ))}
@@ -4266,6 +4332,6 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     setDropTarget(null);
     dragIndex.current = null;
     if (from === to) return;
-    patchPage(activePageIndex, (current) => reorderBlocks(current, from, to));
+    patchPage(activePageIndexRef.current, (current) => reorderBlocks(current, from, to));
   }
 }
