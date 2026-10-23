@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contentDocumentSchema, CONTENT_PAGE_SIZES, parseContentBody, serializeContentDocument } from '@/lib/content/document';
+import { contentDocumentSchema, CONTENT_PAGE_SIZES, parseContentBody, serializeContentDocument, type ContentDocBlock } from '@/lib/content/document';
 import { buildTemplateDocument, buildTemplatePages, templateFingerprints } from './build';
 import { templatePaletteByName } from './art';
 import type { TemplateDefinition } from './types';
@@ -90,7 +90,7 @@ describe('template builder', () => {
     const palette = templatePaletteByName('paperblue');
     const [page] = buildTemplatePages(definition, palette, '#ff8800');
     const heading = page!.blocks.find((block) => block.type === 'heading');
-    const circle = page!.blocks.find((block) => block.type === 'shape' && !block.svgPath);
+    const circle = page!.blocks.find((block): block is Extract<ContentDocBlock, { type: 'shape' }> => block.type === 'shape' && !block.svgPath);
     expect(heading?.color).toBe('#16243d'); // ink untouched
     expect(circle?.color).toBe('#ff8800'); // accent slot re-coloured
   });

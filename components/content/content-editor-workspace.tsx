@@ -64,6 +64,10 @@ import { ContentDocumentView } from '@/components/content/content-document-view'
 import { AppDialog } from '@/components/ui/app-dialog';
 import { reconcileContentVersionState } from '@/lib/content/version-state';
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
+import { StudioTemplateLibrary } from '@/components/content/studio-template-library';
+import { buildTemplatePages } from '@/lib/studio/template-library/build';
+import { templatePaletteByName } from '@/lib/studio/template-library/art';
+import { STUDIO_LIBRARY } from '@/lib/studio/template-library';
 import { importSvgTemplate, type SvgTemplateImport } from '@/lib/studio/import-template';
 import { eraseRasterTextPixels, type RasterTextBounds } from '@/lib/studio/raster-text';
 import { storyboardPagesFromScript } from '@/lib/content/parse-script';
@@ -2171,11 +2175,23 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       ? 'Free canvas enabled. Select any element to move and resize it independently.'
       : 'Flow layout enabled. Element geometry is preserved and can be restored by switching back to Free canvas.');
   };
+  /** Resolve a template id against the 500-template library first, then the legacy starters. */
+  const buildTemplatePagesForId = (templateId: string): ContentDocPage[] | null => {
+    const accent = brand.colors[0] ?? '#7c7cff';
+    const definition = STUDIO_LIBRARY.find((entry) => entry.id === templateId);
+    if (definition) {
+      return buildTemplatePages(definition, templatePaletteByName(definition.palette ?? 'mono'), accent || null);
+    }
+    const legacyPage = buildTemplatePage(templateId, accent);
+    return legacyPage ? [legacyPage] : null;
+  };
+
   const applyTemplateToActivePage = (templateId: string) => {
     const currentPages = pagesRef.current;
     const currentIndex = activePageIndexRef.current;
     if (!currentPages[currentIndex]) return;
-    const templatePage = buildTemplatePage(templateId, brand.colors[0] ?? '#7c7cff');
+    const templatePages = buildTemplatePagesForId(templateId);
+    const templatePage = templatePages?.[0];
     if (!templatePage) return;
     const nextPages = currentPages.map((page, index) => index === currentIndex ? templatePage : page);
     commit(nextPages, 'free');
@@ -2185,6 +2201,27 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     setPreviewMode(false);
     setLoadedVersionId(null);
     setNotice('Applied the template to page ' + (currentIndex + 1) + '. Other pages were preserved.');
+  };
+
+  const applyTemplateAsPages = (templateId: string) => {
+    const definition = STUDIO_LIBRARY.find((entry) => entry.id === templateId);
+    const currentPages = pagesRef.current;
+    const currentIndex = activePageIndexRef.current;
+    if (!definition || !currentPages[currentIndex]) return;
+    const templatePages = buildTemplatePagesForId(templateId);
+    if (!templatePages) return;
+    if (currentPages.length + templatePages.length - 1 > CONTENT_DOC_MAX_PAGES) {
+      setError('This document can hold at most ' + CONTENT_DOC_MAX_PAGES + ' pages. Remove a page first to make room for the template sequence.');
+      return;
+    }
+    const nextPages = [...currentPages.slice(0, currentIndex), ...templatePages, ...currentPages.slice(currentIndex + 1)];
+    commit(nextPages, 'free');
+    setActivePageIndex(currentIndex);
+    setSelectedId(null);
+    setFreeMode(true);
+    setPreviewMode(false);
+    setLoadedVersionId(null);
+    setNotice('Page ' + (currentIndex + 1) + ' was replaced and ' + templatePages.length + ' template pages were inserted. All other pages were preserved.');
   };
 
   const insertTemplate = (templateId: string) => {
@@ -3784,17 +3821,26 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             </div>
             <div className="studio-inspector-body">
               {inspectorTab === 'templates' ? (
-                <>
-                  <span className="st-label">Templates</span>
-                  <p className="editor-hint">Choose a starting layout for this canvas. Existing unsaved changes are protected by a confirmation prompt.</p>
-                  {STUDIO_TEMPLATES.map((template) => (
-                    <button key={template.id} type="button" className="st-insert-tile" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', width: '100%', gap: 8 }} disabled={!canEdit} onClick={() => insertTemplate(template.id)}>
-                      <Sparkles size={14} />
-                      <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>{template.label}</span>
-                      <span className="st-preview-tag">{CONTENT_PAGE_SIZES[template.size].label}</span>
-                    </button>
-                  ))}
-                </>
+                <StudioTemplateLibrary
+                  accent={brand.colors[0] ?? '#7c7cff'}
+                  canEdit={canEdit}
+                  currentPageNumber={activePageIndex + 1}
+                  pageCount={pages.length}
+                  maxPages={CONTENT_DOC_MAX_PAGES}
+                  onApplyToPage={insertTemplate}
+                  onApplyAsPages={(templateId) => {
+                    const definition = STUDIO_LIBRARY.find((entry) => entry.id === templateId);
+                    const pageNumber = activePageIndexRef.current + 1;
+                    setStudioActionDialog({
+                      kind: 'confirm',
+                      title: 'Add ' + (definition?.pages.length ?? 0) + ' template pages?',
+                      description: 'Page ' + pageNumber + ' is replaced by the template’s first page and the remaining pages are inserted after it. Every other page in this document stays intact. Save a version first if you need a permanent checkpoint.',
+                      confirmLabel: 'Add template pages',
+                      destructive: true,
+                      onConfirm: () => applyTemplateAsPages(templateId),
+                    });
+                  }}
+                />
               ) : !selected ? (
                 <>
                   <span className="st-label">Page settings</span>

@@ -119,6 +119,8 @@ export type TemplateDefinition = {
   useCase: string;
   audience: string;
   tags: string[];
+  /** Named palette from art.ts; defaults to 'mono' when omitted. */
+  palette?: string;
   pages: TemplatePageSpec[];
 };
 
