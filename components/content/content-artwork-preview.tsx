@@ -81,23 +81,27 @@ export function ContentArtworkPreview({
         onClose={() => setOpen(false)}
         className="content-artwork-dialog"
       >
-        <div ref={fullDocumentRef} className="content-artwork-preview__full-document">
-          {doc ? (
-            <ContentDocumentView body={body} linkedValues={linkedValues} />
-          ) : (
-            <div className="content-artwork-preview__legacy-full">{body || 'No saved content body.'}</div>
-          )}
-        </div>
-        {pageCount > 1 ? (
-          <div className="content-artwork-preview__pager" aria-label="Page navigation">
-            <button type="button" className="app-dialog__button" onClick={() => setActivePage((index) => Math.max(0, index - 1))} disabled={currentPage === 0}>
-              <ArrowLeft size={14} /> Previous
-            </button>
-            <span>Selected page {currentPage + 1} of {pageCount}</span>
-            <button type="button" className="app-dialog__button" onClick={() => setActivePage((index) => Math.min(pageCount - 1, index + 1))} disabled={currentPage >= pageCount - 1}>
-              Next <ArrowRight size={14} />
-            </button>
-          </div>
+        {open ? (
+          <>
+            <div ref={fullDocumentRef} className="content-artwork-preview__full-document">
+              {doc ? (
+                <ContentDocumentView body={body} linkedValues={linkedValues} />
+              ) : (
+                <div className="content-artwork-preview__legacy-full">{body || 'No saved content body.'}</div>
+              )}
+            </div>
+            {pageCount > 1 ? (
+              <div className="content-artwork-preview__pager" aria-label="Page navigation">
+                <button type="button" className="app-dialog__button" onClick={() => setActivePage((index) => Math.max(0, index - 1))} disabled={currentPage === 0}>
+                  <ArrowLeft size={14} /> Previous
+                </button>
+                <span>Selected page {currentPage + 1} of {pageCount}</span>
+                <button type="button" className="app-dialog__button" onClick={() => setActivePage((index) => Math.min(pageCount - 1, index + 1))} disabled={currentPage >= pageCount - 1}>
+                  Next <ArrowRight size={14} />
+                </button>
+              </div>
+            ) : null}
+          </>
         ) : null}
       </AppDialog>
     </section>
