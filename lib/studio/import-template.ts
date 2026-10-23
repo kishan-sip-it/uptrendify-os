@@ -172,7 +172,11 @@ function rootBounds(root:XmlNode):Bounds {
   return {x:0,y:0,w:dims(attr(root,'width'),800),h:dims(attr(root,'height'),800)};
 }
 function chooseSize(ratio:number):ContentPageSizeId {
-  const values=Object.entries(CONTENT_PAGE_SIZES) as Array<[ContentPageSizeId,{width:number;height:number}]>;
+  // SVG import has no destination-channel context. Preserve the generic document
+  // sizes here; social 4:5 / 1.91:1 presets are chosen from the content channel,
+  // not inferred globally from an imported artwork's raw bounds.
+  const values=Object.entries(CONTENT_PAGE_SIZES)
+    .filter(([id]) => id !== 'portrait' && id !== 'landscapeSocial') as Array<[ContentPageSizeId,{width:number;height:number}]>;
   return values.reduce((best,cur)=>Math.abs(Math.log(cur[1].width/cur[1].height/ratio))<Math.abs(Math.log(best[1].width/best[1].height/ratio))?cur:best)[0];
 }
 function geometryFor(node:XmlNode, d:string, fs:number):Bounds|null {
