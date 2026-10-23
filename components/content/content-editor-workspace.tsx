@@ -2154,7 +2154,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     if (!currentPages[currentIndex]) return;
     const templatePage = buildTemplatePage(templateId, brand.colors[0] ?? '#7c7cff');
     if (!templatePage) return;
-    const nextPages = currentPages.map((page, index) => index === currentIndex ? templatePage : layoutPageForFreeCanvas(page));
+    const nextPages = currentPages.map((page, index) => index === currentIndex ? templatePage : page);
     commit(nextPages, 'free');
     setActivePageIndex(currentIndex);
     setSelectedId(null);
