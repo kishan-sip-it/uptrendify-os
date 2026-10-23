@@ -303,7 +303,10 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
 
   it('returns 409 when the status or version changed concurrently', async () => {
     mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'APPROVER', userId: USER_ID } });
-    const client = makeClient([['content_items', contentRow('IN_REVIEW')]]);
+    const client = makeClient([
+      ['content_items', contentRow('IN_REVIEW')],
+      ['content_versions', { data: { body: artworkBody(completeSnapshot()) }, error: null }],
+    ]);
     client.rpc.mockResolvedValue({ data: null, error: { code: '40001', message: 'CONTENT_STATUS_CHANGED_CONCURRENTLY' } });
     mocks.createSupabaseServerClient.mockResolvedValue(client);
     const res = await POST(new NextRequest('http://localhost/api/review', { method: 'POST', body: JSON.stringify({ action: 'approve' }) }), {
