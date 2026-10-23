@@ -40,7 +40,13 @@ function SavedArtworkImage({
         const supabase = createSupabaseBrowserClient();
         const { data, error } = await supabase.storage.from('brand-assets').download(snapshot.path);
         if (error || !data) throw error ?? new Error('Saved artwork was not found');
-        objectUrl = URL.createObjectURL(data);
+        const bytes = await data.arrayBuffer();
+        const digest = await crypto.subtle.digest('SHA-256', bytes);
+        const actualHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+        if (actualHash.toLowerCase() !== snapshot.sha256.toLowerCase()) {
+          throw new Error('Saved artwork integrity check failed');
+        }
+        objectUrl = URL.createObjectURL(new Blob([bytes], { type: snapshot.mimeType }));
         if (active) setState({ src: objectUrl, status: 'loading' });
         else URL.revokeObjectURL(objectUrl);
       } catch {
