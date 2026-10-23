@@ -2846,7 +2846,7 @@ html[data-theme="system"]:not(.theme-dark) {
 .st-text-assist-result { font-size:14px; line-height:1.65; min-height:126px; }
 .st-text-assist-error { border:1px solid color-mix(in srgb, var(--text-danger) 35%, var(--line)); border-radius:8px; padding:10px 12px; background:color-mix(in srgb, var(--text-danger) 10%, var(--surface-card)); color:var(--text-danger); font-size:12px; }
 .st-text-assist-generate { display:inline-flex; align-items:center; gap:7px; }
-.editor-inline-edit { outline:2px solid rgba(129,140,248,.78); outline-offset:2px; border-radius:2px; min-width:1ch; }
+.editor-inline-edit { outline:none; border-radius:2px; min-width:1ch; }
 @media (max-width:620px) { .st-text-assist-controls { grid-template-columns:1fr; } .st-context-menu { max-width:calc(100vw - 16px); } }
 
 
