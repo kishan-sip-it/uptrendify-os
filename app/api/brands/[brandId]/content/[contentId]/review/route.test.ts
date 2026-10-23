@@ -34,6 +34,7 @@ function makeClient(overrides: Array<[string, unknown]> = []) {
       const queue = queues.get(table) ?? [];
       const next = queue.shift();
       if (next !== undefined) return Promise.resolve(next);
+      if (table === 'content_versions') return Promise.resolve({ data: { body: 'Legacy plain-text content' }, error: null });
       return Promise.resolve({ data: null, error: { message: `No mock result queued for ${table}` } });
     };
     const thenable: PromiseLike<unknown> = { then: (onFul) => execute().then(onFul) };
@@ -74,6 +75,39 @@ function makeClient(overrides: Array<[string, unknown]> = []) {
     error: null,
   }));
   return { from, inserts, rpc };
+}
+
+function artworkBody(snapshot?: Record<string, unknown>) {
+  return JSON.stringify({
+    kind: 'uptrendify-doc',
+    version: 1,
+    pageId: 'page-1',
+    size: 'a4',
+    ...(snapshot ? { snapshot } : {}),
+    blocks: [{
+      id: 'text-1',
+      type: 'text',
+      text: 'Saved artwork',
+      align: 'left',
+      color: null,
+      bg: null,
+      size: 'md',
+      bold: false,
+      italic: false,
+      underline: false,
+    }],
+  });
+}
+
+function completeSnapshot() {
+  return {
+    path: `${ORG_ID}/content-artworks/${BRAND_ID}/${CONTENT_ID}/snapshot-1/page-1.png`,
+    width: 794,
+    height: 1123,
+    pixelRatio: 2,
+    mimeType: 'image/png',
+    sha256: 'a'.repeat(64),
+  };
 }
 
 function contentRow(status: string) {
@@ -134,6 +168,49 @@ describe('POST /api/brands/[brandId]/content/[contentId]/review', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ status: 'IN_REVIEW' });
+  });
+
+  it('blocks submitting a Studio document when any page lacks its saved artwork snapshot', async () => {
+    mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'EDITOR', userId: USER_ID } });
+    const client = makeClient([
+      ['content_items', contentRow('DRAFT')],
+      ['content_versions', { data: { body: artworkBody() }, error: null }],
+    ]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const res = await POST(new NextRequest('http://localhost/api/review', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'submit' }),
+    }), {
+      params: Promise.resolve({ brandId: BRAND_ID, contentId: CONTENT_ID }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: 'Save the artwork image for every page before submitting this version for approval.' });
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
+  it('allows submitting a Studio document after its immutable snapshot has been saved', async () => {
+    mocks.requireOrgRole.mockResolvedValue({ error: null, context: { organizationId: ORG_ID, role: 'EDITOR', userId: USER_ID } });
+    const client = makeClient([
+      ['content_items', contentRow('DRAFT')],
+      ['content_versions', { data: { body: artworkBody(completeSnapshot()) }, error: null }],
+    ]);
+    mocks.createSupabaseServerClient.mockResolvedValue(client);
+
+    const res = await POST(new NextRequest('http://localhost/api/review', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'submit' }),
+    }), {
+      params: Promise.resolve({ brandId: BRAND_ID, contentId: CONTENT_ID }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, status: 'IN_REVIEW' });
+    expect(client.rpc).toHaveBeenCalledWith('apply_content_review_transition', expect.objectContaining({
+      p_action: 'submit',
+      p_expected_version_id: VERSION_ID,
+    }));
   });
 
   it('requires a generated version before submitting a draft for review', async () => {

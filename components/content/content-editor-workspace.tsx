@@ -2567,7 +2567,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     setError(null);
     setNotice('Capturing the exact saved appearance of each changed page…');
     const newlyUploadedPaths: string[] = [];
-    let bodyVersionCommitted = false;
+    let bodyVersionSaveAttempted = false;
     try {
       const documentSource = parseContentBody(serialized);
       if (!documentSource) throw new Error('The canvas could not be parsed for artwork export. Your saved version has not changed.');
@@ -2627,6 +2627,9 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       }
 
       const savedBody = serializeContentDocument({ ...documentSource, pages: nextPages });
+      // Once PATCH starts, its outcome may be ambiguous if the connection drops.
+      // Keep uploaded images rather than risk deleting files referenced by a committed version.
+      bodyVersionSaveAttempted = true;
       const response = await fetch(`/api/brands/${brandId}/content/${contentId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
@@ -2635,7 +2638,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       const result = await response.json().catch(() => null);
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(result?.error || 'Could not save the edited content');
-      bodyVersionCommitted = true;
 
       setPages(nextPages);
       setLoadedVersionId(null);
@@ -2647,7 +2649,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       setNotice('Saved a new version with immutable page images. Approval and preview screens will show these exact images.');
       router.refresh();
     } catch (err) {
-      if (!bodyVersionCommitted && newlyUploadedPaths.length) {
+      if (!bodyVersionSaveAttempted && newlyUploadedPaths.length) {
         try {
           await createSupabaseBrowserClient().storage.from('brand-assets').remove(newlyUploadedPaths);
         } catch {

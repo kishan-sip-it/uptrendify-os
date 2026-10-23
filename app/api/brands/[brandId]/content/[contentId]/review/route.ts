@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_GENERATE_CONTENT, CAN_REVIEW_CONTENT, requireOrgRole } from '@/lib/auth/roles';
 import { obs } from '@/lib/obs/logger';
+import { parseContentBody } from '@/lib/content/document';
 
 const paramsSchema = z.object({ brandId: z.string().uuid(), contentId: z.string().uuid() });
 
@@ -40,6 +41,24 @@ const TRANSITIONS: Record<ReviewAction, { from: string[]; to: string }> = {
 };
 
 const REVIEWER_ACTIONS: ReviewAction[] = ['approve', 'reject', 'changes_requested', 'queue_for_publish', 'back_to_approved'];
+
+/**
+ * Structured Studio artwork must be saved with an immutable image for every
+ * page before entering review. Plain-text legacy bodies keep their existing
+ * workflow and can be converted by opening and saving them in Studio.
+ */
+function hasMissingArtworkSnapshot(body: unknown): boolean {
+  if (typeof body !== 'string') return false;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(body);
+  } catch {
+    return false;
+  }
+  if (!raw || typeof raw !== 'object' || (raw as { kind?: unknown }).kind !== 'uptrendify-doc') return false;
+  const document = parseContentBody(body);
+  return !document || document.pages.some((page) => !page.snapshot?.path);
+}
 
 async function loadItem(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
@@ -83,6 +102,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
         { error: `Cannot ${body.action} content in state ${item.status}` },
         { status: 409 },
       );
+    }
+
+    if (body.action === 'submit' && item.current_version_id) {
+      const versionResult = await supabase
+        .from('content_versions')
+        .select('body')
+        .eq('id', item.current_version_id)
+        .eq('organization_id', auth.context.organizationId)
+        .maybeSingle();
+      if (versionResult.error) throw versionResult.error;
+      if (!versionResult.data) {
+        return NextResponse.json({ error: 'The current content version could not be found. Reload and try again.' }, { status: 409 });
+      }
+      if (hasMissingArtworkSnapshot(versionResult.data.body)) {
+        return NextResponse.json(
+          { error: 'Save the artwork image for every page before submitting this version for approval.' },
+          { status: 409 },
+        );
+      }
     }
 
     // Postgres commits the state change, review ledger and audit event atomically.
