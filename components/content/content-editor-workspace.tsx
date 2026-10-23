@@ -3041,7 +3041,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const renderBlockInner = (block: EditorBlock, snapshotMode = false) => {
     const editable = !snapshotMode && canEdit && !block.locked;
     const textProps = {
-      onClick: snapshotMode ? undefined : () => { setSelectedId(block.id); setInspectorTab('design'); },
+      onClick: snapshotMode ? () => undefined : () => { setSelectedId(block.id); setInspectorTab('design'); },
       onCommit: snapshotMode ? () => undefined : (next: string, runs?: InlineTextRun[]) => patchBlock(block.id, { text: next, ...(block.type === 'heading' || block.type === 'text' ? { richText: runs } : {}), link: undefined }),
     };
     switch (block.type) {
