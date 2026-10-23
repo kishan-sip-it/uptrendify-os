@@ -29,15 +29,19 @@ export const CONTENT_DOC_MAX_TEXT = 12_000;
 export const CONTENT_PAGE_SIZES = {
   a4: { label: 'A4 portrait', width: 794, height: 1123 },
   letter: { label: 'US Letter', width: 816, height: 1056 },
-  square: { label: 'Square post', width: 760, height: 760 },
-  story: { label: 'Story 9:16', width: 760, height: 1351 },
+  square: { label: 'Square post · 1:1', width: 760, height: 760 },
+  portrait: { label: 'Portrait post · 4:5', width: 760, height: 950 },
+  story: { label: 'Story / Reel · 9:16', width: 760, height: 1351 },
+  landscapeSocial: { label: 'Social landscape · 1.91:1', width: 1123, height: 588 },
   landscape: { label: 'A4 landscape', width: 1123, height: 794 },
-  wide: { label: 'Presentation 16:9', width: 1280, height: 720 },
+  wide: { label: 'Video / presentation · 16:9', width: 1280, height: 720 },
 } as const;
+
+export const DEFAULT_CONTENT_SHAPE_COLOR = '#8b5cf6';
 export type ContentPageSizeId = keyof typeof CONTENT_PAGE_SIZES;
 export const CONTENT_PAGE_SIZE_IDS = Object.keys(CONTENT_PAGE_SIZES) as ContentPageSizeId[];
 
-/** Default canvas for a content type. Falls back to A4. */
+/** Default canvas for a content type when no target channel is known. */
 export function defaultPageSizeForType(contentType: string | null | undefined): ContentPageSizeId {
   switch (contentType) {
     case 'social_post':
@@ -52,6 +56,46 @@ export function defaultPageSizeForType(contentType: string | null | undefined): 
     case 'landing_page':
     default:
       return 'a4';
+  }
+}
+
+/** Channel-specific initial canvas presets; already-saved page sizes remain user-owned. */
+export function defaultPageSizeForChannel(
+  contentType: string | null | undefined,
+  channel: string | null | undefined,
+): ContentPageSizeId {
+  const type = (contentType ?? '').trim().toLowerCase();
+  const target = (channel ?? '').trim().toLowerCase();
+
+  if (['blog_outline', 'blog_draft', 'landing_page', 'email'].includes(type)) return 'a4';
+  if (['email', 'newsletter', 'blog', 'website', 'landing_page', 'pr', 'print', 'sms'].includes(target)) return 'a4';
+
+  if (type === 'video_script') {
+    if (['youtube', 'webinar', 'podcast', 'linkedin', 'linkedin_ads'].includes(target)) return 'wide';
+    return 'story';
+  }
+
+  switch (target) {
+    case 'instagram':
+    case 'instagram_ads':
+    case 'linkedin':
+      return 'portrait';
+    case 'linkedin_ads':
+    case 'x':
+    case 'google_ads':
+      return 'landscapeSocial';
+    case 'facebook':
+    case 'facebook_ads':
+    case 'meta_ads':
+      return 'square';
+    case 'tiktok':
+      return 'story';
+    case 'youtube':
+    case 'webinar':
+    case 'podcast':
+      return 'wide';
+    default:
+      return defaultPageSizeForType(type);
   }
 }
 
@@ -321,6 +365,56 @@ export function serializeContentDocument(doc: ContentDocument): string {
     });
   }
   return JSON.stringify({ kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, ...mode, pages: doc.pages });
+}
+
+function scaledCanvasFontSize(size: number): number {
+  return Math.max(8, Math.min(160, Math.round(size)));
+}
+
+/** Non-destructive channel-format preview. Free-canvas elements scale uniformly and center. */
+export function fitDocumentBodyToChannelFormat(
+  body: string,
+  channel: string | null | undefined,
+  contentType: string | null | undefined,
+): string {
+  const document = parseContentBody(body);
+  if (!document) return body;
+  const targetSize = defaultPageSizeForChannel(contentType, channel);
+  if (document.pages.every((page) => page.size === targetSize)) return body;
+  const target = CONTENT_PAGE_SIZES[targetSize];
+
+  const pages = document.pages.map((page) => {
+    const source = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
+    if (document.mode !== 'free') return { ...page, size: targetSize };
+    const scale = Math.min(target.width / source.width, target.height / source.height);
+    const offsetX = (target.width - source.width * scale) / 2;
+    const offsetY = (target.height - source.height * scale) / 2;
+    const blocks = page.blocks.map((block): ContentDocBlock => {
+      const geometry = block.geometry ? {
+        ...block.geometry,
+        x: Math.round(block.geometry.x * scale + offsetX),
+        y: Math.round(block.geometry.y * scale + offsetY),
+        w: Math.max(24, Math.min(4000, Math.round(block.geometry.w * scale))),
+        h: Math.max(24, Math.min(4000, Math.round(block.geometry.h * scale))),
+      } : undefined;
+      if (block.type === 'heading' || block.type === 'text') {
+        const hasGeometry = Boolean(block.geometry);
+        const richText = block.richText?.map((run) => ({
+          ...run,
+          ...(hasGeometry && run.fontSize !== undefined ? { fontSize: scaledCanvasFontSize(run.fontSize * scale) } : {}),
+        }));
+        return {
+          ...block,
+          ...(geometry ? { geometry } : {}),
+          ...(hasGeometry && block.fontSize !== undefined ? { fontSize: scaledCanvasFontSize(block.fontSize * scale) } : {}),
+          ...(richText ? { richText } : {}),
+        } as ContentDocBlock;
+      }
+      return { ...block, ...(geometry ? { geometry } : {}) } as ContentDocBlock;
+    });
+    return { ...page, size: targetSize, blocks };
+  });
+  return serializeContentDocument({ ...document, pages });
 }
 
 /** Plain-text projection used by search, summaries and text-only publishing. */

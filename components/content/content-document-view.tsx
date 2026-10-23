@@ -1,6 +1,15 @@
 'use client';
 
-import { CONTENT_PAGE_SIZES, headingFontSizeForLevel, parseContentBody, resolveBlockText, type ContentDocument, type ContentDocBlock, type InlineTextRun } from '@/lib/content/document';
+import { useEffect, useRef, useState } from 'react';
+import {
+  CONTENT_PAGE_SIZES,
+  DEFAULT_CONTENT_SHAPE_COLOR,
+  headingFontSizeForLevel,
+  parseContentBody,
+  resolveBlockText,
+  type ContentDocBlock,
+  type InlineTextRun,
+} from '@/lib/content/document';
 
 /** A document is paper: white with fixed dark ink; a page may set its own background. */
 const PAPER: React.CSSProperties = { background: '#ffffff', color: '#1d2634' };
@@ -36,14 +45,55 @@ function renderInlineText(value: string, runs?: InlineTextRun[]) {
  * text with emphasis, images, shapes and CTA blocks. Legacy plain-text bodies
  * render unchanged.
  */
-export function ContentDocumentView({ body, linkedValues }: { body: string; linkedValues?: { title?: string | null; cta?: string | null } }) {
+export function ContentDocumentView({
+  body,
+  linkedValues,
+  fitToBounds = false,
+  pageIndex,
+}: {
+  body: string;
+  linkedValues?: { title?: string | null; cta?: string | null };
+  fitToBounds?: boolean;
+  pageIndex?: number;
+}) {
+  const fitViewportRef = useRef<HTMLDivElement | null>(null);
+  const [fitViewport, setFitViewport] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    if (!fitToBounds) return;
+    const element = fitViewportRef.current;
+    if (!element) return;
+    const update = () => {
+      const next = { width: element.clientWidth, height: element.clientHeight };
+      setFitViewport((previous) => previous.width === next.width && previous.height === next.height ? previous : next);
+    };
+    update();
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(update);
+      observer.observe(element);
+      return () => observer.disconnect();
+    }
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [fitToBounds]);
+
   const doc = parseContentBody(body);
   if (!doc) return <>{body}</>;
   const free = doc.mode === 'free';
-  const freeDims = CONTENT_PAGE_SIZES[doc.pages[0]?.size ?? 'a4'];
-  return (
+  const currentPageIndex = pageIndex === undefined ? 0 : Math.max(0, Math.min(pageIndex, doc.pages.length - 1));
+  const selectedPage = doc.pages[currentPageIndex];
+  const freeDims = CONTENT_PAGE_SIZES[selectedPage?.size ?? doc.pages[0]?.size ?? 'a4'];
+  const visiblePages = pageIndex === undefined
+    ? doc.pages.map((page, originalIndex) => ({ page, originalIndex }))
+    : [{ page: selectedPage!, originalIndex: currentPageIndex }];
+  const scale = fitToBounds && free
+    ? (fitViewport.width > 0 && fitViewport.height > 0
+      ? Math.min(1, fitViewport.width / freeDims.width, fitViewport.height / freeDims.height)
+      : Math.min(1, 520 / freeDims.width, 500 / freeDims.height))
+    : 1;
+
+  const documentElement = (
     <div className={`content-doc${free ? ' is-free' : ''}`} style={{ ...PAPER, ...(free ? { width: freeDims.width, height: freeDims.height } : {}) }}>
-      {doc.pages.map((page, pageIndex) => (
+      {visiblePages.map(({ page, originalIndex: pageIndex }) => (
         <div
           key={page.id}
           className={`content-doc-page${doc.mode === 'free' ? ' is-free' : ''}`}
@@ -139,7 +189,7 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
                       <path
                         d={block.svgPath}
                         transform={"translate(" + (-block.svgBounds.x) + " " + (-block.svgBounds.y) + ") matrix(" + block.svgMatrix.a + " " + block.svgMatrix.b + " " + block.svgMatrix.c + " " + block.svgMatrix.d + " " + block.svgMatrix.e + " " + block.svgMatrix.f + ")"}
-                        fill={block.svgFillNone ? 'none' : (block.color ?? 'var(--accent)')}
+                        fill={block.svgFillNone ? 'none' : (block.color ?? DEFAULT_CONTENT_SHAPE_COLOR)}
                         stroke={block.svgFillNone ? (block.color ?? block.svgStroke ?? 'none') : (block.svgStroke ?? 'none')}
                         strokeWidth={block.svgStrokeWidth ?? 1}
                         strokeLinejoin="round"
@@ -149,7 +199,7 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
                   ) : (
                     <span
                       className={`content-doc-shape-item is-${block.shape}`}
-                      style={{ background: block.color ?? 'var(--accent)', width: '100%', height: '100%' }}
+                      style={{ background: block.color ?? DEFAULT_CONTENT_SHAPE_COLOR, width: '100%', height: '100%' }}
                     />
                   )}
                 </div>
@@ -167,4 +217,19 @@ export function ContentDocumentView({ body, linkedValues }: { body: string; link
       ))}
     </div>
   );
+
+  if (fitToBounds && free) {
+    const scaledWidth = freeDims.width * scale;
+    const scaledHeight = freeDims.height * scale;
+    return (
+      <div ref={fitViewportRef} className="content-doc-fit-viewport" style={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'grid', placeItems: 'center' }}>
+        <div style={{ position: 'relative', width: scaledWidth, height: scaledHeight, maxWidth: '100%', flex: '0 0 auto' }}>
+          <div style={{ position: 'absolute', left: 0, top: 0, width: freeDims.width, height: freeDims.height, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+            {documentElement}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return documentElement;
 }

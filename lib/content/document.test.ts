@@ -3,6 +3,8 @@ import {
   CONTENT_PAGE_SIZES,
   contentBodyToPlainText,
   defaultPageSizeForType,
+  defaultPageSizeForChannel,
+  fitDocumentBodyToChannelFormat,
   createDocumentFromText,
   documentToPlainText,
   isContentDocumentBody,
@@ -208,14 +210,55 @@ describe('canvas page sizes', () => {
     expect(parseContentBody(body)?.pages[1]?.size).toBe('story');
   });
 
-  it('maps content types to sensible default canvases', () => {
+  it('maps content types and channels to the intended canvas aspect ratios', () => {
     expect(defaultPageSizeForType('blog_draft')).toBe('a4');
     expect(defaultPageSizeForType('email')).toBe('a4');
     expect(defaultPageSizeForType('social_post')).toBe('square');
     expect(defaultPageSizeForType('video_script')).toBe('story');
     expect(defaultPageSizeForType(undefined)).toBe('a4');
-    expect(CONTENT_PAGE_SIZES.a4.width).toBeGreaterThan(CONTENT_PAGE_SIZES.a4.height === undefined ? 0 : 0);
+    expect(defaultPageSizeForChannel('social_post', 'instagram')).toBe('portrait');
+    expect(defaultPageSizeForChannel('video_script', 'instagram')).toBe('story');
+    expect(defaultPageSizeForChannel('social_post', 'linkedin_ads')).toBe('landscapeSocial');
+    expect(defaultPageSizeForChannel('video_script', 'youtube')).toBe('wide');
+    expect(defaultPageSizeForChannel('blog_draft', 'instagram')).toBe('a4');
     expect(CONTENT_PAGE_SIZES.a4.height).toBeGreaterThan(CONTENT_PAGE_SIZES.a4.width);
     expect(CONTENT_PAGE_SIZES.square.width).toBe(CONTENT_PAGE_SIZES.square.height);
+    expect(CONTENT_PAGE_SIZES.portrait.width / CONTENT_PAGE_SIZES.portrait.height).toBeCloseTo(4 / 5, 2);
+    expect(CONTENT_PAGE_SIZES.story.width / CONTENT_PAGE_SIZES.story.height).toBeCloseTo(9 / 16, 2);
+    expect(CONTENT_PAGE_SIZES.landscapeSocial.width / CONTENT_PAGE_SIZES.landscapeSocial.height).toBeCloseTo(1.91, 1);
+  });
+
+  it('fits a preview copy to the selected channel without changing the saved body', () => {
+    const original: ContentDocument = {
+      kind: 'uptrendify-doc',
+      version: 1,
+      mode: 'free',
+      pages: [{
+        id: 'fit-page',
+        size: 'letter',
+        blocks: [{
+          id: 'fit-heading',
+          type: 'heading',
+          text: 'Do not crop me',
+          level: 2,
+          align: 'left',
+          color: '#111111',
+          bg: null,
+          bold: true,
+          italic: false,
+          underline: false,
+          fontSize: 40,
+          richText: [{ text: 'Do not crop me', fontSize: 40 }],
+          geometry: { x: 80, y: 120, w: 600, h: 120 },
+        }],
+      }],
+    };
+    const savedBody = serializeContentDocument(original);
+    const fitted = parseContentBody(fitDocumentBodyToChannelFormat(savedBody, 'instagram', 'social_post'));
+    expect(fitted?.pages[0]?.size).toBe('portrait');
+    expect(fitted?.pages[0]?.blocks[0]?.geometry?.w).toBeLessThan(600);
+    const heading = fitted?.pages[0]?.blocks[0];
+    expect(heading?.type === 'heading' ? heading.fontSize : null).toBeLessThan(40);
+    expect(parseContentBody(savedBody)).toEqual(original);
   });
 });

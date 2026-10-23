@@ -40,7 +40,8 @@ import {
   CONTENT_PAGE_SIZE_IDS,
   CONTENT_SHAPE_KINDS,
   createDocumentFromText,
-  defaultPageSizeForType,
+  defaultPageSizeForChannel,
+  DEFAULT_CONTENT_SHAPE_COLOR,
   newBlockId,
   newPage,
   parseContentBody,
@@ -1041,17 +1042,18 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const isStoryboard = contentType === 'video_script';
   const initialDoc = useMemo(() => {
     const saved = parseContentBody(body);
+    const channelPageSize = defaultPageSizeForChannel(contentType, channel);
     const source = saved ?? (isStoryboard && body.trim()
-      ? { kind: 'uptrendify-doc' as const, version: 1 as const, mode: 'free' as const, pages: storyboardPagesFromScript(body, defaultPageSizeForType(contentType)) }
-      : createDocumentFromText(body, defaultPageSizeForType(contentType)));
-    // The visual editor opens in free-canvas mode so every selected block can
-    // be moved and resized before the user inserts an image.
+      ? { kind: 'uptrendify-doc' as const, version: 1 as const, mode: 'free' as const, pages: storyboardPagesFromScript(body, channelPageSize) }
+      : createDocumentFromText(body, channelPageSize));
+    // Existing saved page sizes remain user-owned; the channel default is only
+    // applied when a legacy/plain body first enters the visual editor.
     return {
       ...source,
       mode: 'free' as const,
       pages: source.pages.map((page) => layoutPageForFreeCanvas(page)),
     };
-  }, [body, contentType, isStoryboard]);
+  }, [body, contentType, channel, isStoryboard]);
   const [pages, setPages] = useState<ContentDocPage[]>(() => initialDoc.pages);
   const [freeMode, setFreeMode] = useState(initialDoc.mode === 'free');
   const [activePageIndex, setActivePageIndex] = useState(0);
@@ -2911,7 +2913,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
               <path
                 d={block.svgPath}
                 transform={"translate(" + (-block.svgBounds.x) + " " + (-block.svgBounds.y) + ") matrix(" + block.svgMatrix.a + " " + block.svgMatrix.b + " " + block.svgMatrix.c + " " + block.svgMatrix.d + " " + block.svgMatrix.e + " " + block.svgMatrix.f + ")"}
-                fill={block.svgFillNone ? 'none' : (block.color ?? 'var(--st-accent)')}
+                fill={block.svgFillNone ? 'none' : (block.color ?? DEFAULT_CONTENT_SHAPE_COLOR)}
                 stroke={block.svgFillNone ? (block.color ?? block.svgStroke ?? 'none') : (block.svgStroke ?? 'none')}
                 strokeWidth={block.svgStrokeWidth ?? 1}
                 strokeLinejoin="round"
@@ -2921,7 +2923,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           );
         }
         return (
-          <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? 'var(--st-accent)', width: '100%', height: '100%', display: 'inline-block', pointerEvents: 'none' }} />
+          <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? DEFAULT_CONTENT_SHAPE_COLOR, width: '100%', height: '100%', display: 'inline-block', pointerEvents: 'none' }} />
         );
       case 'button':
         return (
@@ -3491,7 +3493,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
                       ) : null}
                       {block.type === 'shape' ? (
                         <div className={`content-doc-shape align-${block.align}`}>
-                          <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? 'var(--st-accent)', width: `${block.width ?? 60}%`, height: block.height }} />
+                          <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? DEFAULT_CONTENT_SHAPE_COLOR, width: `${block.width ?? 60}%`, height: block.height }} />
                         </div>
                       ) : null}
                       {block.type === 'button' ? (

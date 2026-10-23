@@ -1,8 +1,16 @@
 'use client';
 
-import { X, Send, Sparkles } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, X, Send, Sparkles } from 'lucide-react';
 import { channelLabel, contentTypeLabel } from '@/lib/content/schema';
-import { contentBodyToPlainText, parseContentBody } from '@/lib/content/document';
+import {
+  CONTENT_PAGE_SIZES,
+  contentBodyToPlainText,
+  defaultPageSizeForChannel,
+  fitDocumentBodyToChannelFormat,
+  parseContentBody,
+  serializeContentDocument,
+} from '@/lib/content/document';
 import { ContentDocumentView } from '@/components/content/content-document-view';
 
 type PreviewItem = {
@@ -225,12 +233,39 @@ export function PublishPreview({
   const primary = safeColor(item.brandStyle?.primaryColor, '#8b7cff');
   const secondary = safeColor(item.brandStyle?.secondaryColors?.[0], '#d946ef');
   const body = item.currentVersion?.body ?? '';
-  const isDocument = parseContentBody(body) !== null;
+  const originalDocument = parseContentBody(body);
+  const isDocument = originalDocument !== null;
   const paragraphs = splitBody(body);
   const channel = item.channel ?? 'selected channel';
   const textOnPrimary = contrastText(primary);
   const needsVisual = visualChannels(channel, item.type);
   const headline = item.currentVersion?.headline || item.title;
+  const [formatMode, setFormatMode] = useState<'channel' | 'saved'>('channel');
+  const [previewPageIndex, setPreviewPageIndex] = useState(0);
+  const channelFormattedBody = useMemo(
+    () => formatMode === 'channel' ? fitDocumentBodyToChannelFormat(body, channel, item.type) : body,
+    [body, channel, item.type, formatMode],
+  );
+  const previewDocument = parseContentBody(channelFormattedBody);
+  const currentPreviewPageIndex = previewDocument
+    ? Math.max(0, Math.min(previewPageIndex, previewDocument.pages.length - 1))
+    : 0;
+  const previewPageBody = previewDocument
+    ? serializeContentDocument({ ...previewDocument, pages: [previewDocument.pages[currentPreviewPageIndex]!] })
+    : channelFormattedBody;
+  const formatPageSize = formatMode === 'channel'
+    ? defaultPageSizeForChannel(item.type, channel)
+    : originalDocument?.pages[0]?.size ?? defaultPageSizeForChannel(item.type, channel);
+  const formatPage = CONTENT_PAGE_SIZES[formatPageSize];
+  const renderDocument = isDocument
+    ? previewDocument?.mode === 'free'
+      ? (
+        <div className="publish-preview-document-stage">
+          <ContentDocumentView body={previewPageBody} linkedValues={{ title: item.title, cta: item.currentVersion?.cta ?? null }} fitToBounds />
+        </div>
+      )
+      : <ContentDocumentView body={previewPageBody} linkedValues={{ title: item.title, cta: item.currentVersion?.cta ?? null }} />
+    : null;
 
   return (
     <div
@@ -249,11 +284,15 @@ export function PublishPreview({
       }}
     >
       <div
-        className="preview-raised"
+        className="preview-raised publish-preview-dialog"
         style={{
-          width: 'min(960px, 100%)',
-          maxHeight: 'min(900px, calc(100vh - 40px))',
-          overflow: 'auto',
+          width: 'min(1120px, calc(100vw - 32px))',
+          height: 'min(860px, calc(100dvh - 32px))',
+          maxHeight: 'min(860px, calc(100dvh - 32px))',
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
           border: '1px solid var(--border-strong)',
           borderRadius: 16,
           boxShadow: '0 28px 90px rgba(0,0,0,.4)',
@@ -261,9 +300,9 @@ export function PublishPreview({
       >
         <div
           style={{
-            position: 'sticky',
-            top: 0,
+            position: 'relative',
             zIndex: 2,
+            flex: '0 0 auto',
             display: 'flex',
             alignItems: 'flex-start',
             justifyContent: 'space-between',
@@ -295,21 +334,46 @@ export function PublishPreview({
           </button>
         </div>
 
-        <div style={{ padding: 18 }}>
+        <div className="publish-preview-body" style={{ padding: 18, flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
           <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(0, 1fr) 260px',
-              gap: 18,
-              alignItems: 'start',
-            }}
+            className="publish-preview-layout"
+            style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 260px', gap: 18, alignItems: 'start' }}
           >
             <div style={{ minWidth: 0 }}>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>
-                Channel preview
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+                <div>
+                  <div className="eyebrow">Channel preview</div>
+                  {isDocument ? (
+                    <div className="activity-meta" style={{ marginTop: 4 }}>
+                      {formatMode === 'channel'
+                        ? `Auto-fit · ${formatPage.label}`
+                        : `Saved canvas · ${CONTENT_PAGE_SIZES[originalDocument?.pages[0]?.size ?? 'a4'].label}`}
+                      {' · '}preview only; saved version is unchanged
+                    </div>
+                  ) : null}
+                </div>
+                {isDocument ? (
+                  <select
+                    aria-label="Preview format"
+                    className="content-filter-input"
+                    value={formatMode}
+                    onChange={(event) => { setFormatMode(event.target.value as 'channel' | 'saved'); setPreviewPageIndex(0); }}
+                    style={{ maxWidth: '100%', width: 245, minWidth: 180, fontSize: 12 }}
+                  >
+                    <option value="channel">{`Auto-fit for ${channelLabel(channel)} · ${formatPage.label}`}</option>
+                    <option value="saved">{`Original saved canvas · ${CONTENT_PAGE_SIZES[originalDocument?.pages[0]?.size ?? 'a4'].label}`}</option>
+                  </select>
+                ) : null}
               </div>
+              {isDocument && (previewDocument?.pages.length ?? 0) > 1 ? (
+                <div className="publish-preview-page-nav" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <button type="button" className="badge tone-muted" onClick={() => setPreviewPageIndex((index) => Math.max(0, index - 1))} disabled={currentPreviewPageIndex === 0} aria-label="Previous preview page" style={{ border: 0, padding: 6 }}><ChevronLeft size={14} /></button>
+                  <span className="activity-meta">Page {currentPreviewPageIndex + 1} of {previewDocument?.pages.length}</span>
+                  <button type="button" className="badge tone-muted" onClick={() => setPreviewPageIndex((index) => Math.min((previewDocument?.pages.length ?? 1) - 1, index + 1))} disabled={currentPreviewPageIndex >= (previewDocument?.pages.length ?? 1) - 1} aria-label="Next preview page" style={{ border: 0, padding: 6 }}><ChevronRight size={14} /></button>
+                </div>
+              ) : null}
 
-              {needsVisual ? (
+              {needsVisual && !isDocument ? (
                 <div
                   className="preview-surface"
                   style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 14, marginBottom: 14 }}
@@ -341,7 +405,7 @@ export function PublishPreview({
                   minWidth: 0,
                 }}
               >
-                {channel === 'email' ? (
+                {['email', 'newsletter'].includes(channel) ? (
                   <div
                     style={{
                       width: 'min(560px,100%)',
@@ -363,7 +427,7 @@ export function PublishPreview({
                       >
                         {headline}
                       </h3>
-                      {isDocument ? <ContentDocumentView body={body} linkedValues={{ title: item.title, cta: item.currentVersion?.cta ?? null }} /> : paragraphs.slice(0, 5).map((paragraph, index) => (
+                      {isDocument ? renderDocument : paragraphs.slice(0, 5).map((paragraph, index) => (
                         <p key={index} style={{ lineHeight: 1.65, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
                           {paragraph}
                         </p>
@@ -386,7 +450,7 @@ export function PublishPreview({
                       ) : null}
                     </div>
                   </div>
-                ) : channel === 'website' ? (
+                ) : ['website', 'blog', 'landing_page', 'pr'].includes(channel) ? (
                   <div
                     style={{
                       width: 'min(640px,100%)',
@@ -407,7 +471,7 @@ export function PublishPreview({
                       >
                         {headline}
                       </h3>
-                      {isDocument ? <ContentDocumentView body={body} linkedValues={{ title: item.title, cta: item.currentVersion?.cta ?? null }} /> : paragraphs.slice(0, 6).map((paragraph, index) => (
+                      {isDocument ? renderDocument : paragraphs.slice(0, 6).map((paragraph, index) => (
                         <p key={index} style={{ lineHeight: 1.65, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
                           {paragraph}
                         </p>
@@ -478,7 +542,7 @@ export function PublishPreview({
                       >
                         {headline}
                       </h3>
-                      {isDocument ? <ContentDocumentView body={body} linkedValues={{ title: item.title, cta: item.currentVersion?.cta ?? null }} /> : paragraphs.slice(0, 8).map((paragraph, index) => (
+                      {isDocument ? renderDocument : paragraphs.slice(0, 8).map((paragraph, index) => (
                         <p key={index} style={{ lineHeight: 1.65, margin: '0 0 14px', overflowWrap: 'anywhere' }}>
                           {paragraph}
                         </p>
@@ -549,16 +613,17 @@ export function PublishPreview({
                 </div>
               </div>
               <p className="field-help" style={{ marginTop: 14 }}>
-                This preview uses the selected brand palette and the approved generation context. No delivery occurs until you confirm Publish.
+                This preview uses the approved, version-pinned content and selected channel format. Auto-fit is preview-only and does not overwrite the saved version. Delivery depends on a verified channel connector.
               </p>
             </aside>
           </div>
         </div>
 
         <div
+          className="publish-preview-footer"
           style={{
-            position: 'sticky',
-            bottom: 0,
+            position: 'relative',
+            flex: '0 0 auto',
             display: 'flex',
             justifyContent: 'flex-end',
             gap: 9,
