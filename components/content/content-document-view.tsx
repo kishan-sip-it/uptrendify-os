@@ -166,17 +166,19 @@ export function ContentDocumentView({
   const currentPageIndex = pageIndex === undefined ? 0 : Math.max(0, Math.min(pageIndex, doc.pages.length - 1));
   const selectedPage = doc.pages[currentPageIndex];
   const freeDims = CONTENT_PAGE_SIZES[selectedPage?.size ?? doc.pages[0]?.size ?? 'a4'];
+  const fitSinglePage = fitToBounds && (pageIndex !== undefined || (free && doc.pages.length === 1));
+  const constrainFreePage = free && (pageIndex !== undefined || (fitToBounds && doc.pages.length === 1));
   const visiblePages = pageIndex === undefined
     ? doc.pages.map((page, originalIndex) => ({ page, originalIndex }))
     : [{ page: selectedPage!, originalIndex: currentPageIndex }];
-  const scale = fitToBounds && free
+  const scale = fitSinglePage
     ? (fitViewport.width > 0 && fitViewport.height > 0
       ? Math.min(1, fitViewport.width / freeDims.width, fitViewport.height / freeDims.height)
       : Math.min(1, 520 / freeDims.width, 500 / freeDims.height))
     : 1;
 
   const documentElement = (
-    <div className={`content-doc${free ? ' is-free' : ''}`} style={{ ...PAPER, ...(free ? { width: freeDims.width, height: freeDims.height } : {}) }}>
+    <div className={`content-doc${free ? ' is-free' : ''}`} style={{ ...PAPER, ...(constrainFreePage || (fitToBounds && pageIndex !== undefined) ? { width: freeDims.width, height: freeDims.height } : {}) }}>
       {visiblePages.map(({ page, originalIndex: pageIndex }) => (
         <div
           key={page.id}
@@ -195,7 +197,12 @@ export function ContentDocumentView({
               height: CONTENT_PAGE_SIZES[page.size ?? 'a4'].height,
               backgroundColor: page.bg ?? '#ffffff',
               overflow: 'hidden',
-            } : {}),
+            } : (fitToBounds && pageIndex !== undefined ? {
+              width: CONTENT_PAGE_SIZES[page.size ?? 'a4'].width,
+              height: CONTENT_PAGE_SIZES[page.size ?? 'a4'].height,
+              boxSizing: 'border-box' as const,
+              overflow: 'hidden',
+            } : {})),
           }}
         >
           {page.snapshot ? (
@@ -308,7 +315,7 @@ export function ContentDocumentView({
     </div>
   );
 
-  if (fitToBounds && free) {
+  if (fitSinglePage) {
     const scaledWidth = freeDims.width * scale;
     const scaledHeight = freeDims.height * scale;
     return (
