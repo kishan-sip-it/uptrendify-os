@@ -182,6 +182,7 @@ export function ContentDocumentView({
       {visiblePages.map(({ page, originalIndex: pageIndex }) => (
         <div
           key={page.id}
+          data-content-page-index={pageIndex}
           className={`content-doc-page${doc.mode === 'free' ? ' is-free' : ''}`}
           style={{
             ...(page.bg ? { background: page.bg, borderRadius: 10 } : {}),

@@ -17,9 +17,9 @@ const updateSchema = contentItemInputSchema.partial().extend({
   clientId: z.string().uuid().nullish(),
 });
 
-// Body edits create a new version, so they are only allowed while the content
-// is in a creator-owned state. During review/approval/publishing the pinned
-// version must stay exactly what the approver saw when it was submitted.
+// Body edits create a new immutable version. Edits made during active review are allowed
+// only because the version-switch update withdraws that review; approvals stay pinned to
+// the exact content version the reviewer saw.
 import { EDITABLE_BODY_STATUSES } from '@/lib/content/edit-policy';
 
 async function loadItem(

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Eye } from 'lucide-react';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { ContentDocumentView } from '@/components/content/content-document-view';
@@ -21,9 +21,19 @@ export function ContentArtworkPreview({
 }) {
   const [open, setOpen] = useState(false);
   const [activePage, setActivePage] = useState(0);
+  const fullDocumentRef = useRef<HTMLDivElement | null>(null);
   const doc = parseContentBody(body);
   const pageCount = Math.max(1, doc?.pages.length ?? 1);
   const currentPage = Math.min(activePage, pageCount - 1);
+
+  useEffect(() => {
+    if (!open || !doc) return;
+    const container = fullDocumentRef.current;
+    const page = container?.querySelector<HTMLElement>('[data-content-page-index="' + currentPage + '"]');
+    if (!container || !page) return;
+    const top = page.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+    container.scrollTo({ top, behavior: 'smooth' });
+  }, [open, currentPage, pageCount]);
 
   return (
     <section className="content-artwork-preview" aria-label="Saved content preview">
@@ -71,7 +81,7 @@ export function ContentArtworkPreview({
         onClose={() => setOpen(false)}
         className="content-artwork-dialog"
       >
-        <div className="content-artwork-preview__full-document">
+        <div ref={fullDocumentRef} className="content-artwork-preview__full-document">
           {doc ? (
             <ContentDocumentView body={body} linkedValues={linkedValues} />
           ) : (
