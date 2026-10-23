@@ -1023,3 +1023,38 @@
     grid-row: 3;
   }
 }
+
+/* Natural-size canvas nodes used to capture saved visual versions per page. */
+.studio-snapshot-host {
+  position: fixed;
+  left: -100000px;
+  top: 0;
+  z-index: -1;
+  width: max-content;
+  height: max-content;
+  overflow: visible;
+  opacity: 1;
+  pointer-events: none;
+  contain: layout style;
+}
+.studio-snapshot-host .studio-page-frame,
+.studio-snapshot-host .studio-page-clip {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  transform: none !important;
+}
+.studio-snapshot-host .editor-free-block.is-selected {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.studio-snapshot-host .st-free-handle,
+.studio-snapshot-host .studio-page-label,
+.studio-snapshot-host .studio-overflow-badge,
+.studio-snapshot-host .studio-director-chip,
+.studio-snapshot-host .studio-float,
+.studio-snapshot-host .studio-range-toolbar,
+.studio-snapshot-host [data-snapshot-ignore="true"] {
+  display: none !important;
+}
+.studio-snapshot-host .editor-canvas-text { user-select: none; }
