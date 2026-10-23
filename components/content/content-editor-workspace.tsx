@@ -48,6 +48,7 @@ import {
   updateBlockInPages,
   newBlockId,
   newPage,
+  pageBackgroundStyles,
   parseContentBody,
   reorderBlocks,
   headingFontSizeForLevel,
@@ -1667,10 +1668,15 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const setBlockGeometry = (id: string, geometry: NonNullable<EditorBlock['geometry']>) => {
     patchBlock(id, { geometry });
   };
-  const updateBlockGeometry = (block: EditorBlock, key: 'x' | 'y' | 'w' | 'h', rawValue: number) => {
+  const updateBlockGeometry = (block: EditorBlock, key: 'x' | 'y' | 'w' | 'h' | 'rotation', rawValue: number) => {
     const current = block.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
-    const min = key === 'w' || key === 'h' ? 24 : -2000;
-    const value = Number.isFinite(rawValue) ? Math.round(Math.max(min, Math.min(4000, rawValue))) : current[key];
+    const min = key === 'w' || key === 'h' ? 24 : key === 'rotation' ? -180 : -2000;
+    const max = key === 'rotation' ? 180 : 4000;
+    const value = Number.isFinite(rawValue) ? Math.round(Math.max(min, Math.min(max, rawValue))) : current[key];
+    if (key === 'rotation' && !value) {
+      setBlockGeometry(block.id, { x: current.x, y: current.y, w: current.w, h: current.h });
+      return;
+    }
     setBlockGeometry(block.id, { ...current, [key]: value });
   };
   const setPageBackgroundImage = (image: { src: string; alt: string } | null) => {
@@ -3596,11 +3602,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             style={{
               width: pageDims.width,
               minHeight: pageDims.height,
-              backgroundColor: activePage?.bg ?? '#ffffff',
-              backgroundImage: activePage?.backgroundImage ? `url(${JSON.stringify(activePage.backgroundImage.src)})` : undefined,
-              backgroundSize: activePage?.backgroundImage ? (activePage.backgroundImage.fit ?? 'cover') : undefined,
-              backgroundPosition: activePage?.backgroundImage ? 'center' : undefined,
-              backgroundRepeat: activePage?.backgroundImage ? 'no-repeat' : undefined,
+              ...pageBackgroundStyles(activePage ?? {}),
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom / 100})`,
             }}
             onClick={(event) => { if (event.target === frameRef.current) setSelectedId(null); }}
@@ -3810,6 +3812,22 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       <input type="color" value={activePage?.bg ?? '#ffffff'} disabled={!canEdit || previewMode} onChange={(event) => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current ? { ...page, bg: event.target.value } : page)))} aria-label="Page background colour" />
                       <button type="button" className="st-quiet-link" onClick={() => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current ? { ...page, bg: undefined } : page)))} disabled={!canEdit || !activePage?.bg}>Reset to white</button>
                     </div>
+                  </div>
+                  <div className="st-field">
+                    <span>Background gradient</span>
+                    {activePage?.gradient ? (
+                      <div className="st-field-row">
+                        <input type="color" value={activePage.gradient.from} disabled={!canEdit || previewMode} onChange={(event) => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current && page.gradient ? { ...page, gradient: { ...page.gradient, from: event.target.value } } : page)))} aria-label="Gradient start colour" />
+                        <input type="color" value={activePage.gradient.to} disabled={!canEdit || previewMode} onChange={(event) => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current && page.gradient ? { ...page, gradient: { ...page.gradient, to: event.target.value } } : page)))} aria-label="Gradient end colour" />
+                        <input className="st-input" type="number" min={0} max={360} step={5} value={activePage.gradient.angle} disabled={!canEdit || previewMode} onChange={(event) => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current && page.gradient ? { ...page, gradient: { ...page.gradient, angle: Math.max(0, Math.min(360, Math.round(Number(event.target.value) || 0))) } } : page)))} aria-label="Gradient angle in degrees" style={{ width: 64 }} />
+                        <button type="button" className="st-quiet-link" onClick={() => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current ? { ...page, gradient: undefined } : page)))} disabled={!canEdit || previewMode}>Remove</button>
+                      </div>
+                    ) : (
+                      <div className="st-field-row">
+                        <button type="button" className="st-btn" style={{ height: 30 }} disabled={!canEdit || previewMode} onClick={() => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current ? { ...page, gradient: { from: page.bg ?? '#ffffff', to: '#7c7cff', angle: 135 } } : page)))}>Add gradient</button>
+                        <span className="st-preview-tag">{activePage?.backgroundImage ? 'Hidden by image' : 'Optional'}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="st-field">
                     <span>Page background image</span>
@@ -4052,6 +4070,13 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                           <input className="st-input" type="number" min={key === 'w' || key === 'h' ? 24 : -2000} max={4000} step={1} value={selectedGeometry[key]} disabled={!canEditBlock(selected) || previewMode} onChange={(event) => updateBlockGeometry(selected, key, Number(event.target.value))} />
                         </label>
                       ))}
+                      <label className="st-field" style={{ marginTop: 6 }}>
+                        <span>Rotation · degrees</span>
+                        <div className="st-field-row">
+                          <input className="st-input" type="number" min={-180} max={180} step={1} value={selectedGeometry.rotation ?? 0} disabled={!canEditBlock(selected) || previewMode} onChange={(event) => updateBlockGeometry(selected, 'rotation', Number(event.target.value))} />
+                          <button type="button" className="st-quiet-link" onClick={() => updateBlockGeometry(selected, 'rotation', 0)} disabled={!canEditBlock(selected) || previewMode || !selectedGeometry.rotation}>Reset</button>
+                        </div>
+                      </label>
                       <span className="editor-hint">Each element has its own X/Y position and width/height. Drag any handle to resize visually, or enter exact dimensions here.</span>
                     </div>
                   ) : null}
@@ -4533,11 +4558,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             minHeight: dimensions.height,
             overflow: 'hidden',
             transform: 'none',
-            backgroundColor: page.bg ?? '#ffffff',
-            backgroundImage: page.backgroundImage ? `url(${JSON.stringify(page.backgroundImage.src)})` : undefined,
-            backgroundSize: page.backgroundImage ? (page.backgroundImage.fit ?? 'cover') : undefined,
-            backgroundPosition: page.backgroundImage ? 'center' : undefined,
-            backgroundRepeat: page.backgroundImage ? 'no-repeat' : undefined,
+            ...pageBackgroundStyles(page),
             boxShadow: 'none',
           };
           return (

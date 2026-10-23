@@ -177,6 +177,18 @@ const backgroundImage = z.object({
   fit: z.enum(['cover', 'contain']).optional(),
 });
 
+/**
+ * Optional two-stop linear page background. Additive: absent on every body
+ * written before this field existed, and every reader treats it as pure
+ * presentation — solid `bg` remains the canonical fallback.
+ */
+export const pageBackgroundGradientSchema = z.object({
+  from: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  to: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  angle: z.coerce.number().min(0).max(360),
+});
+export type PageBackgroundGradient = z.infer<typeof pageBackgroundGradientSchema>;
+
 const svgVectorBounds = z.object({
   x: z.coerce.number().min(-100_000).max(100_000),
   y: z.coerce.number().min(-100_000).max(100_000),
@@ -299,6 +311,7 @@ const contentDocPageSchema = z.object({
   size: pageSize,
   note: z.string().max(500).optional(),
   bg: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  gradient: pageBackgroundGradientSchema.optional(),
   backgroundImage: backgroundImage.optional(),
   /** Immutable raster snapshot for this saved page/version. */
   snapshot: savedArtworkSnapshotSchema.optional(),
@@ -314,6 +327,33 @@ export const contentDocumentSchema = z.object({
 });
 
 export type ContentDocument = z.infer<typeof contentDocumentSchema>;
+
+/**
+ * Shared background resolution for every render surface (canvas, snapshot
+ * export, saved-body views). Precedence: raster background image, then
+ * gradient, then solid colour. Gradients are pure presentation and never
+ * survive into plain-text projections.
+ */
+export function pageBackgroundStyles(page: {
+  bg?: string;
+  gradient?: PageBackgroundGradient;
+  backgroundImage?: { src: string; fit?: 'cover' | 'contain' };
+}): { backgroundColor: string; backgroundImage?: string; backgroundSize?: string; backgroundPosition?: string; backgroundRepeat?: string } {
+  if (page.backgroundImage) {
+    return {
+      backgroundColor: page.bg ?? '#ffffff',
+      backgroundImage: `url(${JSON.stringify(page.backgroundImage.src)})`,
+      backgroundSize: page.backgroundImage.fit ?? 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+    };
+  }
+  if (page.gradient) {
+    const angle = Math.max(0, Math.min(360, Math.round(page.gradient.angle)));
+    return { backgroundColor: page.bg ?? page.gradient.to, backgroundImage: `linear-gradient(${angle}deg, ${page.gradient.from}, ${page.gradient.to})` };
+  }
+  return { backgroundColor: page.bg ?? '#ffffff' };
+}
 
 const rawDocumentSchema = z.object({ kind: z.unknown(), version: z.unknown() }).passthrough();
 
@@ -354,7 +394,7 @@ export function parseContentBody(body: string): ContentDocument | null {
     // empty array as malformed rather than as an empty page.
     if (source.blocks.length === 0) return null;
     const pageId = typeof source.pageId === 'string' && source.pageId.trim() ? source.pageId : 'page-1';
-    const parsed = contentDocPageSchema.safeParse({ id: pageId, size: source.size, backgroundImage: source.backgroundImage, snapshot: source.snapshot, blocks: source.blocks });
+    const parsed = contentDocPageSchema.safeParse({ id: pageId, size: source.size, bg: source.bg, gradient: source.gradient, backgroundImage: source.backgroundImage, snapshot: source.snapshot, blocks: source.blocks });
     if (!parsed.success) return null;
     return omitUndefinedDeep({ kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, mode: source.mode === 'free' ? 'free' as const : undefined, pages: [parsed.data] });
   }
@@ -375,7 +415,10 @@ export function serializeContentDocument(doc: ContentDocument): string {
     const page = doc.pages[0]!;
     return JSON.stringify({
       kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, ...mode,
-      pageId: page.id, size: page.size, ...(page.backgroundImage ? { backgroundImage: page.backgroundImage } : {}),
+      pageId: page.id, size: page.size,
+      ...(page.bg ? { bg: page.bg } : {}),
+      ...(page.gradient ? { gradient: page.gradient } : {}),
+      ...(page.backgroundImage ? { backgroundImage: page.backgroundImage } : {}),
       ...(page.snapshot ? { snapshot: page.snapshot } : {}),
       blocks: page.blocks,
     });

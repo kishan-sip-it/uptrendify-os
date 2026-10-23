@@ -7,6 +7,7 @@ import {
   DEFAULT_CONTENT_SHAPE_COLOR,
   DEFAULT_CONTENT_TEXT_COLOR,
   headingFontSizeForLevel,
+  pageBackgroundStyles,
   parseContentBody,
   resolveBlockText,
   type ContentDocBlock,
@@ -185,18 +186,12 @@ export function ContentDocumentView({
           data-content-page-index={pageIndex}
           className={`content-doc-page${doc.mode === 'free' ? ' is-free' : ''}`}
           style={{
-            ...(page.bg ? { background: page.bg, borderRadius: 10 } : {}),
-            ...(page.backgroundImage ? {
-              backgroundImage: `url(${JSON.stringify(page.backgroundImage.src)})`,
-              backgroundSize: page.backgroundImage.fit ?? 'cover',
-              backgroundPosition: 'center',
-              backgroundRepeat: 'no-repeat',
-            } : {}),
+            ...((doc.mode !== 'free' && page.bg) ? { background: page.bg, borderRadius: 10 } : {}),
             ...(doc.mode === 'free' ? {
               position: 'relative',
               width: CONTENT_PAGE_SIZES[page.size ?? 'a4'].width,
               height: CONTENT_PAGE_SIZES[page.size ?? 'a4'].height,
-              backgroundColor: page.bg ?? '#ffffff',
+              ...pageBackgroundStyles(page),
               overflow: 'hidden',
             } : (fitToBounds && pageIndex !== undefined ? {
               width: CONTENT_PAGE_SIZES[page.size ?? 'a4'].width,
