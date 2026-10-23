@@ -26,7 +26,8 @@
     "face-api.js": "^0.22.2",
     "postprocessing": "^6.36.0",
     "three": "^0.180.0",
-    "@vercel/speed-insights": "^2.0.0"
+    "@vercel/speed-insights": "^2.0.0",
+    "html-to-image": "1.11.13"
   },
   "devDependencies": {
     "@types/node": "^24.4.0",

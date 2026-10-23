@@ -282,12 +282,26 @@ export type ContentDocBlock = z.infer<typeof contentDocBlockSchema>;
 export type ContentShapeKind = (typeof CONTENT_SHAPE_KINDS)[number];
 
 const pageSize = z.enum(CONTENT_PAGE_SIZE_IDS).nullish().transform((value) => value ?? 'a4');
+const savedArtworkSnapshotSchema = z.object({
+  path: z.string().min(1).max(512).refine(
+    (value) => !value.startsWith('/') && !value.includes('\\') && !value.split('/').includes('..') && /\.(?:png|jpe?g)$/i.test(value),
+  ),
+  width: z.number().int().min(24).max(4800),
+  height: z.number().int().min(24).max(4800),
+  pixelRatio: z.number().min(1).max(3),
+  mimeType: z.enum(['image/png', 'image/jpeg']),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/i),
+});
+export type SavedArtworkSnapshot = z.infer<typeof savedArtworkSnapshotSchema>;
+
 const contentDocPageSchema = z.object({
   id: blockId,
   size: pageSize,
   note: z.string().max(500).optional(),
   bg: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   backgroundImage: backgroundImage.optional(),
+  /** Immutable raster snapshot for this saved page/version. */
+  snapshot: savedArtworkSnapshotSchema.optional(),
   blocks: z.array(contentDocBlockSchema).max(CONTENT_DOC_MAX_BLOCKS),
 });
 export type ContentDocPage = z.infer<typeof contentDocPageSchema>;
@@ -340,7 +354,7 @@ export function parseContentBody(body: string): ContentDocument | null {
     // empty array as malformed rather than as an empty page.
     if (source.blocks.length === 0) return null;
     const pageId = typeof source.pageId === 'string' && source.pageId.trim() ? source.pageId : 'page-1';
-    const parsed = contentDocPageSchema.safeParse({ id: pageId, size: source.size, backgroundImage: source.backgroundImage, blocks: source.blocks });
+    const parsed = contentDocPageSchema.safeParse({ id: pageId, size: source.size, backgroundImage: source.backgroundImage, snapshot: source.snapshot, blocks: source.blocks });
     if (!parsed.success) return null;
     return omitUndefinedDeep({ kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, mode: source.mode === 'free' ? 'free' as const : undefined, pages: [parsed.data] });
   }
@@ -362,6 +376,7 @@ export function serializeContentDocument(doc: ContentDocument): string {
     return JSON.stringify({
       kind: CONTENT_DOC_KIND, version: CONTENT_DOC_VERSION, ...mode,
       pageId: page.id, size: page.size, ...(page.backgroundImage ? { backgroundImage: page.backgroundImage } : {}),
+      ...(page.snapshot ? { snapshot: page.snapshot } : {}),
       blocks: page.blocks,
     });
   }
@@ -380,6 +395,9 @@ export function fitDocumentBodyToChannelFormat(
 ): string {
   const document = parseContentBody(body);
   if (!document) return body;
+  // A saved raster is the visual source of truth; channel previews may scale
+  // the image for display but must never reflow or stretch its underlying design.
+  if (document.pages.some((page) => page.snapshot)) return body;
   const targetSize = defaultPageSizeForChannel(contentType, channel);
   if (document.pages.every((page) => page.size === targetSize)) return body;
   const target = CONTENT_PAGE_SIZES[targetSize];
@@ -500,6 +518,7 @@ export function updateBlockInPages(
     if (index !== pageIndex) return page;
     return {
       ...page,
+      snapshot: undefined,
       blocks: page.blocks.map((block) => {
         if (block.id !== blockId) return block;
         changed = true;

@@ -270,6 +270,41 @@ describe('canvas page sizes', () => {
     expect(copied.blocks.map((block) => block.type)).toEqual(source.blocks.map((block) => block.type));
   });
 
+  it('round-trips saved artwork snapshots and never channel-reflows a pinned image', () => {
+    const original: ContentDocument = {
+      kind: 'uptrendify-doc',
+      version: 1,
+      mode: 'free',
+      pages: [{
+        id: 'snapshot-page',
+        size: 'square',
+        blocks: [{ id: 'snapshot-heading', type: 'heading', text: 'Same pixels everywhere', level: 2, align: 'center', color: '#1d2634', bg: null, bold: true, italic: false, underline: false, geometry: { x: 20, y: 30, w: 700, h: 100 } }],
+        snapshot: {
+          path: '11111111-1111-4111-8111-111111111111/content-artworks/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/page-1.png',
+          width: 760,
+          height: 760,
+          pixelRatio: 2,
+          mimeType: 'image/png',
+          sha256: 'a'.repeat(64),
+        },
+      }],
+    };
+    const body = serializeContentDocument(original);
+    expect(parseContentBody(body)).toEqual(original);
+    expect(fitDocumentBodyToChannelFormat(body, 'instagram', 'social_post')).toBe(body);
+
+    const unsafe = JSON.parse(body) as Record<string, unknown>;
+    unsafe.snapshot = {
+      path: '../private/page.png',
+      width: 760,
+      height: 760,
+      pixelRatio: 2,
+      mimeType: 'image/png',
+      sha256: 'a'.repeat(64),
+    };
+    expect(parseContentBody(JSON.stringify(unsafe))).toBeNull();
+  });
+
   it('fits a preview copy to the selected channel without changing the saved body', () => {
     const original: ContentDocument = {
       kind: 'uptrendify-doc',
