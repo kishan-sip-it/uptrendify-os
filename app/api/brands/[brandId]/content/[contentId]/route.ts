@@ -260,7 +260,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
     }
 
     if (manualVersionId) {
-      const versionUpdate = await supabase.from('content_items').update({ current_version_id: manualVersionId, updated_at: new Date().toISOString() }).eq('id', contentId).eq('organization_id', auth.context.organizationId);
+      const versionUpdateFields: Record<string, unknown> = {
+        current_version_id: manualVersionId,
+        updated_at: new Date().toISOString(),
+      };
+      // Review decisions are bound to the exact current version. Withdraw an in-progress
+      // review atomically with the version switch so no one can approve unseen changes.
+      if (['IN_REVIEW', 'CLIENT_REVIEW'].includes(String(item.status))) versionUpdateFields.status = 'DRAFT';
+      const versionUpdate = await supabase.from('content_items').update(versionUpdateFields).eq('id', contentId).eq('organization_id', auth.context.organizationId);
       if (versionUpdate.error) throw versionUpdate.error;
     }
 

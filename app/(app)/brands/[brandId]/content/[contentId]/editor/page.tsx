@@ -70,6 +70,7 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
         canEdit={Boolean(canEdit && version)}
         versions={versions}
         currentVersionId={item.current_version_id}
+        contentStatus={item.status}
       />
     </>
   );

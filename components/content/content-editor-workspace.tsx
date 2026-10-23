@@ -60,6 +60,7 @@ import {
   type InlineTextRun,
 } from '@/lib/content/document';
 import { ContentDocumentView } from '@/components/content/content-document-view';
+import { AppDialog } from '@/components/ui/app-dialog';
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
 import { importSvgTemplate, type SvgTemplateImport } from '@/lib/studio/import-template';
 import { eraseRasterTextPixels, type RasterTextBounds } from '@/lib/studio/raster-text';
@@ -105,6 +106,9 @@ type TextAssistAction = 'rewrite' | 'shorten' | 'expand' | 'tone' | 'translate';
 type TextContextSubmenu = 'layer' | 'align' | 'heading' | 'component' | null;
 type TextAssistState = { blockId: string; originalText: string; action: TextAssistAction; tone: string; targetLanguage: string; result: string; loading: boolean; error: string | null };
 type StoredReusableTextComponent = { id: string; name: string; createdAt: number; type: 'heading' | 'text'; text: string; style: TextStyleSnapshot };
+type StudioActionDialog =
+  | { kind: 'confirm'; title: string; description: string; confirmLabel: string; destructive?: boolean; onConfirm: () => void }
+  | { kind: 'input'; title: string; description: string; confirmLabel: string; placeholder: string; onConfirm: (value: string) => void };
 type LocalStudioDraft = {
   schemaVersion: 1;
   body: string;
@@ -1055,7 +1059,7 @@ async function sha256ForBlob(blob: Blob): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export function ContentEditorWorkspace({ brandId, organizationId, contentId, documentTitle, contentType, channel, itemCta, brand, versionNumber, body, canEdit, versions, currentVersionId }: {
+export function ContentEditorWorkspace({ brandId, organizationId, contentId, documentTitle, contentType, channel, itemCta, brand, versionNumber, body, canEdit, versions, currentVersionId, contentStatus }: {
   brandId: string;
   organizationId: string;
   contentId: string;
@@ -1069,6 +1073,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   canEdit: boolean;
   versions: Array<{ id: string; version: number; body: string; cta?: string | null }>;
   currentVersionId: string | null;
+  contentStatus: string;
 }) {
   const router = useRouter();
   const studioRootRef = useRef<HTMLDivElement | null>(null);
@@ -1127,6 +1132,19 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [loadedVersionId, setLoadedVersionId] = useState<string | null>(currentVersionId);
   const loadedBaselineVersionIdRef = useRef<string | null>(currentVersionId);
   const [displayVersion, setDisplayVersion] = useState(versionNumber);
+  const [localVersions, setLocalVersions] = useState(versions);
+  const [savedCurrentVersionId, setSavedCurrentVersionId] = useState(currentVersionId);
+  const [editorStatus, setEditorStatus] = useState(contentStatus);
+  const [studioActionDialog, setStudioActionDialog] = useState<StudioActionDialog | null>(null);
+  const [studioDialogValue, setStudioDialogValue] = useState('');
+
+  useEffect(() => {
+    const incomingIds = new Set(versions.map((entry) => entry.id));
+    setLocalVersions((previous) => [...versions, ...previous.filter((entry) => !incomingIds.has(entry.id))].sort((a, b) => b.version - a.version).slice(0, 40));
+    if (versions.some((entry) => entry.id === currentVersionId)) setSavedCurrentVersionId(currentVersionId);
+  }, [versions, currentVersionId]);
+
+  useEffect(() => { setEditorStatus(contentStatus); }, [contentStatus]);
   const [dropTarget, setDropTarget] = useState<{ index: number; below: boolean } | null>(null);
   const [overflow, setOverflow] = useState(false);
   const [safeZones, setSafeZones] = useState(false);
@@ -1387,22 +1405,29 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
 
   const restoreLocalDraft = () => {
     if (!draftRecoveryCandidate) return;
-    if (!window.confirm('This draft was made from a different saved version. Restore it onto the current canvas?')) return;
-    const recovered = parseContentBody(draftRecoveryCandidate.body);
-    if (!recovered) {
-      setError('The saved browser draft could not be parsed. Your current canvas has not been changed.');
-      return;
-    }
-    setPages(recovered.pages.map((page) => layoutPageForFreeCanvas(page)));
-    setFreeMode(true);
-    setActivePageIndex(Math.max(0, Math.min(draftRecoveryCandidate.activePageIndex, recovered.pages.length - 1)));
-    setSelectedId(null);
-    setLoadedSnapshot(serializeContentDocument(initialDoc));
-    setHistory([draftRecoveryCandidate.body]);
-    setHistoryIndex(0);
-    setDraftRecoveryCandidate(null);
-    setSaved(false);
-    setNotice('Recovered the older browser draft. Review it and save as a new version when ready.');
+    setStudioActionDialog({
+      kind: 'confirm',
+      title: 'Restore local draft?',
+      description: 'This browser draft was made from a different saved version. Restore it onto the current canvas? Your current saved version will not change until you save.',
+      confirmLabel: 'Restore draft',
+      onConfirm: () => {
+        const recovered = parseContentBody(draftRecoveryCandidate.body);
+        if (!recovered) {
+          setError('The saved browser draft could not be parsed. Your current canvas has not been changed.');
+          return;
+        }
+        setPages(recovered.pages.map((page) => layoutPageForFreeCanvas(page)));
+        setFreeMode(true);
+        setActivePageIndex(Math.max(0, Math.min(draftRecoveryCandidate.activePageIndex, recovered.pages.length - 1)));
+        setSelectedId(null);
+        setLoadedSnapshot(serializeContentDocument(initialDoc));
+        setHistory([draftRecoveryCandidate.body]);
+        setHistoryIndex(0);
+        setDraftRecoveryCandidate(null);
+        setSaved(false);
+        setNotice('Recovered the older browser draft. Review it and save as a new version when ready.');
+      },
+    });
   };
 
   const persistInlineTextDraft = useCallback((id: string, value: string, richText?: InlineTextRun[]) => {
@@ -1758,9 +1783,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   };
 
   const confirmImportedCanvasReplacement = () => {
-    const hasCurrentContent = pages.some((page) => page.blocks.length > 0 || Boolean(page.bg) || Boolean(page.backgroundImage));
-    if (!dirty && !hasCurrentContent) return true;
-    return window.confirm('Import this template as a new editable canvas? The current canvas will be replaced. You can restore it with Undo (Ctrl+Z). Save a new version first if you need a permanent checkpoint.');
+    setNotice('Template file import is temporarily unavailable. Use the built-in Templates tab to apply a template to the selected page.');
+    return false;
   };
 
   const importSvgMarkup = async (markup: string) => {
@@ -2124,18 +2148,36 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       ? 'Free canvas enabled. Select any element to move and resize it independently.'
       : 'Flow layout enabled. Element geometry is preserved and can be restored by switching back to Free canvas.');
   };
-  const insertTemplate = (templateId: string) => {
-    const currentHasContent = pages.length > 1 || pages.some((entry) => entry.blocks.length > 0 || Boolean(entry.bg) || Boolean(entry.backgroundImage));
-    if ((dirty || currentHasContent) && !window.confirm('Replace the current canvas with this template? The previous canvas will remain available with Undo (Ctrl+Z). Save your current work as a version first if you need a permanent checkpoint.')) return;
-    const page = buildTemplatePage(templateId, brand.colors[0] ?? '#7c7cff');
-    if (!page) return;
-    commit([page], 'free');
-    setActivePageIndex(0);
+  const applyTemplateToActivePage = (templateId: string) => {
+    const currentPages = pagesRef.current;
+    const currentIndex = activePageIndexRef.current;
+    if (!currentPages[currentIndex]) return;
+    const templatePage = buildTemplatePage(templateId, brand.colors[0] ?? '#7c7cff');
+    if (!templatePage) return;
+    const nextPages = currentPages.map((page, index) => index === currentIndex ? templatePage : layoutPageForFreeCanvas(page));
+    commit(nextPages, 'free');
+    setActivePageIndex(currentIndex);
     setSelectedId(null);
     setFreeMode(true);
     setPreviewMode(false);
     setLoadedVersionId(null);
-    setNotice('Template inserted as an undoable canvas change. Use Undo to restore the previous design, or edit and save as a new version.');
+    setNotice('Applied the template to page ' + (currentIndex + 1) + '. Other pages were preserved.');
+  };
+
+  const insertTemplate = (templateId: string) => {
+    const current = pagesRef.current[activePageIndexRef.current];
+    if (!current) return;
+    const pageHasContent = current.blocks.length > 0 || Boolean(current.bg) || Boolean(current.backgroundImage);
+    if (!pageHasContent) { applyTemplateToActivePage(templateId); return; }
+    const pageNumber = activePageIndexRef.current + 1;
+    setStudioActionDialog({
+      kind: 'confirm',
+      title: 'Replace page ' + pageNumber + '?',
+      description: 'This replaces only page ' + pageNumber + '. All other pages in this document will remain intact. Save a version first if you need a permanent checkpoint.',
+      confirmLabel: 'Replace this page',
+      destructive: true,
+      onConfirm: () => applyTemplateToActivePage(templateId),
+    });
   };
   const duplicateBlock = (id: string) => {
     const page = pages[activePageIndex];
@@ -2270,23 +2312,31 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const editTextLink = (blockId: string) => {
     const block = findBlockById(blockId);
     if (!isEditableTextBlock(block) || !canEditBlock(block)) return;
-    const entered = window.prompt('Enter a web link (https:// or http://). Leave empty to remove the link.', block.href ?? '');
-    if (entered === null) return;
-    if (!entered.trim()) {
-      patchBlock(blockId, { href: undefined });
-      setNotice('Text link removed.');
-      setTextContextMenu(null);
-      return;
-    }
-    const href = normalizeHttpLinkUrl(entered);
-    if (!href) {
-      setError('Enter a valid HTTP or HTTPS URL.');
-      setTextContextMenu(null);
-      return;
-    }
-    patchBlock(blockId, { href });
-    setNotice('Web link added to this text block. It opens in a new tab in the document view.');
-    setTextContextMenu(null);
+    setStudioDialogValue(block.href ?? '');
+    setStudioActionDialog({
+      kind: 'input',
+      title: 'Edit text link',
+      description: 'Enter an HTTP or HTTPS URL, or leave the field empty to remove the link.',
+      confirmLabel: 'Save link',
+      placeholder: 'https://example.com',
+      onConfirm: (entered) => {
+        if (!entered.trim()) {
+          patchBlock(blockId, { href: undefined });
+          setNotice('Text link removed.');
+          setTextContextMenu(null);
+          return;
+        }
+        const href = normalizeHttpLinkUrl(entered);
+        if (!href) {
+          setError('Enter a valid HTTP or HTTPS URL.');
+          setTextContextMenu(null);
+          return;
+        }
+        patchBlock(blockId, { href });
+        setNotice('Web link added to this text block. It opens in a new tab in the document view.');
+        setTextContextMenu(null);
+      },
+    });
   };
 
   const openTextAssist = (blockId: string, action: TextAssistAction) => {
@@ -2350,36 +2400,41 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     const block = findBlockById(blockId);
     if (!isEditableTextBlock(block) || !canEditBlock(block)) return;
     const suggested = blockName(block).slice(0, 60);
-    const name = window.prompt('Name this reusable text component (saved locally for this brand in this browser).', suggested);
-    if (name === null) return;
-    const cleanName = name.trim().slice(0, 80);
-    if (!cleanName) {
-      setError('Enter a name for the reusable component.');
-      setTextContextMenu(null);
-      return;
-    }
-    const component: StoredReusableTextComponent = {
-      id: crypto.randomUUID(),
-      name: cleanName,
-      createdAt: Date.now(),
-      type: block.type,
-      text: resolveBlockText(block, linkedValues),
-      style: {
-        color: block.color, bg: block.bg, bold: block.bold, italic: block.italic,
-        underline: block.underline, align: block.align, fontSize: block.fontSize,
-        fontFamily: block.fontFamily, opacity: block.opacity,
-        ...(block.type === 'text' ? { size: block.size } : { level: block.level }),
+    setStudioDialogValue(suggested);
+    setStudioActionDialog({
+      kind: 'input',
+      title: 'Save reusable text component',
+      description: 'Give this reusable text style a name. It will be stored locally for this brand in this browser.',
+      confirmLabel: 'Save component',
+      placeholder: 'Component name',
+      onConfirm: (name) => {
+        const cleanName = name.trim().slice(0, 80);
+        if (!cleanName) {
+          setError('Enter a name for the reusable component.');
+          setTextContextMenu(null);
+          return;
+        }
+        const component: StoredReusableTextComponent = {
+          id: crypto.randomUUID(),
+          name: cleanName,
+          createdAt: Date.now(),
+          type: block.type,
+          text: resolveBlockText(block, linkedValues),
+          style: {
+            color: block.color, bg: block.bg, bold: block.bold, italic: block.italic,
+            underline: block.underline, align: block.align, fontSize: block.fontSize,
+            fontFamily: block.fontFamily, opacity: block.opacity,
+            ...(block.type === 'text' ? { size: block.size } : { level: block.level }),
+          },
+        };
+        const next = [component, ...reusableTextComponents.filter((entry) => entry.name.toLowerCase() !== cleanName.toLowerCase())].slice(0, 50);
+        setReusableTextComponents(next);
+        try { window.localStorage.setItem(reusableTextStorageKey, JSON.stringify(next)); }
+        catch { setNotice('Saved the reusable component in this session. Browser storage is unavailable.'); }
+        setNotice('Saved “' + cleanName + '” to reusable text components.');
+        setTextContextMenu(null);
       },
-    };
-    const next = [component, ...reusableTextComponents.filter((entry) => entry.name.toLowerCase() !== cleanName.toLowerCase())].slice(0, 50);
-    setReusableTextComponents(next);
-    try {
-      window.localStorage.setItem(reusableTextComponentsKey, JSON.stringify(next));
-      setNotice(`Reusable component “${cleanName}” saved for this brand in this browser.`);
-    } catch {
-      setNotice('Component added for this editing session, but browser storage is unavailable so it will not persist after closing Studio.');
-    }
-    setTextContextMenu(null);
+    });
   };
 
   const insertReusableTextComponent = (component: StoredReusableTextComponent) => {
@@ -2533,17 +2588,12 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     }));
   };
 
-  const switchVersion = (versionId: string) => {
+  const openVersion = (versionId: string) => {
     if (versionId === loadedVersionId) return;
-    if (dirty && !window.confirm('Discard unsaved changes and open that version?')) return;
-    const source = versions.find((entry) => entry.id === versionId);
+    const source = localVersions.find((entry) => entry.id === versionId);
     if (!source) return;
     const parsedDoc = parseContentBody(source.body) ?? createDocumentFromText(source.body);
-    const doc = {
-      ...parsedDoc,
-      mode: 'free' as const,
-      pages: parsedDoc.pages.map((page) => layoutPageForFreeCanvas(page)),
-    };
+    const doc = { ...parsedDoc, mode: 'free' as const, pages: parsedDoc.pages.map((page) => layoutPageForFreeCanvas(page)) };
     const snapshot = serializeContentDocument(doc);
     setPages(doc.pages);
     setFreeMode(true);
@@ -2557,7 +2607,19 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     setHistoryIndex(0);
     setSaved(false);
     manualZoomRef.current = false;
-    setNotice(`Opened v${source.version}${versionId === currentVersionId ? ' (the current version)' : ''}. Saving creates a new version from it.`);
+    setNotice('Opened v' + source.version + (versionId === savedCurrentVersionId ? ' (the current version)' : '') + '. Saving creates a new version from it.');
+  };
+
+  const switchVersion = (versionId: string) => {
+    if (versionId === loadedVersionId) return;
+    if (!dirty) { openVersion(versionId); return; }
+    setStudioActionDialog({
+      kind: 'confirm',
+      title: 'Discard unsaved changes?',
+      description: 'Opening another version replaces the current unsaved canvas with that saved version.',
+      confirmLabel: 'Discard and open',
+      onConfirm: () => openVersion(versionId),
+    });
   };
 
   async function save() {
@@ -2635,18 +2697,26 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ body: savedBody }),
       });
-      const result = await response.json().catch(() => null);
+      const result = await response.json().catch(() => null) as { error?: string; item?: { currentVersionId?: unknown; status?: unknown } } | null;
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(result?.error || 'Could not save the edited content');
-
+      const savedVersionId = typeof result?.item?.currentVersionId === 'string' ? result.item.currentVersionId : null;
+      if (!savedVersionId) throw new Error('The save response did not include the new version id. Reload the editor to verify the saved version before submitting.');
+      const nextVersionNumber = Math.max(versionNumber, ...localVersions.map((entry) => entry.version), 0) + 1;
+      setLocalVersions((previous) => [{ id: savedVersionId, version: nextVersionNumber, body: savedBody, cta: itemCta }, ...previous.filter((entry) => entry.id !== savedVersionId)].sort((a, b) => b.version - a.version).slice(0, 40));
+      setSavedCurrentVersionId(savedVersionId);
+      setLoadedVersionId(savedVersionId);
+      loadedBaselineVersionIdRef.current = savedVersionId;
+      setDisplayVersion(nextVersionNumber);
+      if (typeof result?.item?.status === 'string') setEditorStatus(result.item.status);
       setPages(nextPages);
-      setLoadedVersionId(null);
-      loadedBaselineVersionIdRef.current = null;
       setLoadedSnapshot(savedBody);
       setHistory([savedBody]);
       setHistoryIndex(0);
       setSaved(true);
-      setNotice('Saved a new version with immutable page images. Approval and preview screens will show these exact images.');
+      const reviewWasWithdrawn = ['IN_REVIEW', 'CLIENT_REVIEW'].includes(editorStatus) && result?.item?.status === 'DRAFT';
+      if (reviewWasWithdrawn) setNotice('Saved a new version. The previous review was withdrawn because the artwork changed; send this exact version for approval again.');
+      else setNotice('Saved a new version with immutable page images. Approval and preview screens will show these exact images.');
       router.refresh();
     } catch (err) {
       if (!bodyVersionSaveAttempted && newlyUploadedPaths.length) {
@@ -2666,7 +2736,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
 
   const submitForApproval = async () => {
     if (saveInFlight.current || submitting || !canEdit || dirty || needsSnapshot) return;
-    if (loadedVersionId !== currentVersionId) {
+    if (loadedVersionId !== savedCurrentVersionId) {
       setError('This canvas shows an older version. Open the current version (or save it as a new version) before submitting.');
       return;
     }
@@ -3236,7 +3306,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       ref={studioRootRef}
       className={`studio${focusMode ? ' is-focus' : ''}`}
       style={!focusMode && studioHeight !== null ? { height: studioHeight } : undefined}
-      onPaste={handleTemplatePaste}
     >
       {/* ---------- top bar ---------- */}
       <div className="studio-topbar">
@@ -3259,8 +3328,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             disabled={busy}
             aria-label="Content version"
           >
-            {versions.map((entry) => (
-              <option key={entry.id} value={entry.id}>v{entry.version}{entry.id === currentVersionId ? ' · current' : ''}</option>
+            {localVersions.map((entry) => (
+              <option key={entry.id} value={entry.id}>v{entry.version}{entry.id === savedCurrentVersionId ? ' · current' : ''}</option>
             ))}
           </select>
         ) : (
@@ -3285,7 +3354,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         <span style={{ flex: 1 }} />
         <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index <= 0) return index; const target = history[index - 1]; const doc = parseContentBody(target); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); setActivePageIndex((current) => Math.min(current, doc.pages.length - 1)); setLoadedVersionId(target === loadedSnapshot ? loadedBaselineVersionIdRef.current : null); } return index - 1; })} disabled={historyIndex <= 0} title="Undo (Ctrl+Z)" aria-label="Undo"><Undo2 size={15} /></button>
         <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index >= history.length - 1) return index; const target = history[index + 1]; const doc = parseContentBody(target); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); setActivePageIndex((current) => Math.min(current, doc.pages.length - 1)); setLoadedVersionId(target === loadedSnapshot ? loadedBaselineVersionIdRef.current : null); } return index + 1; })} disabled={historyIndex >= history.length - 1} title="Redo (Ctrl+Y)" aria-label="Redo"><Redo2 size={15} /></button>
-        <button type="button" className="st-btn" onClick={() => { setFocusMode(false); setDockTab('insert'); setDrawerSearch(''); setNotice('Import a Canva SVG export or Studio JSON from the Insert panel. Select a text layer to edit it, or double-click text directly on the canvas.'); }} title="Import editable Canva SVG or Studio JSON"><ImageIcon size={13} /> Import template</button>
         <button type="button" className={`st-btn${freeMode ? ' st-btn--primary' : ''}`} onClick={toggleCanvasMode} aria-pressed={freeMode} title="Switch between stacked flow layout and independently movable/resizable canvas layers">Free canvas{freeMode ? ' ✓' : ''}</button>
         <button type="button" className="st-btn" onClick={() => setPreviewMode((value) => !value)} aria-pressed={previewMode}>{previewMode ? 'Exit preview' : 'Preview'}</button>
         <button type="button" className="st-btn" onClick={() => void save()} disabled={busy || !canEdit || (!dirty && !needsSnapshot)} title={!canEdit ? 'Editing is available in draft, after change requests, or after rejection.' : !dirty && needsSnapshot ? 'Create the immutable image snapshot for this saved design.' : !dirty ? 'Nothing changed and the saved artwork already exists.' : 'Save these edits and their exact image snapshots as a new version'}>
@@ -3365,23 +3433,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
 
               {dockTab === 'insert' ? (
                 <>
-                  <span className="st-label">Import editable template</span>
-                  <label className="st-field">
-                    <span>SVG / Studio JSON / PNG-JPG-WEBP · raster AI import max 2 MB</span>
-                    <input
-                      ref={templateFileInputRef}
-                      className="st-input"
-                      type="file"
-                      accept=".svg,image/svg+xml,.json,application/json,image/png,image/jpeg,image/webp"
-                      disabled={!canEdit || isImportingTemplate || isUploadingImage}
-                      onChange={(event) => {
-                        const file = event.currentTarget.files?.[0];
-                        if (file) void importTemplateFile(file);
-                      }}
-                    />
-                  </label>
-                  <p className="editor-hint">SVG/Studio JSON retain editable layers where the source exposes them. PNG/JPG/WEBP use a review-first Groq Vision workflow: choose the text regions to grab, correct OCR/style/bounds if needed, and only selected text pixels are reconstructed. Font matching and photo/gradient backgrounds may need manual review. PDF/DOCX/PPTX import is not supported yet.</p>
-                  {isImportingTemplate ? <p className="editor-hint" role="status">Detecting template layers and importing embedded images…</p> : null}
                   <span className="st-label">Add image</span>
                   <label className="st-field">
                     <span>Upload from device · PNG/JPG/WEBP, max 2 MB</span>
@@ -4056,11 +4107,19 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               <button type="button" className="studio-page-tab is-danger" onClick={() => {
                 const currentPages = pagesRef.current;
                 const currentIndex = activePageIndexRef.current;
-                if (!window.confirm(`Delete page ${currentIndex + 1}? Its blocks are removed from the document.`)) return;
-                const nextPages = currentPages.filter((_, index) => index !== currentIndex);
-                commit(nextPages);
-                setActivePageIndex(Math.max(0, Math.min(currentIndex, nextPages.length - 1)));
-                setSelectedId(null);
+                setStudioActionDialog({
+                  kind: 'confirm',
+                  title: 'Delete page ' + (currentIndex + 1) + '?',
+                  description: 'This removes this page and its blocks from the next saved document version. Other pages will stay in place.',
+                  confirmLabel: 'Delete page',
+                  destructive: true,
+                  onConfirm: () => {
+                    const nextPages = currentPages.filter((_, index) => index !== currentIndex);
+                    commit(nextPages);
+                    setActivePageIndex(Math.max(0, Math.min(currentIndex, nextPages.length - 1)));
+                    setSelectedId(null);
+                  },
+                });
               }} disabled={!canEdit} title="Delete this page">
                 <Trash2 size={11} />
               </button>
@@ -4482,6 +4541,45 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           </div>
         </div>
       ) : null}
+
+      <AppDialog
+        open={Boolean(studioActionDialog)}
+        title={studioActionDialog?.title ?? 'Confirm action'}
+        description={studioActionDialog?.description}
+        onClose={() => setStudioActionDialog(null)}
+        className="studio-action-dialog"
+      >
+        {studioActionDialog?.kind === 'input' ? (
+          <form className="app-dialog__form" onSubmit={(event) => {
+            event.preventDefault();
+            const dialog = studioActionDialog;
+            if (dialog?.kind !== 'input') return;
+            dialog.onConfirm(studioDialogValue);
+            setStudioActionDialog(null);
+          }}>
+            <label className="app-dialog__field">
+              <span>Value</span>
+              <input autoFocus value={studioDialogValue} onChange={(event) => setStudioDialogValue(event.target.value)} placeholder={studioActionDialog.placeholder} maxLength={500} />
+            </label>
+            <div className="app-dialog__actions">
+              <button type="button" className="app-dialog__button" onClick={() => setStudioActionDialog(null)}>Cancel</button>
+              <button type="submit" className="app-dialog__button app-dialog__button--primary">{studioActionDialog.confirmLabel}</button>
+            </div>
+          </form>
+        ) : studioActionDialog?.kind === 'confirm' ? (
+          <div className="app-dialog__form">
+            <div className="app-dialog__actions">
+              <button type="button" className="app-dialog__button" onClick={() => setStudioActionDialog(null)}>Cancel</button>
+              <button type="button" className={'app-dialog__button ' + (studioActionDialog.destructive ? 'app-dialog__button--danger' : 'app-dialog__button--primary')} onClick={() => {
+                const dialog = studioActionDialog;
+                if (dialog?.kind !== 'confirm') return;
+                dialog.onConfirm();
+                setStudioActionDialog(null);
+              }}>{studioActionDialog.confirmLabel}</button>
+            </div>
+          </div>
+        ) : null}
+      </AppDialog>
     </div>
   );
 

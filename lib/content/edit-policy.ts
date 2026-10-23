@@ -1,7 +1,6 @@
 /**
- * Statuses in which the creator owns the content body and may save new
- * versions. Shared by the content PATCH route, the content detail page and
- * the dedicated editor page so the UI can never offer an edit the API would
- * reject (and vice versa).
+ * Statuses where content authors can create a new version. Editing a version
+ * during review is allowed, but the PATCH route must withdraw that review in
+ * the same current-version update so nobody can approve artwork they did not see.
  */
-export const EDITABLE_BODY_STATUSES: readonly string[] = ['DRAFT', 'CHANGES_REQUESTED', 'REJECTED'];
+export const EDITABLE_BODY_STATUSES: readonly string[] = ['DRAFT', 'CHANGES_REQUESTED', 'REJECTED', 'IN_REVIEW', 'CLIENT_REVIEW'];
