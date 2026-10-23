@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   CONTENT_PAGE_SIZES,
   DEFAULT_CONTENT_SHAPE_COLOR,
+  DEFAULT_CONTENT_TEXT_COLOR,
   headingFontSizeForLevel,
   parseContentBody,
   resolveBlockText,
@@ -136,7 +137,7 @@ export function ContentDocumentView({
                   className={`content-doc-heading align-${block.align}`}
                   style={{
                     ...geoStyle,
-                    ...(block.color ? { color: block.color } : {}),
+                    color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR,
                     ...(block.bg ? { background: block.bg } : {}),
                     fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined,
                     fontStyle: block.italic ? 'italic' : undefined,
@@ -154,7 +155,7 @@ export function ContentDocumentView({
                   className={`content-doc-text size-${block.size} align-${block.align}`}
                   style={{
                     ...geoStyle,
-                    ...(block.color ? { color: block.color } : {}),
+                    color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR,
                     ...(block.bg ? { background: block.bg } : {}),
                     fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined,
                     fontStyle: block.italic ? 'italic' : undefined,
