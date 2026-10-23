@@ -61,6 +61,7 @@ import {
 } from '@/lib/content/document';
 import { ContentDocumentView } from '@/components/content/content-document-view';
 import { AppDialog } from '@/components/ui/app-dialog';
+import { reconcileContentVersionState } from '@/lib/content/version-state';
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
 import { importSvgTemplate, type SvgTemplateImport } from '@/lib/studio/import-template';
 import { eraseRasterTextPixels, type RasterTextBounds } from '@/lib/studio/raster-text';
@@ -1139,10 +1140,26 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [studioDialogValue, setStudioDialogValue] = useState('');
 
   useEffect(() => {
-    const incomingIds = new Set(versions.map((entry) => entry.id));
-    setLocalVersions((previous) => [...versions, ...previous.filter((entry) => !incomingIds.has(entry.id))].sort((a, b) => b.version - a.version).slice(0, 40));
-    if (versions.some((entry) => entry.id === currentVersionId)) setSavedCurrentVersionId(currentVersionId);
-  }, [versions, currentVersionId]);
+    const reconciled = reconcileContentVersionState(
+      versions,
+      localVersions,
+      currentVersionId,
+      savedCurrentVersionId,
+    );
+    const versionListUnchanged = reconciled.versions.length === localVersions.length
+      && reconciled.versions.every((entry, index) => {
+        const existing = localVersions[index];
+        return existing
+          && entry.id === existing.id
+          && entry.version === existing.version
+          && entry.body === existing.body
+          && (entry.cta ?? null) === (existing.cta ?? null);
+      });
+    if (!versionListUnchanged) setLocalVersions(reconciled.versions);
+    if (reconciled.currentVersionId !== savedCurrentVersionId) {
+      setSavedCurrentVersionId(reconciled.currentVersionId);
+    }
+  }, [versions, currentVersionId, localVersions, savedCurrentVersionId]);
 
   useEffect(() => { setEditorStatus(contentStatus); }, [contentStatus]);
   const [dropTarget, setDropTarget] = useState<{ index: number; below: boolean } | null>(null);
