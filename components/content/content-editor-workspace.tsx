@@ -2429,7 +2429,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         };
         const next = [component, ...reusableTextComponents.filter((entry) => entry.name.toLowerCase() !== cleanName.toLowerCase())].slice(0, 50);
         setReusableTextComponents(next);
-        try { window.localStorage.setItem(reusableTextStorageKey, JSON.stringify(next)); }
+        try { window.localStorage.setItem(reusableTextComponentsKey, JSON.stringify(next)); }
         catch { setNotice('Saved the reusable component in this session. Browser storage is unavailable.'); }
         setNotice('Saved “' + cleanName + '” to reusable text components.');
         setTextContextMenu(null);
