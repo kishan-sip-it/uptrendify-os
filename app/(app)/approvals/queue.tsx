@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Check, Eye, RefreshCw, Search } from 'lucide-react';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/feedback';
 import { PublishPreview } from '@/components/publishing/publish-preview';
+import { ContentArtworkPreview } from '@/components/content/content-artwork-preview';
 import { CONTENT_STATUS_LABELS, channelLabel, contentTypeLabel } from '@/lib/content/schema';
 import { QUEUE_STATUSES } from '@/lib/publish/schema';
 
@@ -77,6 +78,15 @@ export function ApprovalsQueue() {
   return (
     <div>
       <div className="card" style={{ padding: '14px 18px', marginBottom: 14 }}><div className="eyebrow">How content reaches this queue</div><p className="activity-meta" style={{ margin: '5px 0 0', lineHeight: 1.5 }}>Generate a version in Content Studio, then choose <strong style={{ color: 'var(--text)' }}>Send to approval queue</strong>. After approval, move it to the publishing queue; a publisher can preview the selected channel before attempting delivery.</p></div>
+      <div className="card" style={{ padding: '14px 18px', marginBottom: 14, borderColor: 'color-mix(in srgb, var(--status-warning, #d97706) 35%, var(--border))' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span className="badge tone-warn">Publishing · Beta / Coming Soon</span>
+          <strong style={{ fontSize: 13 }}>Live channel connectors are a separate milestone.</strong>
+        </div>
+        <p className="activity-meta" style={{ margin: '6px 0 0', lineHeight: 1.5 }}>
+          Approval and queueing are available. External delivery will remain unavailable until the appropriate OAuth connection and a registered platform connector are implemented and verified.
+        </p>
+      </div>
       <div className="card" style={{ padding: '14px 18px' }}><div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}><div style={{ position: 'relative', flex: 1, minWidth: 220 }}><Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} /><input className="content-filter-input" style={{ paddingLeft: 30, width: '100%' }} placeholder="Search titles…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') applyFilters(); }} /></div><select className="content-filter-input" value={status} onChange={(event) => { setStatus(event.target.value); load(true, 1, query, event.target.value); }} style={{ minWidth: 180 }}><option value="">All statuses</option>{QUEUE_STATUSES.map((value) => <option key={value} value={value}>{labelFor(value)}</option>)}</select><button type="button" className="badge" onClick={applyFilters} style={{ border: 0, cursor: 'pointer', padding: '8px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}><RefreshCw size={13} /> Apply</button><span className="metric-label">{data ? `${data.total} ${data.total === 1 ? 'item' : 'items'}` : ''}</span></div></div>
 
       {actionNotice ? <div className="card" role="status" aria-live="polite" style={{ marginTop: 14, borderColor: 'color-mix(in srgb, var(--accent) 40%, var(--border))' }}><p style={{ margin: 0, color: 'var(--text)' }}>{actionNotice}</p></div> : null}
@@ -88,7 +98,7 @@ export function ApprovalsQueue() {
         <div key={item.id} className="card" style={{ marginTop: 14, padding: '18px 20px' }}>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}><span className={`badge ${statusTone(item.status)}`}>{labelFor(item.status)}</span><span className="metric-label">{item.clientName ? `${item.clientName} · ` : ''}{item.brandName ?? 'Brand'}{item.campaignName ? ` · campaign: ${item.campaignName}` : ''}</span><span className="metric-label">{contentTypeLabel(item.type)}{item.channel ? ` · ${channelLabel(item.channel)}` : ''}</span><span className="activity-meta" style={{ marginLeft: 'auto' }}>updated {timeAgo(item.updatedAt)}</span></div>
           <a href={`/brands/${item.brandId}/content/${item.id}`} style={{ display: 'block', marginTop: 12, color: 'inherit', textDecoration: 'none' }}><h3 style={{ margin: 0, fontWeight: 650 }}>{item.title}</h3></a>
-          {item.currentVersion ? <div className="card" style={{ marginTop: 12, padding: '14px 16px', background: 'var(--panel-2)' }}><div className="activity-meta" style={{ marginBottom: 6 }}>v{item.currentVersion.version}{item.currentVersion.model ? ` · ${item.currentVersion.model}` : ''}{item.currentVersion.headline ? ` · ${item.currentVersion.headline}` : ''}</div><p style={{ margin: 0, fontSize: 14, lineHeight: 1.55 }}>{item.currentVersion.bodyPreview || '(empty version body)'}</p></div> : <p className="subtitle" style={{ marginTop: 10 }}>No generated version exists yet.</p>}
+          {item.currentVersion ? <div className="card" style={{ marginTop: 12, padding: '14px 16px', background: 'var(--panel-2)' }}><div className="activity-meta" style={{ marginBottom: 6 }}>v{item.currentVersion.version}{item.currentVersion.model ? ` · ${item.currentVersion.model}` : ''}{item.currentVersion.headline ? ` · ${item.currentVersion.headline}` : ''}</div><ContentArtworkPreview title={item.title} body={item.currentVersion.body} linkedValues={{ title: item.title, cta: item.currentVersion.cta ?? null }} versionLabel={"v" + item.currentVersion.version} /></div> : <p className="subtitle" style={{ marginTop: 10 }}>No generated version exists yet.</p>}
           {item.reviews.length > 0 ? <div className="activity-list" style={{ marginTop: 12 }}>{item.reviews.map((review) => <div className="activity-item" key={review.id}><span className="status-dot" style={{ background: review.decision === 'approve' || review.decision === 'queue_for_publish' ? 'var(--accent)' : review.decision === 'reject' ? 'var(--danger)' : 'var(--accent-2)', marginTop: 5, flexShrink: 0 }} /><div className="activity-body"><div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}><span className="activity-title">{decisionLabel(review.decision)}</span><span className="activity-meta">{timeAgo(review.createdAt)}</span></div>{review.comment ? <div className="activity-meta" style={{ marginTop: 4 }}>“{review.comment}”</div> : null}</div></div>)}</div> : null}
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>

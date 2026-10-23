@@ -38,9 +38,14 @@ export default function NewBrandPage() {
       </div>
       <div className="card" style={{ marginTop: 18 }}>
         <BrandIntake
-          onCreated={(brandId) => {
+          onCreated={(brandId, details) => {
             setCreatedBrandId(brandId);
-            setStatus({ kind: 'success', message: 'Brand created, complete Brand IQ imported, and research started. Opening the Brand Profile…' });
+            setStatus({
+              kind: 'success',
+              message: details?.manual
+                ? 'Brand created with the name and URL you entered. The website analysis failed, so no identity was imported — every field in the Brand Profile is empty and ready for manual edits. Opening the Brand Profile…'
+                : 'Brand created, complete Brand IQ imported, and research started. Opening the Brand Profile…',
+            });
             window.setTimeout(() => router.replace('/brands/' + brandId + '?view=profile'), 400);
           }}
         />

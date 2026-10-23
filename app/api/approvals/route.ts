@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_PUBLISH_CONTENT, CAN_REVIEW_CONTENT, CAN_VIEW_CONTENT, requireOrgRole } from '@/lib/auth/roles';
 import { CONTENT_TYPE_VALUES } from '@/lib/content/schema';
+import { contentBodyToPlainText } from '@/lib/content/document';
 import { QUEUE_STATUSES } from '@/lib/publish/schema';
 import { obs } from '@/lib/obs/logger';
 
@@ -58,7 +59,7 @@ export async function GET(request: Request) {
         campaignId: item.campaign_id ?? null, campaignName: (item.campaign_id && campaignLabels.get(item.campaign_id as string)) ?? null,
         type: item.type, title: item.title, status: item.status, channel: item.channel ?? null,
         brandStyle: brand ? { primaryColor: brand.primaryColor, secondaryColors: brand.secondaryColors, visualIdentity: brand.visualIdentity } : null,
-        currentVersion: version ? { id: version.id, version: version.version, headline: version.headline, body: version.body ?? '', bodyPreview: (version.body ?? '').slice(0, 280), cta: version.cta ?? null, provider: version.provider, model: version.model, createdAt: version.created_at } : null,
+        currentVersion: version ? { id: version.id, version: version.version, headline: version.headline, body: version.body ?? '', bodyPreview: contentBodyToPlainText(version.body ?? '').slice(0, 280), cta: version.cta ?? null, provider: version.provider, model: version.model, createdAt: version.created_at } : null,
         reviews: (reviewsByItem.get(item.id as string) ?? []).map((review) => ({ id: review.id, decision: review.decision, comment: review.comment ?? null, reviewerId: review.reviewer_id, contentVersionId: review.content_version_id ?? null, createdAt: review.created_at })),
         createdAt: item.created_at, updatedAt: item.updated_at,
       };

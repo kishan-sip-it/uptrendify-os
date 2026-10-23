@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('node:dns/promises', () => {
   const lookup = vi.fn();
-  return { default: { lookup } };
+  const resolve4 = vi.fn();
+  const resolve6 = vi.fn();
+  return { default: { lookup, resolve4, resolve6 } };
 });
 
 import dns from 'node:dns/promises';
@@ -28,6 +30,8 @@ describe('orderPublicAddresses', () => {
 describe('resolvePublicAddresses', () => {
   beforeEach(() => {
     vi.mocked(dns.lookup).mockReset();
+    vi.mocked(dns.resolve4).mockReset();
+    vi.mocked(dns.resolve6).mockReset();
   });
 
   it('filters private/loopback/link-local and deduplicates', async () => {
@@ -49,6 +53,19 @@ addr('108.159.80.28', 4),
   it('returns an empty list when every address is private', async () => {
     vi.mocked(dns.lookup).mockResolvedValueOnce([addr('127.0.0.1', 4), addr('::1', 6)] as any);
     expect(await resolvePublicAddresses('example.com')).toEqual([]);
+  });
+
+  it('recovers from transient OS resolver timeouts using A/AAAA record lookups', async () => {
+    const timeout = () => Object.assign(new Error('resolver timed out'), { code: 'ETIMEDOUT' });
+    vi.mocked(dns.lookup).mockRejectedValueOnce(timeout()).mockRejectedValueOnce(timeout());
+    vi.mocked(dns.resolve4).mockResolvedValueOnce(['93.184.216.34']);
+    vi.mocked(dns.resolve6).mockRejectedValueOnce(Object.assign(new Error('no AAAA record'), { code: 'ENODATA' }));
+
+    await expect(resolvePublicAddresses('record-fallback.example.test')).resolves.toEqual([
+      addr('93.184.216.34', 4),
+    ]);
+    expect(dns.resolve4).toHaveBeenCalledWith('record-fallback.example.test');
+    expect(dns.resolve6).toHaveBeenCalledWith('record-fallback.example.test');
   });
 });
 

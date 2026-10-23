@@ -15,6 +15,11 @@ import './selection-contrast.css';
 import './interactive-state-contrast.css';
 import './ui-primitives.css';
 import './responsive-system.css';
+import './workflow-checklist.css';
+import './content-document.css';
+import './content-editor.css';
+import './studio.css';
+import './ui-ux-foundation.css';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { NetworkStatus } from '@/components/ui/NetworkStatus';
 import { GlobalWorkflowChecklist } from '@/components/ui/global-workflow-checklist';
@@ -60,7 +65,7 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const themeBoot = `(() => { try { const t = localStorage.getItem('uptrendify-theme'); document.documentElement.dataset.theme = t === 'dark' || t === 'system' ? t : 'light'; } catch { document.documentElement.dataset.theme = 'light'; } })()`;
+  const themeBoot = `(() => { try { const t = localStorage.getItem('uptrendify-theme'); document.documentElement.dataset.theme = t === 'dark' || t === 'light' ? t : 'system'; } catch { document.documentElement.dataset.theme = 'system'; } })()`;
   return (
     <html lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBoot }} /></head>

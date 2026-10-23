@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowRight, Globe2, ListChecks, Plus, Search, Sparkles, Target, Users, Zap,
+  ArrowRight, ChevronDown, Globe2, ListChecks, Plus, Search, Sparkles, Target, Users, Zap,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EmptyState, ErrorState } from '@/components/ui/feedback';
@@ -12,6 +12,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { RelativeTime } from '@/components/ui/relative-time';
 import { SectionHeading } from '@/components/ui/section-heading';
 import type { DashboardData, NextAction, RecentBrand, ResearchActivity, StrategyActivity } from '@/lib/dashboard/data';
+
+const DASHBOARD_RECENT_BRANDS_LIMIT = 4;
 
 const ACTION_ICONS: Record<NextAction['kind'], LucideIcon> = {
   brand: Plus,
@@ -64,30 +66,42 @@ function MetricCard({ label, value, Icon, hint, delay }: { label: string; value:
 }
 
 function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
+  const visibleBrands = brands.slice(0, DASHBOARD_RECENT_BRANDS_LIMIT);
+  const moreBrands = brands.slice(DASHBOARD_RECENT_BRANDS_LIMIT);
+
   return (
-    <div className="card" style={{ gridColumn: 'span 2' }}>
-      <SectionHeading className="section-title" eyebrow="Portfolio" title="Recent brands" />
+    <div className="card portfolio-card" style={{ gridColumn: 'span 2' }}>
+      <SectionHeading className="section-title" eyebrow="Portfolio" title="Recent brands" action={moreBrands.length > 0 ? (
+        <details className="portfolio-drawer">
+          <summary className="portfolio-drawer-trigger"><ChevronDown size={13} /> See more <span aria-hidden="true">· {moreBrands.length}</span></summary>
+          <div className="portfolio-drawer-content">
+            <div className="portfolio-drawer-heading"><strong>More recent brands</strong><span>{moreBrands.length} more</span></div>
+            <div className="portfolio-drawer-list">
+              {moreBrands.map((brand) => (
+                <a className="portfolio-drawer-brand" href={`/brands/${brand.id}`} key={brand.id}>
+                  <span className="portfolio-drawer-brand-copy"><strong>{brand.name}</strong><span>{brand.industry || brand.website_url?.replace('https://', '').replace('http://', '') || 'Brand workspace'}</span></span>
+                  <SharedStatusBadge status={brand.status ?? 'ACTIVE'} className="portfolio-drawer-status" />
+                  <ArrowRight className="portfolio-drawer-arrow" size={14} aria-hidden="true" />
+                </a>
+              ))}
+            </div>
+          </div>
+        </details>
+      ) : undefined} />
       {brands.length === 0 ? (
-        <EmptyState
-          title="No brands yet"
-          description="Add your first brand to start analyzing its public website and building strategies."
-          action={<span className="field-note">Use <strong>Add brand</strong> in the left sidebar to create your first brand.</span>}
-        />
+        <EmptyState title="No brands yet" description="Add your first brand to start analyzing its public website and building strategies." action={<a className="ui-empty-state-cta" href="/brands/new"><Plus size={15} aria-hidden="true" /> Create your first brand <ArrowRight size={15} aria-hidden="true" /></a>} />
       ) : (
         <div className="grid" id="brands">
-          {brands.map((brand, i) => (
+          {visibleBrands.map((brand, i) => (
             <a className="card brand-card hover-lift animate-fade-up" href={`/brands/${brand.id}`} key={brand.id} style={{ animationDelay: `${i * 60}ms`, display: 'block' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
-                <div>
-                  <h3 style={{ margin: 0 }}>{brand.name}</h3>
-                  <div className="metric-label">{brand.industry || brand.website_url?.replace(/^https?:\/\//, '') || 'Brand'}</div>
+              <div className="brand-card-header">
+                <div className="brand-card-copy">
+                  <h3>{brand.name}</h3>
+                  <div className="metric-label">{brand.industry || brand.website_url?.replace('https://', '').replace('http://', '') || 'Brand'}</div>
                 </div>
-                <SharedStatusBadge status={brand.status ?? 'ACTIVE'} />
+                <SharedStatusBadge status={brand.status ?? 'ACTIVE'} className="brand-card-status" />
               </div>
-              <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--muted)', fontSize: 13 }}>
-                <span>Onboarded <RelativeTime date={brand.created_at} /></span>
-                <ArrowRight size={16} />
-              </div>
+              <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--muted)', fontSize: 13, gap: 8, minWidth: 0 }}><span>Onboarded <RelativeTime date={brand.created_at} /></span><ArrowRight size={16} /></div>
             </a>
           ))}
         </div>
@@ -95,7 +109,6 @@ function RecentBrandsPanel({ brands }: { brands: RecentBrand[] }) {
     </div>
   );
 }
-
 function ResearchActivityPanel({ activity }: { activity: ResearchActivity[] }) {
   return (
     <div className="card">
@@ -104,7 +117,7 @@ function ResearchActivityPanel({ activity }: { activity: ResearchActivity[] }) {
         <EmptyState
           title="No research yet"
           description="Research runs will appear here once a brand's public website has been analyzed."
-          action={<span className="field-note">Use <strong>Add brand</strong> in the left sidebar to start a research run.</span>}
+          action={<a className="ui-empty-state-cta" href="/brands/new"><Plus size={15} aria-hidden="true" /> Add a brand to start research <ArrowRight size={15} aria-hidden="true" /></a>}
         />
       ) : (
         <div className="activity-list">
@@ -133,11 +146,12 @@ function StrategyActivityPanel({ activity }: { activity: StrategyActivity[] }) {
         <EmptyState
           title="No strategies yet"
           description="Generated strategies will appear here once a brand has been researched."
+          action={<a className="ui-empty-state-cta" href="/brands/new"><Plus size={15} aria-hidden="true" /> Create a brand to build your first strategy <ArrowRight size={15} aria-hidden="true" /></a>}
         />
       ) : (
-        <div className="activity-list">
+        <div className={"activity-list strategy-version-list" + (activity.length > 1 ? " is-scrollable" : "")}>
           {activity.map((run, i) => (
-            <a className="activity-item hover-lift animate-fade-up" href={`/brands/${run.brand_id}`} key={run.id} style={{ animationDelay: `${i * 50}ms`, display: 'block' }}>
+            <a className="activity-item strategy-version-item hover-lift animate-fade-up" href={`/brands/${run.brand_id}`} key={run.id} style={{ animationDelay: `${i * 50}ms` }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                 <div className="activity-body">
                   <div className="activity-title">
@@ -290,8 +304,13 @@ export function DashboardContent() {
         <RecentBrandsPanel brands={data.recentBrands} />
         <div className="grid" style={{ gap: 16 }}>
           <ResearchActivityPanel activity={data.recentResearch} />
-          <StrategyActivityPanel activity={data.recentStrategies} />
+          {data.recentStrategies.length > 0 ? <StrategyActivityPanel activity={data.recentStrategies} /> : null}
         </div>
+        {data.recentStrategies.length === 0 ? (
+          <div style={{ gridColumn: '1 / -1', minWidth: 0 }}>
+            <StrategyActivityPanel activity={data.recentStrategies} />
+          </div>
+        ) : null}
       </div>
     </>
   );

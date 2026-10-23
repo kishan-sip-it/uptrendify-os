@@ -4,6 +4,7 @@ import { obs } from '@/lib/obs/logger';
 import { assertPublicHttpUrl, assertResolvablePublicHost, fetchPublicHttp, readBoundedBody } from './url-security';
 import { translateResearchError } from './errors';
 import { extractPage } from './extract';
+import { isBlockedWebsiteResponse, isRenderedReaderError } from '@/lib/brand/visual-extraction';
 import { isLikelyAuthGatedContent, isLowSignalResearchPath, isResearchCandidate, normalizeResearchUrl, sameResearchSite } from './url-policy';
 
 export { sameResearchSite } from './url-policy';
@@ -212,12 +213,82 @@ function normalizeUrl(raw: string) {
   return normalizeResearchUrl(raw);
 }
 
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+async function mergeExistingSourceMetadata(
+  supabase: SupabaseClient,
+  organizationId: string,
+  brandId: string,
+  canonicalUrl: string,
+  additions: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  try {
+    const existing = await supabase
+      .from('brand_sources')
+      .select('metadata')
+      .eq('organization_id', organizationId)
+      .eq('brand_id', brandId)
+      .eq('canonical_url', canonicalUrl)
+      .maybeSingle();
+    if (existing.error) throw existing.error;
+    const merged = { ...metadataRecord(existing.data?.metadata), ...additions };
+    delete merged.last_fetch_error;
+    delete merged.error;
+    delete merged.error_code;
+    return merged;
+  } catch (error) {
+    // Record the scan warning but never fail an otherwise successful page just
+    // because optional historical metadata was not readable.
+    obs.warn('Could not read prior source metadata during refresh', {
+      url: canonicalUrl,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return additions;
+  }
+}
+
 async function recordPageFailure(
   supabase: SupabaseClient,
   args: { organizationId: string; brandId: string; researchRunId: string; url: string; code: string; message: string; httpStatus?: number },
-): Promise<void> {
+): Promise<ProcessedPage | null> {
   try {
     const canonical = args.url;
+    const existing = await supabase
+      .from('brand_sources')
+      .select('id,title,status,extracted_text,content_hash,metadata')
+      .eq('organization_id', args.organizationId)
+      .eq('brand_id', args.brandId)
+      .eq('canonical_url', canonical)
+      .maybeSingle();
+    if (existing.error) throw existing.error;
+
+    const savedText = typeof existing.data?.extracted_text === 'string' ? existing.data.extracted_text : '';
+    const cachedText = savedText.trim();
+    if (existing.data?.id && cachedText.length >= 180) {
+      // Do not turn a previously successful source into an empty FAILED row
+      // during a transient block, timeout or network error. Reuse its saved
+      // evidence, and keep it linked/auditable for this research run.
+      const reused = await supabase.from('research_sources').upsert({
+        research_run_id: args.researchRunId,
+        organization_id: args.organizationId,
+        source_id: existing.data.id,
+        status: 'PROCESSED',
+      }, { onConflict: 'research_run_id,source_id' });
+      if (reused.error) throw reused.error;
+      return {
+        id: existing.data.id,
+        url: canonical,
+        canonicalUrl: canonical,
+        title: typeof existing.data.title === 'string' ? existing.data.title : null,
+        text: savedText,
+      };
+    }
+
+    const existingMetadata = metadataRecord(existing.data?.metadata);
     const source = await supabase
       .from('brand_sources')
       .upsert({
@@ -225,35 +296,34 @@ async function recordPageFailure(
         brand_id: args.brandId,
         url: canonical,
         canonical_url: canonical,
-        title: null,
+        title: existing.data?.title ?? null,
         content_type: 'text/html',
         status: 'FAILED',
         http_status: args.httpStatus ?? 0,
         retrieved_at: new Date().toISOString(),
-        content_hash: null,
-        extracted_text: '',
-        metadata: { error_code: args.code, error: args.message },
+        content_hash: existing.data?.content_hash ?? null,
+        extracted_text: existing.data?.extracted_text ?? '',
+        metadata: { ...existingMetadata, error_code: args.code, error: args.message },
       }, { onConflict: 'brand_id,canonical_url' })
       .select('id')
       .single();
-    if (source.error || !source.data) return;
-    await supabase
+    if (source.error || !source.data) return null;
+    const link = await supabase
       .from('research_sources')
-      .upsert(
-        {
-          research_run_id: args.researchRunId,
-          organization_id: args.organizationId,
-          source_id: source.data.id,
-          status: 'FAILED',
-          error_message: `[${args.code}] ${args.message}`.slice(0, 400),
-        },
-        { onConflict: 'research_run_id,source_id' },
-      );
+      .upsert({
+        research_run_id: args.researchRunId,
+        organization_id: args.organizationId,
+        source_id: source.data.id,
+        status: 'FAILED',
+        error_message: ('[' + args.code + '] ' + args.message).slice(0, 400),
+      }, { onConflict: 'research_run_id,source_id' });
+    if (link.error) throw link.error;
+    return null;
   } catch (error) {
     obs.warn('Failed to record page failure', { url: args.url, error: error instanceof Error ? error.message : String(error) });
+    return null;
   }
 }
-
 export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Promise<CrawlOutcome> {
   const { organizationId, brandId, websiteUrl, researchRunId } = args;
   const e = env();
@@ -319,6 +389,16 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         }
       };
 
+      const persistPageFailure = async (failure: { organizationId: string; brandId: string; researchRunId: string; url: string; code: string; message: string; httpStatus?: number }) => {
+        const cached = await recordPageFailure(supabase, failure);
+        if (cached && !processedPages.some((page) => page.id === cached.id)) {
+          processedPages.push(cached);
+          pagesProcessed += 1;
+          pagesDiscovered = seen.size;
+          partial = true;
+        }
+      };
+
       try {
         const host = new URL(target).hostname;
         await assertResolvablePublicHost(host);
@@ -334,6 +414,41 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           });
         } finally {
           clearTimeout(timeout);
+        }
+
+        // Some public sites reject the crawler's descriptive user-agent but
+        // serve the same page to an ordinary browser. Retry only transient or
+        // bot-protection responses, with the same SSRF-safe fetch wrapper and
+        // a separate bounded timeout, before falling back to rendered reading.
+        if (!response.ok && [401, 403, 407, 408, 429, 451, 500, 502, 503, 504].includes(response.status)) {
+          const browserController = new AbortController();
+          const browserTimeout = setTimeout(() => browserController.abort(), e.RESEARCH_TIMEOUT_MS);
+          try {
+            const browserResponse = await fetchPublicHttp(target, {
+              signal: browserController.signal,
+              redirect: 'manual',
+              headers: {
+                'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                accept: 'text/html,application/xhtml+xml',
+              },
+            });
+            if (REDIRECT_STATUSES.has(browserResponse.status)) {
+              response = browserResponse;
+            } else if (browserResponse.ok) {
+              const browserType = browserResponse.headers.get('content-type') || '';
+              if (browserType.includes('text/html') || browserType.includes('application/xhtml+xml')) {
+                const probe = await readBoundedBody(browserResponse.clone(), Math.min(e.MAX_RESEARCH_BYTES, 100_000));
+                // Some bot-protection systems return an HTTP-200 interstitial to
+                // browsers too. Keep the original blocked response so the normal
+                // rendered-reader fallback runs instead of saving that interstitial.
+                if (!isBlockedWebsiteResponse(probe.content)) response = browserResponse;
+              }
+            }
+          } catch {
+            // Preserve the original response and continue to the rendered-reader fallback.
+          } finally {
+            clearTimeout(browserTimeout);
+          }
         }
 
         if (REDIRECT_STATUSES.has(response.status)) {
@@ -363,7 +478,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           if (renderedFallbacksUsed < MAX_RENDERED_FALLBACKS && [401, 403, 407, 408, 429, 451, 500, 502, 503, 504].includes(response.status)) {
             const rendered = await fetchRenderedFallback(target);
             renderedFallbacksUsed += 1;
-            if (rendered) {
+            if (rendered && rendered.text.trim().length >= 180 && !isRenderedReaderError(rendered.text)) {
               const renderedLinks = extractRenderedLinks(rendered.text, target);
               partial = true;
               processedPages.push({
@@ -393,7 +508,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
                 retrieved_at: new Date().toISOString(),
                 content_hash: contentHash,
                 extracted_text: rendered.text,
-                metadata: { rendered_fallback: true },
+                metadata: await mergeExistingSourceMetadata(supabase, organizationId, brandId, target, { rendered_fallback: true }),
               }, { onConflict: 'brand_id,canonical_url' }).select('id').single();
               if (source.error) throw source.error;
               const link = await supabase.from('research_sources').upsert({
@@ -427,14 +542,14 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
 
           partial = true;
           recordRunFailure(`HTTP_${response.status}`, `HTTP ${response.status}`);
-          await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: `HTTP_${response.status}`, message: `HTTP ${response.status}`, httpStatus: response.status });
+          await persistPageFailure({ organizationId, brandId, researchRunId, url: target, code: `HTTP_${response.status}`, message: `HTTP ${response.status}`, httpStatus: response.status });
           continue;
         }
 
         if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
           partial = true;
           recordRunFailure('NOT_HTML', 'Not an HTML page');
-          await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: 'NOT_HTML', message: 'Not an HTML page', httpStatus: response.status });
+          await persistPageFailure({ organizationId, brandId, researchRunId, url: target, code: 'NOT_HTML', message: 'Not an HTML page', httpStatus: response.status });
           continue;
         }
 
@@ -442,7 +557,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         if (contentLength > e.MAX_RESEARCH_BYTES) {
           partial = true;
           recordRunFailure('CONTENT_TOO_LARGE', `Content exceeds ${e.MAX_RESEARCH_BYTES} bytes`);
-          await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: 'CONTENT_TOO_LARGE', message: `Content exceeds ${e.MAX_RESEARCH_BYTES} bytes`, httpStatus: response.status });
+          await persistPageFailure({ organizationId, brandId, researchRunId, url: target, code: 'CONTENT_TOO_LARGE', message: `Content exceeds ${e.MAX_RESEARCH_BYTES} bytes`, httpStatus: response.status });
           continue;
         }
 
@@ -450,6 +565,42 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         if (truncated) { partial = true; }
 
         let extracted = extractPage(content, target);
+        let usedRenderedFallback = false;
+
+        // Some WAFs return a challenge page with HTTP 200. It is not website
+        // evidence. Recover with the public reader or record a failure without
+        // overwriting any previously captured content for this URL.
+        if (isBlockedWebsiteResponse(content)) {
+          let rendered: { title: string | null; text: string } | null = null;
+          if (renderedFallbacksUsed < MAX_RENDERED_FALLBACKS) {
+            renderedFallbacksUsed += 1;
+            rendered = await fetchRenderedFallback(target);
+          }
+          if (rendered && rendered.text.trim().length >= 180 && !isRenderedReaderError(rendered.text)) {
+            extracted = {
+              ...extracted,
+              title: rendered.title ?? extracted.title,
+              text: rendered.text,
+              links: [...new Set([...extracted.links, ...extractRenderedLinks(rendered.text, target)])],
+            };
+            usedRenderedFallback = true;
+            partial = true;
+            obs.info('Recovered an HTTP-200 block interstitial with rendered research', { researchRunId, brandId, url: target });
+          } else {
+            partial = true;
+            recordRunFailure('BOT_BLOCKED', 'The website returned a security challenge instead of usable public content.');
+            await persistPageFailure({
+              organizationId,
+              brandId,
+              researchRunId,
+              url: target,
+              code: 'BOT_BLOCKED',
+              message: 'The website returned a security challenge instead of usable public content.',
+              httpStatus: response.status,
+            });
+            continue;
+          }
+        }
 
         // Raw HTML is often only an app shell for JS-rendered sites. When the
         // extracted document is too thin, use Jina Reader's free browser-backed
@@ -460,7 +611,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
             'AUTH_REQUIRED',
             'The public website requires a login or blocks automated public access, so no trustworthy evidence was extracted from this page.',
           );
-          await recordPageFailure(supabase, {
+          await persistPageFailure({
             organizationId,
             brandId,
             researchRunId,
@@ -472,7 +623,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           continue;
         }
 
-        if (renderedFallbacksUsed < MAX_RENDERED_FALLBACKS && shouldUseRenderedFallback(content, extracted.text, extracted.links, extracted.headings)) {
+        if (!usedRenderedFallback && renderedFallbacksUsed < MAX_RENDERED_FALLBACKS && shouldUseRenderedFallback(content, extracted.text, extracted.links, extracted.headings)) {
           const rendered = await fetchRenderedFallback(target);
           renderedFallbacksUsed += 1;
           if (rendered && rendered.text.length > extracted.text.length) {
@@ -482,6 +633,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
               text: rendered.text,
               links: [...new Set([...extracted.links, ...extractRenderedLinks(rendered.text, target)])],
             };
+            usedRenderedFallback = true;
             obs.info('Used rendered research fallback', { researchRunId, brandId, url: target });
           }
         }
@@ -503,13 +655,17 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
           url: target,
           canonical_url: canonical,
           title: extracted.title,
-          content_type: contentType,
+          content_type: usedRenderedFallback ? 'text/plain' : contentType,
           status: 'ACTIVE',
           http_status: response.status,
           retrieved_at: new Date().toISOString(),
           content_hash: contentHash,
           extracted_text: extracted.text,
-          metadata: { description: extracted.description, headings: extracted.headings },
+          metadata: await mergeExistingSourceMetadata(supabase, organizationId, brandId, canonical, {
+            description: extracted.description,
+            headings: extracted.headings,
+            rendered_fallback: usedRenderedFallback,
+          }),
         }, { onConflict: 'brand_id,canonical_url' }).select('id').single();
         if (source.error) throw source.error;
 
@@ -553,7 +709,7 @@ export async function crawlBrand(supabase: SupabaseClient, args: CrawlArgs): Pro
         const info = translateResearchError(error);
         recordRunFailure(info.code, info.message);
         obs.warn('Research page failed', { brandId, url: target, error: info.message, errorCode: info.code });
-        await recordPageFailure(supabase, { organizationId, brandId, researchRunId, url: target, code: info.code, message: info.message });
+        await persistPageFailure({ organizationId, brandId, researchRunId, url: target, code: info.code, message: info.message });
       }
 
       const progress = await supabase.from('research_runs').update({ pages_processed: pagesProcessed, pages_discovered: seen.size }).eq('id', researchRunId);

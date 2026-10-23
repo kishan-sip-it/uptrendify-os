@@ -2,7 +2,7 @@ name: UpTrendifyOS CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/**', 'fix/**']
   pull_request:
 
 jobs:
@@ -61,7 +61,7 @@ jobs:
           trap 'kill $APP_PID 2>/dev/null || true' EXIT
 
           node --input-type=module <<'NODE'
-          const publicRoutes = ['/', '/progress', '/register', '/login', '/forgot-password', '/reset-password', '/api/health'];
+          const publicRoutes = ['/', '/register', '/login', '/forgot-password', '/reset-password', '/api/health'];
           const protectedRoutes = ['/dashboard', '/brands', '/content', '/onboarding'];
           const deadline = Date.now() + 30000;
 

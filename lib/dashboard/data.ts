@@ -5,7 +5,8 @@ export const CONTENT_REVIEW_STATUSES = ['IN_REVIEW', 'CLIENT_REVIEW', 'CHANGES_R
 export const ACTIVE_RESEARCH_STATUSES = ['QUEUED', 'RUNNING'] as const;
 export const ACTIVE_STRATEGY_STATUSES = ['QUEUED', 'RUNNING'] as const;
 export const PENDING_SUGGESTION_STATUS = 'PENDING' as const;
-export const RECENT_BRANDS_LIMIT = 4;
+// Keep the full portfolio available to the compact dashboard brand drawer.
+export const RECENT_BRANDS_LIMIT = 100;
 export const RECENT_RESEARCH_LIMIT = 6;
 export const RECENT_STRATEGIES_LIMIT = 6;
 export const NEXT_ACTIONS_LIMIT = 3;

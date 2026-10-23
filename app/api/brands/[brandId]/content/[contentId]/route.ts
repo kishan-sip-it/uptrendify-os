@@ -17,6 +17,11 @@ const updateSchema = contentItemInputSchema.partial().extend({
   clientId: z.string().uuid().nullish(),
 });
 
+// Body edits create a new immutable version. Edits made during active review are allowed
+// only because the version-switch update withdraws that review; approvals stay pinned to
+// the exact content version the reviewer saw.
+import { EDITABLE_BODY_STATUSES } from '@/lib/content/edit-policy';
+
 async function loadItem(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   args: { brandId: string; contentId: string; organizationId: string },
@@ -202,6 +207,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
 
     if (Object.keys(body).length === 0) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
 
+    if (body.body !== undefined && !EDITABLE_BODY_STATUSES.includes(String(item.status))) {
+      return NextResponse.json(
+        { error: `The content body is locked while its status is ${item.status}. Return it to draft (or resubmit flow) before editing the reviewed version.` },
+        { status: 409 },
+      );
+    }
+
     if (body.clientId !== undefined) {
       const brandContext = await supabase.from('brands').select('client_id').eq('id', brandId).eq('organization_id', auth.context.organizationId).maybeSingle();
       if (brandContext.error) throw brandContext.error;
@@ -248,7 +260,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ br
     }
 
     if (manualVersionId) {
-      const versionUpdate = await supabase.from('content_items').update({ current_version_id: manualVersionId, updated_at: new Date().toISOString() }).eq('id', contentId).eq('organization_id', auth.context.organizationId);
+      const versionUpdateFields: Record<string, unknown> = {
+        current_version_id: manualVersionId,
+        updated_at: new Date().toISOString(),
+      };
+      // Review decisions are bound to the exact current version. Withdraw an in-progress
+      // review atomically with the version switch so no one can approve unseen changes.
+      if (['IN_REVIEW', 'CLIENT_REVIEW'].includes(String(item.status))) versionUpdateFields.status = 'DRAFT';
+      const versionUpdate = await supabase.from('content_items').update(versionUpdateFields).eq('id', contentId).eq('organization_id', auth.context.organizationId);
       if (versionUpdate.error) throw versionUpdate.error;
     }
 

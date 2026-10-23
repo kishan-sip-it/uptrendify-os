@@ -76,19 +76,105 @@ function isPrivateIp(ip: string) {
 
 export type LookupAddress = { address: string; family: number };
 
-const dnsLookupTimeoutMs = 5_000;
-const transientDnsCodes = new Set(['EAI_AGAIN', 'EBUSY', 'ECONNRESET', 'ETIMEDOUT']);
+const dnsLookupTimeoutMs = 3_500;
+const transientDnsCodes = new Set(['EAI_AGAIN', 'EBUSY', 'ECONNRESET', 'ECONNREFUSED', 'ESERVFAIL', 'ETIMEDOUT']);
+const PUBLIC_DNS_CACHE_TTL_MS = 15_000;
+const PUBLIC_DNS_CACHE_MAX_ENTRIES = 256;
+
+type CachedPublicDnsEntry = { expiresAt: number; addresses: LookupAddress[] };
+type DnsResolutionResult = { allAddresses: LookupAddress[]; publicAddresses: LookupAddress[] };
+
+// Cache only IP addresses already checked against the public-address policy.
+// Reuse them for validation and socket lookup so one scan doesn't repeatedly
+// consume resolver time, and pin the socket lookup to the address we validated.
+const publicDnsCache = new Map<string, CachedPublicDnsEntry>();
+const publicDnsInFlight = new Map<string, Promise<DnsResolutionResult>>();
+
+function dnsCacheKey(hostname: string): string {
+  return hostname.trim().toLowerCase().replace(/\.$/, '');
+}
+
+function cloneDnsResolution(result: DnsResolutionResult): DnsResolutionResult {
+  return {
+    allAddresses: result.allAddresses.map((entry) => ({ ...entry })),
+    publicAddresses: result.publicAddresses.map((entry) => ({ ...entry })),
+  };
+}
+
+async function lookupWithTimeout(hostname: string): Promise<LookupAddress[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      dns.lookup(hostname, { all: true, verbatim: true }),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error('Research hostname lookup timed out') as NodeJS.ErrnoException;
+          error.code = 'ETIMEDOUT';
+          reject(error);
+        }, dnsLookupTimeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function resolveRecordFamily(hostname: string, family: 4 | 6): Promise<LookupAddress[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const query = family === 4 ? dns.resolve4(hostname) : dns.resolve6(hostname);
+  try {
+    const values = await Promise.race([
+      query,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error(`Research hostname IPv${family} record lookup timed out`) as NodeJS.ErrnoException;
+          error.code = 'ETIMEDOUT';
+          reject(error);
+        }, dnsLookupTimeoutMs);
+      }),
+    ]);
+    return values.map((address) => ({ address, family }));
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function resolveWithDnsRecords(hostname: string): Promise<LookupAddress[]> {
+  // dns.lookup uses the OS/NSS resolver path. Querying A and AAAA records
+  // directly is a fallback for transient OS resolver stalls; both results still
+  // pass the exact same public-IP filter before any socket can connect.
+  const results = await Promise.allSettled([
+    resolveRecordFamily(hostname, 4),
+    resolveRecordFamily(hostname, 6),
+  ]);
+  const addresses = results
+    .filter((result): result is PromiseFulfilledResult<LookupAddress[]> => result.status === 'fulfilled')
+    .flatMap((result) => result.value);
+  const seen = new Set<string>();
+  const unique = addresses.filter((entry) => {
+    if (seen.has(entry.address)) return false;
+    seen.add(entry.address);
+    return true;
+  });
+  if (unique.length > 0) return unique;
+
+  const fallbackErrors = results
+    .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    .map((result) => result.reason);
+  const transientError = fallbackErrors.find((error) => {
+    const code = typeof (error as { code?: unknown })?.code === 'string' ? (error as { code: string }).code : '';
+    return transientDnsCodes.has(code);
+  });
+  if (transientError) throw transientError;
+  // ENODATA / ENOTFOUND in both families means there is no usable A/AAAA result.
+  return [];
+}
 
 async function resolveAllAddresses(hostname: string): Promise<LookupAddress[]> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
-      const addresses = await Promise.race([
-        dns.lookup(hostname, { all: true, verbatim: true }),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('Research hostname lookup timed out')), dnsLookupTimeoutMs);
-        }),
-      ]);
+      const addresses = await lookupWithTimeout(hostname);
       const seen = new Set<string>();
       const unique: LookupAddress[] = [];
       for (const entry of addresses) {
@@ -100,16 +186,60 @@ async function resolveAllAddresses(hostname: string): Promise<LookupAddress[]> {
     } catch (error) {
       lastError = error;
       const code = typeof (error as { code?: unknown }).code === 'string' ? (error as { code: string }).code : '';
-      if (attempt >= 2 || !transientDnsCodes.has(code)) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (!transientDnsCodes.has(code)) throw error;
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 300));
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  try {
+    return await resolveWithDnsRecords(hostname);
+  } catch (fallbackError) {
+    // Preserve a retryable DNS failure if both resolver paths are unavailable.
+    throw fallbackError instanceof Error ? fallbackError : (lastError instanceof Error ? lastError : new Error(String(fallbackError)));
+  }
+}
+
+async function resolvePublicDns(hostname: string): Promise<DnsResolutionResult> {
+  const key = dnsCacheKey(hostname);
+  const now = Date.now();
+  const cached = publicDnsCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    // A positive cache entry is safe to represent as both lists: it contains
+    // only the already-validated public addresses from the original resolution.
+    publicDnsCache.delete(key);
+    publicDnsCache.set(key, cached);
+    return cloneDnsResolution({ allAddresses: cached.addresses, publicAddresses: cached.addresses });
+  }
+  if (cached) publicDnsCache.delete(key);
+
+  const existing = publicDnsInFlight.get(key);
+  if (existing) return cloneDnsResolution(await existing);
+
+  const lookup = (async (): Promise<DnsResolutionResult> => {
+    const allAddresses = await resolveAllAddresses(hostname);
+    const publicAddresses = orderPublicAddresses(allAddresses.filter((entry) => !isPrivateIp(entry.address)));
+
+    // Empty or private-only DNS answers are deliberately not cached. Existing
+    // callers still receive an empty public-address list for private-only hosts.
+    if (publicAddresses.length > 0) {
+      while (publicDnsCache.size >= PUBLIC_DNS_CACHE_MAX_ENTRIES) {
+        const oldestKey = publicDnsCache.keys().next().value;
+        if (!oldestKey) break;
+        publicDnsCache.delete(oldestKey);
+      }
+      publicDnsCache.set(key, { expiresAt: Date.now() + PUBLIC_DNS_CACHE_TTL_MS, addresses: publicAddresses });
+    }
+    return { allAddresses, publicAddresses };
+  })();
+  publicDnsInFlight.set(key, lookup);
+  try {
+    return cloneDnsResolution(await lookup);
+  } finally {
+    if (publicDnsInFlight.get(key) === lookup) publicDnsInFlight.delete(key);
+  }
 }
 
 export async function resolvePublicAddresses(hostname: string): Promise<LookupAddress[]> {
-  const unique = await resolveAllAddresses(hostname);
-  return orderPublicAddresses(unique.filter((entry) => !isPrivateIp(entry.address)));
+  return (await resolvePublicDns(hostname)).publicAddresses;
 }
 
 export function orderPublicAddresses(addresses: LookupAddress[]): LookupAddress[] {
@@ -156,6 +286,59 @@ export const publicLookupDispatcher = new Agent({
   },
 });
 
+export type PublicHttpRedirectResult = { response: Response; url: string };
+
+/**
+ * Fetches a public asset while validating every redirect target before connecting.
+ * This supports public CDNs that redirect logos/stylesheets to asset hosts without
+ * relying on automatic redirects that could evade URL/port/SSRF policy checks.
+ */
+export async function fetchPublicHttpFollowingRedirects(
+  rawUrl: string,
+  init: RequestInit = {},
+  maxRedirects = 3,
+): Promise<PublicHttpRedirectResult> {
+  let target = assertPublicHttpUrl(rawUrl);
+  const visited = new Set<string>([target.toString()]);
+  const redirectStatuses = new Set([301, 302, 303, 307, 308]);
+
+  for (let redirects = 0; ; redirects += 1) {
+    // Re-check both the URL policy and DNS before every hop, including CDN hops.
+    target = assertPublicHttpUrl(target.toString());
+    await assertResolvablePublicHost(target.hostname);
+    const response = await fetchPublicHttp(target.toString(), {
+      ...init,
+      redirect: 'manual',
+    });
+    if (!redirectStatuses.has(response.status)) {
+      return { response, url: target.toString() };
+    }
+
+    const location = response.headers.get('location');
+    if (!location) return { response, url: target.toString() };
+    if (redirects >= Math.max(0, Math.min(maxRedirects, 5))) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error('Public asset exceeded the safe redirect limit');
+    }
+
+    let next: URL;
+    try {
+      next = assertPublicHttpUrl(new URL(location, target).toString());
+    } catch (error) {
+      await response.body?.cancel().catch(() => undefined);
+      throw error;
+    }
+    const normalizedNext = next.toString();
+    if (visited.has(normalizedNext)) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error('Public asset redirect loop detected');
+    }
+    await response.body?.cancel().catch(() => undefined);
+    visited.add(normalizedNext);
+    target = next;
+  }
+}
+
 export function fetchPublicHttp(url: string, init: RequestInit = {}): Promise<Response> {
   return fetch(url, {
     ...init,
@@ -164,12 +347,13 @@ export function fetchPublicHttp(url: string, init: RequestInit = {}): Promise<Re
 }
 
 export async function assertResolvablePublicHost(hostname: string) {
-  const addresses = await resolveAllAddresses(hostname);
-  const publicAddresses = addresses.filter((entry) => !isPrivateIp(entry.address));
+  // Shares the same short-lived, public-only result used by the HTTP dispatcher.
+  // The validation preflight and socket connect therefore don't each perform DNS.
+  const { allAddresses, publicAddresses } = await resolvePublicDns(hostname);
   if (publicAddresses.length > 0) return;
 
-  if (addresses.length > 0) {
-    throw new Error(`Research hostname resolves to a non-public address (${addresses[0].address})`);
+  if (allAddresses.length > 0) {
+    throw new Error(`Research hostname resolves to a non-public address (${allAddresses[0]!.address})`);
   }
   throw new Error('Unable to resolve research hostname');
 }

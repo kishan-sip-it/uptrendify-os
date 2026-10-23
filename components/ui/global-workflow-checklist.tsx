@@ -178,12 +178,14 @@ export function GlobalWorkflowChecklist() {
   const [syncState, setSyncState] = useState<'checking' | 'live' | 'offline'>('checking');
   const [checklistOpen, setChecklistOpen] = useState(false);
   const checklistToggleRef = useRef<HTMLButtonElement | null>(null);
-  const checklistCloseRef = useRef<HTMLButtonElement | null>(null);
+  const [refreshingChecklist, setRefreshingChecklist] = useState(false);
+  const [controlMessage, setControlMessage] = useState<string | null>(null);
   const closeChecklist = useCallback(() => {
     setChecklistOpen(false);
     window.requestAnimationFrame(() => checklistToggleRef.current?.focus());
   }, []);
-  const refreshRef = useRef<() => Promise<boolean>>(async () => false);
+  type RefreshResult = { active: boolean; successful: boolean };
+  const refreshRef = useRef<() => Promise<RefreshResult>>(async () => ({ active: false, successful: false }));
   const brandId = pathname.match(/^\/brands\/([^/]+)/)?.[1] ?? null;
   const contentIdMatch = pathname.match(/^\/brands\/[^/]+\/content\/([^/]+)$/);
   const contentId = contentIdMatch?.[1] && contentIdMatch[1] !== 'new' ? contentIdMatch[1] : null;
@@ -203,7 +205,6 @@ export function GlobalWorkflowChecklist() {
       }
     };
     document.addEventListener('keydown', onKeyDown);
-    checklistCloseRef.current?.focus();
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [checklistOpen, closeChecklist, pathname]);
 
@@ -240,7 +241,7 @@ export function GlobalWorkflowChecklist() {
     setSyncState('checking');
   }, [pathname, brandId, contentId, campaignId]);
 
-  const refreshChecklistData = useCallback(async (): Promise<boolean> => {
+  const refreshChecklistData = useCallback(async (): Promise<RefreshResult> => {
     const requests: Promise<void>[] = [];
     let active = false;
     let successfulReads = 0;
@@ -328,7 +329,7 @@ export function GlobalWorkflowChecklist() {
 
     await Promise.all(requests);
     setSyncState(successfulReads > 0 ? 'live' : 'offline');
-    return active;
+    return { active, successful: successfulReads > 0 };
   }, [brandId, campaignId, contentId, pathname]);
 
   useEffect(() => {
@@ -345,17 +346,17 @@ export function GlobalWorkflowChecklist() {
         if (!stopped) timer = window.setTimeout(tick, 10000);
         return;
       }
-      const hasActiveWork = await refreshRef.current();
+      const result = await refreshRef.current();
       if (stopped) return;
-      timer = window.setTimeout(tick, hasActiveWork ? 2400 : 6000);
+      timer = window.setTimeout(tick, result.active ? 2400 : 6000);
     };
 
     const refreshAfterInteraction = () => {
       if (stopped) return;
       if (timer !== null) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
-        void refreshRef.current().then((hasActiveWork) => {
-          if (!stopped) timer = window.setTimeout(tick, hasActiveWork ? 2400 : 6000);
+        void refreshRef.current().then((result) => {
+          if (!stopped) timer = window.setTimeout(tick, result.active ? 2400 : 6000);
         });
       }, 450);
     };
@@ -417,159 +418,48 @@ export function GlobalWorkflowChecklist() {
     return !done && !task.locked;
   });
 
-  function restartChecklist() {
-    try { window.sessionStorage.removeItem(storageKey); } catch { /* best effort */ }
-    setCompleted({});
-    void refreshRef.current();
+  async function refreshWholeChecklist() {
+    if (refreshingChecklist) return;
+    setRefreshingChecklist(true);
+    setControlMessage('Refreshing the complete live checklist…');
+    try {
+      const result = await refreshRef.current();
+      const time = new Date().toLocaleTimeString();
+      setControlMessage(result.successful
+        ? 'Whole checklist status refreshed at ' + time + '.'
+        : 'Live workflow data could not be reached. Automatic retries remain enabled.');
+    } catch {
+      setControlMessage('The checklist refresh failed. Automatic retries remain enabled.');
+    } finally {
+      setRefreshingChecklist(false);
+    }
   }
 
-  function refreshAllChecklists() {
+  async function resetCurrentChecklistProgress() {
+    if (refreshingChecklist) return;
     try {
-      const keysToRemove: string[] = [];
-      for (let index = 0; index < window.sessionStorage.length; index += 1) {
-        const key = window.sessionStorage.key(index);
-        if (key?.startsWith(CHECKLIST_STORAGE_PREFIX)) keysToRemove.push(key);
-      }
-      keysToRemove.forEach((key) => window.sessionStorage.removeItem(key));
+      window.sessionStorage.removeItem(storageKey);
     } catch {
-      // Best effort: checklist state is client-only and must never block the workflow.
+      // Manual checklist state is best-effort and must never block the workflow.
     }
     setCompleted({});
-    void refreshRef.current();
+    setRefreshingChecklist(true);
+    setControlMessage('Manual progress for this checklist reset. Refreshing live status…');
+    try {
+      const result = await refreshRef.current();
+      const time = new Date().toLocaleTimeString();
+      setControlMessage(result.successful
+        ? 'This checklist reset; live status refreshed at ' + time + '.'
+        : 'This checklist reset. Live status is unavailable; automatic retries remain enabled.');
+    } catch {
+      setControlMessage('This checklist reset. Live status refresh failed; automatic retries remain enabled.');
+    } finally {
+      setRefreshingChecklist(false);
+    }
   }
 
   return (
     <>
-      <style jsx global>{`
-        body:has(.contextual-workflow-checklist) .shell > .main { padding-right: clamp(16px, 2.4vw, 40px); }
-        .contextual-workflow-checklist {
-          position: fixed;
-          right: clamp(12px, 1.5vw, 24px);
-          top: clamp(88px, 13vh, 142px);
-          width: min(288px, calc(100vw - 32px));
-          max-height: calc(100vh - clamp(112px, 16vh, 166px));
-          max-height: calc(100dvh - clamp(112px, 16vh, 166px));
-          overflow-x: hidden;
-          overflow-y: auto;
-          overscroll-behavior: contain;
-          z-index: 25;
-          padding: 14px;
-          border: 1px solid var(--line);
-          border-radius: 16px;
-          background: color-mix(in srgb, var(--surface-card) 96%, transparent);
-          box-shadow: 0 18px 50px rgba(0,0,0,.2);
-          backdrop-filter: blur(14px);
-        }
-        .contextual-workflow-close,
-        .contextual-workflow-toggle { display: none; }
-        .contextual-workflow-close:focus-visible,
-        .contextual-workflow-toggle:focus-visible {
-          outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
-          outline-offset: 3px;
-        }
-        .contextual-workflow-checklist.is-open { scrollbar-gutter: stable; }
-        .contextual-workflow-toggle {
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          min-height: 44px;
-          max-width: calc(100vw - 24px);
-          padding: 10px 14px;
-          border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
-          border-radius: 999px;
-          color: var(--accent-contrast, #fff);
-          background: var(--accent);
-          box-shadow: 0 8px 26px color-mix(in srgb, var(--text) 20%, transparent);
-          font: inherit;
-          font-size: 13px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-        .contextual-workflow-toggle:focus-visible {
-          outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
-          outline-offset: 3px;
-        }
-        .contextual-workflow-toggle:hover {
-          filter: brightness(1.04);
-        }
-        .contextual-workflow-header { display:flex; gap:9px; align-items:flex-start; margin-bottom:12px; }
-        .contextual-workflow-header-copy { min-width:0; flex:1; }
-        .contextual-workflow-title { color:var(--text); font-weight:700; font-size:13px; line-height:1.3; }
-        .contextual-workflow-subtitle { color:var(--muted); font-size:11px; line-height:1.45; margin-top:3px; }
-        .contextual-workflow-controls { display:flex; gap:4px; flex-shrink:0; }
-        .contextual-workflow-control { width:28px; height:28px; display:grid; place-items:center; padding:0; border:1px solid var(--line); border-radius:8px; background:var(--surface-muted); color:var(--muted); cursor:pointer; }
-        .contextual-workflow-control:hover { color:var(--text); border-color:var(--accent); background:color-mix(in srgb,var(--accent) 8%,var(--surface-muted)); }
-        .contextual-workflow-control:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-        .contextual-workflow-list { display:grid; gap:5px; }
-        .contextual-workflow-item { position:relative; display:grid; grid-template-columns:22px 1fr; gap:8px; padding:9px 8px; border-radius:10px; color:var(--muted); }
-        .contextual-workflow-item.is-current { color:var(--text); background:color-mix(in srgb,var(--accent) 9%,var(--surface-muted)); border:1px solid color-mix(in srgb,var(--accent) 28%,var(--line)); }
-        .contextual-workflow-item.is-done { color:var(--text); }
-        .contextual-workflow-item.is-running { background:color-mix(in srgb,var(--accent) 5%,transparent); }
-        .contextual-workflow-item.is-failed { background:color-mix(in srgb,var(--status-danger, #dc2626) 7%,transparent); }
-        .contextual-workflow-item.is-locked { opacity:.62; }
-        .contextual-workflow-sync { margin-top:6px; font-size:10px; line-height:1.3; }
-        .contextual-workflow-sync.is-live { color:var(--status-success, #16a34a); }
-        .contextual-workflow-sync.is-checking { color:var(--muted); }
-        .contextual-workflow-sync.is-offline { color:var(--status-warning, #b45309); }
-        .contextual-workflow-state { display:block; margin-top:4px; font-size:10px; font-weight:700; line-height:1.35; }
-        .contextual-workflow-state.is-running { color:var(--accent); }
-        .contextual-workflow-state.is-failed { color:var(--status-danger, #dc2626); }
-        .contextual-workflow-item + .contextual-workflow-item::before { content:''; position:absolute; left:18px; top:-5px; height:5px; border-left:1px solid var(--line); }
-        .contextual-workflow-label { display:block; font-size:12px; font-weight:700; line-height:1.3; }
-        .contextual-workflow-detail { display:block; margin-top:3px; color:var(--muted); font-size:10px; line-height:1.45; }
-        .contextual-workflow-next { margin-top:11px; padding:10px; border:1px solid color-mix(in srgb,var(--accent-2) 28%,var(--line)); border-radius:11px; background:color-mix(in srgb,var(--accent-2) 7%,var(--surface-muted)); }
-        .contextual-workflow-next strong { display:block; color:var(--text); font-size:11px; line-height:1.35; }
-        .contextual-workflow-next span { display:block; margin-top:3px; color:var(--muted); font-size:10px; line-height:1.45; }
-        @media (min-width: 1601px) {
-          body:has(.contextual-workflow-checklist) .shell > .main { padding-right: 320px; }
-        }
-        @media (max-width: 1600px) {
-          body:has(.contextual-workflow-checklist) .shell > .main { padding-right: clamp(16px, 2.4vw, 40px) !important; }
-          .contextual-workflow-checklist { display: none; }
-          .contextual-workflow-checklist.is-open {
-            display: block;
-            position: fixed;
-            z-index: 2147483000;
-            top: 12px;
-            right: 12px;
-            bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-            width: min(380px, calc(100vw - 24px));
-            max-height: calc(100vh - 100px);
-            max-height: calc(100dvh - 100px);
-            isolation: isolate;
-          }
-          .contextual-workflow-toggle {
-            display: inline-flex;
-            position: fixed;
-            right: 16px;
-            bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-            z-index: 35;
-          }
-          .contextual-workflow-close { display: grid; }
-        }
-        @media (max-width: 720px) {
-          body:has(.contextual-workflow-checklist) .shell > .main { padding-right: 14px !important; }
-          .contextual-workflow-checklist.is-open {
-            inset: 10px 10px auto;
-            bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-            width: auto;
-            max-height: none;
-            z-index: 2147483000;
-          }
-          .contextual-workflow-toggle {
-            right: 12px;
-            bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-          }
-        }
-        @media (max-height: 520px) and (max-width: 1600px) {
-          .contextual-workflow-checklist.is-open {
-            top: 8px;
-            bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-          }
-          .contextual-workflow-header { margin-bottom: 8px; }
-          .contextual-workflow-item { padding-block: 6px; }
-        }
-      `}</style>
       <aside id="contextual-workflow-checklist" className={"contextual-workflow-checklist" + (checklistOpen ? " is-open" : "")} aria-label="Contextual workflow checklist">
         <div className="contextual-workflow-header">
           <ClipboardCheck size={16} color="var(--accent)" style={{ flexShrink: 0, marginTop: 1 }} />
@@ -579,16 +469,14 @@ export function GlobalWorkflowChecklist() {
             <div className={'contextual-workflow-sync is-' + syncState} role="status" aria-live="polite">
               {syncState === 'live' ? 'Synced with live workflow status' : syncState === 'offline' ? 'Live status unavailable · retrying automatically' : 'Checking live workflow status…'}
             </div>
+            {controlMessage ? <div className="contextual-workflow-sync" role="status" aria-live="polite">{controlMessage}</div> : null}
           </div>
           <div className="contextual-workflow-controls">
-            <button ref={checklistCloseRef} type="button" className="contextual-workflow-control contextual-workflow-close" onClick={closeChecklist} aria-label="Close workflow checklist" title="Close checklist">
-              <X size={14} />
-            </button>
-            <button type="button" className="contextual-workflow-control" onClick={restartChecklist} aria-label="Reset manually tracked checklist steps" title="Reset manually tracked steps">
+            <button type="button" className="contextual-workflow-control" onClick={() => void resetCurrentChecklistProgress()} disabled={refreshingChecklist} aria-label="Reset manual progress for this checklist" title="Reset this checklist">
               <RotateCcw size={14} />
             </button>
-            <button type="button" className="contextual-workflow-control" onClick={refreshAllChecklists} aria-label="Refresh workflow status and reset manual steps" title="Refresh workflow status">
-              <RefreshCw size={14} />
+            <button type="button" className="contextual-workflow-control" onClick={() => void refreshWholeChecklist()} disabled={refreshingChecklist} aria-label="Refresh the complete live workflow checklist" title="Refresh whole checklist">
+              <RefreshCw size={14} className={refreshingChecklist ? 'spin' : undefined} />
             </button>
           </div>
         </div>

@@ -7,11 +7,11 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run && node --check scripts/brand-iq-compatibility.mjs",
+    "test:watch": "vitest",
+    "brand:compat": "node scripts/brand-iq-compatibility.mjs"
   },
   "dependencies": {
-    "@google/genai": "2.22.0",
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.116.0",
     "@vercel/analytics": "^2.0.1",
@@ -26,7 +26,8 @@
     "face-api.js": "^0.22.2",
     "postprocessing": "^6.36.0",
     "three": "^0.180.0",
-    "@vercel/speed-insights": "^2.0.0"
+    "@vercel/speed-insights": "^2.0.0",
+    "html-to-image": "1.11.13"
   },
   "devDependencies": {
     "@types/node": "^24.4.0",

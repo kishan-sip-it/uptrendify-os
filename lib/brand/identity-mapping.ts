@@ -31,7 +31,7 @@ export type BrandVisualIdentity = {
   logoUrl: string | null;
   faviconUrl: string | null;
   palette: { hex: string; role: string; occurrences: number; sources: string[] }[];
-  fonts: { family: string; source: string; evidence: string }[];
+  fonts: ExtractedIdentity['fonts'];
   headingFont: string | null;
   bodyFont: string | null;
   voice: BrandVoice;
@@ -116,10 +116,14 @@ export function parseVisualIdentity(raw: unknown): BrandVisualIdentity {
     ? source.fonts
         .filter((f): f is Record<string, unknown> => Boolean(f) && typeof f === 'object')
         .filter((f) => typeof f.family === 'string')
-        .map((f) => ({
+        .map((f): ExtractedIdentity['fonts'][number] => ({
           family: f.family as string,
-          source: typeof f.source === 'string' ? f.source : 'css-declaration',
+          source: f.source === 'google-fonts' || f.source === 'css-declaration' || f.source === 'theme-font' ? f.source : 'css-declaration',
           evidence: typeof f.evidence === 'string' ? f.evidence : '',
+          ...(typeof f.fontAssetUrl === 'string' && f.fontAssetUrl.trim() ? { fontAssetUrl: f.fontAssetUrl.trim() } : {}),
+          ...(['woff2', 'woff', 'opentype', 'truetype'].includes(String(f.fontAssetFormat)) ? { fontAssetFormat: f.fontAssetFormat as ExtractedIdentity['fonts'][number]['fontAssetFormat'] } : {}),
+          ...(typeof f.fontWeight === 'string' ? { fontWeight: f.fontWeight } : {}),
+          ...(typeof f.fontStyle === 'string' ? { fontStyle: f.fontStyle } : {}),
         }))
     : [];
 
@@ -197,9 +201,31 @@ export function parseVisualIdentity(raw: unknown): BrandVisualIdentity {
   };
 }
 
-export function resolveFontRoles(fonts: { family: string }[]): { headingFont: string | null; bodyFont: string | null } {
-  if (fonts.length === 0) return { headingFont: null, bodyFont: null };
-  return { headingFont: fonts[0]?.family ?? null, bodyFont: fonts[1]?.family ?? fonts[0]?.family ?? null };
+export function prioritizeDetectedFonts<T extends { family: string; source?: string }>(fonts: T[]): T[] {
+  const priority = (source: string | undefined) => source === 'css-declaration' ? 0 : source === 'google-fonts' ? 1 : source === 'theme-font' ? 2 : 3;
+  return fonts
+    .map((font, index) => ({ font, index }))
+    .sort((a, b) => priority(a.font.source) - priority(b.font.source) || a.index - b.index)
+    .map(({ font }) => font);
+}
+
+export function preferredPreviewFontFamily(fonts: { family: string; source?: string; evidence?: string }[]): string | null {
+  const preferred = prioritizeDetectedFonts(fonts);
+  return preferred.find((font) => /heading selector/i.test(font.evidence ?? '') && font.family.trim())?.family
+    ?? preferred.find((font) => /body\/html selector/i.test(font.evidence ?? '') && font.family.trim())?.family
+    ?? preferred.find((font) => font.family.trim())?.family
+    ?? null;
+}
+
+export function resolveFontRoles(fonts: { family: string; source?: string; evidence?: string }[]): { headingFont: string | null; bodyFont: string | null } {
+  const preferred = prioritizeDetectedFonts(fonts).filter((font) => font.family.trim());
+  if (preferred.length === 0) return { headingFont: null, bodyFont: null };
+  const heading = preferred.find((font) => /heading selector/i.test(font.evidence ?? ''));
+  const body = preferred.find((font) => /body\/html selector/i.test(font.evidence ?? ''));
+  return {
+    headingFont: heading?.family ?? preferred[0]?.family ?? null,
+    bodyFont: body?.family ?? preferred.find((font) => font.family !== (heading?.family ?? preferred[0]?.family))?.family ?? preferred[0]?.family ?? null,
+  };
 }
 
 export function toVisualIdentity(identity: ExtractedIdentity & {
@@ -212,7 +238,7 @@ export function toVisualIdentity(identity: ExtractedIdentity & {
     logoUrl: identity.logoUrl,
     faviconUrl: identity.faviconUrl,
     palette: identity.palette.map((c) => ({ hex: c.hex, role: c.role, occurrences: c.occurrences, sources: c.sources })),
-    fonts: identity.fonts.map((f) => ({ family: f.family, source: f.source, evidence: f.evidence })),
+    fonts: identity.fonts.map((font) => ({ ...font })),
     headingFont,
     bodyFont,
     voice: normaliseVoice(voice),

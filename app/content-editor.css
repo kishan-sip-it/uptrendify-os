@@ -1,0 +1,428 @@
+/*
+ * Dedicated content editor workspace (components/content/content-editor-workspace.tsx).
+ * Top bar · layer list · canvas · properties panel. Follows the app design
+ * system variables so light/dark themes work without extra rules.
+ */
+
+.editor-shell {
+  display: grid;
+  gap: 12px;
+  min-height: calc(100vh - 140px);
+}
+
+.editor-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-card);
+}
+
+.editor-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+  padding: 7px 10px;
+  border-radius: 9px;
+}
+.editor-back:hover { color: var(--text); background: var(--surface-muted); }
+
+.editor-topbar-title { display: flex; align-items: center; gap: 9px; min-width: 0; flex-wrap: wrap; }
+.editor-topbar-title strong { color: var(--text); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+.editor-version { color: var(--muted); font-size: 12px; font-weight: 700; }
+
+.editor-save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.editor-save-state.is-dirty { color: var(--warning, #b45309); border-color: color-mix(in srgb, var(--warning, #b45309) 40%, var(--line)); }
+.editor-save-state.is-saved { color: var(--status-success, #16a34a); border-color: color-mix(in srgb, var(--status-success, #16a34a) 40%, var(--line)); }
+
+.editor-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-card);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.editor-btn:hover:not(:disabled) { border-color: var(--accent); }
+.editor-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.editor-btn-primary { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.editor-btn-submit { background: var(--accent); color: var(--accent-contrast, #fff); border-color: transparent; }
+
+.editor-note {
+  padding: 9px 13px;
+  border-radius: 11px;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+.editor-note.is-ok { border-color: color-mix(in srgb, var(--status-success, #16a34a) 40%, var(--line)); color: var(--text); }
+.editor-note.is-error { border-color: color-mix(in srgb, var(--status-danger, #dc2626) 45%, var(--line)); color: var(--text); }
+
+.editor-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 260px;
+  gap: 12px;
+  align-items: start;
+}
+
+.editor-layers, .editor-properties {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-card);
+  padding: 11px;
+  display: grid;
+  gap: 7px;
+  align-content: start;
+  position: sticky;
+  top: 90px;
+  max-height: calc(100vh - 130px);
+  overflow-y: auto;
+}
+
+.editor-panel-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.editor-layer {
+  display: grid;
+  grid-template-columns: 10px auto minmax(0, 1fr);
+  gap: 2px 7px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  cursor: grab;
+  color: var(--muted);
+  align-items: start;
+}
+.editor-layer:active { cursor: grabbing; }
+.editor-layer:hover { border-color: var(--accent); color: var(--text); }
+.editor-layer.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface-muted)); color: var(--text); }
+.editor-layer .editor-layer-grip { color: var(--muted); opacity: 0.55; margin-top: 2px; }
+.editor-layer svg { margin-top: 2px; }
+.editor-layer-label { font-size: 11px; font-weight: 750; color: var(--text); white-space: nowrap; }
+.editor-layer-summary { grid-column: 2 / -1; font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.editor-insert-btn {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 9px 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.editor-insert-btn:hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface-muted)); }
+.editor-insert-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.editor-shapes-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.editor-shape-btn {
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  padding: 7px 2px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.editor-shape-btn:hover:not(:disabled) { border-color: var(--accent); }
+.editor-shape-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.editor-shape-swatch { width: 16px; height: 16px; background: var(--accent); display: inline-block; }
+.editor-shape-swatch.is-circle { border-radius: 50%; }
+.editor-shape-swatch.is-square { border-radius: 2px; }
+.editor-shape-swatch.is-rectangle { width: 22px; border-radius: 2px; height: 14px !important; }
+.editor-shape-swatch.is-triangle { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.editor-shape-swatch.is-star { clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+.editor-shape-swatch.is-pyramid { clip-path: polygon(50% 0, 88% 78%, 88% 100%, 12% 100%, 12% 78%); }
+
+
+.editor-canvas {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background:
+    linear-gradient(color-mix(in srgb, var(--line) 35%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--line) 35%, transparent) 1px, transparent 1px),
+    var(--surface-muted);
+  background-size: 24px 24px;
+  padding: 18px;
+  min-height: 420px;
+}
+
+/* The sheet is paper: fixed size per preset, always white with dark ink so
+   dark mode never changes the composition. Content can grow past the preset
+   height; nothing is clipped. */
+.editor-canvas-page {
+  background: #ffffff;
+  color: #1d2634;
+  border: 1px solid #d8dee8;
+  border-radius: 10px;
+  padding: clamp(20px, 3vw, 40px);
+  margin: 0 auto;
+  width: 794px;
+  max-width: 100%;
+  min-height: 1123px;
+  box-shadow: 0 18px 44px rgba(9, 14, 24, 0.16);
+}
+.editor-canvas-page.size-a4 { width: 794px; min-height: 1123px; }
+.editor-canvas-page.size-letter { width: 816px; min-height: 1056px; }
+.editor-canvas-page.size-square { width: 760px; min-height: 760px; }
+.editor-canvas-page.size-story { width: 760px; min-height: 1351px; }
+.editor-canvas.is-preview .editor-canvas-page { width: 794px; min-height: 1123px; }
+.editor-canvas-page .content-doc-heading, .editor-canvas-page .content-doc-text { color: inherit; }
+
+.editor-block {
+  border: 1px dashed transparent;
+  border-radius: 10px;
+  padding: 8px;
+  margin: -8px;
+  cursor: pointer;
+}
+.editor-block + .editor-block { margin-top: 10px; }
+.editor-block:hover { border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.editor-block.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); }
+
+.editor-canvas-heading-h1 { font-size: 30px; }
+.editor-canvas-heading-h2 { font-size: 24px; }
+.editor-canvas-heading-h3 { font-size: 19px; }
+div[class*="level-1"] { font-weight: 800; }
+
+.editor-empty {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  color: var(--muted);
+  padding: 60px 12px;
+  text-align: center;
+}
+.editor-empty strong { color: var(--text); }
+
+.editor-props { display: grid; gap: 11px; }
+.editor-props-title { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 12px; font-weight: 750; }
+.editor-field { display: grid; gap: 5px; }
+.editor-field > span { color: var(--muted); font-size: 11px; font-weight: 700; }
+.editor-field input[type="text"], .editor-field input:not([type]), .editor-field textarea,
+.editor-field input[inputmode="url"] {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 9px;
+}
+.editor-field textarea { resize: vertical; }
+.editor-field input[type="color"] { width: 44px; height: 32px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-muted); cursor: pointer; }
+.editor-field input[type="range"] { width: 100%; }
+.editor-color-row { display: flex; align-items: center; gap: 8px; }
+.editor-hint { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0; }
+
+.editor-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  justify-content: center;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--status-danger, #dc2626) 45%, var(--line));
+  border-radius: 10px;
+  background: transparent;
+  color: var(--status-danger, #dc2626);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.editor-remove:hover:not(:disabled) { background: color-mix(in srgb, var(--status-danger, #dc2626) 8%, transparent); }
+.editor-remove:disabled { opacity: 0.5; cursor: not-allowed; }
+
+@media (max-width: 1100px) {
+  .editor-layout { grid-template-columns: 190px minmax(0, 1fr); }
+  .editor-properties { grid-column: 1 / -1; position: static; max-height: none; }
+}
+@media (max-width: 760px) {
+  .editor-layout { grid-template-columns: minmax(0, 1fr); }
+  .editor-layers { position: static; max-height: none; }
+  .editor-topbar { align-items: flex-start; }
+}
+
+/* Canvas headings are divs (inline-editable), so they carry explicit sizes. */
+.editor-canvas-page .content-doc-heading.editor-level-1 { font-size: 30px; font-weight: 800; }
+.editor-canvas-page .content-doc-heading.editor-level-2 { font-size: 24px; font-weight: 750; }
+.editor-canvas-page .content-doc-heading.editor-level-3 { font-size: 19px; font-weight: 700; }
+
+/* Floating selection toolbar (UpTrendifyOS style: dark pill, corner ticks on the block). */
+
+/* Selection = accent outline + corner ticks (deliberately not a rounded halo). */
+.editor-block { position: relative; }
+.editor-block.is-selected { border: 1px solid var(--accent); }
+.editor-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--surface-card);
+  border: 1.5px solid var(--accent);
+  z-index: 31;
+}
+.editor-handle-tl { top: -4.5px; left: -4.5px; }
+.editor-handle-tr { top: -4.5px; right: -4.5px; }
+.editor-handle-bl { bottom: -4.5px; left: -4.5px; }
+.editor-handle-br { bottom: -4.5px; right: -4.5px; }
+
+/* Drop indicator while dragging blocks on the canvas or in the layer list. */
+.editor-drop-line { height: 3px; border-radius: 2px; background: var(--accent); margin: 3px 0; }
+
+/* Inline canvas text editing affordance. */
+.editor-canvas-text.is-editable { cursor: text; border-radius: 6px; }
+.editor-canvas-text.is-editable:hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); }
+.editor-inline-edit { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; min-width: 40px; cursor: text; }
+
+/* Canvas top meta strip + zoom cluster. */
+.editor-canvas-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+.editor-canvas-meta > span:first-child { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); }
+.editor-canvas-meta > span:nth-child(2) { flex: 1; }
+.editor-zoom { display: inline-flex; align-items: center; gap: 6px; }
+.editor-zoom button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-card);
+  color: var(--text);
+  cursor: pointer;
+}
+.editor-zoom button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Floating toolbar needs room above the first block. */
+.editor-canvas-page { padding-top: 46px; }
+
+.editor-btn-group { display: inline-flex; gap: 4px; }
+.editor-btn-group .editor-btn { padding: 8px 10px; }
+
+/* Empty blocks keep their place in the layout instead of collapsing, and show
+   an editor-only placeholder. The saved document never contains this text. */
+.editor-canvas-text { min-height: 24px; }
+.editor-canvas-text.is-empty, .editor-canvas-text:empty {
+  color: var(--muted);
+  font-style: italic;
+  opacity: 0.75;
+}
+.editor-canvas-text.is-empty::before { content: 'Empty text block — click to write.'; }
+.editor-canvas .content-doc-heading:has(.editor-canvas-text:empty),
+.editor-canvas .content-doc-heading:has(.editor-canvas-text.is-empty) { min-height: 34px; }
+.editor-canvas .content-doc-heading .editor-canvas-text.is-empty::before { content: 'Empty heading — click to write.'; }
+
+.editor-size-picker { display: inline-flex; align-items: center; gap: 6px; }
+.editor-size-picker > span { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0.05em; }
+.editor-size-picker select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 7px;
+  cursor: pointer;
+}
+
+/* Studio free canvas */
+.editor-free-block { position: absolute; }
+.editor-free-block.is-selected { outline: 2px solid var(--accent); outline-offset: 2px; }
+.editor-free-block .editor-canvas-text.is-empty { min-height: 20px; }
+.st-free-handle { position: absolute; width: 12px; height: 12px; border-radius: 2px; background: #fff; border: 2px solid var(--st-accent); z-index: 5; }
+.st-free-handle:hover { transform: scale(1.2); }
+.st-handle-n { top: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
+.st-handle-s { bottom: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
+.st-handle-e { right: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
+.st-handle-w { left: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
+.st-handle-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+.st-handle-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+.st-handle-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+.st-handle-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.studio-page-bg-controls { display: grid; gap: 6px; }
+
+
+/* Keep the free canvas touch-friendly; handles are independently pointer-captured. */
+.editor-free-block { touch-action: none; user-select: none; }
+.editor-free-block .editor-inline-edit { user-select: text; }
+.st-free-handle { touch-action: none; }
+.studio-upload-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--st-bg, #111318) 72%, transparent);
+  backdrop-filter: blur(3px);
+}
+.studio-upload-dialog {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(360px, 100%);
+  padding: 24px;
+  border: 1px solid var(--st-line-strong);
+  border-radius: 16px;
+  color: var(--st-text);
+  background: var(--st-panel);
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,.24);
+}
+.studio-upload-dialog span {
+  color: var(--st-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.studio-upload-spinner { animation: studio-upload-spin 1s linear infinite; }
+@keyframes studio-upload-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .studio-upload-spinner { animation: none; }
+}

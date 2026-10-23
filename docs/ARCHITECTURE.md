@@ -29,7 +29,7 @@ Authenticated App Router / Route Handlers
                               |
                      Provider / Adapter Layer
                   /       |        |        \
-              Groq    OpenAI   Anthropic   Gemini
+              Groq    OpenAI   Anthropic
                   \       |        |        /
                    Optional external adapters
               Semrush / Surfer / Jasper / GHL
@@ -207,7 +207,6 @@ Initial live providers:
 - Groq
 - OpenAI
 - Anthropic
-- Gemini
 
 The default selection is configured through environment variables. Provider failures must be classified and retried only when safe.
 
@@ -364,3 +363,26 @@ Secrets must exist only in environment/secret management systems.
 10. optional SEO/provider integrations
 11. analytics/optimization
 12. hardening + production verification
+
+
+## 11. Production-readiness gates and scale milestone
+
+### Website-first Brand IQ deadline
+
+The synchronous scan uses one shared wall-clock budget across authorization, DNS checks, direct-page fetches, rendered-reader fallback, same-domain evidence pages and AI enrichment. It returns before Vercel's 45-second function ceiling (40-second hard deadline with a four-second response reserve). Optional visual assets yield to evidence extraction; structured AI extraction receives up to 22 seconds, and each provider attempt is capped inside the shared remainder. A later recovery stage does not receive a fresh full budget.
+
+This does not promise complete AI output for every blocked website. When the remaining time is insufficient, the scan must return verified partial identity and a clear warning rather than inventing fields or holding the request open indefinitely.
+
+### Atomic content approval
+
+Review actions use the database RPC `public.apply_content_review_transition`. It locks the content row, checks organization/brand ownership, expected status and exact current version, enforces the role/action transition, then writes content status, review history and audit history in one database transaction. Apply the corresponding Supabase migration before deploying the application route that calls it.
+
+### Publishing scope
+
+Publishing is labelled **Beta / Coming Soon** until real OAuth/channel connectors are registered. The approval queue and publication attempt ledger may validate workflow state, but a channel configuration marked `CONNECTED` is not evidence of end-to-end delivery. A launch-ready connector still needs OAuth authorization, encrypted credential and refresh-token lifecycle, scope validation, channel-specific payload mapping, API error handling, idempotent delivery, webhook/status reconciliation and a verified external reference.
+
+### 1,200-site background-processing milestone
+
+Research and strategy currently use Next.js `after()` for request-lifetime background work; content generation also has request-bound execution paths. This is not a durable queue and must not be treated as guaranteed delivery. At the 1,200-site milestone, replace these call sites with a durable job adapter backed by Inngest or an Upstash queue/workflow (decision pending), with persistent jobs and idempotency keys, bounded concurrency and provider/tenant limits, backoff and safe retries, leases/heartbeats, crash recovery, dead-letter handling, operator replay, and queue-lag/duration/failure/provider-usage metrics.
+
+Keep domain pipeline functions independent of the queue vendor so the backend can change without rewriting research, strategy or content generation.

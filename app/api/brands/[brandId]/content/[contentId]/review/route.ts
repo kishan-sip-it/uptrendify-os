@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CAN_GENERATE_CONTENT, CAN_REVIEW_CONTENT, requireOrgRole } from '@/lib/auth/roles';
 import { obs } from '@/lib/obs/logger';
+import { parseContentBody } from '@/lib/content/document';
 
 const paramsSchema = z.object({ brandId: z.string().uuid(), contentId: z.string().uuid() });
 
@@ -40,7 +41,17 @@ const TRANSITIONS: Record<ReviewAction, { from: string[]; to: string }> = {
 };
 
 const REVIEWER_ACTIONS: ReviewAction[] = ['approve', 'reject', 'changes_requested', 'queue_for_publish', 'back_to_approved'];
-const GENERATOR_ACTIONS: ReviewAction[] = ['submit', 'return_to_draft', 'archive'];
+
+/**
+ * Every version submitted through Studio must include the immutable artwork
+ * image for each page. Legacy text and structured documents without snapshots
+ * remain editable; saving from Studio creates the first snapshot version.
+ */
+function hasMissingArtworkSnapshot(body: unknown): boolean {
+  if (typeof body !== 'string') return true;
+  const document = parseContentBody(body);
+  return !document || document.pages.some((page) => !page.snapshot?.path);
+}
 
 async function loadItem(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
@@ -63,7 +74,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
     const body = bodySchema.parse(await request.json().catch(() => ({})));
 
     const reviewerRole = REVIEWER_ACTIONS.includes(body.action);
-    const generatorRole = GENERATOR_ACTIONS.includes(body.action);
     const auth = await requireOrgRole(reviewerRole ? CAN_REVIEW_CONTENT : CAN_GENERATE_CONTENT);
     if (auth.error) return NextResponse.json(auth.error.body, { status: auth.error.status });
 
@@ -87,50 +97,60 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       );
     }
 
-    const now = new Date().toISOString();
-    const itemUpdate = await supabase
-      .from('content_items')
-      .update({ status: transition.to, updated_at: now })
-      .eq('id', contentId)
-      .eq('organization_id', auth.context.organizationId)
-      .eq('status', item.status)
-      .select('id,status')
-      .maybeSingle();
-    if (itemUpdate.error) throw itemUpdate.error;
-    if (!itemUpdate.data) {
-      return NextResponse.json(
-        { error: 'Content status changed concurrently. Reload and try again.' },
-        { status: 409 },
-      );
+    if (['submit', 'approve', 'queue_for_publish'].includes(body.action)) {
+      if (!item.current_version_id && body.action === 'approve') {
+        return NextResponse.json(
+          { error: 'Save a content version with its artwork before approving this item.' },
+          { status: 409 },
+        );
+      }
+      if (item.current_version_id) {
+        const versionResult = await supabase
+          .from('content_versions')
+          .select('body')
+          .eq('id', item.current_version_id)
+          .eq('organization_id', auth.context.organizationId)
+          .maybeSingle();
+        if (versionResult.error) throw versionResult.error;
+        if (!versionResult.data) {
+          return NextResponse.json({ error: 'The current content version could not be found. Reload and try again.' }, { status: 409 });
+        }
+        if (hasMissingArtworkSnapshot(versionResult.data.body)) {
+          const label = body.action === 'submit' ? 'submitting this version for approval'
+            : body.action === 'approve' ? 'approving this version'
+              : 'queuing this version for publishing';
+          return NextResponse.json(
+            { error: `Save the artwork image for every page before ${label}.` },
+            { status: 409 },
+          );
+        }
+      }
     }
 
-    const reviewInsert = await supabase
-      .from('content_reviews')
-      .insert({
-        organization_id: auth.context.organizationId,
-        content_item_id: contentId,
-        reviewer_id: auth.context.userId,
-        content_version_id: item.current_version_id ?? null,
-        decision: body.action,
-        comment: body.comment ?? null,
-      })
-      .select('id')
-      .single();
-    if (reviewInsert.error) throw reviewInsert.error;
-
-    await supabase.from('audit_logs').insert({
-      organization_id: auth.context.organizationId,
-      actor_user_id: auth.context.userId,
-      action: `content.${body.action}`,
-      entity_type: 'content',
-      entity_id: contentId,
-      metadata: {
-        from: item.status,
-        to: transition.to,
-        comment: body.comment ?? null,
-        contentVersionId: item.current_version_id ?? null,
-      },
+    // Postgres commits the state change, review ledger and audit event atomically.
+    const transitionResult = await supabase.rpc('apply_content_review_transition', {
+      p_organization_id: auth.context.organizationId,
+      p_brand_id: brandId,
+      p_content_id: contentId,
+      p_expected_status: item.status,
+      p_expected_version_id: item.current_version_id,
+      p_action: body.action,
+      p_comment: body.comment ?? null,
     });
+    if (transitionResult.error) {
+      const message = transitionResult.error.message ?? '';
+      if (transitionResult.error.code === '40001' || /CONTENT_STATUS_CHANGED_CONCURRENTLY|CONTENT_TRANSITION_NOT_ALLOWED/i.test(message)) {
+        return NextResponse.json({ error: 'Content status or version changed concurrently. Reload and try again.' }, { status: 409 });
+      }
+      if (/CONTENT_REVIEW_ROLE_REQUIRED|CONTENT_GENERATOR_ROLE_REQUIRED/i.test(message)) {
+        return NextResponse.json({ error: 'Insufficient permissions for this content action.' }, { status: 403 });
+      }
+      throw transitionResult.error;
+    }
+    const transitionRow = Array.isArray(transitionResult.data) ? transitionResult.data[0] : transitionResult.data;
+    if (!transitionRow || transitionRow.status !== transition.to || !transitionRow.review_id) {
+      throw new Error('The atomic content review transition returned an unexpected result.');
+    }
 
     obs.info('Content status changed', {
       contentId,
@@ -142,10 +162,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ bra
       actorId: auth.context.userId,
     });
 
-    return NextResponse.json({ ok: true, status: transition.to, reviewId: reviewInsert.data.id });
+    return NextResponse.json({ ok: true, status: transitionRow.status, reviewId: transitionRow.review_id });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid review request' }, { status: 400 });
-    obs.error('Content review failed', { error: error instanceof Error ? error.message : String(error) });
+    // Supabase throws plain PostgrestError objects; String() would log
+    // "[object Object]" and hide the failing operation (this hid a missing
+    // apply_content_review_transition migration), so stringify non-Error throws.
+    const message = error instanceof Error ? error.message
+      : error && typeof error === 'object' ? JSON.stringify(error)
+      : String(error);
+    obs.error('Content review failed', { error: message });
     return NextResponse.json({ error: 'Could not update content status' }, { status: 500 });
   }
 }

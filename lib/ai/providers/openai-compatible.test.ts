@@ -79,6 +79,68 @@ describe('createGroqProvider', () => {
     }
   });
 
+  it('falls back to 20B after a transient 503 from the primary model', async () => {
+    mockedPostJson
+      .mockRejectedValueOnce(new AiProviderError('groq', 'upstream unavailable', 503))
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: '{"ok":true}' } }],
+        usage: { prompt_tokens: 10, completion_tokens: 20 },
+      });
+
+    const provider = createGroqProvider('test-key', 'openai/gpt-oss-120b');
+    const result = await provider.generate({
+      prompt: 'Return JSON.',
+      json: true,
+      maxTokens: 1500,
+      model: 'openai/gpt-oss-120b',
+      fastFail: true,
+    });
+
+    expect(result.model).toBe('openai/gpt-oss-20b');
+    expect(mockedPostJson).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the fast 20B fallback for website scans without rate-limit sleeps', async () => {
+    const controller = new AbortController();
+    mockedPostJson
+      .mockRejectedValueOnce(new AiProviderError('groq', '120B rate limited', 429, 30_000))
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: '{"identity":{"brandName":"Example"}}' } }],
+        usage: { prompt_tokens: 10, completion_tokens: 20 },
+      });
+
+    const provider = createGroqProvider('test-key', 'openai/gpt-oss-120b');
+    const result = await provider.generate({
+      prompt: 'Return structured Brand IQ.',
+      json: true,
+      maxTokens: 1800,
+      model: 'openai/gpt-oss-120b',
+      fastFail: true,
+      signal: controller.signal,
+    });
+
+    expect(result.model).toBe('openai/gpt-oss-20b');
+    expect(mockedPostJson).toHaveBeenCalledTimes(2);
+    expect(mockedPostJson.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+    expect(mockedPostJson.mock.calls[1]?.[1]?.signal).toBe(controller.signal);
+  });
+
+  it('does not sleep or retry indefinitely when both Groq models are rate-limited in a scan', async () => {
+    mockedPostJson
+      .mockRejectedValueOnce(new AiProviderError('groq', '120B rate limited', 429, 30_000))
+      .mockRejectedValueOnce(new AiProviderError('groq', '20B rate limited', 429, 30_000));
+
+    const provider = createGroqProvider('test-key', 'openai/gpt-oss-120b');
+    await expect(provider.generate({
+      prompt: 'Return structured Brand IQ.',
+      json: true,
+      maxTokens: 1800,
+      model: 'openai/gpt-oss-120b',
+      fastFail: true,
+    })).rejects.toThrow('20B rate limited');
+    expect(mockedPostJson).toHaveBeenCalledTimes(2);
+  });
+
   it('uses Groq browser search only in plain-text mode', async () => {
     mockedPostJson.mockResolvedValueOnce({
       choices: [{ message: { content: 'https://example.com/about' } }],

@@ -26,3 +26,23 @@
   from { transform: translateX(-160%); }
   to { transform: translateX(280%); }
 }
+
+/* In reduced-motion mode, keep progress visibly alive without moving the bar
+   across the screen. The global reduced-motion rule otherwise ends this
+   infinite animation after its first frame. */
+@keyframes strategyGenerationProgressReduced {
+  0%, 100% { opacity: .48; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .strategyShell :global(#strategy > .card[data-generating='true'] .progress::after) {
+    animation: strategyGenerationProgressReduced 1.8s ease-in-out infinite !important;
+    transform: none !important;
+  }
+}
+
+html[data-reduced-motion='true'] .strategyShell :global(#strategy > .card[data-generating='true'] .progress::after) {
+  animation: strategyGenerationProgressReduced 1.8s ease-in-out infinite !important;
+  transform: none !important;
+}

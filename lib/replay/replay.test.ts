@@ -207,6 +207,9 @@ describe('completeReplayResearchRun', () => {
       ['brand_source_chunks', { data: null, error: null }],
       ['brand_source_chunks', { data: null, error: null }],
       ['brand_source_chunks', { data: null, error: null }],
+      // Migration 0020 only allows QUEUED -> RUNNING -> COMPLETED, so the
+      // replay completion issues two research_runs updates in order.
+      ['research_runs', { data: null, error: null }],
       ['research_runs', { data: null, error: null }],
       ['ai_tasks', { data: null, error: null }],
       ['brand_suggestions', { data: [], error: null }],
