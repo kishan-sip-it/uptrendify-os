@@ -38,6 +38,7 @@ export const CONTENT_PAGE_SIZES = {
 } as const;
 
 export const DEFAULT_CONTENT_SHAPE_COLOR = '#8b5cf6';
+export const DEFAULT_CONTENT_TEXT_COLOR = '#1d2634';
 export type ContentPageSizeId = keyof typeof CONTENT_PAGE_SIZES;
 export const CONTENT_PAGE_SIZE_IDS = Object.keys(CONTENT_PAGE_SIZES) as ContentPageSizeId[];
 
@@ -478,6 +479,37 @@ export function reorderBlocks<T>(blocks: T[], fromIndex: number, toIndex: number
   return next;
 }
 
+/**
+ * Update a block in the page that owns it, starting from the latest pages
+ * array. A preferred page disambiguates duplicate IDs in older saved docs.
+ */
+export function updateBlockInPages(
+  pages: ContentDocPage[],
+  blockId: string,
+  transform: (block: ContentDocBlock) => ContentDocBlock,
+  preferredPageIndex = 0,
+): ContentDocPage[] {
+  const preferred = pages[preferredPageIndex];
+  const pageIndex = preferred?.blocks.some((block) => block.id === blockId)
+    ? preferredPageIndex
+    : pages.findIndex((page) => page.blocks.some((block) => block.id === blockId));
+  if (pageIndex < 0) return pages;
+
+  let changed = false;
+  const next = pages.map((page, index) => {
+    if (index !== pageIndex) return page;
+    return {
+      ...page,
+      blocks: page.blocks.map((block) => {
+        if (block.id !== blockId) return block;
+        changed = true;
+        return transform(block);
+      }),
+    };
+  });
+  return changed ? next : pages;
+}
+
 /** Wrap legacy plain text into a one-page editable document. */
 export function createDocumentFromText(body: string, pageSize: ContentPageSizeId = 'a4'): ContentDocument {
   const paragraphs = body.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
@@ -521,10 +553,12 @@ export function reflowPage(page: ContentDocPage, toSize: ContentPageSizeId): Con
   return {
     id: newBlockId('page'),
     size: toSize,
+    // Duplicated pages are independent editing surfaces with unique layer IDs.
     blocks: page.blocks.map((block) => {
-      if (block.type === 'text') return { ...block, size: step(block.size) };
-      if (block.type === 'heading') return { ...block, level: ratio <= 0.8 ? Math.min(3, block.level + 1) as 1 | 2 | 3 : Math.max(1, block.level - 1) as 1 | 2 | 3 };
-      return { ...block };
+      const id = newBlockId(block.type);
+      if (block.type === 'text') return { ...block, id, size: step(block.size) };
+      if (block.type === 'heading') return { ...block, id, level: ratio <= 0.8 ? Math.min(3, block.level + 1) as 1 | 2 | 3 : Math.max(1, block.level - 1) as 1 | 2 | 3 };
+      return { ...block, id };
     }),
   };
 }
