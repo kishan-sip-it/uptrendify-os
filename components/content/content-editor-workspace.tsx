@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
+import { toBlob, toJpeg } from 'html-to-image';
+import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import {
   ArrowLeft,
   ArrowDown,
@@ -1024,8 +1026,38 @@ function centerOffset(stage: { w: number; h: number }, page: { w: number; h: num
   return { x: (stage.w - page.w * z) / 2, y: (stage.h - page.h * z) / 2 };
 }
 
-export function ContentEditorWorkspace({ brandId, contentId, documentTitle, contentType, channel, itemCta, brand, versionNumber, body, canEdit, versions, currentVersionId }: {
+const SNAPSHOT_MAX_BYTES = 2_097_152;
+
+async function exportPageImage(node: HTMLElement, backgroundColor: string) {
+  const baseOptions = { cacheBust: true, backgroundColor };
+  const png = await toBlob(node, { ...baseOptions, pixelRatio: 2 });
+  if (!png) throw new Error('The editor could not create an image from this page.');
+  if (png.size <= SNAPSHOT_MAX_BYTES) return { blob: png, mimeType: 'image/png' as const, pixelRatio: 2 };
+
+  const options: Array<{ pixelRatio: number; quality: number }> = [
+    { pixelRatio: 2, quality: 0.9 },
+    { pixelRatio: 1.5, quality: 0.84 },
+    { pixelRatio: 1, quality: 0.78 },
+  ];
+  for (const option of options) {
+    const dataUrl = await toJpeg(node, { ...baseOptions, ...option });
+    const blob = await (await fetch(dataUrl)).blob();
+    if (blob.size <= SNAPSHOT_MAX_BYTES) {
+      return { blob, mimeType: 'image/jpeg' as const, pixelRatio: option.pixelRatio };
+    }
+  }
+
+  throw new Error('This page is larger than the 2 MiB artwork limit. Reduce very large images on the page and try saving again.');
+}
+
+async function sha256ForBlob(blob: Blob): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export function ContentEditorWorkspace({ brandId, organizationId, contentId, documentTitle, contentType, channel, itemCta, brand, versionNumber, body, canEdit, versions, currentVersionId }: {
   brandId: string;
+  organizationId: string;
   contentId: string;
   documentTitle: string;
   contentType: string | null;
@@ -1128,6 +1160,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const stageRef = useRef<HTMLDivElement | null>(null);
   const stagePointerRef = useRef({ x: 0, y: 0 });
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const snapshotHostRef = useRef<HTMLDivElement | null>(null);
   const manualZoomRef = useRef(false);
   const offsetRef = useRef({ x: 0, y: 0 });
   const panRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
@@ -1249,6 +1282,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     [pages, freeMode],
   );
   const dirty = serialized !== loadedSnapshot;
+  const needsSnapshot = pages.some((page) => !page.snapshot?.path);
 
   // Restore an unsaved draft only when its saved-version baseline still matches.
   // If the server version has changed, keep the old draft available for an explicit
@@ -1419,8 +1453,18 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   const selectedIndex = activePage?.blocks.findIndex((block) => block.id === selectedId) ?? -1;
 
   const commit = useCallback((nextPages: ContentDocPage[], mode: 'flow' | 'free' = freeMode ? 'free' : 'flow') => {
-    setPages(nextPages);
-    const snapshot = serializeContentDocument({ kind: 'uptrendify-doc', version: 1, ...(mode === 'free' ? { mode: 'free' as const } : {}), pages: nextPages } satisfies ContentDocument);
+    const currentPages = pagesRef.current;
+    const versionPages = nextPages.map((page) => {
+      const previous = currentPages.find((entry) => entry.id === page.id);
+      if (!previous) return page;
+      const previousDesign = { ...previous, snapshot: undefined };
+      const nextDesign = { ...page, snapshot: undefined };
+      return JSON.stringify(previousDesign) === JSON.stringify(nextDesign)
+        ? page
+        : { ...page, snapshot: undefined };
+    });
+    setPages(versionPages);
+    const snapshot = serializeContentDocument({ kind: 'uptrendify-doc', version: 1, ...(mode === 'free' ? { mode: 'free' as const } : {}), pages: versionPages } satisfies ContentDocument);
     setHistory((current) => {
       const truncated = current.slice(0, historyIndex + 1);
       if (truncated[truncated.length - 1] === snapshot) return truncated;
@@ -2517,28 +2561,101 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   };
 
   async function save() {
-    if (saveInFlight.current || !canEdit || !dirty) return;
+    if (saveInFlight.current || !canEdit || (!dirty && !needsSnapshot)) return;
     saveInFlight.current = true;
     setBusy(true);
     setError(null);
-    setNotice(null);
+    setNotice('Capturing the exact saved appearance of each changed page…');
+    const newlyUploadedPaths: string[] = [];
+    let bodyVersionCommitted = false;
     try {
+      const documentSource = parseContentBody(serialized);
+      if (!documentSource) throw new Error('The canvas could not be parsed for artwork export. Your saved version has not changed.');
+      const snapshotHost = snapshotHostRef.current;
+      if (!snapshotHost) throw new Error('The artwork export surface is unavailable. Your saved version has not changed.');
+      await document.fonts.ready;
+      const supabase = createSupabaseBrowserClient();
+      const nextPages = [...documentSource.pages];
+      const exportNodes = Array.from(snapshotHost.querySelectorAll<HTMLElement>('[data-studio-snapshot-page]'));
+
+      for (let index = 0; index < nextPages.length; index += 1) {
+        const page = nextPages[index]!;
+        if (page.snapshot?.path) continue;
+        const target = exportNodes.find((node) => node.dataset.studioSnapshotPage === page.id);
+        if (!target) throw new Error(`Could not prepare page ${index + 1} for artwork export. Please try saving again.`);
+
+        const images = Array.from(target.querySelectorAll('img'));
+        await Promise.all(images.map(async (image) => {
+          if (!image.complete) await image.decode();
+          if (!image.naturalWidth || !image.naturalHeight) {
+            throw new Error('An image on the canvas could not be loaded for export. Check the image URL and try saving again.');
+          }
+        }));
+
+        target.classList.add('is-snapshot-capture');
+        let exported: Awaited<ReturnType<typeof exportPageImage>>;
+        try {
+          exported = await exportPageImage(target, page.bg ?? '#ffffff');
+        } catch {
+          throw new Error('Could not create the exact image snapshot. Check that all images on the canvas can be exported, then try saving again.');
+        } finally {
+          target.classList.remove('is-snapshot-capture');
+        }
+
+        const extension = exported.mimeType === 'image/png' ? 'png' : 'jpg';
+        const storagePath = `${organizationId}/content-artworks/${brandId}/${contentId}/${crypto.randomUUID()}/page-${index + 1}.${extension}`;
+        const { error: uploadError } = await supabase.storage.from('brand-assets').upload(storagePath, exported.blob, {
+          cacheControl: '31536000',
+          contentType: exported.mimeType,
+          upsert: false,
+        });
+        if (uploadError) throw new Error(`The artwork image could not be stored securely: ${uploadError.message}`);
+        newlyUploadedPaths.push(storagePath);
+
+        const dimensions = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
+        nextPages[index] = {
+          ...page,
+          snapshot: {
+            path: storagePath,
+            width: dimensions.width,
+            height: dimensions.height,
+            pixelRatio: exported.pixelRatio,
+            mimeType: exported.mimeType,
+            sha256: await sha256ForBlob(exported.blob),
+          },
+        };
+      }
+
+      const savedBody = serializeContentDocument({ ...documentSource, pages: nextPages });
       const response = await fetch(`/api/brands/${brandId}/content/${contentId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ body: serialized }),
+        body: JSON.stringify({ body: savedBody }),
       });
       const result = await response.json().catch(() => null);
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(result?.error || 'Could not save the edited content');
+      bodyVersionCommitted = true;
+
+      setPages(nextPages);
       setLoadedVersionId(null);
       loadedBaselineVersionIdRef.current = null;
-      setLoadedSnapshot(serialized);
+      setLoadedSnapshot(savedBody);
+      setHistory([savedBody]);
+      setHistoryIndex(0);
       setSaved(true);
-      setNotice('Saved as the new current version. Approval and publishing now read exactly what is on the canvas.');
+      setNotice('Saved a new version with immutable page images. Approval and preview screens will show these exact images.');
       router.refresh();
     } catch (err) {
+      if (!bodyVersionCommitted && newlyUploadedPaths.length) {
+        try {
+          await createSupabaseBrowserClient().storage.from('brand-assets').remove(newlyUploadedPaths);
+        } catch {
+          // Unique uploaded files can only remain orphaned if cleanup itself fails.
+        }
+      }
       setError(err instanceof Error ? err.message : 'Could not save the edited content');
+      setNotice(null);
     } finally {
       saveInFlight.current = false;
       setBusy(false);
@@ -2546,7 +2663,7 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
   }
 
   const submitForApproval = async () => {
-    if (saveInFlight.current || submitting || !canEdit || dirty) return;
+    if (saveInFlight.current || submitting || !canEdit || dirty || needsSnapshot) return;
     if (loadedVersionId !== currentVersionId) {
       setError('This canvas shows an older version. Open the current version (or save it as a new version) before submitting.');
       return;
@@ -2921,20 +3038,23 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
     return block !== null && canEdit && !block.locked;
   }
 
-  const renderBlockInner = (block: EditorBlock) => {
-    const editable = canEdit && !block.locked;
-    const textProps = { onClick: () => { setSelectedId(block.id); setInspectorTab('design'); }, onCommit: (next: string, runs?: InlineTextRun[]) => patchBlock(block.id, { text: next, ...(block.type === 'heading' || block.type === 'text' ? { richText: runs } : {}), link: undefined }) };
+  const renderBlockInner = (block: EditorBlock, snapshotMode = false) => {
+    const editable = !snapshotMode && canEdit && !block.locked;
+    const textProps = {
+      onClick: snapshotMode ? undefined : () => { setSelectedId(block.id); setInspectorTab('design'); },
+      onCommit: snapshotMode ? () => undefined : (next: string, runs?: InlineTextRun[]) => patchBlock(block.id, { text: next, ...(block.type === 'heading' || block.type === 'text' ? { richText: runs } : {}), link: undefined }),
+    };
     switch (block.type) {
       case 'heading':
         return (
           <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden', opacity: block.opacity ?? 1 }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={!snapshotMode && selectedId === block.id && !previewMode} onInlineToolbarChange={snapshotMode ? undefined : bindInlineToolbar(block.id)} editRequest={snapshotMode ? 0 : (inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0)} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
           </div>
         );
       case 'text':
         return (
           <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={!snapshotMode && selectedId === block.id && !previewMode} onInlineToolbarChange={snapshotMode ? undefined : bindInlineToolbar(block.id)} editRequest={snapshotMode ? 0 : (inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0)} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
           </div>
         );
       case 'image':
@@ -3166,10 +3286,10 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
         <button type="button" className="st-btn" onClick={() => { setFocusMode(false); setDockTab('insert'); setDrawerSearch(''); setNotice('Import a Canva SVG export or Studio JSON from the Insert panel. Select a text layer to edit it, or double-click text directly on the canvas.'); }} title="Import editable Canva SVG or Studio JSON"><ImageIcon size={13} /> Import template</button>
         <button type="button" className={`st-btn${freeMode ? ' st-btn--primary' : ''}`} onClick={toggleCanvasMode} aria-pressed={freeMode} title="Switch between stacked flow layout and independently movable/resizable canvas layers">Free canvas{freeMode ? ' ✓' : ''}</button>
         <button type="button" className="st-btn" onClick={() => setPreviewMode((value) => !value)} aria-pressed={previewMode}>{previewMode ? 'Exit preview' : 'Preview'}</button>
-        <button type="button" className="st-btn" onClick={() => void save()} disabled={busy || !canEdit || !dirty} title={!canEdit ? 'Editing is available in draft, after change requests, or after rejection.' : !dirty ? 'Nothing to save yet — the canvas matches the saved version.' : 'Save these edits as a new version'}>
+        <button type="button" className="st-btn" onClick={() => void save()} disabled={busy || !canEdit || (!dirty && !needsSnapshot)} title={!canEdit ? 'Editing is available in draft, after change requests, or after rejection.' : !dirty && needsSnapshot ? 'Create the immutable image snapshot for this saved design.' : !dirty ? 'Nothing changed and the saved artwork already exists.' : 'Save these edits and their exact image snapshots as a new version'}>
           {busy ? 'Saving…' : 'Save new version'}
         </button>
-        <button type="button" className="st-btn st-btn--primary" onClick={() => void submitForApproval()} disabled={busy || submitting || !canEdit || dirty || loadedVersionId !== currentVersionId} title={dirty ? 'Save your edits first, then submit the exact saved version.' : loadedVersionId !== currentVersionId ? 'An older version is on the canvas. Open the current version (or save it as a new version) before submitting.' : !canEdit ? 'Editing is not available in this status.' : 'Send this exact saved version to the approval queue.'}>
+        <button type="button" className="st-btn st-btn--primary" onClick={() => void submitForApproval()} disabled={busy || submitting || !canEdit || dirty || needsSnapshot || loadedVersionId !== currentVersionId} title={dirty ? 'Save your edits first, then submit the exact saved version.' : loadedVersionId !== currentVersionId ? 'An older version is on the canvas. Open the current version (or save it as a new version) before submitting.' : !canEdit ? 'Editing is not available in this status.' : 'Send this exact saved version to the approval queue.'}>
           {submitting ? 'Sending…' : 'Submit for approval'}
         </button>
       </div>
@@ -4308,6 +4428,48 @@ export function ContentEditorWorkspace({ brandId, contentId, documentTitle, cont
           </section>
         </div>
       ) : null}
+
+      <div ref={snapshotHostRef} className="studio-snapshot-host" aria-hidden="true">
+        {pages.filter((page) => !page.snapshot?.path).map((page) => {
+          const dimensions = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
+          const backgroundStyle: React.CSSProperties = {
+            position: 'relative',
+            width: dimensions.width,
+            height: dimensions.height,
+            minHeight: dimensions.height,
+            overflow: 'hidden',
+            transform: 'none',
+            backgroundColor: page.bg ?? '#ffffff',
+            backgroundImage: page.backgroundImage ? `url(${JSON.stringify(page.backgroundImage.src)})` : undefined,
+            backgroundSize: page.backgroundImage ? (page.backgroundImage.fit ?? 'cover') : undefined,
+            backgroundPosition: page.backgroundImage ? 'center' : undefined,
+            backgroundRepeat: page.backgroundImage ? 'no-repeat' : undefined,
+            boxShadow: 'none',
+          };
+          return (
+            <div key={page.id} data-studio-snapshot-page={page.id} className="studio-page-frame studio-snapshot-page" style={backgroundStyle}>
+              <div className="studio-page-clip" style={{ position: 'relative', width: dimensions.width, height: dimensions.height, overflow: 'hidden' }}>
+                {freeMode ? (
+                  page.blocks.filter((block) => !block.hidden).map((block, layerIndex) => {
+                    const geometry = block.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
+                    return (
+                      <div key={block.id} data-bid={block.id} className="editor-free-block" style={{ left: geometry.x, top: geometry.y, width: geometry.w, height: geometry.h, zIndex: layerIndex + 1, transform: geometry.rotation ? `rotate(${geometry.rotation}deg)` : undefined }}>
+                        <div className="editor-free-block-content" style={{ opacity: block.opacity ?? 1 }}>{renderBlockInner(block, true)}</div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  page.blocks.filter((block) => !block.hidden).map((block) => (
+                    <div key={block.id} data-bid={block.id} className="editor-drop-wrap">
+                      <div className="editor-block" style={{ opacity: block.opacity ?? 1 }}>{renderBlockInner(block, true)}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       {isUploadingImage ? (
         <div className="studio-upload-overlay" role="status" aria-live="polite" aria-label="Uploading image">
