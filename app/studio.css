@@ -1351,3 +1351,64 @@
     transition-duration: 1ms !important;
   }
 }
+
+/* ---------- Apply Brand Essentials ---------- */
+.brand-essentials-cta {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--st-accent);
+  border-radius: 10px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--st-accent) 16%, transparent), color-mix(in srgb, var(--st-accent) 5%, transparent));
+  color: var(--st-text);
+  cursor: pointer;
+  text-align: left;
+}
+.brand-essentials-cta:hover:not(:disabled), .brand-essentials-cta:focus-visible { background: color-mix(in srgb, var(--st-accent) 24%, transparent); outline: none; }
+.brand-essentials-cta:disabled { opacity: 0.5; cursor: default; }
+.brand-essentials-cta-icon {
+  display: grid; place-items: center; flex: 0 0 auto;
+  width: 28px; height: 28px; border-radius: 8px;
+  background: var(--st-accent); color: #fff;
+}
+.brand-essentials-cta-copy { display: grid; gap: 2px; min-width: 0; }
+.brand-essentials-cta-copy strong { font-size: 11.5px; font-weight: 800; }
+.brand-essentials-cta-copy span:not(.brand-essentials-cta-icon) { font-size: 10px; color: var(--st-ink-2); line-height: 1.35; }
+.brand-essentials-summary {
+  display: grid; gap: 3px; padding: 8px 9px;
+  border: 1px solid var(--st-line-strong); border-radius: 8px;
+  font-size: 10.5px; color: var(--st-text);
+}
+.brand-essentials-summary p { margin: 0; }
+.brand-apply-dialog { max-width: min(640px, 94vw); }
+.brand-apply-body { display: grid; gap: 14px; }
+.brand-apply-error {
+  margin: 0; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid #b91c1c; background: #fef2f2; color: #b91c1c;
+  font-size: 11.5px;
+}
+.brand-apply-scope { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.brand-apply-scope button {
+  display: grid; gap: 2px; padding: 10px; text-align: left;
+  border: 1px solid var(--st-line-strong); border-radius: 10px;
+  background: var(--st-panel); cursor: pointer; color: var(--st-text);
+}
+.brand-apply-scope button.is-active { border-color: var(--st-accent); background: color-mix(in srgb, var(--st-accent) 10%, transparent); }
+.brand-apply-scope button strong { font-size: 11.5px; }
+.brand-apply-scope button span { font-size: 10px; color: var(--st-ink-2); }
+.brand-apply-section { display: grid; gap: 6px; }
+.brand-apply-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.brand-apply-swatch { display: grid; justify-items: center; gap: 3px; }
+.brand-apply-swatch > span { display: block; width: 40px; height: 28px; border-radius: 6px; border: 1px solid var(--st-line-strong); }
+.brand-apply-swatch small { font-size: 9px; color: var(--st-ink-2); }
+.brand-apply-type { display: grid; gap: 8px; }
+.brand-apply-type small { font-size: 10px; color: var(--st-ink-2); font-weight: 700; }
+.brand-apply-type p { margin: 2px 0 0; color: var(--st-text); }
+.brand-apply-logo { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; }
+.brand-apply-logo input { margin-top: 2px; }
+.brand-apply-logo strong { display: block; font-size: 11.5px; }
+.brand-apply-logo span span { display: block; font-size: 10px; color: var(--st-ink-2); }
+.brand-apply-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.brand-apply-confirm { min-width: 180px; }

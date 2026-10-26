@@ -67,6 +67,15 @@ import { reconcileContentVersionState } from '@/lib/content/version-state';
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
 import { StudioTemplateLibrary } from '@/components/content/studio-template-library';
 import { buildTemplatePages } from '@/lib/studio/template-library/build';
+import {
+  applyBrandEssentials,
+  resolveBrandEssentials,
+  contrastSafeLabel,
+  type ApplyScope,
+  type ApplyStats,
+} from '@/lib/studio/apply-brand-essentials';
+import { ensureBrandFontsLoaded } from '@/lib/studio/brand-fonts';
+import { contrastRatio } from '@/lib/studio/template-library/contrast';
 import { templatePaletteByName } from '@/lib/studio/template-library/art';
 import { STUDIO_LIBRARY } from '@/lib/studio/template-library';
 import { importSvgTemplate, type SvgTemplateImport } from '@/lib/studio/import-template';
@@ -1066,7 +1075,7 @@ async function sha256ForBlob(blob: Blob): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export function ContentEditorWorkspace({ brandId, organizationId, contentId, documentTitle, contentType, channel, itemCta, brand, versionNumber, body, canEdit, versions, currentVersionId, contentStatus }: {
+export function ContentEditorWorkspace({ brandId, organizationId, contentId, documentTitle, contentType, channel, itemCta, brand, brandVisual, versionNumber, body, canEdit, versions, currentVersionId, contentStatus }: {
   brandId: string;
   organizationId: string;
   contentId: string;
@@ -1075,6 +1084,13 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   channel: string | null;
   itemCta: string | null;
   brand: { colors: string[]; fonts: string[] };
+  brandVisual?: {
+    logoUrl: string | null;
+    palette: { hex: string; role: string }[];
+    headingFont: string | null;
+    bodyFont: string | null;
+    fonts: { family: string; fontAssetUrl?: string; fontAssetFormat?: 'woff2' | 'woff' | 'opentype' | 'truetype' }[];
+  } | null;
   versionNumber: number;
   body: string;
   canEdit: boolean;
@@ -1146,6 +1162,13 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [editorStatus, setEditorStatus] = useState(contentStatus);
   const [studioActionDialog, setStudioActionDialog] = useState<StudioActionDialog | null>(null);
   const [studioDialogValue, setStudioDialogValue] = useState('');
+  const [brandApplyOpen, setBrandApplyOpen] = useState(false);
+  const [brandApplyScope, setBrandApplyScope] = useState<ApplyScope>('document');
+  const [brandApplyLogo, setBrandApplyLogo] = useState(true);
+  const [brandApplyBusy, setBrandApplyBusy] = useState(false);
+  const [brandApplyError, setBrandApplyError] = useState<string | null>(null);
+  const [brandApplySummary, setBrandApplySummary] = useState<ApplyStats | null>(null);
+  const [brandFontsLoaded, setBrandFontsLoaded] = useState<string[]>([]);
 
   useEffect(() => {
     const reconciled = reconcileContentVersionState(
@@ -1489,6 +1512,84 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       setLocalDraftSaved(false);
     }
   }, [localDraftReady, pages, activePageIndex, freeMode, loadedSnapshot, loadedVersionId, currentVersionId, localDraftKey]);
+
+  const brandEssentials = useMemo(() => resolveBrandEssentials(brandVisual ?? null), [brandVisual]);
+  const brandEssentialsAvailable = Boolean(brandVisual && (brandEssentials.accent || brandEssentials.headingFont || brandEssentials.bodyFont || brandEssentials.logoUrl || brandEssentials.colors.length));
+  const brandApplyDisabled = !canEdit || !brandEssentialsAvailable || brandApplyBusy;
+  const openBrandApply = () => {
+    if (brandApplyDisabled) return;
+    setBrandApplyError(null);
+    setBrandApplyScope('document');
+    setBrandApplyLogo(Boolean(brandEssentials.logoUrl));
+    setBrandApplyOpen(true);
+    void ensureBrandFontsLoaded(brandVisual?.fonts ?? []).then((loaded) => setBrandFontsLoaded(loaded));
+  };
+  const uploadBrandLogo = async (): Promise<{ src: string; aspect: number } | null> => {
+    if (!brandEssentials.logoUrl) return null;
+    const response = await fetch(brandEssentials.logoUrl, { mode: 'cors' });
+    if (!response.ok) throw new Error('The brand logo could not be downloaded from the scanned source.');
+    const blob = await response.blob();
+    const type = blob.type || response.headers.get('content-type') || '';
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(type)) throw new Error('The brand logo is not a PNG, JPG, or WEBP image.');
+    if (blob.size <= 0 || blob.size > 2 * 1024 * 1024) throw new Error('The brand logo is larger than 2 MB.');
+    const aspect = await new Promise<number>((resolve) => {
+      const url = URL.createObjectURL(blob);
+      const image = new Image();
+      image.onload = () => { resolve(image.naturalWidth / Math.max(1, image.naturalHeight)); URL.revokeObjectURL(url); };
+      image.onerror = () => { resolve(2); URL.revokeObjectURL(url); };
+      image.src = url;
+    });
+    const assetId = crypto.randomUUID();
+    const form = new FormData();
+    const extension = type.split('/')[1] === 'jpeg' ? 'jpg' : type.split('/')[1] || 'png';
+    form.append('file', new File([blob], `brand-logo.${extension}`, { type }));
+    const upload = await fetch(`/api/brands/${brandId}/content/${contentId}/assets/${assetId}`, { method: 'POST', body: form });
+    if (!upload.ok) {
+      const body = (await upload.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(body?.error ?? 'The brand logo upload was rejected.');
+    }
+    return { src: `/api/brands/${brandId}/content/${contentId}/assets/${assetId}`, aspect };
+  };
+  const runBrandApply = async () => {
+    if (brandApplyDisabled) return;
+    setBrandApplyBusy(true);
+    setBrandApplyError(null);
+    try {
+      let logo: { src: string; aspect: number } | null = null;
+      let logoNotice: string | null = null;
+      if (brandApplyLogo && brandEssentials.logoUrl) {
+        try {
+          logo = await uploadBrandLogo();
+        } catch (logoError) {
+          logoNotice = logoError instanceof Error ? logoError.message : 'The brand logo could not be used.';
+        }
+      }
+      const result = applyBrandEssentials({
+        doc: { kind: 'uptrendify-doc', version: 1, mode: 'free', pages: pagesRef.current },
+        essentials: brandEssentials,
+        scope: brandApplyScope,
+        activePageIndex: activePageIndexRef.current,
+        logoSrc: logo?.src ?? null,
+        logoAspect: logo?.aspect,
+        includeLogo: brandApplyLogo && Boolean(brandEssentials.logoUrl),
+      });
+      commit(result.doc.pages, 'free');
+      setFreeMode(true);
+      setSelectedId(null);
+      setBrandApplySummary(result.stats);
+      setBrandApplyOpen(false);
+      if (logoNotice) setError(logoNotice + ' The palette and typography were applied without the logo.');
+      else setError(null);
+      const logoLine = result.stats.logo.length
+        ? ` Logo: ${result.stats.logo.map((entry) => entry.outcome).join(', ')}.`
+        : '';
+      setNotice(`Brand essentials applied to ${result.stats.pagesThemed} page(s). ${result.stats.headingsStyled + result.stats.bodiesStyled} text, ${result.stats.shapesStyled} shapes and ${result.stats.buttonsStyled} buttons restyled.${logoLine} Save a new version to keep it.`);
+    } catch (applyError) {
+      setBrandApplyError(applyError instanceof Error ? applyError.message : 'Applying the brand essentials failed.');
+    } finally {
+      setBrandApplyBusy(false);
+    }
+  };
 
   const brandIssues = useMemo(
     () => lintBlocks(activePage?.blocks ?? [], { colors: brand.colors }, activePage?.bg),
@@ -3600,6 +3701,30 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
 
               {dockTab === 'brand' ? (
                 <>
+                  <button
+                    type="button"
+                    className="brand-essentials-cta"
+                    onClick={openBrandApply}
+                    disabled={brandApplyDisabled}
+                    title={canEdit ? 'Apply the scanned brand palette, fonts and logo to this artwork' : 'This content is read-only, so brand essentials cannot be applied'}
+                  >
+                    <span className="brand-essentials-cta-icon" aria-hidden="true"><Check size={16} /></span>
+                    <span className="brand-essentials-cta-copy">
+                      <strong>Apply Brand Essentials</strong>
+                      <span>Brand palette, fonts and logo — one click, fully editable.</span>
+                    </span>
+                  </button>
+                  {!canEdit ? <p className="editor-hint">This content is not editable, so brand essentials are unavailable.</p> : null}
+                  {!brandEssentialsAvailable ? <p className="editor-hint">Run a brand scan first — no usable brand identity was found for Apply Brand Essentials.</p> : null}
+                  {brandApplySummary ? (
+                    <div className="brand-essentials-summary" role="status">
+                      <span className="st-label">Last application</span>
+                      <p>{brandApplySummary.pagesThemed} page(s) themed · {brandApplySummary.headingsStyled} headings · {brandApplySummary.bodiesStyled} text · {brandApplySummary.shapesStyled} shapes · {brandApplySummary.buttonsStyled} buttons</p>
+                      {brandApplySummary.contrastFallbacks > 0 ? <p>{brandApplySummary.contrastFallbacks} contrast-safe fallback(s) applied.</p> : null}
+                      {brandApplySummary.logo.length ? <p>Logo: {brandApplySummary.logo.map((entry) => entry.outcome).join(', ')}.</p> : null}
+                      <p className="editor-hint">Unsaved — save a new version to keep it, or Undo to revert.</p>
+                    </div>
+                  ) : null}
                   <span className="st-label">Palette</span>
                   <div className="editor-shapes-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
                     {brand.colors.map((color) => (
@@ -4685,6 +4810,87 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           </div>
         </div>
       ) : null}
+
+      <AppDialog
+        open={brandApplyOpen}
+        title="Apply Brand Essentials"
+        description="Styling only — your text, links, images and layout stay exactly as they are."
+        onClose={() => { if (!brandApplyBusy) setBrandApplyOpen(false); }}
+        className="brand-apply-dialog"
+      >
+        <div className="brand-apply-body">
+          {brandApplyError ? <p className="brand-apply-error" role="alert">{brandApplyError}</p> : null}
+          <section className="brand-apply-scope" role="radiogroup" aria-label="Apply scope">
+            <button type="button" role="radio" aria-checked={brandApplyScope === 'document'} className={brandApplyScope === 'document' ? 'is-active' : ''} disabled={brandApplyBusy} onClick={() => setBrandApplyScope('document')}>
+              <strong>Entire document</strong><span>{pages.length} page{pages.length === 1 ? '' : 's'}</span>
+            </button>
+            <button type="button" role="radio" aria-checked={brandApplyScope === 'page'} className={brandApplyScope === 'page' ? 'is-active' : ''} disabled={brandApplyBusy} onClick={() => setBrandApplyScope('page')}>
+              <strong>Current page</strong><span>Page {activePageIndex + 1} only</span>
+            </button>
+          </section>
+          <section className="brand-apply-section">
+            <span className="st-label">Palette</span>
+            {brandEssentials.colors.length ? (
+              <div className="brand-apply-swatches">
+                {brandEssentials.colors.slice(0, 8).map((color, index) => (
+                  <span key={color} className="brand-apply-swatch" title={`Role: ${index === 0 ? 'accent / buttons' : index === 1 ? 'secondary shapes' : index === brandEssentials.colors.length - 1 && color === brandEssentials.surface ? 'page surface' : 'support'}`}>
+                    <span style={{ background: color }} />
+                    <small>{color}</small>
+                  </span>
+                ))}
+              </div>
+            ) : <p className="editor-hint">No usable brand colours were scanned. Typography will still apply.</p>}
+          </section>
+          <section className="brand-apply-section">
+            <span className="st-label">Typography</span>
+            <div className="brand-apply-type">
+              <div>
+                <small>Heading — {brandEssentials.headingFont ?? 'theme default'}{brandEssentials.headingFont && !brandFontsLoaded.includes(brandEssentials.headingFont) ? ' (fallback — asset not loaded)' : ''}</small>
+                <p style={{ fontFamily: brandEssentials.headingFont ? `'${brandEssentials.headingFont}', Georgia, serif` : undefined, fontWeight: 700, fontSize: 18 }}>Headlines that carry the brand</p>
+              </div>
+              <div>
+                <small>Body — {brandEssentials.bodyFont ?? 'theme default'}{brandEssentials.bodyFont && !brandFontsLoaded.includes(brandEssentials.bodyFont) ? ' (fallback — asset not loaded)' : ''}</small>
+                <p style={{ fontFamily: brandEssentials.bodyFont ? `'${brandEssentials.bodyFont}', Arial, sans-serif` : undefined }}>Body copy stays quiet, readable and true to the brand voice.</p>
+              </div>
+            </div>
+            {brandEssentials.accent ? (
+              <p className="editor-hint">
+                Contrast: ink on page {' '}
+                {(() => {
+                  const bg = brandEssentials.surface ?? '#ffffff';
+                  const ratio = contrastRatio(brandEssentials.ink, bg);
+                  return `${ratio.toFixed(1)}:1 ${ratio >= 4.5 ? '— AA pass' : '— a safe fallback will be used'}`;
+                })()}
+                {' · '}label on accent {' '}
+                {(() => {
+                  const ratio = contrastRatio(contrastSafeLabel(brandEssentials.accent, brandEssentials.ink), brandEssentials.accent);
+                  return `${ratio.toFixed(1)}:1 ${ratio >= 4.5 ? '— AA pass' : '— a safe fallback will be used'}`;
+                })()}
+              </p>
+            ) : null}
+          </section>
+          {brandEssentials.logoUrl ? (
+            <section className="brand-apply-section">
+              <label className="brand-apply-logo">
+                <input type="checkbox" checked={brandApplyLogo} disabled={brandApplyBusy} onChange={(event) => setBrandApplyLogo(event.target.checked)} />
+                <span>
+                  <strong>Add brand logo as a new editable layer</strong>
+                  <span>Placed in a free corner; skipped on pages with no room. Never replaces existing images.</span>
+                </span>
+              </label>
+            </section>
+          ) : (
+            <p className="editor-hint">No brand logo was detected in the scan — palette and typography will still apply.</p>
+          )}
+          <p className="editor-hint">Will change: colours, heading/body fonts, shape fills, button fills + labels{brandApplyLogo && brandEssentials.logoUrl ? ', one new logo layer per page' : ''}. Untouched: all copy, links, images, geometry, page order and sizes. Reversible with Undo; nothing is saved until you press Save new version.</p>
+          <div className="brand-apply-actions">
+            <button type="button" className="st-btn" disabled={brandApplyBusy} onClick={() => setBrandApplyOpen(false)}>Cancel</button>
+            <button type="button" className="st-btn st-btn--primary brand-apply-confirm" disabled={brandApplyDisabled} onClick={() => void runBrandApply()}>
+              {brandApplyBusy ? 'Applying…' : `Apply to ${brandApplyScope === 'document' ? `all ${pages.length} pages` : `page ${activePageIndex + 1}`}`}
+            </button>
+          </div>
+        </div>
+      </AppDialog>
 
       <AppDialog
         open={Boolean(studioActionDialog)}

@@ -3,6 +3,7 @@ import { CAN_GENERATE_CONTENT, CAN_VIEW_BRAND, requireOrgRole } from '@/lib/auth
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ContentEditorWorkspace } from '@/components/content/content-editor-workspace';
 import { EDITABLE_BODY_STATUSES } from '@/lib/content/edit-policy';
+import { parseVisualIdentity } from '@/lib/brand/identity-mapping';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,6 +55,22 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
     ? ((brand.visual_identity as { fonts: Array<{ family: string }> }).fonts.map((font) => font.family).filter(Boolean))
     : [];
 
+  // Parsed scan identity powering "Apply Brand Essentials" (logo, palette
+  // roles, heading/body font roles, font asset metadata). Falls back to an
+  // empty identity when the scan is missing or malformed.
+  const visualIdentity = parseVisualIdentity(brand.visual_identity);
+  const brandVisual = {
+    logoUrl: visualIdentity.logoUrl,
+    palette: visualIdentity.palette.slice(0, 8).map((entry) => ({ hex: entry.hex, role: entry.role })),
+    headingFont: visualIdentity.headingFont,
+    bodyFont: visualIdentity.bodyFont,
+    fonts: visualIdentity.fonts.slice(0, 6).map((font) => ({
+      family: font.family,
+      fontAssetUrl: font.fontAssetUrl,
+      fontAssetFormat: font.fontAssetFormat,
+    })),
+  };
+
   return (
     <>
       <ContentEditorWorkspace
@@ -65,6 +82,7 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
         channel={item.channel}
         itemCta={version?.cta ?? item.cta ?? null}
         brand={{ colors: brandColors, fonts: brandFonts }}
+        brandVisual={brandVisual}
         versionNumber={version?.version ?? 0}
         body={version?.body ?? ''}
         canEdit={Boolean(canEdit && version)}
