@@ -1243,3 +1243,25 @@
     grid-template-columns: max-content minmax(0, 1fr);
   }
 }
+
+
+/* Same second-panel width across all dock tabs, whether the selected tab is Templates or not. */
+@media (min-width: 901px) {
+  .studio-body.has-drawer,
+  .studio-body.has-template-drawer {
+    grid-template-columns: max-content clamp(260px, 28vw, 400px) minmax(220px, 1fr) minmax(210px, 250px);
+  }
+
+  .studio-body.has-drawer > .studio-drawer,
+  .studio-body.has-template-drawer > .studio-drawer {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .studio-body.has-drawer .studio-drawer-body,
+  .studio-body.has-drawer .st-tpl-library {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+}
