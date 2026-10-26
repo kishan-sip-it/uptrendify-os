@@ -9,6 +9,7 @@ export type CatalogPage<P = Record<string, unknown>> = {
   copy: CopyBag;
   options?: P;
   bg?: string;
+  gradient?: { from: string; to: string; angle: number };
 };
 
 /**
@@ -34,7 +35,9 @@ export function def(input: {
     pages: input.pages.map((page): TemplatePageSpec => {
       const composer = ARCHETYPES[page.archetype] as (args: ArchetypeArgs<Record<string, unknown>>) => TemplatePageSpec;
       const composed = composer({ size: page.size, copy: page.copy, options: page.options });
-      return page.bg ? { ...composed, bg: page.bg } : composed;
+      let spec = page.bg ? { ...composed, bg: page.bg } : composed;
+      if (page.gradient) spec = { ...spec, gradient: page.gradient };
+      return spec;
     }),
   };
 }

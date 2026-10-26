@@ -26,9 +26,24 @@ Environment: Linux, Node 24, feature branch `feat/studio-template-library-500-20
 3. After round-2 options + editorialCover 4-line support: 8/9 — 1 geometry defect (adBanner corner arc fully off-canvas at `x=100%`).
 4. Final: **9/9**.
 
-## Browser / visual verification
+## Browser / visual verification — PASSED (2026-10-26, Playwright + dev server + local Supabase)
 
-- **UNVERIFIED this session.** No browser automation run was executed against the dev server in this session; card/preview rendering, apply flows, gradient controls and the rotation input have been verified at the unit/schema/render-code level only. Reproduce visually with:
+Verified against a DRAFT content item in the seeded Aurora Labs workspace, signed in as the seed presenter user:
+
+| Check | Result |
+|---|---|
+| Templates tab opens, panel renders | ✅ "Showing all 500 templates", 24 cards mounted, 24/24 lazy thumbnails rendered as real `ContentDocumentView` output |
+| Search | ✅ "pitch" → "9 of 500 templates match", correct names; clear resets |
+| Category filter | ✅ presentation → "45 of 500 templates match" (exact) |
+| Preview dialog | ✅ title, live page render, 5 page dots switch pages, actions present |
+| Multi-page apply | ✅ confirm dialog (exact copy), "Add all 5 pages": document 2 → 7 page tabs, 46 blocks on canvas, notice shown; other pages preserved |
+| Read-only policy | ✅ APPROVED item renders the library with controls disabled (`canEdit` intact) |
+| Save + reopen | ✅ "Save new version" → reload → 7 tabs / 46 blocks restored from the server body |
+| Page gradients | ✅ after adding gradients to 12 catalogue templates, computed thumbnail style shows `linear-gradient(160deg, …)` |
+| Console | ✅ no app errors (only a pre-existing site-manifest parse warning, unrelated to this feature) |
+| Rotation input | code-verified; not click-driven this pass (input follows the existing geometry path) |
+
+Reproduce with:
   ```bash
   npm run dev   # open a content item editor → inspector → Templates tab
   ```
@@ -41,6 +56,6 @@ Environment: Linux, Node 24, feature branch `feat/studio-template-library-500-20
 
 ## Remaining limitations
 
-1. Browser-level UI verification listed above still to be performed (or by product owner).
+1. Rotation input not click-driven in the browser pass (follows the pre-existing, tested geometry path).
 2. `components/content/studio-free-canvas.tsx` is dead code predating this work — left untouched.
 3. Canva→native automated import unavailable (see CANVA-MCP-RESEARCH.md).

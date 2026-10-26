@@ -9,7 +9,7 @@ import type { TemplateDefinition } from '../types';
 export const PRESENTATION_TEMPLATES: TemplateDefinition[] = [
   def({ id: 't-pre-001', name: 'Pitch Cover — Seed Round', category: 'presentation', subcategory: 'Pitch decks', format: 'wide', style: 'minimal', palette: 'mono',
     useCase: 'Seed round pitch deck cover', audience: 'Angel investors', tags: ['pitch', 'cover', 'seed'],
-    pages: [{ archetype: 'pitchCover', size: 'wide', options: { decor: 'bars' }, copy: { eyebrow: 'Seed round · confidential', title: 'Ledgerline', subtitle: 'The finance back office for teams of five to fifty.', name: 'Maya Chen', role: 'CEO', date: 'November 2026' } }] }),
+    pages: [{ gradient: { from: '#f5f7fa', to: '#e2e8f0', angle: 135 }, archetype: 'pitchCover', size: 'wide', options: { decor: 'bars' }, copy: { eyebrow: 'Seed round · confidential', title: 'Ledgerline', subtitle: 'The finance back office for teams of five to fifty.', name: 'Maya Chen', role: 'CEO', date: 'November 2026' } }] }),
   def({ id: 't-pre-002', name: 'Pitch Cover — Problem First', category: 'presentation', subcategory: 'Pitch decks', format: 'wide', style: 'bold', palette: 'royal',
     useCase: 'Problem-led pitch deck cover', audience: 'VC associates and partners', tags: ['pitch', 'cover', 'problem'],
     pages: [{ archetype: 'pitchCover', size: 'wide', options: { decor: 'ring' }, copy: { eyebrow: 'Series A', title: 'Small practices are drowning in paperwork', subtitle: 'Copperline automates the admin between patient and payment.', name: 'Elena Vance', role: 'Founder', date: 'Q1 2027' } }] }),
@@ -57,7 +57,7 @@ export const PRESENTATION_TEMPLATES: TemplateDefinition[] = [
     pages: [{ archetype: 'portfolioGrid', size: 'wide', options: { cellCount: 3 }, copy: { title: 'Motion that earns its 60 seconds', subtitle: 'Three recent product films', items: ['Ledgerline — forecast launch', 'Trailfox GTX — trail film', 'Halo lamp — the cordless story'], stats: [{ value: '', label: '2D/3D mix · 6 weeks' }, { value: '', label: 'Live action + CG · 4 weeks' }, { value: '', label: 'Full CG · 8 weeks' }], cta: 'Screening room' } }] }),
   def({ id: 't-pre-017', name: 'Pitch Cover — Demo Day', category: 'presentation', subcategory: 'Pitch decks', format: 'wide', style: 'geometric', palette: 'lilac',
     useCase: 'Accelerator demo day cover', audience: 'Investor audience', tags: ['pitch', 'demo day', 'accelerator'],
-    pages: [{ archetype: 'pitchCover', size: 'wide', options: { decor: 'bars' }, copy: { eyebrow: 'Foundry Demo Day · #12', title: 'Harborline', subtitle: 'Renters insurance that reads like a human wrote it.', name: 'Covered in 3 minutes', date: 'Demo day · March 2027' } }] }),
+    pages: [{ gradient: { from: '#f7f5fd', to: '#e6dff9', angle: 120 }, archetype: 'pitchCover', size: 'wide', options: { decor: 'bars' }, copy: { eyebrow: 'Foundry Demo Day · #12', title: 'Harborline', subtitle: 'Renters insurance that reads like a human wrote it.', name: 'Covered in 3 minutes', date: 'Demo day · March 2027' } }] }),
   def({ id: 't-pre-018', name: 'Deck Section — 04 Team', category: 'presentation', subcategory: 'Deck sections', format: 'wide', style: 'calm', palette: 'ocean',
     useCase: 'Team section divider', audience: 'Investors', tags: ['section', 'team', 'divider'],
     pages: [{ archetype: 'deckSection', size: 'wide', options: { index: '04', badgeStyle: 'circled' }, copy: { title: 'The team', subtitle: 'Two founders, nine staff, zero recruiters so far.' } }] }),
