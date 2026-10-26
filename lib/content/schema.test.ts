@@ -84,6 +84,14 @@ describe('parseContentGeneration', () => {
     expect(result.strategy_references).toBeUndefined();
   });
 
+  it('normalizes the expected display label to its canonical content type identifier', () => {
+    const result = parseContentGeneration(
+      JSON.stringify({ headline: 'H', body: 'B', channel: 'linkedin', content_type: 'Social Post' }),
+      intent,
+    );
+    expect(result.content_type).toBe('social_post');
+  });
+
   it('strips markdown fenced JSON', () => {
     const result = parseContentGeneration('```json\n{"headline":"H","body":"B","channel":"linkedin","content_type":"social_post"}\n```', intent);
     expect(result.body).toBe('B');
