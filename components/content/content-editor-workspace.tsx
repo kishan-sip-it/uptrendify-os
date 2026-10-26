@@ -34,6 +34,7 @@ import {
   Type,
   Undo2,
   Grid3X3,
+  LayoutTemplate,
 } from 'lucide-react';
 import {
   CONTENT_DOC_MAX_BLOCKS,
@@ -48,6 +49,7 @@ import {
   updateBlockInPages,
   newBlockId,
   newPage,
+  pageBackgroundStyles,
   parseContentBody,
   reorderBlocks,
   headingFontSizeForLevel,
@@ -63,6 +65,10 @@ import { ContentDocumentView } from '@/components/content/content-document-view'
 import { AppDialog } from '@/components/ui/app-dialog';
 import { reconcileContentVersionState } from '@/lib/content/version-state';
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
+import { StudioTemplateLibrary } from '@/components/content/studio-template-library';
+import { buildTemplatePages } from '@/lib/studio/template-library/build';
+import { templatePaletteByName } from '@/lib/studio/template-library/art';
+import { STUDIO_LIBRARY } from '@/lib/studio/template-library';
 import { importSvgTemplate, type SvgTemplateImport } from '@/lib/studio/import-template';
 import { eraseRasterTextPixels, type RasterTextBounds } from '@/lib/studio/raster-text';
 import { storyboardPagesFromScript } from '@/lib/content/parse-script';
@@ -1118,8 +1124,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [gridOn, setGridOn] = useState(true);
   const [focusMode, setFocusMode] = useState(false);
-  const [dockTab, setDockTab] = useState<'layers' | 'insert' | 'brand' | 'ai' | 'scenes' | null>('layers');
-  const [inspectorTab, setInspectorTab] = useState<'design' | 'arrange' | 'brand' | 'ai' | 'templates'>('design');
+  const [dockTab, setDockTab] = useState<'layers' | 'insert' | 'brand' | 'ai' | 'scenes' | 'templates' | null>('layers');
+  const [inspectorTab, setInspectorTab] = useState<'design' | 'arrange' | 'brand' | 'ai'>('design');
   const [drawerSearch, setDrawerSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1667,10 +1673,15 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const setBlockGeometry = (id: string, geometry: NonNullable<EditorBlock['geometry']>) => {
     patchBlock(id, { geometry });
   };
-  const updateBlockGeometry = (block: EditorBlock, key: 'x' | 'y' | 'w' | 'h', rawValue: number) => {
+  const updateBlockGeometry = (block: EditorBlock, key: 'x' | 'y' | 'w' | 'h' | 'rotation', rawValue: number) => {
     const current = block.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
-    const min = key === 'w' || key === 'h' ? 24 : -2000;
-    const value = Number.isFinite(rawValue) ? Math.round(Math.max(min, Math.min(4000, rawValue))) : current[key];
+    const min = key === 'w' || key === 'h' ? 24 : key === 'rotation' ? -180 : -2000;
+    const max = key === 'rotation' ? 180 : 4000;
+    const value = Number.isFinite(rawValue) ? Math.round(Math.max(min, Math.min(max, rawValue))) : current[key];
+    if (key === 'rotation' && !value) {
+      setBlockGeometry(block.id, { x: current.x, y: current.y, w: current.w, h: current.h });
+      return;
+    }
     setBlockGeometry(block.id, { ...current, [key]: value });
   };
   const setPageBackgroundImage = (image: { src: string; alt: string } | null) => {
@@ -2165,11 +2176,23 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       ? 'Free canvas enabled. Select any element to move and resize it independently.'
       : 'Flow layout enabled. Element geometry is preserved and can be restored by switching back to Free canvas.');
   };
+  /** Resolve a template id against the 500-template library first, then the legacy starters. */
+  const buildTemplatePagesForId = (templateId: string): ContentDocPage[] | null => {
+    const accent = brand.colors[0] ?? '#7c7cff';
+    const definition = STUDIO_LIBRARY.find((entry) => entry.id === templateId);
+    if (definition) {
+      return buildTemplatePages(definition, templatePaletteByName(definition.palette ?? 'mono'), accent || null);
+    }
+    const legacyPage = buildTemplatePage(templateId, accent);
+    return legacyPage ? [legacyPage] : null;
+  };
+
   const applyTemplateToActivePage = (templateId: string) => {
     const currentPages = pagesRef.current;
     const currentIndex = activePageIndexRef.current;
     if (!currentPages[currentIndex]) return;
-    const templatePage = buildTemplatePage(templateId, brand.colors[0] ?? '#7c7cff');
+    const templatePages = buildTemplatePagesForId(templateId);
+    const templatePage = templatePages?.[0];
     if (!templatePage) return;
     const nextPages = currentPages.map((page, index) => index === currentIndex ? templatePage : page);
     commit(nextPages, 'free');
@@ -2179,6 +2202,27 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     setPreviewMode(false);
     setLoadedVersionId(null);
     setNotice('Applied the template to page ' + (currentIndex + 1) + '. Other pages were preserved.');
+  };
+
+  const applyTemplateAsPages = (templateId: string) => {
+    const definition = STUDIO_LIBRARY.find((entry) => entry.id === templateId);
+    const currentPages = pagesRef.current;
+    const currentIndex = activePageIndexRef.current;
+    if (!definition || !currentPages[currentIndex]) return;
+    const templatePages = buildTemplatePagesForId(templateId);
+    if (!templatePages) return;
+    if (currentPages.length + templatePages.length - 1 > CONTENT_DOC_MAX_PAGES) {
+      setError('This document can hold at most ' + CONTENT_DOC_MAX_PAGES + ' pages. Remove a page first to make room for the template sequence.');
+      return;
+    }
+    const nextPages = [...currentPages.slice(0, currentIndex), ...templatePages, ...currentPages.slice(currentIndex + 1)];
+    commit(nextPages, 'free');
+    setActivePageIndex(currentIndex);
+    setSelectedId(null);
+    setFreeMode(true);
+    setPreviewMode(false);
+    setLoadedVersionId(null);
+    setNotice('Page ' + (currentIndex + 1) + ' was replaced and ' + templatePages.length + ' template pages were inserted. All other pages were preserved.');
   };
 
   const insertTemplate = (templateId: string) => {
@@ -2969,10 +3013,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const dockItems = [
     { id: 'layers' as const, label: 'Layers', icon: Layers },
     { id: 'insert' as const, label: 'Insert', icon: Plus },
+    { id: 'templates' as const, label: 'Templates', icon: LayoutTemplate },
     { id: 'brand' as const, label: 'Brand', icon: Check },
     { id: 'ai' as const, label: 'AI', icon: Sparkles },
     { id: 'scenes' as const, label: 'Scenes', icon: Layers },
   ];
+  const dockLabels: Record<NonNullable<typeof dockTab>, string> = {
+    layers: 'Layers', insert: 'Insert', templates: 'Templates', brand: 'Brand', ai: 'AI', scenes: 'Scenes',
+  };
   const drawerOpen = dockTab !== null && !focusMode;
   const insertTiles = [
     { type: 'heading' as const, label: 'Heading', icon: Heading1 },
@@ -3183,7 +3231,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         );
       case 'button':
         return (
-          <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none', opacity: block.opacity ?? 1 }}>
+          <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), ...(block.textColor ? { color: block.textColor } : {}), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none', opacity: block.opacity ?? 1 }}>
             {resolveBlockText(block, linkedValues)}
           </span>
         );
@@ -3383,7 +3431,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       </div>
 
       {/* ---------- body ---------- */}
-      <div className={`studio-body${drawerOpen ? ' has-drawer' : ' is-drawer-closed'}`}>
+      <div className={`studio-body${drawerOpen ? ' has-drawer' : ' is-drawer-closed'}${dockTab === 'templates' ? ' has-template-drawer' : ''}`}>
         {!focusMode ? (
           <nav className="studio-dock" aria-label="Editor panels">
             {dockItems.map(({ id, label, icon: Icon }) => (
@@ -3404,12 +3452,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         {drawerOpen && !focusMode ? (
           <aside className="studio-drawer" aria-label={`${dockTab} panel`}>
             <div className="studio-drawer-head">
-              <span className="st-label">{dockTab}</span>
+              <span className="st-label">{dockLabels[dockTab ?? 'layers']}</span>
               <button type="button" className="st-icon" style={{ width: 32, height: 32 }} onClick={() => setDockTab(null)} aria-label="Close panel"><Trash2 size={0} /><span aria-hidden="true">×</span></button>
             </div>
-            <div className="studio-drawer-search">
-              <input value={drawerSearch} onChange={(event) => setDrawerSearch(event.target.value)} placeholder="Search layers, blocks…" aria-label="Search layers and blocks" />
-            </div>
+            {dockTab !== 'templates' ? (
+              <div className="studio-drawer-search">
+                <input value={drawerSearch} onChange={(event) => setDrawerSearch(event.target.value)} placeholder="Search layers, blocks…" aria-label="Search layers and blocks" />
+              </div>
+            ) : null}
             <div className="studio-drawer-body" role="listbox" aria-label="Layers">
               {dockTab === 'layers' ? (
                 <>
@@ -3558,6 +3608,28 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                   <p className="editor-hint">Storyboard mode for video scripts lands with the content-aware modes. <span className="st-preview-tag">Preview</span></p>
                 </>
               ) : null}
+              {dockTab === 'templates' ? (
+                <StudioTemplateLibrary
+                  accent={brand.colors[0] ?? '#7c7cff'}
+                  canEdit={canEdit}
+                  currentPageNumber={activePageIndex + 1}
+                  pageCount={pages.length}
+                  maxPages={CONTENT_DOC_MAX_PAGES}
+                  onApplyToPage={insertTemplate}
+                  onApplyAsPages={(templateId) => {
+                    const definition = STUDIO_LIBRARY.find((entry) => entry.id === templateId);
+                    const pageNumber = activePageIndexRef.current + 1;
+                    setStudioActionDialog({
+                      kind: 'confirm',
+                      title: 'Add ' + (definition?.pages.length ?? 0) + ' template pages?',
+                      description: 'Page ' + pageNumber + ' is replaced by the template’s first page and the remaining pages are inserted after it. Every other page in this document stays intact. Save a version first if you need a permanent checkpoint.',
+                      confirmLabel: 'Add template pages',
+                      destructive: true,
+                      onConfirm: () => applyTemplateAsPages(templateId),
+                    });
+                  }}
+                />
+              ) : null}
             </div>
           </aside>
         ) : null}
@@ -3596,11 +3668,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             style={{
               width: pageDims.width,
               minHeight: pageDims.height,
-              backgroundColor: activePage?.bg ?? '#ffffff',
-              backgroundImage: activePage?.backgroundImage ? `url(${JSON.stringify(activePage.backgroundImage.src)})` : undefined,
-              backgroundSize: activePage?.backgroundImage ? (activePage.backgroundImage.fit ?? 'cover') : undefined,
-              backgroundPosition: activePage?.backgroundImage ? 'center' : undefined,
-              backgroundRepeat: activePage?.backgroundImage ? 'no-repeat' : undefined,
+              ...pageBackgroundStyles(activePage ?? {}),
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom / 100})`,
             }}
             onClick={(event) => { if (event.target === frameRef.current) setSelectedId(null); }}
@@ -3756,7 +3824,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       ) : null}
                       {block.type === 'button' ? (
                         <div className={`content-doc-cta align-${block.align}`}>
-                          <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={block.color ? { background: block.color, borderColor: 'transparent' } : undefined}>
+                          <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), ...(block.textColor ? { color: block.textColor } : {}) }}>
                             {block.text}
                           </span>
                         </div>
@@ -3774,26 +3842,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         {!focusMode ? (
           <aside className="studio-inspector" aria-label="Inspector">
             <div className="studio-inspector-tabs" role="tablist" aria-label="Inspector sections">
-              {(['design', 'arrange', 'brand', 'ai', 'templates'] as const).map((tab) => (
+              {(['design', 'arrange', 'brand', 'ai'] as const).map((tab) => (
                 <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} className={`studio-inspector-tab${inspectorTab === tab ? ' is-active' : ''}`} onClick={() => setInspectorTab(tab)}>
-                  {tab === 'design' ? 'Design' : tab === 'arrange' ? 'Arrange' : tab === 'brand' ? 'Brand' : tab === 'templates' ? 'Templates' : 'AI'}
+                  {tab === 'design' ? 'Design' : tab === 'arrange' ? 'Arrange' : tab === 'brand' ? 'Brand' : 'AI'}
                 </button>
               ))}
             </div>
             <div className="studio-inspector-body">
-              {inspectorTab === 'templates' ? (
-                <>
-                  <span className="st-label">Templates</span>
-                  <p className="editor-hint">Choose a starting layout for this canvas. Existing unsaved changes are protected by a confirmation prompt.</p>
-                  {STUDIO_TEMPLATES.map((template) => (
-                    <button key={template.id} type="button" className="st-insert-tile" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', width: '100%', gap: 8 }} disabled={!canEdit} onClick={() => insertTemplate(template.id)}>
-                      <Sparkles size={14} />
-                      <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>{template.label}</span>
-                      <span className="st-preview-tag">{CONTENT_PAGE_SIZES[template.size].label}</span>
-                    </button>
-                  ))}
-                </>
-              ) : !selected ? (
+              {!selected ? (
                 <>
                   <span className="st-label">Page settings</span>
                   <label className="st-field">
@@ -3810,6 +3866,22 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       <input type="color" value={activePage?.bg ?? '#ffffff'} disabled={!canEdit || previewMode} onChange={(event) => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current ? { ...page, bg: event.target.value } : page)))} aria-label="Page background colour" />
                       <button type="button" className="st-quiet-link" onClick={() => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current ? { ...page, bg: undefined } : page)))} disabled={!canEdit || !activePage?.bg}>Reset to white</button>
                     </div>
+                  </div>
+                  <div className="st-field">
+                    <span>Background gradient</span>
+                    {activePage?.gradient ? (
+                      <div className="st-field-row">
+                        <input type="color" value={activePage.gradient.from} disabled={!canEdit || previewMode} onChange={(event) => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current && page.gradient ? { ...page, gradient: { ...page.gradient, from: event.target.value } } : page)))} aria-label="Gradient start colour" />
+                        <input type="color" value={activePage.gradient.to} disabled={!canEdit || previewMode} onChange={(event) => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current && page.gradient ? { ...page, gradient: { ...page.gradient, to: event.target.value } } : page)))} aria-label="Gradient end colour" />
+                        <input className="st-input" type="number" min={0} max={360} step={5} value={activePage.gradient.angle} disabled={!canEdit || previewMode} onChange={(event) => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current && page.gradient ? { ...page, gradient: { ...page.gradient, angle: Math.max(0, Math.min(360, Math.round(Number(event.target.value) || 0))) } } : page)))} aria-label="Gradient angle in degrees" style={{ width: 64 }} />
+                        <button type="button" className="st-quiet-link" onClick={() => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current ? { ...page, gradient: undefined } : page)))} disabled={!canEdit || previewMode}>Remove</button>
+                      </div>
+                    ) : (
+                      <div className="st-field-row">
+                        <button type="button" className="st-btn" style={{ height: 30 }} disabled={!canEdit || previewMode} onClick={() => commit(pagesRef.current.map((page, index) => (index === activePageIndexRef.current ? { ...page, gradient: { from: page.bg ?? '#ffffff', to: '#7c7cff', angle: 135 } } : page)))}>Add gradient</button>
+                        <span className="st-preview-tag">{activePage?.backgroundImage ? 'Hidden by image' : 'Optional'}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="st-field">
                     <span>Page background image</span>
@@ -4052,6 +4124,13 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                           <input className="st-input" type="number" min={key === 'w' || key === 'h' ? 24 : -2000} max={4000} step={1} value={selectedGeometry[key]} disabled={!canEditBlock(selected) || previewMode} onChange={(event) => updateBlockGeometry(selected, key, Number(event.target.value))} />
                         </label>
                       ))}
+                      <label className="st-field" style={{ marginTop: 6 }}>
+                        <span>Rotation · degrees</span>
+                        <div className="st-field-row">
+                          <input className="st-input" type="number" min={-180} max={180} step={1} value={selectedGeometry.rotation ?? 0} disabled={!canEditBlock(selected) || previewMode} onChange={(event) => updateBlockGeometry(selected, 'rotation', Number(event.target.value))} />
+                          <button type="button" className="st-quiet-link" onClick={() => updateBlockGeometry(selected, 'rotation', 0)} disabled={!canEditBlock(selected) || previewMode || !selectedGeometry.rotation}>Reset</button>
+                        </div>
+                      </label>
                       <span className="editor-hint">Each element has its own X/Y position and width/height. Drag any handle to resize visually, or enter exact dimensions here.</span>
                     </div>
                   ) : null}
@@ -4533,11 +4612,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             minHeight: dimensions.height,
             overflow: 'hidden',
             transform: 'none',
-            backgroundColor: page.bg ?? '#ffffff',
-            backgroundImage: page.backgroundImage ? `url(${JSON.stringify(page.backgroundImage.src)})` : undefined,
-            backgroundSize: page.backgroundImage ? (page.backgroundImage.fit ?? 'cover') : undefined,
-            backgroundPosition: page.backgroundImage ? 'center' : undefined,
-            backgroundRepeat: page.backgroundImage ? 'no-repeat' : undefined,
+            ...pageBackgroundStyles(page),
             boxShadow: 'none',
           };
           return (

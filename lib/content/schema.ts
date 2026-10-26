@@ -174,13 +174,24 @@ export function parseContentGeneration(text: string, intent: Pick<ContentIntentL
       `AI output targeted the wrong channel (${result.channel}); expected ${intent.channel}`,
     );
   }
+
+  let normalizedResult = result;
   if (result.content_type && result.content_type !== intent.type) {
-    throw new ContentValidationError(
-      `AI output produced the wrong content type (${result.content_type}); expected ${intent.type}`,
-    );
+    // Some models return the display label (for example, "Social Post")
+    // instead of the canonical identifier ("social_post"). Accept only the
+    // expected type's label, normalize it, and keep rejecting true mismatches.
+    const returnedType = result.content_type.trim().toLocaleLowerCase();
+    const expectedLabel = contentTypeLabel(intent.type).toLocaleLowerCase();
+    if (returnedType === expectedLabel) {
+      normalizedResult = { ...result, content_type: intent.type };
+    } else {
+      throw new ContentValidationError(
+        `AI output produced the wrong content type (${result.content_type}); expected ${intent.type}`,
+      );
+    }
   }
 
-  return result;
+  return normalizedResult;
 }
 
 export function contentTypeLabel(type: string): string {

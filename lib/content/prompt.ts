@@ -27,7 +27,13 @@ export function buildContentPrompt(brain: BrainSnapshot, strategy: ApprovedStrat
     strategyContext.push(lines.join('\n'));
   }
 
-  const assignment = ['## ASSIGNMENT', `Content type: ${contentTypeLabel(intent.type)}`, `Channel: ${intent.channel}`, `Title/topic: ${intent.title}`];
+  const assignment = [
+    '## ASSIGNMENT',
+    `Content type identifier (use this exact value for JSON "content_type"): ${intent.type}`,
+    `Content type label (display only; do not use this as the JSON identifier): ${contentTypeLabel(intent.type)}`,
+    `Channel: ${intent.channel}`,
+    `Title/topic: ${intent.title}`,
+  ];
   if (intent.objective) assignment.push(`Objective: ${intent.objective}`);
   if (intent.audience) assignment.push(`Audience: ${intent.audience}`);
   if (intent.context) assignment.push(`Campaign / context: ${intent.context}`);
@@ -50,7 +56,7 @@ export function buildContentPrompt(brain: BrainSnapshot, strategy: ApprovedStrat
     '- "body": the full content body (string)',
     '- "cta": the call to action (string, optional)',
     '- "channel": the target channel — must match the ASSIGNMENT channel exactly (string)',
-    '- "content_type": must match the ASSIGNMENT content type exactly (string)',
+    '- "content_type": the exact canonical identifier shown in "Content type identifier" above (for example, "social_post", never the display label "Social Post") (string)',
     '- "rationale": one short paragraph explaining which approved facts, brand rules, and strategy signals drove the piece (string, optional)',
     '- "strategy_references": short labels of the strategy sections you relied on (array of strings, optional)',
     '- "brand_fact_references": short labels of the approved brand facts you relied on (array of strings, optional)',
