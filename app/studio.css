@@ -1141,3 +1141,35 @@
   .studio-body.has-template-drawer > .studio-stage { grid-column: 1 / -1; grid-row: 2; }
   .studio-body.has-template-drawer > .studio-inspector { display: none; }
 }
+
+
+/* Adaptive dock panels: allocate more room to their controls and template names,
+   while keeping a usable canvas and inspector beside them. */
+@media (min-width: 901px) {
+  .studio-body.has-drawer {
+    grid-template-columns: 44px minmax(270px, min(34vw, 460px)) minmax(220px, 1fr) minmax(210px, 250px);
+  }
+
+  .studio-body.has-template-drawer {
+    grid-template-columns: 44px minmax(340px, min(40vw, 560px)) minmax(220px, 1fr) minmax(210px, 250px);
+  }
+
+  .studio-body.has-drawer > .studio-drawer {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .studio-body.has-drawer .studio-drawer-body,
+  .studio-body.has-drawer .st-tpl-library {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .studio-body.has-template-drawer .st-tpl-card-name {
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    line-height: 1.35;
+  }
+}

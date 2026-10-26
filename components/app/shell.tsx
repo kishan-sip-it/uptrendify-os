@@ -87,6 +87,7 @@ export function AppShell({
   const [phaseBriefingVisible, setPhaseBriefingVisible] = useState(false);
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const isStudioEditorRoute = /^\/brands\/[^/]+\/content\/[^/]+\/editor\/?$/.test(pathname);
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -374,7 +375,7 @@ export function AppShell({
   );
 
   return (
-    <main className={`shell${mobileOpen ? ' shell-mobile-open' : ''}`}>
+    <main className={`shell${mobileOpen && !isStudioEditorRoute ? ' shell-mobile-open' : ''}${isStudioEditorRoute ? ' shell-editor' : ''}`}>
       <aside className="sidebar">
         <div className="brand-mark">
           <Link className="brand-mark-link" href="/landing" aria-label="Go to the UpTrendifyOS landing page">
