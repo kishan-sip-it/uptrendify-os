@@ -1147,16 +1147,22 @@
    while keeping a usable canvas and inspector beside them. */
 @media (min-width: 901px) {
   .studio-body.has-drawer {
-    grid-template-columns: 44px minmax(270px, min(34vw, 460px)) minmax(220px, 1fr) minmax(210px, 250px);
+    grid-template-columns: 44px fit-content(min(34vw, 460px)) minmax(220px, 1fr) minmax(210px, 250px);
   }
 
   .studio-body.has-template-drawer {
-    grid-template-columns: 44px minmax(340px, min(40vw, 560px)) minmax(220px, 1fr) minmax(210px, 250px);
+    grid-template-columns: 44px fit-content(min(40vw, 560px)) minmax(220px, 1fr) minmax(210px, 250px);
   }
 
   .studio-body.has-drawer > .studio-drawer {
     width: 100%;
-    min-width: 0;
+    min-width: 270px;
+    max-width: 460px;
+  }
+
+  .studio-body.has-template-drawer > .studio-drawer {
+    min-width: 340px;
+    max-width: 560px;
   }
 
   .studio-body.has-drawer .studio-drawer-body,
