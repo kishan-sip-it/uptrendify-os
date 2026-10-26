@@ -1141,3 +1141,68 @@
   .studio-body.has-template-drawer > .studio-stage { grid-column: 1 / -1; grid-row: 2; }
   .studio-body.has-template-drawer > .studio-inspector { display: none; }
 }
+
+
+/* Adaptive dock panels: allocate more room to their controls and template names,
+   while keeping a usable canvas and inspector beside them. */
+@media (min-width: 901px) {
+  .studio-body.has-drawer {
+    grid-template-columns: 44px fit-content(min(34vw, 460px)) minmax(220px, 1fr) minmax(210px, 250px);
+  }
+
+  .studio-body.has-template-drawer {
+    grid-template-columns: 44px fit-content(min(40vw, 560px)) minmax(220px, 1fr) minmax(210px, 250px);
+  }
+
+  .studio-body.has-drawer > .studio-drawer {
+    width: 100%;
+    min-width: 270px;
+    max-width: 460px;
+  }
+
+  .studio-body.has-template-drawer > .studio-drawer {
+    min-width: 340px;
+    max-width: 560px;
+  }
+
+  .studio-body.has-drawer .studio-drawer-body,
+  .studio-body.has-drawer .st-tpl-library {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .studio-body.has-template-drawer .st-tpl-card-name {
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    line-height: 1.35;
+  }
+}
+
+
+/* Auto-fit dock navigation itself (Insert / Templates / Layers / etc.);
+ * The nav is the first rail, not the content drawer. Size it from its labels
+ * so "Templates" and other panel names never wrap into narrow vertical slivers.
+ */
+@media (min-width: 901px) {
+  .studio-body.has-drawer {
+    grid-template-columns: max-content fit-content(min(34vw, 460px)) minmax(220px, 1fr) minmax(210px, 250px);
+  }
+
+  .studio-body.has-template-drawer {
+    grid-template-columns: max-content fit-content(min(40vw, 560px)) minmax(220px, 1fr) minmax(210px, 250px);
+  }
+
+  .studio-body.has-drawer > .studio-dock {
+    width: max-content;
+    min-width: max-content;
+  }
+
+  .studio-body.has-drawer .studio-dock-btn {
+    width: max-content;
+    min-width: 76px;
+    padding-inline: 7px;
+    white-space: nowrap;
+  }
+}

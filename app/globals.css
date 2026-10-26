@@ -2924,3 +2924,26 @@ html[data-theme="system"]:not(.theme-dark) {
 .app-dialog__button--primary { border-color: transparent; background: var(--accent, #625bf6); color: white; }
 .app-dialog__button--danger { border-color: transparent; background: var(--text-danger, #dc2626); color: white; }
 .studio-action-dialog { width: min(520px, calc(100vw - 28px)); }
+
+
+/* Studio editor gets the full workspace width without removing navigation elsewhere. */
+.shell.shell-editor {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.shell.shell-editor > .sidebar {
+  display: none !important;
+}
+.shell.shell-editor > .main {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 8px 12px 12px;
+}
+.shell.shell-editor .topbar-compact {
+  margin-bottom: 8px;
+}
+.shell.shell-editor .sidebar-open {
+  display: none !important;
+}
