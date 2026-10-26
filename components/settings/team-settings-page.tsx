@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, RefreshCw, UserPlus } from 'lucide-react';
 import { LoadingState } from '@/components/ui/feedback';
+import { AppDialog } from '@/components/ui/app-dialog';
 
 type Member = { id: string; user_id: string; role: string; name: string };
 type Invitation = { id: string; email: string; role: string; expires_at: string; accepted_at: string | null; revoked_at: string | null };
@@ -16,6 +17,7 @@ export default function TeamSettingsPage() {
   const [message, setMessage] = useState('');
   const [inviteLink, setInviteLink] = useState('');
   const [error, setError] = useState('');
+  const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
 
   const load = () => fetch('/api/team', { cache: 'no-store' })
     .then(async (r) => {
@@ -65,8 +67,10 @@ export default function TeamSettingsPage() {
     if (!r.ok) setError(b?.error || 'Could not revoke invitation'); else void load();
   }
 
-  async function remove(userId: string) {
-    if (!window.confirm('Remove this member from the workspace?')) return;
+  async function remove() {
+    if (!memberToRemove) return;
+    const userId = memberToRemove.user_id;
+    setMemberToRemove(null);
     const r = await fetch('/api/team/members/' + userId, { method: 'DELETE' });
     const b = await r.json().catch(() => null);
     if (!r.ok) setError(b?.error || 'Could not remove member');
@@ -78,6 +82,7 @@ export default function TeamSettingsPage() {
   }
 
   return (
+    <>
     <div className="settings-page">
       <div className="topbar">
         <div>
@@ -127,7 +132,7 @@ export default function TeamSettingsPage() {
                       <option value="APPROVER">APPROVER</option>
                       <option value="CLIENT">CLIENT</option>
                     </select>
-                    <button className="badge tone-danger" onClick={() => remove(member.user_id)}>Remove</button>
+                    <button className="badge tone-danger" onClick={() => setMemberToRemove(member)}>Remove</button>
                   </>
                 ) : <span className="badge">{member.role}</span>}
               </div>
@@ -153,5 +158,13 @@ export default function TeamSettingsPage() {
         </div>
       </section>
     </div>
+    <AppDialog open={Boolean(memberToRemove)} title="Remove workspace member?" description="This person will lose access to the workspace." onClose={() => setMemberToRemove(null)}>
+      <p style={{ margin: '0 0 16px', lineHeight: 1.6 }}>Remove <strong>{memberToRemove?.name || 'this member'}</strong> from the workspace? This action cannot be undone from this screen.</p>
+      <div className="app-dialog__actions">
+        <button type="button" className="app-dialog__button" onClick={() => setMemberToRemove(null)}>Cancel</button>
+        <button type="button" className="app-dialog__button app-dialog__button--danger" disabled={!memberToRemove} onClick={() => { void remove(); }}>Remove member</button>
+      </div>
+    </AppDialog>
+    </>
   );
 }
