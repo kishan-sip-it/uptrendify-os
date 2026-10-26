@@ -31,13 +31,17 @@ export const TEMPLATE_CATEGORY_COUNTS: Record<TemplateCategoryId, number> = Obje
 export const TEMPLATE_TOTAL = TEMPLATE_CATEGORIES.reduce((total, category) => total + category.count, 0);
 
 /** Curated palette roles resolved at build time. A raw `#rrggbb` is also allowed. */
-export type TemplateColorRole = 'ink' | 'accent' | 'soft' | 'paper' | 'bg';
+export type TemplateColorRole = 'ink' | 'accent' | 'accentText' | 'soft' | 'paper' | 'bg' | 'onAccent';
 
 export type TemplatePalette = {
   name: string;
   bg: string;
   ink: string;
   accent: string;
+  /** Accent-family colour guaranteed ≥4.5:1 on `bg` — used for small accent text. */
+  accentText: string;
+  /** Text colour used on top of an `accent` fill (white or ink, whichever reads). */
+  onAccent: string;
   soft: string;
   paper: string;
 };

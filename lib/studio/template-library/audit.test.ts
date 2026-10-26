@@ -3,8 +3,9 @@ import { CONTENT_PAGE_SIZES, contentDocumentSchema } from '@/lib/content/documen
 import { buildTemplateDocument, templateFingerprints } from './build';
 import { templatePaletteByName, TEMPLATE_PALETTES } from './art';
 import { STUDIO_LIBRARY, TEMPLATE_CATEGORIES, TEMPLATE_CATEGORY_COUNTS, TEMPLATE_TOTAL, libraryCountByCategory } from './index';
-import { templateSearchBlob } from './types';
-
+import { templateSearchBlob, type TemplatePageSpec } from './types';
+import { buildTemplatePages, effectiveTextBackground } from './build';
+import { contrastRatio, mixOver, requiredRatio } from './contrast';
 /** Catalogue-wide quality gates. These run against every template on every test run. */
 
 const idCounts = new Map<string, number>();
@@ -120,6 +121,70 @@ describe('catalogue integrity', () => {
       if (!words.every((word) => blob.includes(word))) misses.push(template.id);
     }
     expect(misses).toEqual([]);
+  });
+
+  it('meets WCAG text contrast on every text element of every template', () => {
+    const problems: string[] = [];
+    for (const template of STUDIO_LIBRARY) {
+      const palette = templatePaletteByName(template.palette ?? 'mono');
+      const pages = buildTemplatePages(template, palette);
+      pages.forEach((page, pageIndex) => {
+        for (const [blockIndex, block] of page.blocks.entries()) {
+          if (block.type === 'heading' || block.type === 'text') {
+            const fgRaw = block.color ?? '#1d2634';
+            const pageBg = page.gradient ? mixOver(page.gradient.from, page.gradient.to, 0.5) : (page.bg ?? '#ffffff');
+            const elementBg = effectiveTextBackground(page.blocks, blockIndex, block.bg ?? null, pageBg);
+            const faded = mixOver(fgRaw, elementBg, block.opacity ?? 1);
+            const required = requiredRatio(block.fontSize, block.bold);
+            const ratio = contrastRatio(faded, elementBg);
+            if (ratio < required) {
+              problems.push(`${template.id} p${pageIndex} ${block.type} "${block.text.slice(0, 24)}" ${faded} on ${elementBg} = ${ratio.toFixed(2)} < ${required}`);
+            }
+          }
+          if (block.type === 'button') {
+            const fill = block.color ?? '#2563eb';
+            const label = block.textColor ?? '#ffffff';
+            const faded = mixOver(label, fill, block.opacity ?? 1);
+            const ratio = contrastRatio(faded, fill);
+            if (ratio < 4.5) {
+              problems.push(`${template.id} p${pageIndex} button "${block.text.slice(0, 24)}" ${faded} on ${fill} = ${ratio.toFixed(2)} < 4.5`);
+            }
+          }
+        }
+      });
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it('has no near-invisible text elements', () => {
+    const problems: string[] = [];
+    for (const template of STUDIO_LIBRARY) {
+      for (const page of template.pages) {
+        for (const block of page.blocks) {
+          // Sub-0.2 opacity is fine for decorative shapes; never for text.
+          const isText = block.kind === 'heading' || block.kind === 'text' || block.kind === 'button';
+          if (isText && block.opacity !== undefined && block.opacity < 0.35) {
+            problems.push(`${template.id}: text element with opacity ${block.opacity}`);
+          }
+        }
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it('keeps typographic hierarchy: every page has a dominant heading or display text', () => {
+    const problems: string[] = [];
+    for (const template of STUDIO_LIBRARY) {
+      for (const [pageIndex, page] of template.pages.entries()) {
+        const textBlocks = page.blocks.filter((block) => block.kind === 'heading' || block.kind === 'text');
+        if (textBlocks.length < 2) problems.push(`${template.id} p${pageIndex}: fewer than 2 text elements (no hierarchy)`);
+        const sizes = textBlocks.map((block) => (block as { fontSize?: number }).fontSize ?? 0).filter((size) => size > 0);
+        if (sizes.length >= 2 && Math.max(...sizes) - Math.min(...sizes) < 6) {
+          problems.push(`${template.id} p${pageIndex}: flat type scale (max-min < 6px)`);
+        }
+      }
+    }
+    expect(problems).toEqual([]);
   });
 
   it('is accent-independent: structure holds under any brand colour', () => {

@@ -298,7 +298,7 @@ export function ContentDocumentView({
             }
             return (
               <div key={block.id} className={`content-doc-cta align-${block.align}`} style={geoStyle}>
-                <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+                <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), ...(block.textColor ? { color: block.textColor } : {}), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
                   {resolveBlockText(block, linkedValues)}
                 </span>
               </div>

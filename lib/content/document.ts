@@ -282,6 +282,8 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     text,
     href: safeUrl.nullish().transform((value) => value ?? null),
     color,
+    /** Label colour rendered on the button fill; defaults to theme white. */
+    textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
     align,
     width: widthPct,
     link: linkedField,

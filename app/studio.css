@@ -1065,3 +1065,79 @@
   display: none !important;
 }
 .studio-snapshot-host .editor-canvas-text { user-select: none; }
+
+/* ---------- template library (Templates dock panel) ---------- */
+.studio-body.has-template-drawer {
+  grid-template-columns: 44px minmax(300px, 384px) minmax(280px, 1fr) minmax(225px, 270px);
+}
+.st-tpl-library { display: flex; flex-direction: column; gap: 10px; min-height: 0; padding: 10px; overflow-y: auto; }
+.st-tpl-search { display: grid; gap: 6px; }
+.st-tpl-search .st-field-row { display: flex; gap: 6px; }
+.st-tpl-search .st-btn { flex: 1 1 0; min-width: 0; justify-content: center; display: inline-flex; align-items: center; gap: 6px; }
+.st-tpl-library .st-field-row { display: flex; gap: 6px; min-width: 0; }
+.st-tpl-library .st-field-row > .st-field { flex: 1 1 0; min-width: 0; }
+.st-tpl-library .st-select { width: 100%; }
+.st-tpl-count { margin: 0; font-size: 10.5px; font-weight: 700; color: var(--st-ink-2); }
+.st-tpl-empty {
+  display: grid; justify-items: center; gap: 8px; padding: 26px 12px;
+  border: 1px dashed var(--st-line-strong); border-radius: 10px;
+  color: var(--st-ink-2); font-size: 11px; text-align: center;
+}
+.st-tpl-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px; list-style: none; margin: 0; padding: 0;
+}
+.st-tpl-card {
+  display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0;
+  padding: 7px; border: 1px solid var(--st-line-strong); border-radius: 10px;
+  background: var(--st-panel-2, var(--st-panel)); cursor: pointer; text-align: left;
+}
+.st-tpl-card:hover:not(:disabled), .st-tpl-card:focus-visible { border-color: var(--st-accent); outline: none; }
+.st-tpl-card:disabled { opacity: 0.55; cursor: default; }
+.st-tpl-card-name {
+  font-size: 10.5px; font-weight: 700; color: var(--st-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.st-tpl-card-meta { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.st-tpl-thumb {
+  position: relative; width: 100%; min-width: 0; overflow: hidden;
+  border: 1px solid var(--st-line-strong); border-radius: 8px; background: #ffffff;
+}
+.st-tpl-thumb > .content-doc-fit-viewport { position: absolute; inset: 0; }
+.st-tpl-thumb-skeleton {
+  width: 100%; height: 100%; min-height: 90px;
+  background: linear-gradient(100deg, var(--st-bg) 40%, var(--st-panel-2, #eee) 50%, var(--st-bg) 60%);
+  background-size: 200% 100%; animation: st-tpl-shimmer 1.2s linear infinite;
+}
+@keyframes st-tpl-shimmer { to { background-position: -200% 0; } }
+.st-tpl-more { width: 100%; justify-content: center; display: inline-flex; align-items: center; gap: 6px; }
+
+/* preview dialog */
+.studio-template-preview-dialog { max-width: min(620px, 92vw); }
+.st-tpl-preview { display: grid; gap: 12px; }
+.st-tpl-preview-stage { display: grid; place-items: center; min-height: 220px; }
+.st-tpl-preview-frame {
+  width: auto; max-width: 100%; max-height: 52vh;
+  border: 1px solid var(--st-line-strong); border-radius: 10px; overflow: hidden; background: #ffffff;
+  box-shadow: 0 10px 30px rgb(15 23 42 / 0.12);
+}
+.st-tpl-preview-pages { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.st-tpl-page-dot {
+  min-width: 26px; height: 26px; padding: 0 7px;
+  border: 1px solid var(--st-line-strong); border-radius: 999px;
+  background: var(--st-panel); color: var(--st-text);
+  font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.st-tpl-page-dot.is-active { background: var(--st-accent); border-color: transparent; color: #fff; }
+.st-tpl-preview-meta { display: grid; gap: 6px; margin: 0; font-size: 11px; }
+.st-tpl-preview-meta > div { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; align-items: start; }
+.st-tpl-preview-meta dt { font-weight: 700; color: var(--st-ink-2); }
+.st-tpl-preview-meta dd { margin: 0; color: var(--st-text); min-width: 0; overflow-wrap: anywhere; }
+.st-tpl-preview-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+@media (max-width: 900px) {
+  .studio-body.has-template-drawer { grid-template-columns: 44px minmax(0, 1fr); grid-template-rows: minmax(260px, 52vh) minmax(0, 1fr); }
+  .studio-body.has-template-drawer > .studio-drawer { grid-column: 2; grid-row: 1; max-height: none; }
+  .studio-body.has-template-drawer > .studio-stage { grid-column: 1 / -1; grid-row: 2; }
+  .studio-body.has-template-drawer > .studio-inspector { display: none; }
+}

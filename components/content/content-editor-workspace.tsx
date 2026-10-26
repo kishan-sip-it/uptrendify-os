@@ -34,6 +34,7 @@ import {
   Type,
   Undo2,
   Grid3X3,
+  LayoutTemplate,
 } from 'lucide-react';
 import {
   CONTENT_DOC_MAX_BLOCKS,
@@ -1123,8 +1124,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [gridOn, setGridOn] = useState(true);
   const [focusMode, setFocusMode] = useState(false);
-  const [dockTab, setDockTab] = useState<'layers' | 'insert' | 'brand' | 'ai' | 'scenes' | null>('layers');
-  const [inspectorTab, setInspectorTab] = useState<'design' | 'arrange' | 'brand' | 'ai' | 'templates'>('design');
+  const [dockTab, setDockTab] = useState<'layers' | 'insert' | 'brand' | 'ai' | 'scenes' | 'templates' | null>('layers');
+  const [inspectorTab, setInspectorTab] = useState<'design' | 'arrange' | 'brand' | 'ai'>('design');
   const [drawerSearch, setDrawerSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -3012,10 +3013,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const dockItems = [
     { id: 'layers' as const, label: 'Layers', icon: Layers },
     { id: 'insert' as const, label: 'Insert', icon: Plus },
+    { id: 'templates' as const, label: 'Templates', icon: LayoutTemplate },
     { id: 'brand' as const, label: 'Brand', icon: Check },
     { id: 'ai' as const, label: 'AI', icon: Sparkles },
     { id: 'scenes' as const, label: 'Scenes', icon: Layers },
   ];
+  const dockLabels: Record<NonNullable<typeof dockTab>, string> = {
+    layers: 'Layers', insert: 'Insert', templates: 'Templates', brand: 'Brand', ai: 'AI', scenes: 'Scenes',
+  };
   const drawerOpen = dockTab !== null && !focusMode;
   const insertTiles = [
     { type: 'heading' as const, label: 'Heading', icon: Heading1 },
@@ -3226,7 +3231,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         );
       case 'button':
         return (
-          <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none', opacity: block.opacity ?? 1 }}>
+          <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), ...(block.textColor ? { color: block.textColor } : {}), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none', opacity: block.opacity ?? 1 }}>
             {resolveBlockText(block, linkedValues)}
           </span>
         );
@@ -3426,7 +3431,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       </div>
 
       {/* ---------- body ---------- */}
-      <div className={`studio-body${drawerOpen ? ' has-drawer' : ' is-drawer-closed'}`}>
+      <div className={`studio-body${drawerOpen ? ' has-drawer' : ' is-drawer-closed'}${dockTab === 'templates' ? ' has-template-drawer' : ''}`}>
         {!focusMode ? (
           <nav className="studio-dock" aria-label="Editor panels">
             {dockItems.map(({ id, label, icon: Icon }) => (
@@ -3447,12 +3452,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         {drawerOpen && !focusMode ? (
           <aside className="studio-drawer" aria-label={`${dockTab} panel`}>
             <div className="studio-drawer-head">
-              <span className="st-label">{dockTab}</span>
+              <span className="st-label">{dockLabels[dockTab ?? 'layers']}</span>
               <button type="button" className="st-icon" style={{ width: 32, height: 32 }} onClick={() => setDockTab(null)} aria-label="Close panel"><Trash2 size={0} /><span aria-hidden="true">×</span></button>
             </div>
-            <div className="studio-drawer-search">
-              <input value={drawerSearch} onChange={(event) => setDrawerSearch(event.target.value)} placeholder="Search layers, blocks…" aria-label="Search layers and blocks" />
-            </div>
+            {dockTab !== 'templates' ? (
+              <div className="studio-drawer-search">
+                <input value={drawerSearch} onChange={(event) => setDrawerSearch(event.target.value)} placeholder="Search layers, blocks…" aria-label="Search layers and blocks" />
+              </div>
+            ) : null}
             <div className="studio-drawer-body" role="listbox" aria-label="Layers">
               {dockTab === 'layers' ? (
                 <>
@@ -3600,6 +3607,28 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                   <span className="st-label">Scenes</span>
                   <p className="editor-hint">Storyboard mode for video scripts lands with the content-aware modes. <span className="st-preview-tag">Preview</span></p>
                 </>
+              ) : null}
+              {dockTab === 'templates' ? (
+                <StudioTemplateLibrary
+                  accent={brand.colors[0] ?? '#7c7cff'}
+                  canEdit={canEdit}
+                  currentPageNumber={activePageIndex + 1}
+                  pageCount={pages.length}
+                  maxPages={CONTENT_DOC_MAX_PAGES}
+                  onApplyToPage={insertTemplate}
+                  onApplyAsPages={(templateId) => {
+                    const definition = STUDIO_LIBRARY.find((entry) => entry.id === templateId);
+                    const pageNumber = activePageIndexRef.current + 1;
+                    setStudioActionDialog({
+                      kind: 'confirm',
+                      title: 'Add ' + (definition?.pages.length ?? 0) + ' template pages?',
+                      description: 'Page ' + pageNumber + ' is replaced by the template’s first page and the remaining pages are inserted after it. Every other page in this document stays intact. Save a version first if you need a permanent checkpoint.',
+                      confirmLabel: 'Add template pages',
+                      destructive: true,
+                      onConfirm: () => applyTemplateAsPages(templateId),
+                    });
+                  }}
+                />
               ) : null}
             </div>
           </aside>
@@ -3795,7 +3824,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       ) : null}
                       {block.type === 'button' ? (
                         <div className={`content-doc-cta align-${block.align}`}>
-                          <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={block.color ? { background: block.color, borderColor: 'transparent' } : undefined}>
+                          <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), ...(block.textColor ? { color: block.textColor } : {}) }}>
                             {block.text}
                           </span>
                         </div>
@@ -3813,35 +3842,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         {!focusMode ? (
           <aside className="studio-inspector" aria-label="Inspector">
             <div className="studio-inspector-tabs" role="tablist" aria-label="Inspector sections">
-              {(['design', 'arrange', 'brand', 'ai', 'templates'] as const).map((tab) => (
+              {(['design', 'arrange', 'brand', 'ai'] as const).map((tab) => (
                 <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} className={`studio-inspector-tab${inspectorTab === tab ? ' is-active' : ''}`} onClick={() => setInspectorTab(tab)}>
-                  {tab === 'design' ? 'Design' : tab === 'arrange' ? 'Arrange' : tab === 'brand' ? 'Brand' : tab === 'templates' ? 'Templates' : 'AI'}
+                  {tab === 'design' ? 'Design' : tab === 'arrange' ? 'Arrange' : tab === 'brand' ? 'Brand' : 'AI'}
                 </button>
               ))}
             </div>
             <div className="studio-inspector-body">
-              {inspectorTab === 'templates' ? (
-                <StudioTemplateLibrary
-                  accent={brand.colors[0] ?? '#7c7cff'}
-                  canEdit={canEdit}
-                  currentPageNumber={activePageIndex + 1}
-                  pageCount={pages.length}
-                  maxPages={CONTENT_DOC_MAX_PAGES}
-                  onApplyToPage={insertTemplate}
-                  onApplyAsPages={(templateId) => {
-                    const definition = STUDIO_LIBRARY.find((entry) => entry.id === templateId);
-                    const pageNumber = activePageIndexRef.current + 1;
-                    setStudioActionDialog({
-                      kind: 'confirm',
-                      title: 'Add ' + (definition?.pages.length ?? 0) + ' template pages?',
-                      description: 'Page ' + pageNumber + ' is replaced by the template’s first page and the remaining pages are inserted after it. Every other page in this document stays intact. Save a version first if you need a permanent checkpoint.',
-                      confirmLabel: 'Add template pages',
-                      destructive: true,
-                      onConfirm: () => applyTemplateAsPages(templateId),
-                    });
-                  }}
-                />
-              ) : !selected ? (
+              {!selected ? (
                 <>
                   <span className="st-label">Page settings</span>
                   <label className="st-field">
