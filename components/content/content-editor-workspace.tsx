@@ -1124,6 +1124,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [gridOn, setGridOn] = useState(true);
   const [focusMode, setFocusMode] = useState(false);
+  const [drawerLayoutAnimating, setDrawerLayoutAnimating] = useState(false);
+  const drawerLayoutAnimationTimerRef = useRef<number | null>(null);
   const [dockTab, setDockTab] = useState<'layers' | 'insert' | 'brand' | 'ai' | 'scenes' | 'templates' | null>('layers');
   const [inspectorTab, setInspectorTab] = useState<'design' | 'arrange' | 'brand' | 'ai'>('design');
   const [drawerSearch, setDrawerSearch] = useState('');
@@ -2567,16 +2569,39 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     setOffset(centerOffset(rect, { w: pageDims.width, h: pageDims.height }, z));
   }, [pageDims.width, pageDims.height]);
 
+  const beginDrawerLayoutTransition = () => {
+    if (drawerLayoutAnimationTimerRef.current !== null) window.clearTimeout(drawerLayoutAnimationTimerRef.current);
+    setDrawerLayoutAnimating(true);
+    // Fallback for reduced-motion settings or browsers that skip transitionend.
+    drawerLayoutAnimationTimerRef.current = window.setTimeout(() => {
+      if (!zoomManual) refit();
+      drawerLayoutAnimationTimerRef.current = window.setTimeout(() => {
+        drawerLayoutAnimationTimerRef.current = null;
+        setDrawerLayoutAnimating(false);
+      }, 280);
+    }, 600);
+  };
+
+  const toggleDockTab = (id: NonNullable<typeof dockTab>) => {
+    // Switching between open tabs keeps the drawer geometry unchanged.
+    if (dockTab === null || dockTab === id) beginDrawerLayoutTransition();
+    setDockTab((current) => (current === id ? null : id));
+  };
+
+  const closeDockDrawer = () => {
+    if (dockTab !== null) beginDrawerLayoutTransition();
+    setDockTab(null);
+  };
+
   useEffect(() => {
     if (zoomManual) return;
     const initial = window.setTimeout(() => refit(), 60);
     return () => window.clearTimeout(initial);
   }, [zoomManual, pageDims.width, pageDims.height, refit]);
 
-  // Keep the page fitted to the actual canvas viewport while auto-fit is active.
-  // Opening/closing the left drawer changes the stage width without changing the page.
+  // Pause auto-fit during dock animation: fitting every intermediate width causes canvas jumps.
   useEffect(() => {
-    if (zoomManual) return;
+    if (zoomManual || drawerLayoutAnimating) return;
     const stage = stageRef.current;
     if (!stage || typeof ResizeObserver === 'undefined') return;
 
@@ -2594,7 +2619,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       observer.disconnect();
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [zoomManual, refit]);
+  }, [zoomManual, refit, drawerLayoutAnimating]);
 
   const zoomCanvas = useCallback((requestedZoom: number, clientPoint?: { x: number; y: number }) => {
     const stage = stageRef.current;
@@ -3431,7 +3456,18 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       </div>
 
       {/* ---------- body ---------- */}
-      <div className={`studio-body${drawerOpen ? ' has-drawer' : ' is-drawer-closed'}${dockTab === 'templates' ? ' has-template-drawer' : ''}`}>
+      <div
+        className={`studio-body${drawerOpen ? ' has-drawer' : ' is-drawer-closed'}${dockTab === 'templates' ? ' has-template-drawer' : ''}`}
+        onTransitionEnd={(event) => {
+          if (event.target !== event.currentTarget || !['grid-template-columns', 'grid-template-rows'].includes(event.propertyName) || !drawerLayoutAnimating) return;
+          if (drawerLayoutAnimationTimerRef.current !== null) window.clearTimeout(drawerLayoutAnimationTimerRef.current);
+          if (!zoomManual) refit();
+          drawerLayoutAnimationTimerRef.current = window.setTimeout(() => {
+            drawerLayoutAnimationTimerRef.current = null;
+            setDrawerLayoutAnimating(false);
+          }, 280);
+        }}
+      >
         {!focusMode ? (
           <nav className="studio-dock" aria-label="Editor panels">
             {dockItems.map(({ id, label, icon: Icon }) => (
@@ -3439,7 +3475,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 key={id}
                 type="button"
                 className={`studio-dock-btn${dockTab === id ? ' is-active' : ''}`}
-                onClick={() => setDockTab((current) => (current === id ? null : id))}
+                onClick={() => toggleDockTab(id)}
                 aria-pressed={dockTab === id}
               >
                 <Icon size={16} />
@@ -3453,7 +3489,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           <aside className="studio-drawer" aria-label={`${dockTab} panel`}>
             <div className="studio-drawer-head">
               <span className="st-label">{dockLabels[dockTab ?? 'layers']}</span>
-              <button type="button" className="st-icon" style={{ width: 32, height: 32 }} onClick={() => setDockTab(null)} aria-label="Close panel"><Trash2 size={0} /><span aria-hidden="true">×</span></button>
+              <button type="button" className="st-icon" style={{ width: 32, height: 32 }} onClick={closeDockDrawer} aria-label="Close panel"><Trash2 size={0} /><span aria-hidden="true">×</span></button>
             </div>
             {dockTab !== 'templates' ? (
               <div className="studio-drawer-search">
@@ -3637,7 +3673,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
 
         {/* ---------- stage ---------- */}
         <div
-          className={`studio-stage${gridOn ? '' : ' no-grid'}`}
+          className={`studio-stage${gridOn ? '' : ' no-grid'}${drawerLayoutAnimating ? ' is-layout-transitioning' : ''}`}
           ref={stageRef}
           onPointerEnter={(event) => { stagePointerRef.current = { x: event.clientX, y: event.clientY }; }}
           onPointerDown={(event) => {
