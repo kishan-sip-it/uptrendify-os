@@ -154,13 +154,18 @@ export const productFeature: Composer<{ placeholderShape?: 'panel' | 'circle' | 
 };
 
 /** 04 — Story promo: full-bleed circle, stacked copy, CTA. */
-export const storyPromo: Composer<{ decor?: 'circle' | 'arc' | 'ring'; badgeTop?: boolean }> = ({ size, copy, options }) => {
+export const storyPromo: Composer<{ decor?: 'circle' | 'arc' | 'ring' | 'wave' | 'corner' | 'dots' | 'stripes' | 'arcBottom'; badgeTop?: boolean }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const decor = options?.decor ?? 'circle';
   const blocks: TemplateBlockSpec[] = [];
   if (decor === 'circle') blocks.push(s(g(d, 12, 22, 76, 40), { shape: 'circle', color: 'accent', opacity: 0.85 }));
   if (decor === 'arc') blocks.push(s(g(d, -20, 16, 140, 52), { art: 'half-disc', color: 'accent', opacity: 0.85 }));
   if (decor === 'ring') blocks.push(s(g(d, 14, 20, 72, 44), { art: 'ring', color: 'accent', opacity: 0.8 }));
+  if (decor === 'wave') blocks.push(s(g(d, 0, 8, 100, 12), { art: 'wave', color: 'accent', opacity: 0.5 }));
+  if (decor === 'corner') blocks.push(s(g(d, -16, -16, 52, 52), { art: 'quarter-arc', color: 'accent', opacity: 0.9 }));
+  if (decor === 'dots') blocks.push(s(g(d, 70, 6, 22, 22), { art: 'dots', color: 'accent', opacity: 0.6 }));
+  if (decor === 'stripes') blocks.push(s(g(d, 58, 2, 42, 18), { art: 'stripes', color: 'accent', opacity: 0.4 }));
+  if (decor === 'arcBottom') blocks.push(s(g(d, -20, 68, 140, 52), { art: 'half-disc', color: 'accent', opacity: 0.85 }));
   if (options?.badgeTop && copy.badge) {
     blocks.push(s(g(d, 32, 5, 36, 6), { art: 'badge-flag', color: 'ink' }));
     blocks.push(t('text', copy.badge, g(d, 32, 6, 36, 4), { fontSize: fs(d, 15), align: 'center', color: 'paper', bold: true }));
@@ -263,26 +268,37 @@ export const carouselTip: Composer<{ step?: string }> = ({ size, copy, options }
 };
 
 /** 10 — Before/after split. */
-export const beforeAfter: Composer<{ labels?: [string, string] }> = ({ size, copy, options }) => {
+export const beforeAfter: Composer<{ labels?: [string, string]; splitStyle?: 'vertical' | 'horizontal' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const [beforeLabel, afterLabel] = options?.labels ?? ['Before', 'After'];
-  const blocks: TemplateBlockSpec[] = [
-    s(g(d, 6, 22, 42, 46), { shape: 'rectangle', color: 'soft' }),
-    s(g(d, 52, 22, 42, 46), { shape: 'rectangle', color: 'accent', opacity: 0.2 }),
-    t('text', beforeLabel, g(d, 6, 15, 42, 5), { fontSize: fs(d, 17), align: 'center', color: 'ink', bold: true, opacity: 0.7 }),
-    t('text', afterLabel, g(d, 52, 15, 42, 5), { fontSize: fs(d, 17), align: 'center', color: 'accent', bold: true }),
-    t('text', copy.badge ?? 'Drop your photo', g(d, 8, 42, 38, 5), { fontSize: fs(d, 14), align: 'center', color: 'ink', opacity: 0.55 }),
-    t('text', copy.badge ?? 'Drop your photo', g(d, 54, 42, 38, 5), { fontSize: fs(d, 14), align: 'center', color: 'ink', opacity: 0.55 }),
-    s(g(d, 47, 38, 6, 6), { shape: 'circle', color: 'paper' }),
-    t('heading', copy.title, g(d, 8, 6, 84, 8), { fontSize: fs(d, 34), align: 'center', color: 'ink', level: 2 }),
-    t('text', copy.body ?? '', g(d, 10, 72, 80, 10), { fontSize: fs(d, 18), align: 'center', color: 'ink', opacity: 0.8 }),
-  ];
+  const blocks: TemplateBlockSpec[] = options?.splitStyle === 'horizontal'
+    ? [
+        s(g(d, 6, 20, 88, 26), { shape: 'rectangle', color: 'soft' }),
+        s(g(d, 6, 50, 88, 26), { shape: 'rectangle', color: 'accent', opacity: 0.2 }),
+        t('text', beforeLabel, g(d, 6, 14, 88, 5), { fontSize: fs(d, 16), align: 'left', color: 'ink', bold: true, opacity: 0.7 }),
+        t('text', afterLabel, g(d, 6, 44, 88, 5), { fontSize: fs(d, 16), align: 'left', color: 'accent', bold: true }),
+        t('text', copy.badge ?? 'Drop your photo', g(d, 8, 30, 84, 4), { fontSize: fs(d, 13), align: 'center', color: 'ink', opacity: 0.55 }),
+        t('text', copy.badge ?? 'Drop your photo', g(d, 8, 60, 84, 4), { fontSize: fs(d, 13), align: 'center', color: 'ink', opacity: 0.55 }),
+        t('heading', copy.title, g(d, 8, 4, 84, 8), { fontSize: fs(d, 30), align: 'left', color: 'ink', level: 2 }),
+        t('text', copy.body ?? '', g(d, 10, 79, 80, 10), { fontSize: fs(d, 16), align: 'left', color: 'ink', opacity: 0.8 }),
+      ]
+    : [
+        s(g(d, 6, 22, 42, 46), { shape: 'rectangle', color: 'soft' }),
+        s(g(d, 52, 22, 42, 46), { shape: 'rectangle', color: 'accent', opacity: 0.2 }),
+        t('text', beforeLabel, g(d, 6, 15, 42, 5), { fontSize: fs(d, 17), align: 'center', color: 'ink', bold: true, opacity: 0.7 }),
+        t('text', afterLabel, g(d, 52, 15, 42, 5), { fontSize: fs(d, 17), align: 'center', color: 'accent', bold: true }),
+        t('text', copy.badge ?? 'Drop your photo', g(d, 8, 42, 38, 5), { fontSize: fs(d, 14), align: 'center', color: 'ink', opacity: 0.55 }),
+        t('text', copy.badge ?? 'Drop your photo', g(d, 54, 42, 38, 5), { fontSize: fs(d, 14), align: 'center', color: 'ink', opacity: 0.55 }),
+        s(g(d, 47, 38, 6, 6), { shape: 'circle', color: 'paper' }),
+        t('heading', copy.title, g(d, 8, 6, 84, 8), { fontSize: fs(d, 34), align: 'center', color: 'ink', level: 2 }),
+        t('text', copy.body ?? '', g(d, 10, 72, 80, 10), { fontSize: fs(d, 18), align: 'center', color: 'ink', opacity: 0.8 }),
+      ];
   if (copy.cta) blocks.push(btn(copy.cta, g(d, 30, 86, 40, 7), { color: 'accent' }));
   return page(size, blocks);
 };
 
 /** 11 — Event invitation: date tile + details + RSVP. */
-export const eventInvite: Composer<{ dateTile?: boolean; decor?: 'confetti' | 'frame' | 'none' }> = ({ size, copy, options }) => {
+export const eventInvite: Composer<{ dateTile?: boolean; decor?: 'confetti' | 'frame' | 'ring' | 'none' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const blocks: TemplateBlockSpec[] = [];
   if (options?.decor === 'confetti') {
@@ -291,6 +307,9 @@ export const eventInvite: Composer<{ dateTile?: boolean; decor?: 'confetti' | 'f
   }
   if (options?.decor === 'frame') {
     blocks.push(s(g(d, 4, 4, 92, 92), { art: 'corner-frame', artStroke: true, color: 'accent', opacity: 0.5 }));
+  }
+  if (options?.decor === 'ring') {
+    blocks.push(s(g(d, 26, 22, 48, 48), { art: 'ring', color: 'accent', opacity: 0.4 }));
   }
   if (options?.dateTile !== false && copy.date) {
     blocks.push(s(g(d, 34, 10, 32, 12), { shape: 'rectangle', color: 'ink' }));
@@ -309,10 +328,17 @@ export const eventInvite: Composer<{ dateTile?: boolean; decor?: 'confetti' | 'f
 };
 
 /** 12 — Countdown: massive number + label + date + CTA. */
-export const countdownPost: Composer<{ value?: string }> = ({ size, copy, options }) => {
+export const countdownPost: Composer<{ value?: string; decor?: 'band' | 'dots' | 'ring' | 'arc' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
+  const decor = options?.decor ?? 'band';
   const blocks: TemplateBlockSpec[] = [
-    s(g(d, 0, 30, 100, 34), { shape: 'rectangle', color: 'accent', opacity: 0.1 }),
+    ...(decor === 'dots'
+      ? [s(g(d, 8, 6, 18, 18), { art: 'dots', color: 'accent', opacity: 0.55 })]
+      : decor === 'ring'
+        ? [s(g(d, 24, 22, 52, 50), { art: 'ring', color: 'accent', opacity: 0.45 })]
+        : decor === 'arc'
+          ? [s(g(d, -18, -14, 46, 46), { art: 'quarter-arc', color: 'accent', opacity: 0.4 })]
+          : [s(g(d, 0, 30, 100, 34), { shape: 'rectangle', color: 'accent', opacity: 0.1 })]),
     t('heading', options?.value ?? copy.badge ?? '7', g(d, 20, 24, 60, 34), { fontSize: fs(d, 150), align: 'center', color: 'accent', level: 1, font: 'geometric' }),
     t('text', (copy.eyebrow ?? 'days to go').toUpperCase(), g(d, 20, 62, 60, 5), { fontSize: fs(d, 18), align: 'center', color: 'ink', bold: true }),
     t('heading', copy.title, g(d, 10, 10, 80, 10), { fontSize: fs(d, 40), align: 'center', color: 'ink', level: 2 }),
@@ -387,11 +413,33 @@ export const emailHeader: Composer<{ markShape?: 'circle' | 'square' | 'seal' }>
 };
 
 /** 16 — Wide ad banner: split headline/offer + CTA block. */
-export const adBanner: Composer<{ ctaSide?: 'right' | 'left' }> = ({ size, copy, options }) => {
+export const adBanner: Composer<{ ctaSide?: 'right' | 'left' | 'bottom' | 'split'; panelStyle?: 'block' | 'wave' | 'dots' | 'corner' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
+  if (options?.ctaSide === 'bottom') {
+    return page(size, [
+      t('heading', copy.title, g(d, 4, 12, 92, 26), { fontSize: fs(d, 64), align: 'center', color: 'ink', level: 1, font: 'geometric' }),
+      t('text', copy.subtitle ?? '', g(d, 10, 42, 80, 12), { fontSize: fs(d, 21), align: 'center', color: 'ink', opacity: 0.75 }),
+      s(g(d, 0, 62, 100, 38), { shape: 'rectangle', color: 'accent', opacity: 0.14 }),
+      ...(copy.cta ? [btn(copy.cta, g(d, 30, 74, 40, 16), { color: 'accent' })] : []),
+      ...(copy.footer ? [t('text', copy.footer, g(d, 4, 93, 92, 5), { fontSize: fs(d, 14), align: 'center', color: 'ink', opacity: 0.6 })] : []),
+    ]);
+  }
+  if (options?.ctaSide === 'split') {
+    return page(size, [
+      t('heading', copy.title, g(d, 4, 8, 92, 24), { fontSize: fs(d, 58), align: 'left', color: 'ink', level: 1, font: 'geometric' }),
+      t('text', copy.subtitle ?? '', g(d, 4, 36, 52, 16), { fontSize: fs(d, 20), align: 'left', color: 'ink', opacity: 0.75 }),
+      s(g(d, 60, 36, 36, 26), { shape: 'rectangle', color: 'soft' }),
+      ...(copy.cta ? [btn(copy.cta, g(d, 4, 66, 30, 16), { color: 'accent' })] : []),
+      ...(copy.footer ? [t('text', copy.footer, g(d, 40, 70, 56, 5), { fontSize: fs(d, 14), align: 'right', color: 'ink', opacity: 0.6 })] : []),
+    ]);
+  }
   const right = options?.ctaSide !== 'left';
   const blocks: TemplateBlockSpec[] = [];
-  blocks.push(s(g(d, right ? 66 : 0, 0, 34, 100), { shape: 'rectangle', color: 'accent', opacity: 0.12 }));
+  const panel = options?.panelStyle ?? 'block';
+  if (panel === 'block') blocks.push(s(g(d, right ? 66 : 0, 0, 34, 100), { shape: 'rectangle', color: 'accent', opacity: 0.12 }));
+  else if (panel === 'wave') blocks.push(s(g(d, right ? 60 : 0, 30, 40, 40), { art: 'wave', color: 'accent', opacity: 0.4 }));
+  else if (panel === 'dots') blocks.push(s(g(d, right ? 68 : 4, 8, 28, 28), { art: 'dots', color: 'accent', opacity: 0.55 }));
+  else blocks.push(s(g(d, right ? 82 : -6, -14, 24, 130), { art: 'quarter-arc', color: 'accent', opacity: 0.35 }));
   blocks.push(t('heading', copy.title, g(d, right ? 4 : 38, 14, right ? 58 : 56, 30), { fontSize: fs(d, 66), align: 'left', color: 'ink', level: 1, font: 'geometric' }));
   if (copy.subtitle) blocks.push(t('text', copy.subtitle, g(d, right ? 4 : 38, 48, 52, 14), { fontSize: fs(d, 21), align: 'left', color: 'ink', opacity: 0.75 }));
   if (copy.cta) blocks.push(btn(copy.cta, g(d, right ? 70 : 40, 70, 26, 14), { color: 'accent' }));
@@ -482,7 +530,7 @@ export const mediaKit: Composer<{ statCount?: 2 | 3 }> = ({ size, copy, options 
 };
 
 /** 21 — Business card: name, role, contact, mark. */
-export const businessCard: Composer<{ markSide?: 'left' | 'right'; layout?: 'stacked' | 'split' }> = ({ size, copy, options }) => {
+export const businessCard: Composer<{ markSide?: 'left' | 'right'; layout?: 'stacked' | 'split'; accentBand?: 'none' | 'bottom' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const markRight = options?.markSide !== 'left';
   const blocks: TemplateBlockSpec[] = [];
@@ -500,15 +548,20 @@ export const businessCard: Composer<{ markSide?: 'left' | 'right'; layout?: 'sta
     blocks.push(s(g(d, 8, 62, 30, 0.8), { shape: 'rectangle', color: 'soft' }));
     blocks.push(t('text', copy.contact ?? '', g(d, 8, 70, 84, 12), { fontSize: fs(d, 15), align: 'left', color: 'ink' }));
   }
+  if (options?.accentBand === 'bottom') {
+    blocks.push(s(g(d, 0, 90, 100, 10), { shape: 'rectangle', color: 'accent' }));
+    blocks.push(s(g(d, 0, 88, 100, 2), { shape: 'rectangle', color: 'ink' }));
+  }
   return page(size, blocks);
 };
 
 /** 22 — Letterhead: mark, rule, body block, footer strip (document sizes). */
-export const letterhead: Composer<{ ruleStyle?: 'solid' | 'double' }> = ({ size, copy, options }) => {
+export const letterhead: Composer<{ ruleStyle?: 'solid' | 'double'; markSide?: 'left' | 'right' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const blocks: TemplateBlockSpec[] = [];
-  blocks.push(s(g(d, 8, 5, 7, 7), { shape: 'circle', color: 'accent' }));
-  blocks.push(t('heading', copy.eyebrow ?? copy.title, g(d, 17, 6, 50, 5), { fontSize: fs(d, 20), align: 'left', color: 'ink', level: 3 }));
+  const markRight = options?.markSide === 'right';
+  blocks.push(s(g(d, markRight ? 85 : 8, 5, 7, 7), { shape: 'circle', color: 'accent' }));
+  blocks.push(t('heading', copy.eyebrow ?? copy.title, g(d, markRight ? 33 : 17, 6, 50, 5), { fontSize: fs(d, 20), align: markRight ? 'right' : 'left', color: 'ink', level: 3 }));
   blocks.push(s(g(d, 8, 13, 84, 0.6), { shape: 'rectangle', color: 'ink' }));
   if (options?.ruleStyle === 'double') blocks.push(s(g(d, 8, 14.2, 84, 0.4), { shape: 'rectangle', color: 'accent' }));
   blocks.push(t('heading', copy.title, g(d, 8, 18, 84, 7), { fontSize: fs(d, 30), align: 'left', color: 'ink', level: 2 }));
@@ -558,40 +611,60 @@ export const agencyOnePager: Composer<{ tileLabels?: [string, string, string] }>
 };
 
 /** 25 — Product showcase: hero photo, chips, price, CTA. */
-export const productShowcase: Composer<{ chipCount?: 3 | 4 }> = ({ size, copy, options }) => {
+export const productShowcase: Composer<{ chipCount?: 3 | 4; photoStyle?: 'panel' | 'circle' | 'arch'; layout?: 'stacked' | 'split' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const chips = (copy.items ?? []).slice(0, options?.chipCount ?? 3);
+  const split = options?.layout === 'split';
   const blocks: TemplateBlockSpec[] = [];
-  blocks.push(s(g(d, 6, 6, 88, 44), { shape: 'rectangle', color: 'soft', opacity: 0.8 }));
-  blocks.push(s(g(d, 42, 10, 16, 16), { art: 'bag', artStroke: true, color: 'ink', opacity: 0.5 }));
-  blocks.push(t('text', copy.badge ?? 'Product photo', g(d, 6, 40, 88, 5), { fontSize: fs(d, 13), align: 'center', color: 'ink', opacity: 0.55 }));
+  if (split) {
+    blocks.push(s(g(d, 5, 8, 44, 84), { shape: 'rectangle', color: 'soft', opacity: 0.8 }));
+    blocks.push(s(g(d, 19, 40, 16, 16), { art: 'bag', artStroke: true, color: 'ink', opacity: 0.5 }));
+    blocks.push(t('text', copy.badge ?? 'Product photo', g(d, 5, 62, 44, 5), { fontSize: fs(d, 13), align: 'center', color: 'ink', opacity: 0.55 }));
+  } else if (options?.photoStyle === 'circle') {
+    blocks.push(s(g(d, 24, 6, 52, 44), { shape: 'rectangle', color: 'soft', opacity: 0.4 }));
+    blocks.push(s(g(d, 28, 6, 44, 44), { shape: 'circle', color: 'soft', opacity: 0.9 }));
+    blocks.push(s(g(d, 42, 16, 16, 16), { art: 'bag', artStroke: true, color: 'ink', opacity: 0.5 }));
+    blocks.push(t('text', copy.badge ?? 'Product photo', g(d, 24, 40, 52, 5), { fontSize: fs(d, 13), align: 'center', color: 'ink', opacity: 0.55 }));
+  } else if (options?.photoStyle === 'arch') {
+    blocks.push(s(g(d, 6, 6, 88, 44), { shape: 'rectangle', color: 'soft', opacity: 0.7 }));
+    blocks.push(s(g(d, 30, 6, 40, 44), { shape: 'rectangle', color: 'accent', opacity: 0.18 }));
+    blocks.push(s(g(d, 42, 12, 16, 16), { art: 'bag', artStroke: true, color: 'ink', opacity: 0.5 }));
+    blocks.push(t('text', copy.badge ?? 'Product photo', g(d, 30, 40, 40, 5), { fontSize: fs(d, 13), align: 'center', color: 'ink', opacity: 0.55 }));
+  } else {
+    blocks.push(s(g(d, 6, 6, 88, 44), { shape: 'rectangle', color: 'soft', opacity: 0.8 }));
+    blocks.push(s(g(d, 42, 10, 16, 16), { art: 'bag', artStroke: true, color: 'ink', opacity: 0.5 }));
+    blocks.push(t('text', copy.badge ?? 'Product photo', g(d, 6, 40, 88, 5), { fontSize: fs(d, 13), align: 'center', color: 'ink', opacity: 0.55 }));
+  }
+  const cx = split ? 53 : 6;
+  const cw = split ? 41 : 88;
   chips.forEach((chip, index) => {
-    const w = 26;
-    blocks.push(s(g(d, 6 + index * (w + 2), 54, w, 6), { shape: 'rectangle', color: 'paper' }));
-    blocks.push(t('text', chip, g(d, 6 + index * (w + 2), 54.8, w, 4.4), { fontSize: fs(d, 13), align: 'center', color: 'ink', bold: true }));
+    const w = split ? 12.5 : 26;
+    blocks.push(s(g(d, cx + index * (w + 1.5), 54, w, 6), { shape: 'rectangle', color: 'paper' }));
+    blocks.push(t('text', chip, g(d, cx + index * (w + 1.5), 54.8, w, 4.4), { fontSize: fs(d, 13), align: 'center', color: 'ink', bold: true }));
   });
-  blocks.push(t('heading', copy.title, g(d, 6, 64, 60, 9), { fontSize: fs(d, 36), align: 'left', color: 'ink', level: 2 }));
-  if (copy.price) blocks.push(t('heading', copy.price, g(d, 70, 64, 24, 9), { fontSize: fs(d, 32), align: 'right', color: 'accent', level: 3 }));
-  if (copy.body) blocks.push(t('text', copy.body, g(d, 6, 75, 88, 8), { fontSize: fs(d, 16), align: 'left', color: 'ink', opacity: 0.8 }));
-  if (copy.cta) blocks.push(btn(copy.cta, g(d, 6, 87, 42, 7.5), { color: 'accent' }));
+  blocks.push(t('heading', copy.title, g(d, cx, 64, cw - 24, 9), { fontSize: fs(d, 36), align: 'left', color: 'ink', level: 2 }));
+  if (copy.price) blocks.push(t('heading', copy.price, g(d, split ? 74 : 70, 64, 22, 9), { fontSize: fs(d, 32), align: 'right', color: 'accent', level: 3 }));
+  if (copy.body) blocks.push(t('text', copy.body, g(d, cx, 75, cw, 8), { fontSize: fs(d, 16), align: 'left', color: 'ink', opacity: 0.8 }));
+  if (copy.cta) blocks.push(btn(copy.cta, g(d, cx, 87, 42, 7.5), { color: 'accent' }));
   return page(size, blocks);
 };
 
 /** 26 — Feature comparison: two columns with check rows. */
-export const featureCompare: Composer<{ rowCount?: 3 | 4 }> = ({ size, copy, options }) => {
+export const featureCompare: Composer<{ rowCount?: 3 | 4; swapColumns?: boolean }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const rows = (copy.items ?? []).slice(0, options?.rowCount ?? 4);
   const blocks: TemplateBlockSpec[] = [];
+  const swap = options?.swapColumns === true;
   blocks.push(t('heading', copy.title, g(d, 8, 5, 84, 8), { fontSize: fs(d, 34), align: 'center', color: 'ink', level: 2 }));
-  blocks.push(t('heading', copy.subtitle ?? 'Us', g(d, 58, 14, 34, 5), { fontSize: fs(d, 18), align: 'center', color: 'accent', level: 3 }));
-  blocks.push(t('heading', copy.eyebrow ?? 'Them', g(d, 8, 14, 34, 5), { fontSize: fs(d, 18), align: 'center', color: 'ink', opacity: 0.5, level: 3 }));
+  blocks.push(t('heading', swap ? (copy.eyebrow ?? 'Them') : (copy.subtitle ?? 'Us'), g(d, 58, 14, 34, 5), { fontSize: fs(d, 18), align: 'center', color: 'accent', level: 3 }));
+  blocks.push(t('heading', swap ? (copy.subtitle ?? 'Us') : (copy.eyebrow ?? 'Them'), g(d, 8, 14, 34, 5), { fontSize: fs(d, 18), align: 'center', color: 'ink', opacity: 0.5, level: 3 }));
   blocks.push(s(g(d, 46, 13, 0.8, 6 + rows.length * 12), { shape: 'rectangle', color: 'soft' }));
   rows.forEach((row, index) => {
     const y = 21 + index * 12;
-    blocks.push(t('text', row, g(d, 4, y, 40, 5), { fontSize: fs(d, 14), align: 'center', color: 'ink' }));
-    blocks.push(s(g(d, 22, y + 5.6, 4, 4), { shape: 'circle', color: 'soft' }));
-    blocks.push(t('text', row, g(d, 54, y, 40, 5), { fontSize: fs(d, 14), align: 'center', color: 'ink', bold: true }));
-    blocks.push(s(g(d, 72, y + 5.6, 4, 4), { art: 'check', artStroke: true, color: 'accent' }));
+    blocks.push(t('text', row, g(d, 4, y, 40, 5), { fontSize: fs(d, 14), align: 'center', color: swap ? 'ink' : 'ink', bold: swap }));
+    blocks.push(s(g(d, 22, y + 5.6, 4, 4), swap ? { art: 'check', artStroke: true, color: 'accent' } : { shape: 'circle', color: 'soft' }));
+    blocks.push(t('text', row, g(d, 54, y, 40, 5), { fontSize: fs(d, 14), align: 'center', color: 'ink', bold: !swap }));
+    blocks.push(s(g(d, 72, y + 5.6, 4, 4), swap ? { shape: 'circle', color: 'soft' } : { art: 'check', artStroke: true, color: 'accent' }));
   });
   if (copy.cta) blocks.push(btn(copy.cta, g(d, 28, 88, 44, 7), { color: 'accent' }));
   return page(size, blocks);
@@ -621,22 +694,26 @@ export const pricingCard: Composer<{ highlight?: boolean; featureCount?: 3 | 4 |
 };
 
 /** 28 — Catalog page: 2×2 product grid (document sizes). */
-export const catalogGrid: Composer<{ cellLabels?: string[] }> = ({ size, copy, options }) => {
+export const catalogGrid: Composer<{ cellLabels?: string[]; columns?: 2 | 3 }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const labels = options?.cellLabels ?? ['Item', 'Item', 'Item', 'Item'];
   const blocks: TemplateBlockSpec[] = [];
   blocks.push(t('heading', copy.title, g(d, 8, 4, 60, 6), { fontSize: fs(d, 30), align: 'left', color: 'ink', level: 2 }));
   blocks.push(t('text', copy.subtitle ?? '', g(d, 70, 5, 22, 4), { fontSize: fs(d, 13), align: 'right', color: 'ink', opacity: 0.6 }));
-  labels.slice(0, 4).forEach((label, index) => {
-    const col = index % 2;
-    const row = Math.floor(index / 2);
-    const x = 8 + col * 44;
+  const cols = options?.columns ?? 2;
+  const rowsShown = Math.ceil(Math.min(labels.length, cols === 3 ? 6 : 4) / cols);
+  labels.slice(0, cols * rowsShown).forEach((label, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const cellW = (84 - (cols - 1) * 3) / cols;
+    const cellH = cols === 3 ? 24 : 24;
+    const x = 8 + col * (cellW + 3);
     const y = 13 + row * 36;
-    blocks.push(s(g(d, x, y, 40, 24), { shape: 'rectangle', color: row === col ? 'soft' : 'paper' }));
-    blocks.push(t('text', label, g(d, x, y + 9.5, 40, 4), { fontSize: fs(d, 13), align: 'center', color: 'ink', opacity: 0.55 }));
-    blocks.push(s(g(d, x, y + 25, 40, 5), { shape: 'rectangle', color: 'ink', opacity: 0.06 }));
-    blocks.push(t('heading', (copy.items ?? [])[index] ?? 'New', g(d, x + 1, y + 25.6, 22, 4), { fontSize: fs(d, 14), align: 'left', color: 'ink', level: 3 }));
-    blocks.push(t('text', (copy.stats ?? [])[index]?.value ?? '', g(d, x + 24, y + 25.6, 15, 4), { fontSize: fs(d, 13), align: 'right', color: 'accent', bold: true }));
+    blocks.push(s(g(d, x, y, cellW, cellH), { shape: 'rectangle', color: row === col ? 'soft' : 'paper' }));
+    blocks.push(t('text', label, g(d, x, y + 9.5, cellW, 4), { fontSize: fs(d, 13), align: 'center', color: 'ink', opacity: 0.55 }));
+    blocks.push(s(g(d, x, y + 25, cellW, 5), { shape: 'rectangle', color: 'ink', opacity: 0.06 }));
+    blocks.push(t('heading', (copy.items ?? [])[index] ?? 'New', g(d, x + 1, y + 25.6, cellW * 0.6, 4), { fontSize: fs(d, 14), align: 'left', color: 'ink', level: 3 }));
+    blocks.push(t('text', (copy.stats ?? [])[index]?.value ?? '', g(d, x + cellW * 0.62, y + 25.6, cellW * 0.35, 4), { fontSize: fs(d, 13), align: 'right', color: 'accent', bold: true }));
   });
   if (copy.footer) blocks.push(t('text', copy.footer, g(d, 8, 90, 84, 4), { fontSize: fs(d, 13), align: 'left', color: 'ink', opacity: 0.6 }));
   if (copy.cta) blocks.push(btn(copy.cta, g(d, 8, 94, 36, 5), { color: 'accent' }));
@@ -664,19 +741,23 @@ export const pitchCover: Composer<{ decor?: 'bars' | 'ring' | 'wave' }> = ({ siz
 };
 
 /** 30 — Deck section divider (wide). */
-export const deckSection: Composer<{ index?: string }> = ({ size, copy, options }) => {
+export const deckSection: Composer<{ index?: string; align?: 'left' | 'right'; fill?: boolean; badgeStyle?: 'plain' | 'circled' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
+  const right = options?.align === 'right';
+  const x = right ? 30 : 6;
+  const index = options?.index ?? copy.badge ?? '01';
   return page(size, [
-    s(g(d, 0, 0, 100, 100), { shape: 'rectangle', color: 'ink', opacity: 0.04 }),
-    t('heading', options?.index ?? copy.badge ?? '01', g(d, 6, 14, 20, 20), { fontSize: fs(d, 110), align: 'left', color: 'accent', level: 1, font: 'geometric' }),
-    t('heading', copy.title, g(d, 6, 42, 80, 16), { fontSize: fs(d, 64), align: 'left', color: 'ink', level: 1 }),
-    s(g(d, 6, 62, 14, 0.7), { shape: 'rectangle', color: 'accent' }),
-    t('text', copy.subtitle ?? '', g(d, 6, 66, 60, 8), { fontSize: fs(d, 20), align: 'left', color: 'ink', opacity: 0.7 }),
+    s(g(d, 0, 0, 100, 100), { shape: 'rectangle', color: options?.fill ? 'accent' : 'ink', opacity: options?.fill ? 0.12 : 0.04 }),
+    ...(options?.badgeStyle === 'circled' ? [s(g(d, right ? 68 : 4, 10, 26, 28), { shape: 'circle', color: 'soft' })] : []),
+    t('heading', index, g(d, x, 14, 20, 20), { fontSize: fs(d, 110), align: right ? 'right' : 'left', color: 'accent', level: 1, font: 'geometric' }),
+    t('heading', copy.title, g(d, x, 42, 64, 16), { fontSize: fs(d, 64), align: right ? 'right' : 'left', color: 'ink', level: 1 }),
+    s(g(d, right ? 80 : 6, 62, 14, 0.7), { shape: 'rectangle', color: 'accent' }),
+    t('text', copy.subtitle ?? '', g(d, x, 66, 60, 8), { fontSize: fs(d, 20), align: right ? 'right' : 'left', color: 'ink', opacity: 0.7 }),
   ]);
 };
 
 /** 31 — Deck bullets page (wide). */
-export const deckBullets: Composer<{ bulletCount?: 3 | 4 | 5 }> = ({ size, copy, options }) => {
+export const deckBullets: Composer<{ bulletCount?: 3 | 4 | 5; panelSide?: 'right' | 'none' | 'left' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const count = options?.bulletCount ?? 4;
   const blocks: TemplateBlockSpec[] = [];
@@ -687,24 +768,32 @@ export const deckBullets: Composer<{ bulletCount?: 3 | 4 | 5 }> = ({ size, copy,
     blocks.push(s(g(d, 5, y, 3.2, 3.2), { shape: 'circle', color: 'accent' }));
     blocks.push(t('text', item, g(d, 10, y - 0.8, 52, 5), { fontSize: fs(d, 19), align: 'left', color: 'ink' }));
   });
-  blocks.push(s(g(d, 68, 8, 27, 66), { shape: 'rectangle', color: 'soft', opacity: 0.8 }));
-  blocks.push(s(g(d, 75, 24, 13, 13), { art: 'chart-line', artStroke: true, color: 'ink', opacity: 0.5 }));
+  const panel = options?.panelSide ?? 'right';
+  if (panel === 'right') {
+    blocks.push(s(g(d, 68, 8, 27, 66), { shape: 'rectangle', color: 'soft', opacity: 0.8 }));
+    blocks.push(s(g(d, 75, 24, 13, 13), { art: 'chart-line', artStroke: true, color: 'ink', opacity: 0.5 }));
+  } else if (panel === 'left') {
+    blocks.push(s(g(d, 5, 8, 20, 50), { shape: 'rectangle', color: 'soft', opacity: 0.8 }));
+    blocks.push(s(g(d, 11, 24, 8, 8), { art: 'chart-line', artStroke: true, color: 'ink', opacity: 0.5 }));
+  }
   if (copy.body) blocks.push(t('text', copy.body, g(d, 68, 78, 27, 14), { fontSize: fs(d, 14), align: 'left', color: 'ink', opacity: 0.7 }));
   return page(size, blocks);
 };
 
 /** 32 — Deck stats page (wide). */
-export const deckStats: Composer<{ statCount?: 2 | 3 | 4 }> = ({ size, copy, options }) => {
+export const deckStats: Composer<{ statCount?: 2 | 3 | 4; align?: 'left' | 'center'; divider?: boolean }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const stats = (copy.stats ?? []).slice(0, options?.statCount ?? 3);
   const blocks: TemplateBlockSpec[] = [];
   blocks.push(t('heading', copy.title, g(d, 5, 8, 90, 10), { fontSize: fs(d, 42), align: 'left', color: 'ink', level: 2 }));
   blocks.push(s(g(d, 5, 19, 10, 0.6), { shape: 'rectangle', color: 'accent' }));
+  const centered = options?.align === 'center';
   stats.forEach((stat, index) => {
     const w = 90 / stats.length;
-    blocks.push(t('heading', stat.value, g(d, 5 + index * w, 32, w - 3, 22), { fontSize: fs(d, 110), align: 'left', color: index === 0 ? 'accent' : 'ink', level: 1, font: 'geometric' }));
-    blocks.push(t('text', stat.label, g(d, 5 + index * w, 58, w - 3, 8), { fontSize: fs(d, 18), align: 'left', color: 'ink', opacity: 0.75 }));
+    blocks.push(t('heading', stat.value, g(d, 5 + index * w, 32, w - 3, 22), { fontSize: fs(d, 110), align: centered ? 'center' : 'left', color: index === 0 ? 'accent' : 'ink', level: 1, font: 'geometric' }));
+    blocks.push(t('text', stat.label, g(d, 5 + index * w, 58, w - 3, 8), { fontSize: fs(d, 18), align: centered ? 'center' : 'left', color: 'ink', opacity: 0.75 }));
     blocks.push(s(g(d, 5 + index * w, 70, w - 8, 1), { shape: 'rectangle', color: 'soft' }));
+    if (options?.divider && index > 0) blocks.push(s(g(d, 5 + index * w - 1.5, 34, 0.4, 32), { shape: 'rectangle', color: 'soft' }));
   });
   if (copy.body) blocks.push(t('text', copy.body, g(d, 5, 82, 80, 10), { fontSize: fs(d, 16), align: 'left', color: 'ink', opacity: 0.7 }));
   return page(size, blocks);
@@ -743,18 +832,19 @@ export const portfolioGrid: Composer<{ cellCount?: 2 | 3 }> = ({ size, copy, opt
 };
 
 /** 35 — Timeline infographic (vertical). */
-export const timelineVertical: Composer<{ nodeCount?: 3 | 4 | 5 }> = ({ size, copy, options }) => {
+export const timelineVertical: Composer<{ nodeCount?: 3 | 4 | 5; lineSide?: 'left' | 'right' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const count = options?.nodeCount ?? 4;
   const items = (copy.items ?? []).slice(0, count);
   const blocks: TemplateBlockSpec[] = [];
   blocks.push(t('heading', copy.title, g(d, 8, 4, 84, 7), { fontSize: fs(d, 34), align: 'left', color: 'ink', level: 2 }));
-  blocks.push(s(g(d, 11.2, 14, 0.8, 74), { shape: 'rectangle', color: 'accent', opacity: 0.5 }));
+  const rightSide = options?.lineSide === 'right';
+  blocks.push(s(g(d, rightSide ? 88 : 11.2, 14, 0.8, 74), { shape: 'rectangle', color: 'accent', opacity: 0.5 }));
   items.forEach((item, index) => {
     const y = 16 + index * (70 / count);
-    blocks.push(s(g(d, 8.5, y, 6, 6), { shape: 'circle', color: index === 0 ? 'accent' : 'paper' }));
-    blocks.push(t('heading', (copy.stats ?? [])[index]?.value ?? `Step ${index + 1}`, g(d, 18, y - 1, 30, 4.5), { fontSize: fs(d, 16), align: 'left', color: 'accent', level: 3 }));
-    blocks.push(t('text', item, g(d, 18, y + 4, 72, 9), { fontSize: fs(d, 16), align: 'left', color: 'ink' }));
+    blocks.push(s(g(d, rightSide ? 85.3 : 8.5, y, 6, 6), { shape: 'circle', color: index === 0 ? 'accent' : 'paper' }));
+    blocks.push(t('heading', (copy.stats ?? [])[index]?.value ?? `Step ${index + 1}`, g(d, rightSide ? 52 : 18, y - 1, 30, 4.5), { fontSize: fs(d, 16), align: rightSide ? 'right' : 'left', color: 'accent', level: 3 }));
+    blocks.push(t('text', item, g(d, rightSide ? 6 : 18, y + 4, rightSide ? 76 : 72, 9), { fontSize: fs(d, 16), align: rightSide ? 'right' : 'left', color: 'ink' }));
   });
   if (copy.footer) blocks.push(t('text', copy.footer, g(d, 8, 94, 84, 4), { fontSize: fs(d, 12), align: 'left', color: 'ink', opacity: 0.6 }));
   return page(size, blocks);
@@ -819,19 +909,23 @@ export const dataCard: Composer<{ bars?: number[] }> = ({ size, copy, options })
 };
 
 /** 39 — Cycle diagram: nodes on a ring. */
-export const cycleDiagram: Composer<{ nodeCount?: 3 | 4 }> = ({ size, copy, options }) => {
+export const cycleDiagram: Composer<{ nodeCount?: 3 | 4; layout?: 'ring' | 'row' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const nodes = (copy.items ?? []).slice(0, options?.nodeCount ?? 3);
   const blocks: TemplateBlockSpec[] = [];
   blocks.push(t('heading', copy.title, g(d, 8, 5, 84, 7), { fontSize: fs(d, 32), align: 'center', color: 'ink', level: 2 }));
-  blocks.push(s(g(d, 30, 26, 40, 40), { art: 'ring', color: 'accent', opacity: 0.5 }));
-  const positions = nodes.length === 3
-    ? [[42, 20], [72, 42], [42, 64]]
-    : [[42, 20], [72, 42], [42, 64], [12, 42]];
+  const row = options?.layout === 'row';
+  const positions = row
+    ? nodes.map((_, index) => [8 + index * (88 / Math.max(1, nodes.length)), 34])
+    : nodes.length === 3
+      ? [[42, 20], [72, 42], [42, 64]]
+      : [[42, 20], [72, 42], [42, 64], [12, 42]];
+  if (!row) blocks.push(s(g(d, 30, 26, 40, 40), { art: 'ring', color: 'accent', opacity: 0.5 }));
+  else nodes.forEach((_, index) => { if (index < nodes.length - 1) blocks.push(s(g(d, 8 + (index + 1) * (88 / Math.max(1, nodes.length)) - 8.5, 38, 5, 5), { art: 'arrow-right', artStroke: true, color: 'accent' })); });
   nodes.forEach((node, index) => {
     const [nx, ny] = positions[index]!;
-    blocks.push(s(g(d, nx, ny, 18, 16), { shape: 'circle', color: index % 2 ? 'soft' : 'accent', opacity: index % 2 ? 1 : 0.85 }));
-    blocks.push(t('text', node, g(d, nx + 1, ny + 6, 16, 4), { fontSize: fs(d, 12), align: 'center', color: index % 2 ? 'ink' : 'paper', bold: true }));
+    blocks.push(s(g(d, nx, ny, 18, row ? 12 : 16), { shape: 'circle', color: index % 2 ? 'soft' : 'accent', opacity: index % 2 ? 1 : 0.85 }));
+    blocks.push(t('text', node, g(d, nx + 0.5, ny + (row ? 4 : 6), 17, 4), { fontSize: fs(d, row ? 11 : 12), align: 'center', color: index % 2 ? 'ink' : 'paper', bold: true }));
   });
   if (copy.body) blocks.push(t('text', copy.body, g(d, 14, 88, 72, 6), { fontSize: fs(d, 14), align: 'center', color: 'ink', opacity: 0.7 }));
   return page(size, blocks);
@@ -876,11 +970,16 @@ export const worksheet: Composer<{ questionCount?: 3 | 4 | 5 }> = ({ size, copy,
 };
 
 /** 42 — Educational poster: big fact + illustration disc. */
-export const eduPoster: Composer<{ factValue?: string }> = ({ size, copy, options }) => {
+export const eduPoster: Composer<{ factValue?: string; icon?: 'leaf' | 'sun' | 'book' | 'moon'; style?: 'disc' | 'panel' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const blocks: TemplateBlockSpec[] = [];
-  blocks.push(s(g(d, 14, 22, 72, 72), { shape: 'circle', color: 'accent', opacity: 0.12 }));
-  blocks.push(s(g(d, 40, 26, 20, 20), { art: ['leaf', 'sun', 'book'][0]!, artStroke: true, color: 'accent' }));
+  if (options?.style === 'panel') {
+    blocks.push(s(g(d, 8, 10, 84, 84), { shape: 'rectangle', color: 'accent', opacity: 0.1 }));
+    blocks.push(s(g(d, 42, 14, 16, 16), { art: options.icon ?? 'leaf', artStroke: true, color: 'accent' }));
+  } else {
+    blocks.push(s(g(d, 14, 22, 72, 72), { shape: 'circle', color: 'accent', opacity: 0.12 }));
+    blocks.push(s(g(d, 40, 26, 20, 20), { art: options?.icon ?? 'leaf', artStroke: true, color: 'accent' }));
+  }
   blocks.push(t('heading', options?.factValue ?? copy.price ?? '73%', g(d, 20, 42, 60, 14), { fontSize: fs(d, 96), align: 'center', color: 'ink', level: 1, font: 'geometric' }));
   blocks.push(t('text', copy.title, g(d, 14, 58, 72, 8), { fontSize: fs(d, 22), align: 'center', color: 'ink', bold: true }));
   if (copy.body) blocks.push(t('text', copy.body, g(d, 18, 68, 64, 8), { fontSize: fs(d, 15), align: 'center', color: 'ink', opacity: 0.7 }));
@@ -889,11 +988,12 @@ export const eduPoster: Composer<{ factValue?: string }> = ({ size, copy, option
 };
 
 /** 43 — Course promo: modules + price + CTA. */
-export const coursePromo: Composer<{ moduleCount?: 3 | 4 }> = ({ size, copy, options }) => {
+export const coursePromo: Composer<{ moduleCount?: 3 | 4; headerStyle?: 'dark' | 'accent' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const count = options?.moduleCount ?? 3;
   const blocks: TemplateBlockSpec[] = [];
-  blocks.push(s(g(d, 0, 0, 100, 26), { shape: 'rectangle', color: 'ink' }));
+  const accentHeader = options?.headerStyle === 'accent';
+  blocks.push(s(g(d, 0, 0, 100, 26), { shape: 'rectangle', color: accentHeader ? 'accent' : 'ink' }));
   blocks.push(t('text', (copy.eyebrow ?? 'Online course').toUpperCase(), g(d, 8, 4, 60, 4), { fontSize: fs(d, 14), align: 'left', color: 'paper', bold: true, opacity: 0.8 }));
   blocks.push(t('heading', copy.title, g(d, 8, 9, 84, 14), { fontSize: fs(d, 40), align: 'left', color: 'paper', level: 1 }));
   (copy.items ?? []).slice(0, count).forEach((item, index) => {
@@ -911,16 +1011,18 @@ export const coursePromo: Composer<{ moduleCount?: 3 | 4 }> = ({ size, copy, opt
 };
 
 /** 44 — Blog header / article hero (wide). */
-export const blogHeader: Composer<{ align?: 'left' | 'center' }> = ({ size, copy, options }) => {
+export const blogHeader: Composer<{ align?: 'left' | 'center'; rule?: boolean; waveSide?: 'bottom' | 'right' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const align = options?.align ?? 'left';
   const blocks: TemplateBlockSpec[] = [];
-  blocks.push(s(g(d, 0, 62, 100, 38), { art: 'wave', color: 'accent', opacity: 0.25 }));
+  if ((options?.waveSide ?? 'bottom') === 'right') blocks.push(s(g(d, 74, 0, 26, 100), { art: 'wave', color: 'accent', opacity: 0.25 }));
+  else blocks.push(s(g(d, 0, 62, 100, 38), { art: 'wave', color: 'accent', opacity: 0.25 }));
   blocks.push(s(g(d, align === 'center' ? 38 : 4, 8, 24, 6), { shape: 'rectangle', color: 'accent', opacity: 0.15 }));
   blocks.push(t('text', (copy.eyebrow ?? 'Article').toUpperCase(), g(d, align === 'center' ? 38 : 4, 8.8, 24, 4.4), { fontSize: fs(d, 14), align: 'center', color: 'accent', bold: true }));
   blocks.push(t('heading', copy.title, g(d, align === 'center' ? 10 : 4, 18, align === 'center' ? 80 : 70, 22), { fontSize: fs(d, 62), align, color: 'ink', level: 1, font: 'display' }));
   blocks.push(t('text', copy.subtitle ?? '', g(d, align === 'center' ? 15 : 4, 44, align === 'center' ? 70 : 56, 10), { fontSize: fs(d, 20), align, color: 'ink', opacity: 0.75 }));
   blocks.push(t('text', [copy.name, copy.date].filter(Boolean).join('  ·  '), g(d, align === 'center' ? 15 : 4, 56, 60, 4), { fontSize: fs(d, 14), align, color: 'ink', opacity: 0.6 }));
+  if (options?.rule) blocks.push(s(g(d, align === 'center' ? 38 : 4, 54, 24, 1.2), { shape: 'rectangle', color: 'accent' }));
   return page(size, blocks);
 };
 
@@ -946,10 +1048,14 @@ export const newsletter: Composer<{ teaserCount?: 3 | 4 }> = ({ size, copy, opti
 };
 
 /** 46 — Editorial magazine cover. */
-export const editorialCover: Composer<{ coverLines?: string[] }> = ({ size, copy, options }) => {
+export const editorialCover: Composer<{ coverLines?: string[]; rules?: boolean }> = ({ size, copy, options }) => {
   const d = pageDims(size);
-  const lines = (options?.coverLines ?? copy.items ?? []).slice(0, 3);
+  const lines = (options?.coverLines ?? copy.items ?? []).slice(0, 4);
   const blocks: TemplateBlockSpec[] = [];
+  if (options?.rules) {
+    blocks.push(s(g(d, 8, 2.5, 84, 0.9), { shape: 'rectangle', color: 'ink' }));
+    blocks.push(s(g(d, 8, 1, 84, 0.5), { shape: 'rectangle', color: 'accent' }));
+  }
   blocks.push(t('heading', copy.eyebrow ?? 'ISSUE 12', g(d, 8, 4, 40, 4), { fontSize: fs(d, 15), align: 'left', color: 'accent', bold: true }));
   blocks.push(t('heading', copy.title, g(d, 8, 9, 84, 22), { fontSize: fs(d, 96), align: 'left', color: 'ink', level: 1, font: 'display' }));
   blocks.push(s(g(d, 8, 34, 84, 0.8), { shape: 'rectangle', color: 'ink' }));
@@ -980,7 +1086,19 @@ export const pullQuote: Composer<{ ruleStyle?: 'top' | 'sides' | 'none' }> = ({ 
 };
 
 /** 48 — Proposal cover (document sizes). */
-export const proposalCover: Composer<{ clientMark?: boolean }> = ({ size, copy, options }) => {
+export const proposalCover: Composer<{ clientMark?: boolean; layout?: 'classic' | 'split' }> = ({ size, copy, options }) => {
+  if (options?.layout === 'split') {
+    const d = pageDims(size);
+    return page(size, [
+      s(g(d, 52, 0, 48, 100), { shape: 'rectangle', color: 'accent', opacity: 0.14 }),
+      t('text', (copy.eyebrow ?? 'Project proposal').toUpperCase(), g(d, 8, 12, 40, 4), { fontSize: fs(d, 14), align: 'left', color: 'accent', bold: true }),
+      t('heading', copy.title, g(d, 8, 18, 44, 26), { fontSize: fs(d, 44), align: 'left', color: 'ink', level: 1, font: 'display' }),
+      s(g(d, 8, 50, 16, 0.8), { shape: 'rectangle', color: 'accent' }),
+      t('text', [copy.name, copy.role].filter(Boolean).join(' · '), g(d, 8, 55, 42, 6), { fontSize: fs(d, 15), align: 'left', color: 'ink', bold: true }),
+      t('text', copy.contact ?? '', g(d, 8, 63, 42, 8), { fontSize: fs(d, 12), align: 'left', color: 'ink', opacity: 0.7 }),
+      t('text', [copy.date, copy.footer].filter(Boolean).join('   ·   '), g(d, 56, 80, 40, 10), { fontSize: fs(d, 12), align: 'right', color: 'ink', opacity: 0.8 }),
+    ]);
+  }
   const d = pageDims(size);
   const blocks: TemplateBlockSpec[] = [];
   blocks.push(s(g(d, 0, 0, 100, 8), { shape: 'rectangle', color: 'accent' }));
@@ -999,20 +1117,23 @@ export const proposalCover: Composer<{ clientMark?: boolean }> = ({ size, copy, 
 };
 
 /** 49 — Project brief: meta grid + scope list (document sizes). */
-export const projectBrief: Composer<{ metaFields?: Array<{ label: string; value: string }> }> = ({ size, copy, options }) => {
+export const projectBrief: Composer<{ metaFields?: Array<{ label: string; value: string }>; accentBar?: boolean }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const meta = options?.metaFields ?? [
     { label: 'Client', value: copy.eyebrow ?? '' },
     { label: 'Timeline', value: copy.date ?? '' },
     { label: 'Budget', value: copy.price ?? '' },
   ];
+  const bar = options?.accentBar === true;
+  const bx = bar ? 12 : 8;
   const blocks: TemplateBlockSpec[] = [];
-  blocks.push(t('heading', copy.title, g(d, 8, 5, 84, 7), { fontSize: fs(d, 32), align: 'left', color: 'ink', level: 1 }));
-  blocks.push(s(g(d, 8, 13, 84, 0.7), { shape: 'rectangle', color: 'accent' }));
+  if (bar) blocks.push(s(g(d, 4, 0, 2.4, 100), { shape: 'rectangle', color: 'accent' }));
+  blocks.push(t('heading', copy.title, g(d, bx, 5, 84, 7), { fontSize: fs(d, 32), align: 'left', color: 'ink', level: 1 }));
+  blocks.push(s(g(d, bx, 13, 84, 0.7), { shape: 'rectangle', color: 'accent' }));
   meta.slice(0, 3).forEach((field, index) => {
     const w = 84 / meta.length;
-    blocks.push(t('text', field.label.toUpperCase(), g(d, 8 + index * w, 17, w, 3.5), { fontSize: fs(d, 12), align: 'left', color: 'ink', bold: true, opacity: 0.55 }));
-    blocks.push(t('heading', field.value, g(d, 8 + index * w, 21, w - 2, 5), { fontSize: fs(d, 17), align: 'left', color: 'ink', level: 3 }));
+    blocks.push(t('text', field.label.toUpperCase(), g(d, bx + index * w, 17, w, 3.5), { fontSize: fs(d, 12), align: 'left', color: 'ink', bold: true, opacity: 0.55 }));
+    blocks.push(t('heading', field.value, g(d, bx + index * w, 21, w - 2, 5), { fontSize: fs(d, 17), align: 'left', color: 'ink', level: 3 }));
   });
   blocks.push(s(g(d, 8, 29, 84, 0.5), { shape: 'rectangle', color: 'soft' }));
   blocks.push(t('heading', copy.subtitle ?? 'Scope', g(d, 8, 33, 60, 5), { fontSize: fs(d, 22), align: 'left', color: 'ink', level: 2 }));
@@ -1025,18 +1146,25 @@ export const projectBrief: Composer<{ metaFields?: Array<{ label: string; value:
 };
 
 /** 50 — Resume page (document sizes). */
-export const resumePage: Composer<{ sectionCount?: 2 | 3 }> = ({ size, copy, options }) => {
+export const resumePage: Composer<{ sectionCount?: 2 | 3; sidebar?: boolean }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const sections = (copy.items ?? []).slice(0, options?.sectionCount ?? 3);
+  const sidebar = options?.sidebar === true;
+  const bx = sidebar ? 14 : 8;
+  const bw = sidebar ? 78 : 84;
   const blocks: TemplateBlockSpec[] = [];
-  blocks.push(t('heading', copy.name ?? copy.title, g(d, 8, 4, 84, 6), { fontSize: fs(d, 34), align: 'left', color: 'ink', level: 1 }));
-  blocks.push(t('text', copy.role ?? '', g(d, 8, 10.5, 84, 4), { fontSize: fs(d, 15), align: 'left', color: 'accent', bold: true }));
-  blocks.push(t('text', copy.contact ?? '', g(d, 8, 14.5, 84, 3.5), { fontSize: fs(d, 12), align: 'left', color: 'ink', opacity: 0.65 }));
-  blocks.push(s(g(d, 8, 19, 84, 0.7), { shape: 'rectangle', color: 'ink' }));
+  if (sidebar) {
+    blocks.push(s(g(d, 0, 0, 10, 100), { shape: 'rectangle', color: 'ink' }));
+    blocks.push(s(g(d, 2, 6, 6, 6), { shape: 'circle', color: 'accent' }));
+  }
+  blocks.push(t('heading', copy.name ?? copy.title, g(d, bx, 4, bw, 6), { fontSize: fs(d, 34), align: 'left', color: 'ink', level: 1 }));
+  blocks.push(t('text', copy.role ?? '', g(d, bx, 10.5, bw, 4), { fontSize: fs(d, 15), align: 'left', color: 'accent', bold: true }));
+  blocks.push(t('text', copy.contact ?? '', g(d, bx, 14.5, bw, 3.5), { fontSize: fs(d, 12), align: 'left', color: 'ink', opacity: 0.65 }));
+  blocks.push(s(g(d, bx, 19, bw, 0.7), { shape: 'rectangle', color: 'ink' }));
   sections.forEach((section, index) => {
     const y = 22 + index * 24;
-    blocks.push(t('heading', section, g(d, 8, y, 40, 4.5), { fontSize: fs(d, 17), align: 'left', color: 'ink', level: 3 }));
-    blocks.push(t('text', (copy.stats ?? [])[index]?.value ?? '', g(d, 8, y + 5, 84, 16), { fontSize: fs(d, 13), align: 'left', color: 'ink', opacity: 0.8 }));
+    blocks.push(t('heading', section, g(d, bx, y, 40, 4.5), { fontSize: fs(d, 17), align: 'left', color: 'ink', level: 3 }));
+    blocks.push(t('text', (copy.stats ?? [])[index]?.value ?? '', g(d, bx, y + 5, bw, 16), { fontSize: fs(d, 13), align: 'left', color: 'ink', opacity: 0.8 }));
   });
   return page(size, blocks);
 };
@@ -1062,7 +1190,7 @@ export const reportPage: Composer<{ bars?: number[] }> = ({ size, copy, options 
 };
 
 /** 52 — Photo hero social: layered panels + overlay title bar. */
-export const photoHero: Composer<{ overlay?: 'band' | 'block' | 'full' }> = ({ size, copy, options }) => {
+export const photoHero: Composer<{ overlay?: 'band' | 'block' | 'full' | 'top' | 'corner' | 'side' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const overlay = options?.overlay ?? 'band';
   const blocks: TemplateBlockSpec[] = [...photoPlaceholder(d, 0, 0, 100, 100, copy.badge ?? 'Hero photo — drop yours here', 'soft', 0.9)];
@@ -1074,6 +1202,18 @@ export const photoHero: Composer<{ overlay?: 'band' | 'block' | 'full' }> = ({ s
     blocks.push(s(g(d, 8, 56, 84, 26), { shape: 'rectangle', color: 'paper' }));
     blocks.push(t('heading', copy.title, g(d, 11, 60, 78, 9), { fontSize: fs(d, 34), align: 'left', color: 'ink', level: 2 }));
     blocks.push(t('text', copy.subtitle ?? '', g(d, 11, 70, 78, 6), { fontSize: fs(d, 16), align: 'left', color: 'ink', opacity: 0.75 }));
+  } else if (overlay === 'top') {
+    blocks.push(s(g(d, 0, 8, 100, 22), { shape: 'rectangle', color: 'ink', opacity: 0.82 }));
+    blocks.push(t('heading', copy.title, g(d, 8, 11, 84, 8), { fontSize: fs(d, 34), align: 'left', color: 'paper', level: 2 }));
+    blocks.push(t('text', copy.subtitle ?? '', g(d, 8, 21, 84, 5), { fontSize: fs(d, 16), align: 'left', color: 'paper', opacity: 0.85 }));
+  } else if (overlay === 'corner') {
+    blocks.push(s(g(d, 5, 56, 58, 30), { shape: 'rectangle', color: 'paper' }));
+    blocks.push(t('heading', copy.title, g(d, 8, 60, 52, 9), { fontSize: fs(d, 32), align: 'left', color: 'ink', level: 2 }));
+    blocks.push(t('text', copy.subtitle ?? '', g(d, 8, 70, 52, 8), { fontSize: fs(d, 15), align: 'left', color: 'ink', opacity: 0.75 }));
+  } else if (overlay === 'side') {
+    blocks.push(s(g(d, 46, 14, 48, 70), { shape: 'rectangle', color: 'paper' }));
+    blocks.push(t('heading', copy.title, g(d, 49, 20, 42, 14), { fontSize: fs(d, 30), align: 'left', color: 'ink', level: 2 }));
+    blocks.push(t('text', copy.subtitle ?? '', g(d, 49, 38, 42, 16), { fontSize: fs(d, 15), align: 'left', color: 'ink', opacity: 0.75 }));
   } else {
     blocks.push(s(g(d, 0, 0, 100, 100), { shape: 'rectangle', color: 'ink', opacity: 0.55 }));
     blocks.push(t('heading', copy.title, g(d, 8, 34, 84, 16), { fontSize: fs(d, 52), align: 'center', color: 'paper', level: 1 }));
@@ -1084,25 +1224,28 @@ export const photoHero: Composer<{ overlay?: 'band' | 'block' | 'full' }> = ({ s
 };
 
 /** 53 — Announcement document: rule, body, signature (a4/letter). */
-export const announcementDoc: Composer<{ rulePlacement?: 'top' | 'under-title' }> = ({ size, copy, options }) => {
+export const announcementDoc: Composer<{ rulePlacement?: 'top' | 'under-title'; align?: 'left' | 'center' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const under = options?.rulePlacement === 'under-title';
+  const centered = options?.align === 'center';
+  const ax = centered ? 14 : 8;
+  const aw = centered ? 72 : 84;
   const blocks: TemplateBlockSpec[] = [];
   if (!under) blocks.push(s(g(d, 0, 0, 100, 2.2), { shape: 'rectangle', color: 'accent' }));
-  blocks.push(t('heading', copy.title, g(d, 8, 6, 84, 8), { fontSize: fs(d, 38), align: 'left', color: 'ink', level: 1 }));
-  if (under) blocks.push(s(g(d, 8, 15, 30, 1), { shape: 'rectangle', color: 'accent' }));
-  blocks.push(t('text', copy.body ?? '', g(d, 8, 22, 84, 40), { fontSize: fs(d, 17), align: 'left', color: 'ink' }));
+  blocks.push(t('heading', copy.title, g(d, ax, 6, aw, 8), { fontSize: fs(d, 38), align: centered ? 'center' : 'left', color: 'ink', level: 1 }));
+  if (under) blocks.push(s(g(d, centered ? 35 : 8, 15, 30, 1), { shape: 'rectangle', color: 'accent' }));
+  blocks.push(t('text', copy.body ?? '', g(d, ax, 22, aw, 40), { fontSize: fs(d, 17), align: centered ? 'center' : 'left', color: 'ink' }));
   if (copy.quote) {
-    blocks.push(s(g(d, 8, 64, 84, 14), { shape: 'rectangle', color: 'soft', opacity: 0.8 }));
-    blocks.push(t('text', copy.quote, g(d, 11, 66.5, 78, 9), { fontSize: fs(d, 16), align: 'left', color: 'ink', italic: true }));
+    blocks.push(s(g(d, ax, 64, aw, 14), { shape: 'rectangle', color: 'soft', opacity: 0.8 }));
+    blocks.push(t('text', copy.quote, g(d, ax + 3, 66.5, aw - 6, 9), { fontSize: fs(d, 16), align: centered ? 'center' : 'left', color: 'ink', italic: true }));
   }
-  blocks.push(t('text', copy.attribution ?? '— The team', g(d, 8, 84, 50, 4), { fontSize: fs(d, 15), align: 'left', color: 'ink', italic: true }));
-  blocks.push(t('text', copy.footer ?? '', g(d, 8, 92, 84, 4), { fontSize: fs(d, 12), align: 'left', color: 'ink', opacity: 0.6 }));
+  blocks.push(t('text', copy.attribution ?? '— The team', g(d, ax, 84, 50, 4), { fontSize: fs(d, 15), align: centered ? 'center' : 'left', color: 'ink', italic: true }));
+  blocks.push(t('text', copy.footer ?? '', g(d, ax, 92, aw, 4), { fontSize: fs(d, 12), align: centered ? 'center' : 'left', color: 'ink', opacity: 0.6 }));
   return page(size, blocks);
 };
 
 /** 54 — Bundle promo: three slots + bundle price banner. */
-export const bundlePromo: Composer<{ slotLabels?: [string, string, string] }> = ({ size, copy, options }) => {
+export const bundlePromo: Composer<{ slotLabels?: [string, string, string]; bannerStyle?: 'ink' | 'accent' | 'paper' }> = ({ size, copy, options }) => {
   const d = pageDims(size);
   const labels = options?.slotLabels ?? ['Item 1', 'Item 2', 'Item 3'];
   const blocks: TemplateBlockSpec[] = [];
@@ -1112,9 +1255,10 @@ export const bundlePromo: Composer<{ slotLabels?: [string, string, string] }> = 
     blocks.push(t('text', label, g(d, 8 + index * 29.5, 27, 26, 4), { fontSize: fs(d, 13), align: 'center', color: 'ink', opacity: 0.55 }));
     blocks.push(t('text', (copy.items ?? [])[index] ?? '', g(d, 8 + index * 29.5, 44, 26, 4), { fontSize: fs(d, 14), align: 'center', color: 'ink', bold: true }));
   });
-  blocks.push(s(g(d, 8, 54, 84, 12), { shape: 'rectangle', color: 'ink' }));
-  blocks.push(t('heading', copy.price ?? 'Bundle price', g(d, 11, 56, 40, 8), { fontSize: fs(d, 34), align: 'left', color: 'accent', level: 2 }));
-  blocks.push(t('text', copy.body ?? 'Save when you bundle', g(d, 55, 58.5, 34, 5), { fontSize: fs(d, 14), align: 'right', color: 'paper' }));
+  const banner = options?.bannerStyle ?? 'ink';
+  blocks.push(s(g(d, 8, 54, 84, 12), { shape: 'rectangle', color: banner === 'accent' ? 'accent' : banner === 'paper' ? 'paper' : 'ink' }));
+  blocks.push(t('heading', copy.price ?? 'Bundle price', g(d, 11, 56, 40, 8), { fontSize: fs(d, 34), align: 'left', color: banner === 'accent' ? 'paper' : 'accent', level: 2 }));
+  blocks.push(t('text', copy.body ?? 'Save when you bundle', g(d, 55, 58.5, 34, 5), { fontSize: fs(d, 14), align: 'right', color: banner === 'paper' ? 'ink' : 'paper' }));
   if (copy.cta) blocks.push(btn(copy.cta, g(d, 26, 72, 48, 8), { color: 'accent' }));
   if (copy.footer) blocks.push(t('text', copy.footer, g(d, 8, 86, 84, 4), { fontSize: fs(d, 12), align: 'center', color: 'ink', opacity: 0.6 }));
   return page(size, blocks);
