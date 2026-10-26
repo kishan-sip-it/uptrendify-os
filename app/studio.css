@@ -1179,3 +1179,30 @@
     line-height: 1.35;
   }
 }
+
+
+/* Auto-fit dock navigation itself (Insert / Templates / Layers / etc.);
+ * The nav is the first rail, not the content drawer. Size it from its labels
+ * so "Templates" and other panel names never wrap into narrow vertical slivers.
+ */
+@media (min-width: 901px) {
+  .studio-body.has-drawer {
+    grid-template-columns: max-content fit-content(min(34vw, 460px)) minmax(220px, 1fr) minmax(210px, 250px);
+  }
+
+  .studio-body.has-template-drawer {
+    grid-template-columns: max-content fit-content(min(40vw, 560px)) minmax(220px, 1fr) minmax(210px, 250px);
+  }
+
+  .studio-body.has-drawer > .studio-dock {
+    width: max-content;
+    min-width: max-content;
+  }
+
+  .studio-body.has-drawer .studio-dock-btn {
+    width: max-content;
+    min-width: 76px;
+    padding-inline: 7px;
+    white-space: nowrap;
+  }
+}
