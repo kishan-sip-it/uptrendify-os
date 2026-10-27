@@ -19,6 +19,9 @@ import {
   type ContentDocPage,
   type ContentDocument,
   headingFontSizeForLevel,
+  defaultShapeTextFontSize,
+  inlineRangeBackgroundState,
+  readableShapeInk,
 } from './document';
 
 const BLOCKS: ContentDocBlock[] = [
@@ -337,5 +340,126 @@ describe('canvas page sizes', () => {
     const heading = fitted?.pages[0]?.blocks[0];
     expect(heading?.type === 'heading' ? heading.fontSize : null).toBeLessThan(40);
     expect(parseContentBody(savedBody)).toEqual(original);
+  });
+});
+
+describe('editable shape text (backward-compatible)', () => {
+  it('parses legacy shape documents without any text field pixel-identically', () => {
+    const legacy = singlePageDoc();
+    const body = serializeContentDocument(legacy);
+    expect(parseContentBody(body)).toEqual(legacy);
+    expect(documentToPlainText(legacy)).toContain('[star]');
+  });
+
+  it('round-trips shape text, ink, size and rich runs through save/reload', () => {
+    const doc: ContentDocument = {
+      kind: 'uptrendify-doc',
+      version: 1,
+      mode: 'free',
+      pages: [{
+        id: 'p1',
+        size: 'a4',
+        blocks: [{
+          id: 's1',
+          type: 'shape',
+          shape: 'star',
+          color: '#0a7d55',
+          align: 'center',
+          width: 40,
+          height: 120,
+          text: 'hero os',
+          textColor: '#ffffff',
+          fontSize: 24,
+          richText: [{ text: 'hero os', bold: true }],
+          geometry: { x: 40, y: 40, w: 220, h: 220 },
+        }],
+      }],
+    };
+    const body = serializeContentDocument(doc);
+    expect(parseContentBody(body)).toEqual(doc);
+  });
+
+  it('projects labelled shape text into the plain-text body, unlabeled shapes stay tokens', () => {
+    const doc: ContentDocument = {
+      kind: 'uptrendify-doc',
+      version: 1,
+      pages: [{
+        id: 'p1',
+        size: 'a4',
+        blocks: [
+          { id: 's1', type: 'shape', shape: 'circle', color: null, align: 'center', width: 40, height: 120, text: 'Sale ends Friday' },
+          { id: 's2', type: 'shape', shape: 'square', color: null, align: 'center', width: 40, height: 120 },
+        ],
+      }],
+    };
+    const plain = documentToPlainText(doc);
+    expect(plain).toContain('Sale ends Friday');
+    expect(plain).toContain('[square]');
+  });
+
+  it('rejects an invalid shape text ink colour', () => {
+    const raw = JSON.parse(serializeContentDocument(singlePageDoc())) as { blocks: Array<Record<string, unknown>> };
+    raw.blocks[3]!.textColor = 'red';
+    expect(parseContentBody(JSON.stringify(raw))).toBeNull();
+  });
+
+  it('scales shape label size with the canvas when the body is refit to another format', () => {
+    const page: ContentDocPage = {
+      id: 'p1',
+      size: 'a4',
+      blocks: [{
+        id: 's1',
+        type: 'shape',
+        shape: 'rectangle',
+        color: '#0a7d55',
+        align: 'center',
+        width: 60,
+        height: 120,
+        text: 'Banner',
+        fontSize: 40,
+        richText: [{ text: 'Banner', fontSize: 40 }],
+        geometry: { x: 80, y: 120, w: 600, h: 200 },
+      }],
+    };
+    const savedBody = serializeContentDocument({ kind: 'uptrendify-doc', version: 1, mode: 'free', pages: [page] });
+    const fitted = parseContentBody(fitDocumentBodyToChannelFormat(savedBody, 'instagram', 'social_post'));
+    const shape = fitted?.pages[0]?.blocks[0];
+    expect(fitted?.pages[0]?.size).toBe('portrait');
+    expect(shape?.type === 'shape' ? shape.fontSize : null).toBeLessThan(40);
+    expect(shape?.type === 'shape' && shape.richText?.[0]?.fontSize ? shape.richText[0].fontSize : null).toBeLessThan(40);
+  });
+});
+
+describe('inline highlight tri-state', () => {
+  it('reports highlighted when every segment carries the same non-null bg', () => {
+    expect(inlineRangeBackgroundState([{ bg: '#fff59d' }, { bg: '#fff59d' }], null)).toBe(true);
+  });
+
+  it('reports not highlighted when no segment has a highlight (inheritance included)', () => {
+    expect(inlineRangeBackgroundState([{ bg: null }, {}], null)).toBe(false);
+    expect(inlineRangeBackgroundState([{}, {}], '#fff59d')).toBe(true);
+  });
+
+  it('reports mixed (null) rather than falsely marking the range highlighted', () => {
+    expect(inlineRangeBackgroundState([{ bg: '#fff59d' }, { bg: null }], null)).toBeNull();
+  });
+
+  it('returns false for an empty range', () => {
+    expect(inlineRangeBackgroundState([], null)).toBe(false);
+  });
+});
+
+describe('shape label helpers', () => {
+  it('picks dark ink on light fills and white ink on dark fills', () => {
+    expect(readableShapeInk('#ffffff')).toBe('#1d2634');
+    expect(readableShapeInk('#0a7d55')).toBe('#ffffff');
+    expect(readableShapeInk('nonsense')).toBe('#ffffff');
+  });
+
+  it('derives the default label size from the shape box and clamps it', () => {
+    expect(defaultShapeTextFontSize({ geometry: { h: 200 } })).toBe(60);
+    expect(defaultShapeTextFontSize({ height: 24 })).toBe(10);
+    expect(defaultShapeTextFontSize({ height: 4000 })).toBe(120);
+    expect(defaultShapeTextFontSize({})).toBe(36);
   });
 });

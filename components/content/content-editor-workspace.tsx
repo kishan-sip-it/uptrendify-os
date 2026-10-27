@@ -35,6 +35,14 @@ import {
   Undo2,
   Grid3X3,
   LayoutTemplate,
+  Highlighter,
+  ImageDown,
+  Import as ImportIcon,
+  Lock,
+  LockOpen,
+  CopyPlus,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import {
   CONTENT_DOC_MAX_BLOCKS,
@@ -54,6 +62,9 @@ import {
   reorderBlocks,
   headingFontSizeForLevel,
   serializeContentDocument,
+  defaultShapeTextFontSize,
+  inlineRangeBackgroundState,
+  readableShapeInk,
   type ContentDocBlock,
   type ContentDocPage,
   type ContentDocument,
@@ -162,6 +173,8 @@ type RasterTextReview = {
 };
 
 const HISTORY_LIMIT = 80;
+/** Default highlighter ink — a soft legible yellow, matching the toolbar fallback. */
+const DEFAULT_HIGHLIGHT_COLOR = '#fff59d';
 
 function emptyBlock(type: EditorBlock['type']): EditorBlock {
   switch (type) {
@@ -200,6 +213,8 @@ type InlineTextToolbarState = {
   underline: boolean;
   color: string;
   bg: string;
+  /** Tri-state: true = whole range highlighted, false = none, null = mixed. */
+  bgActive: boolean | null;
   fontFamily: string;
   fontSize: number;
 };
@@ -495,6 +510,7 @@ function getInlineToolbarState(root: HTMLElement, range: Range, baseStyle: Inlin
     underline: all('underline').every((value) => value === true),
     color: typeof color === 'string' ? color : '#111827',
     bg: typeof bgValue === 'string' ? bgValue : '#fff59d',
+    bgActive: inlineRangeBackgroundState(segments.map(({ run }) => run), base.bg),
     fontFamily,
     fontSize,
   };
@@ -1172,10 +1188,13 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [brandApplyBusy, setBrandApplyBusy] = useState(false);
   const [brandApplyError, setBrandApplyError] = useState<string | null>(null);
   const [brandApplySummary, setBrandApplySummary] = useState<ApplyStats | null>(null);
+  /** Serialized page state captured when the apply landed. Success styling is
+   * truthfully on only while THIS exact state is current — Undo past it, or
+   * any new edit, clears it; Redo back onto it re-arms it. */
+  const [brandApplySuccessSnapshot, setBrandApplySuccessSnapshot] = useState<string | null>(null);
   const [brandFontsLoaded, setBrandFontsLoaded] = useState<string[]>([]);
   const [brandLogoDisplayFailed, setBrandLogoDisplayFailed] = useState(false);
   const brandLogoManagedRef = useRef<{ logoUrl: string; src: string; aspect: number } | null>(null);
-  const [brandLogoUploadBusy, setBrandLogoUploadBusy] = useState(false);
   useEffect(() => {
     const reconciled = reconcileContentVersionState(
       versions,
@@ -1544,6 +1563,9 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   }, [brandApplyOpen, brandApplyScope, brandApplyLogo, brandLogoDisplayFailed, brandEssentials, pages]);
   const brandEssentialsAvailable = Boolean(brandVisual && (brandEssentials.accent || brandEssentials.headingFont || brandEssentials.bodyFont || brandEssentials.logoUrl || brandEssentials.colors.length));
   const brandApplyDisabled = !canEdit || !brandEssentialsAvailable || brandApplyBusy;
+  // Truthful success: only while the exact applied state is still the current one.
+  const brandApplySucceeded = brandApplySuccessSnapshot !== null
+    && history[historyIndex] === brandApplySuccessSnapshot;
   const openBrandApply = () => {
     if (brandApplyDisabled) return;
     setBrandApplyError(null);
@@ -1551,6 +1573,57 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     setBrandApplyLogo(Boolean(brandEssentials.logoUrl));
     setBrandApplyOpen(true);
     void ensureBrandFontsLoaded(brandVisual?.fonts ?? []).then((loaded) => setBrandFontsLoaded(loaded));
+  };
+  // Placed-but-importing logo layers: 'importing' = the managed copy is being
+  // fetched in the background; 'failed' = import failed but the logo stays
+  // visible and editable, with a retry action in the element action bar.
+  const [logoImportStates, setLogoImportStates] = useState<Record<string, 'importing' | 'failed'>>({});
+  const logoImportStatesRef = useRef(logoImportStates);
+  logoImportStatesRef.current = logoImportStates;
+  const pendingLogoImportsRef = useRef<Set<Promise<void>>>(new Set());
+  const draggedLogoAspectRef = useRef<number | null>(null);
+  const logoLayerReconcileRef = useRef<Set<string>>(new Set());
+  const brandLogoImportInFlightRef = useRef<Map<string, Promise<{ src: string; aspect: number } | null>>>(new Map());
+  const LOGO_IMPORT_FAILURE_MESSAGE = 'The brand logo could not be imported from the scanned source. The placed logo stays editable — retry the import, or delete it and use Insert → image.';
+
+  const setLogoLayerState = (blockId: string, state: 'importing' | 'failed' | null) => {
+    setLogoImportStates((current) => {
+      if (state === null) {
+        if (!(blockId in current)) return current;
+        return Object.fromEntries(Object.entries(current).filter(([id]) => id !== blockId));
+      }
+      return current[blockId] === state ? current : { ...current, [blockId]: state };
+    });
+  };
+  /** Silent same-layer source swap: no extra history entry, so one gesture
+   * stays exactly one undo step. Refuses to touch a layer the user repointed
+   * while the import was in flight. */
+  const swapLogoLayerSource = (blockId: string, src: string, expectedUrl: string) => {
+    setPages(updateBlockInPages(pagesRef.current, blockId, (block) => (block.type === 'image' && block.url === expectedUrl ? { ...block, url: src } : block), activePageIndexRef.current));
+  };
+  const trackLogoImport = (blockId: string, logoUrl: string) => {
+    // Track WHILE in flight only: undo/redo can legitimately restore the same
+    // layer to the scanned URL again later, and it must re-import then too.
+    if (logoLayerReconcileRef.current.has(blockId)) return;
+    logoLayerReconcileRef.current.add(blockId);
+    setLogoLayerState(blockId, 'importing');
+    const promise = ensureBrandLogoManaged(logoUrl)
+      .then((managed) => {
+        if (!managed) throw new Error(LOGO_IMPORT_FAILURE_MESSAGE);
+        swapLogoLayerSource(blockId, managed.src, logoUrl);
+        setLogoLayerState(blockId, null);
+      })
+      .catch((importError: unknown) => {
+        const rawMessage = importError instanceof Error ? importError.message : '';
+        const message = /^(failed to fetch|load failed|networkerror)$/i.test(rawMessage) ? LOGO_IMPORT_FAILURE_MESSAGE : rawMessage || LOGO_IMPORT_FAILURE_MESSAGE;
+        setLogoLayerState(blockId, 'failed');
+        setError(message);
+      })
+      .finally(() => {
+        pendingLogoImportsRef.current.delete(promise);
+        logoLayerReconcileRef.current.delete(blockId);
+      });
+    pendingLogoImportsRef.current.add(promise);
   };
   const uploadBrandLogo = async (): Promise<{ src: string; aspect: number } | null> => {
     return ensureBrandLogoManaged(brandEssentials.logoUrl);
@@ -1561,33 +1634,45 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       const cached = brandLogoManagedRef.current;
       return { src: cached.src, aspect: cached.aspect };
     }
+    const inFlight = brandLogoImportInFlightRef.current.get(logoUrl);
+    if (inFlight) return inFlight;
     // The browser cannot fetch cross-origin scanned logo URLs (CORS), so the
     // authorized brand's own scanned logo is downloaded, validated and stored
     // server-side as an ordinary managed asset. Never an arbitrary-URL proxy:
     // the route reads the logo URL from the brand row itself.
-    const response = await fetch(`/api/brands/${brandId}/content/${contentId}/brand-logo`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    const body = (await response.json().catch(() => null)) as { error?: string; src?: string } | null;
-    if (!response.ok || !body?.src) {
-      throw new Error(body?.error ?? 'The brand logo could not be imported from the scanned source. Download it, then use Insert → image to place it manually.');
-    }
-    const src = body.src;
-    // The managed asset URL is same-origin, so probing its aspect works
-    // without CORS; natural dimensions need no cross-origin permission.
-    const aspect = await new Promise<number>((resolve) => {
-      const image = new Image();
-      image.onload = () => { resolve(image.naturalWidth / Math.max(1, image.naturalHeight)); };
-      image.onerror = () => { resolve(2); };
-      image.src = src;
-    });
-    brandLogoManagedRef.current = { logoUrl, src, aspect };
-    return { src, aspect };
+    const request = (async () => {
+      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/brand-logo`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const body = (await response.json().catch(() => null)) as { error?: string; src?: string } | null;
+      if (!response.ok || !body?.src) {
+        throw new Error(body?.error ?? 'The brand logo could not be imported from the scanned source. Download it, then use Insert → image to place it manually.');
+      }
+      const src = body.src;
+      // The managed asset URL is same-origin, so probing its aspect works
+      // without CORS; natural dimensions need no cross-origin permission.
+      const aspect = await new Promise<number>((resolve) => {
+        const image = new Image();
+        image.onload = () => { resolve(image.naturalWidth / Math.max(1, image.naturalHeight)); };
+        image.onerror = () => { resolve(2); };
+        image.src = src;
+      });
+      brandLogoManagedRef.current = { logoUrl, src, aspect };
+      return { src, aspect };
+    })();
+    brandLogoImportInFlightRef.current.set(logoUrl, request);
+    request.finally(() => { brandLogoImportInFlightRef.current.delete(logoUrl); }).catch(() => {});
+    return request;
   };
-  /** Insert the brand logo as an editable layer centred on page-space point. */
-  const insertBrandLogoLayer = async (pagePoint: { x: number; y: number } | null): Promise<boolean> => {
+  /**
+   * Place the brand logo as an editable layer IMMEDIATELY at the page-space
+   * point (Canva-style), then import the managed copy in the background and
+   * swap it onto the same layer. One gesture = one upload, one undo entry.
+   * Returns false only when the layer could not be placed at all.
+   */
+  const insertBrandLogoLayer = (pagePoint: { x: number; y: number } | null): boolean => {
     if (!canEdit || !brandEssentials.logoUrl) return false;
     const currentPage = pagesRef.current[activePageIndexRef.current];
     if (!currentPage) return false;
@@ -1595,42 +1680,34 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       setError('This page has reached its element limit — remove an element to make room for the logo.');
       return false;
     }
-    setBrandLogoUploadBusy(true);
-    try {
-      const managed = await ensureBrandLogoManaged(brandEssentials.logoUrl);
-      if (!managed) {
-        setError('The brand logo could not be imported from the scanned source. Download it, then use Insert → image to place it manually.');
-        return false;
-      }
-      const dims = CONTENT_PAGE_SIZES[currentPage.size ?? 'a4'];
-      const rect = logoDropRect(
-        pagePoint ?? { x: dims.width - 40 - Math.round(150 * Math.min(1.8, managed.aspect / 2)), y: 40 },
-        managed.aspect,
-        dims,
-        currentPage.blocks.filter((block) => block.geometry).map((block) => block.geometry!),
-      );
-      const logoBlock: EditorBlock = {
-        id: newBlockId('image'),
-        type: 'image',
-        url: managed.src,
-        alt: `${documentTitle || 'Brand'} logo`,
-        align: 'left',
-        width: 100,
-        geometry: rect,
-      };
-      const nextPages = pagesRef.current.map((page, index) => index === activePageIndexRef.current ? { ...page, blocks: [...page.blocks, logoBlock] } : page);
-      commit(nextPages, 'free');
-      setFreeMode(true);
-      setSelectedId(logoBlock.id);
-      setInspectorTab('design');
-      setNotice('Brand logo added as an editable layer. Drag to move, resize with the corner handles — aspect ratio stays locked to the corner handles.');
-      return true;
-    } catch (logoError) {
-      setError(logoError instanceof Error ? logoError.message : 'The brand logo could not be imported.');
-      return false;
-    } finally {
-      setBrandLogoUploadBusy(false);
-    }
+    const dims = CONTENT_PAGE_SIZES[currentPage.size ?? 'a4'];
+    const aspect = draggedLogoAspectRef.current ?? brandLogoManagedRef.current?.aspect ?? 2.5;
+    const centre = pagePoint ?? { x: dims.width - 40 - Math.round(150 * Math.min(1.8, aspect / 2)), y: 40 };
+    const rect = logoDropRect(
+      centre,
+      aspect,
+      dims,
+      currentPage.blocks.filter((block) => block.geometry).map((block) => block.geometry!),
+    );
+    const logoBlock: EditorBlock = {
+      id: newBlockId('image'),
+      type: 'image',
+      // Optimistic source: the scanned logo URL renders in <img> tags without
+      // CORS. The managed same-origin copy replaces it on the same layer once
+      // the secure import finishes — same id, geometry and selection.
+      url: brandEssentials.logoUrl,
+      alt: `${documentTitle || 'Brand'} logo`,
+      align: 'left',
+      width: 100,
+      geometry: rect,
+    };
+    const nextPages = pagesRef.current.map((page, index) => index === activePageIndexRef.current ? { ...page, blocks: [...page.blocks, logoBlock] } : page);
+    commit(nextPages, 'free');
+    setFreeMode(true);
+    setSelectedId(logoBlock.id);
+    setInspectorTab('design');
+    trackLogoImport(logoBlock.id, brandEssentials.logoUrl);
+    return true;
   };
   const onCanvasLogoDrop = (event: React.DragEvent) => {
     if (!canEdit) return;
@@ -1643,8 +1720,35 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     const rect = frame.getBoundingClientRect();
     const scale = Math.max(0.05, zoom / 100);
     const pagePoint = { x: (event.clientX - rect.left) / scale, y: (event.clientY - rect.top) / scale };
-    void insertBrandLogoLayer(pagePoint);
+    insertBrandLogoLayer(pagePoint);
   };
+  // Undo/redo or a recovered browser draft can restore a layer that still
+  // points at the scanned logo URL. Re-import quietly so no temporary source
+  // can survive silently; the managed copy is cached so this never re-uploads.
+  useEffect(() => {
+    if (!canEdit || !brandEssentials.logoUrl) return;
+    for (const page of pages) {
+      for (const block of page.blocks) {
+        if (block.type !== 'image' || block.url !== brandEssentials.logoUrl) continue;
+        if (logoLayerReconcileRef.current.has(block.id)) continue;
+        // A failed import stays failed until the user presses Retry — never
+        // re-attempt (and re-error) on every unrelated pages change.
+        if (logoImportStatesRef.current[block.id] === 'failed') continue;
+        trackLogoImport(block.id, brandEssentials.logoUrl);
+      }
+    }
+    // Prune import states for layers that no longer exist (deleted or undone
+    // away) — an orphaned 'failed' entry must never block a future save.
+    const existingIds = new Set(pages.flatMap((page) => page.blocks.map((block) => block.id)));
+    setLogoImportStates((current) => {
+      const stale = Object.keys(current).filter((id) => !existingIds.has(id));
+      return stale.length
+        ? Object.fromEntries(Object.entries(current).filter(([id]) => existingIds.has(id)))
+        : current;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages, canEdit, brandEssentials.logoUrl]);
+
   const runBrandApply = async () => {
     if (brandApplyDisabled) return;
     setBrandApplyBusy(true);
@@ -1689,6 +1793,21 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       setBrandApplyBusy(false);
     }
   };
+
+  // Record WHICH serialized state the successful apply produced, so the CTA's
+  // success styling can match it exactly (Undo/redo/edit-aware, index-proof).
+  useEffect(() => {
+    if (brandApplySummary) setBrandApplySuccessSnapshot(history[historyIndex] ?? null);
+    else setBrandApplySuccessSnapshot(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brandApplySummary]);
+
+  // Notices dismiss themselves; errors stay until seen and dismissed.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice((current) => (current === notice ? null : current)), 8000);
+    return () => { window.clearTimeout(timer); };
+  }, [notice]);
 
   const brandIssues = useMemo(
     () => lintBlocks(activePage?.blocks ?? [], {
@@ -2926,7 +3045,26 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     const newlyUploadedPaths: string[] = [];
     let bodyVersionSaveAttempted = false;
     try {
-      const documentSource = parseContentBody(serialized);
+      // A pending logo import must settle before the exact-artwork export so a
+      // save can never persist the temporary scanned URL as the layer source,
+      // and never export a half-loaded image. Cap the wait so a hung request
+      // cannot park the save forever.
+      const pendingLogoImports = Array.from(pendingLogoImportsRef.current);
+      if (pendingLogoImports.length) {
+        await Promise.race([
+          Promise.allSettled(pendingLogoImports),
+          new Promise((resolve) => { window.setTimeout(resolve, 20_000); }),
+        ]);
+      }
+      // Derive the guard from the ACTUAL document, not render-time state
+      // mirrors: a layer still carrying the scanned logo URL means its import
+      // failed, is stuck, or was retried — none of which may be saved as-is.
+      const unimportedLogoLayer = brandEssentials.logoUrl
+        && pagesRef.current.some((page) => page.blocks.some((block) => block.type === 'image' && block.url === brandEssentials.logoUrl));
+      if (unimportedLogoLayer) {
+        throw new Error('A brand logo on the canvas is still waiting for its secure managed copy. Retry the import from the logo’s action bar, or delete the logo layer, then save again.');
+      }
+      const documentSource = parseContentBody(serializeContentDocument({ kind: 'uptrendify-doc', version: 1, ...(freeMode ? { mode: 'free' as const } : {}), pages: pagesRef.current } satisfies ContentDocument));
       if (!documentSource) throw new Error('The canvas could not be parsed for artwork export. Your saved version has not changed.');
       const snapshotHost = snapshotHostRef.current;
       if (!snapshotHost) throw new Error('The artwork export surface is unavailable. Your saved version has not changed.');
@@ -3350,6 +3488,17 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         {range ? (
           <>
             <span className="st-float-group" aria-label="Selected text colours">
+              <button
+                type="button"
+                className={`st-highlight-toggle${range.bgActive === true ? ' is-on' : ''}${range.bgActive === null ? ' is-mixed' : ''}`}
+                onClick={() => inline!.apply('bg', range.bgActive === true ? null : DEFAULT_HIGHLIGHT_COLOR)}
+                disabled={!canEditBlock(block)}
+                title={range.bgActive === true ? 'Remove highlight' : 'Highlight selected text'}
+                aria-label={range.bgActive === true ? 'Remove highlight from selected text' : 'Highlight selected text'}
+                aria-pressed={range.bgActive === null ? 'mixed' : range.bgActive === true}
+              >
+                <Highlighter size={14} />
+              </button>
               <input type="color" value={range.color} onChange={(event) => inline!.apply('color', event.currentTarget.value)} title="Font colour" aria-label="Selected text font colour" />
               <input type="color" value={range.bg} onChange={(event) => inline!.apply('bg', event.currentTarget.value)} title="Text highlight colour" aria-label="Selected text highlight colour" />
             </span>
@@ -3401,6 +3550,38 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             ))}
           </span>
         ) : null}
+        {block.type === 'image' && logoImportStates[block.id] && brandEssentials.logoUrl ? (
+          logoImportStates[block.id] === 'importing' ? (
+            <span className="st-logo-import-chip is-importing" role="status">
+              <LoaderCircle size={12} className="st-spin" /> Importing logo…
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="st-logo-import-chip is-failed"
+              onClick={() => { if (brandEssentials.logoUrl) trackLogoImport(block.id, brandEssentials.logoUrl); }}
+              title="The secure import of this logo failed — the placed copy stays editable. Retry the import."
+            >
+              <RefreshCw size={12} /> Import failed · Retry
+            </button>
+          )
+        ) : null}
+        <span className="st-float-group st-float-actions" role="group" aria-label="Element actions">
+          <button type="button" onClick={() => duplicateBlock(block.id)} disabled={!canEditBlock(block)} title="Duplicate element" aria-label="Duplicate element"><CopyPlus size={13} /></button>
+          <button type="button" onClick={() => changeLayerOrder(block.id, 'front')} disabled={!canEditBlock(block)} title="Bring to front" aria-label="Bring element to front"><BringToFront size={13} /></button>
+          <button type="button" onClick={() => changeLayerOrder(block.id, 'back')} disabled={!canEditBlock(block)} title="Send to back" aria-label="Send element to back"><SendToBack size={13} /></button>
+          <button
+            type="button"
+            onClick={() => { patchBlock(block.id, { locked: !block.locked }); }}
+            disabled={!canEdit}
+            title={block.locked ? 'Unlock element' : 'Lock element'}
+            aria-label={block.locked ? 'Unlock element' : 'Lock element'}
+            className={block.locked ? 'is-on' : ''}
+          >
+            {block.locked ? <Lock size={13} /> : <LockOpen size={13} />}
+          </button>
+          <button type="button" className="is-danger" onClick={() => removeBlock(block.id)} disabled={!canEditBlock(block)} title="Delete element" aria-label="Delete element"><Trash2 size={13} /></button>
+        </span>
       </div>
     );
   })();
@@ -3408,6 +3589,34 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   function canEditBlock(block: EditorBlock | null): boolean {
     return block !== null && canEdit && !block.locked;
   }
+
+  /** Centred, editable label inside a shape. Absent on unlabeled read-only
+   * shapes so older documents render pixel-identically. */
+  const renderShapeTextHost = (block: Extract<EditorBlock, { type: 'shape' }>, editable: boolean, snapshotMode: boolean) => {
+    const label = block.text ?? '';
+    if (!label && !block.richText?.length && !editable) return null;
+    const ink = block.textColor ?? readableShapeInk(block.color ?? DEFAULT_CONTENT_SHAPE_COLOR);
+    const fontSize = block.fontSize ?? defaultShapeTextFontSize(block);
+    return (
+      <div className={`editor-shape-text align-${block.align}`} style={{ color: ink, fontSize: `${fontSize}px`, fontFamily: block.fontFamily || undefined }}>
+        <CanvasText
+          value={label}
+          richText={block.richText}
+          baseStyle={{ color: ink, fontSize, ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }}
+          disabled={!editable}
+          multiline
+          onClick={snapshotMode ? () => undefined : () => { setSelectedId(block.id); setInspectorTab('design'); }}
+          onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs })}
+          onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)}
+          editOnDoubleClick={true}
+          isSelected={!snapshotMode && selectedId === block.id && !previewMode}
+          onInlineToolbarChange={snapshotMode ? undefined : bindInlineToolbar(block.id)}
+          editRequest={snapshotMode ? 0 : (inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0)}
+          onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)}
+        />
+      </div>
+    );
+  };
 
   const renderBlockInner = (block: EditorBlock, snapshotMode = false) => {
     const editable = !snapshotMode && canEdit && !block.locked;
@@ -3436,32 +3645,38 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             <img src={block.url} alt={block.alt} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8, pointerEvents: 'none' }} />
           </div>
         );
-      case 'shape':
-        if (block.svgPath && block.svgBounds && block.svgMatrix) {
-          return (
-            <svg
-              width="100%"
-              height="100%"
-              viewBox={"0 0 " + block.svgBounds.w + " " + block.svgBounds.h}
-              preserveAspectRatio="none"
-              aria-hidden="true"
-              style={{ display: 'block', overflow: 'visible', pointerEvents: 'none' }}
-            >
-              <path
-                d={block.svgPath}
-                transform={"translate(" + (-block.svgBounds.x) + " " + (-block.svgBounds.y) + ") matrix(" + block.svgMatrix.a + " " + block.svgMatrix.b + " " + block.svgMatrix.c + " " + block.svgMatrix.d + " " + block.svgMatrix.e + " " + block.svgMatrix.f + ")"}
-                fill={block.svgFillNone ? 'none' : (block.color ?? DEFAULT_CONTENT_SHAPE_COLOR)}
-                stroke={block.svgFillNone ? (block.color ?? block.svgStroke ?? 'none') : (block.svgStroke ?? 'none')}
-                strokeWidth={block.svgStrokeWidth ?? 1}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
-            </svg>
-          );
-        }
-        return (
+      case 'shape': {
+        const shapeVisual = block.svgPath && block.svgBounds && block.svgMatrix ? (
+          <svg
+            width="100%"
+            height="100%"
+            viewBox={"0 0 " + block.svgBounds.w + " " + block.svgBounds.h}
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            style={{ display: 'block', overflow: 'visible', pointerEvents: 'none' }}
+          >
+            <path
+              d={block.svgPath}
+              transform={"translate(" + (-block.svgBounds.x) + " " + (-block.svgBounds.y) + ") matrix(" + block.svgMatrix.a + " " + block.svgMatrix.b + " " + block.svgMatrix.c + " " + block.svgMatrix.d + " " + block.svgMatrix.e + " " + block.svgMatrix.f + ")"}
+              fill={block.svgFillNone ? 'none' : (block.color ?? DEFAULT_CONTENT_SHAPE_COLOR)}
+              stroke={block.svgFillNone ? (block.color ?? block.svgStroke ?? 'none') : (block.svgStroke ?? 'none')}
+              strokeWidth={block.svgStrokeWidth ?? 1}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          </svg>
+        ) : (
           <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? DEFAULT_CONTENT_SHAPE_COLOR, width: '100%', height: '100%', display: 'inline-block', pointerEvents: 'none' }} />
         );
+        const shapeTextHost = renderShapeTextHost(block, editable, snapshotMode);
+        if (!shapeTextHost) return shapeVisual;
+        return (
+          <div className="editor-shape-host" style={{ position: 'relative', width: '100%', height: '100%' }}>
+            {shapeVisual}
+            {shapeTextHost}
+          </div>
+        );
+      }
       case 'button':
         return (
           <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), ...(block.textColor ? { color: block.textColor } : {}), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none', opacity: block.opacity ?? 1 }}>
@@ -3818,6 +4033,10 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                           if (!brandEssentials.logoUrl) return;
                           event.dataTransfer.setData('application/x-brand-logo', brandEssentials.logoUrl);
                           event.dataTransfer.effectAllowed = 'copy';
+                          // The ghost must match the placed layer: carry the real
+                          // aspect so the drop sizes the layer correctly at once.
+                          const image = event.currentTarget.querySelector('img');
+                          draggedLogoAspectRef.current = image && image.naturalWidth > 0 ? image.naturalWidth / image.naturalHeight : null;
                         }}
                         onDragEnd={(event) => { event.dataTransfer.clearData('application/x-brand-logo'); }}
                         title={brandLogoDisplayFailed ? 'Logo detected but could not be displayed here' : 'Drag onto the canvas, or press Enter to add to this page'}
@@ -3833,12 +4052,12 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                         <button
                           type="button"
                           className="st-btn"
-                          disabled={!canEdit || brandLogoUploadBusy || !brandEssentials.logoUrl || brandLogoDisplayFailed}
-                          onClick={() => void insertBrandLogoLayer(null)}
+                          disabled={!canEdit || !brandEssentials.logoUrl || brandLogoDisplayFailed}
+                          onClick={() => insertBrandLogoLayer(null)}
                         >
-                          {brandLogoUploadBusy ? 'Importing…' : 'Add to page'}
+                          Add logo to canvas
                         </button>
-                        <span className="editor-hint">Drag it onto the canvas, or click to add here.</span>
+                        <span className="editor-hint">Drops in place instantly; its secure copy imports in the background.</span>
                       </div>
                     </div>
                     <div className="brand-kit-swatches">
@@ -3867,19 +4086,21 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                   </div>
                   <button
                     type="button"
-                    className="brand-essentials-cta"
+                    className={`brand-essentials-cta${brandApplyBusy ? ' is-busy' : ''}${brandApplySucceeded ? ' is-success' : ''}`}
                     onClick={openBrandApply}
                     disabled={brandApplyDisabled}
-                    title={canEdit ? 'Apply the scanned brand palette, fonts and logo to this artwork' : 'This content is read-only, so brand essentials cannot be applied'}
+                    title={canEdit ? 'Import the scanned brand palette, fonts and logo onto this artwork — with a Before/After preview' : 'This content is read-only, so brand essentials cannot be applied'}
                   >
-                    <span className="brand-essentials-cta-icon" aria-hidden="true"><Check size={16} /></span>
+                    <span className="brand-essentials-cta-icon" aria-hidden="true">
+                      {brandApplyBusy ? <LoaderCircle size={16} className="st-spin" /> : brandApplySucceeded ? <Check size={16} /> : <ImageDown size={16} />}
+                    </span>
                     <span className="brand-essentials-cta-copy">
-                      <strong>Apply Brand Essentials</strong>
-                      <span>Brand palette, fonts and logo — one click, fully editable.</span>
+                      <strong>{brandApplyBusy ? 'Importing brand…' : 'Import brand in canvas'}</strong>
+                      <span>{brandApplySucceeded ? 'Applied — press Undo to revert, or save a new version to keep it.' : 'Preview the palette, fonts and logo before anything changes.'}</span>
                     </span>
                   </button>
                   {!canEdit ? <p className="editor-hint">This content is not editable, so brand essentials are unavailable.</p> : null}
-                  {!brandEssentialsAvailable ? <p className="editor-hint">Run a brand scan first — no usable brand identity was found for Apply Brand Essentials.</p> : null}
+                  {!brandEssentialsAvailable ? <p className="editor-hint">Run a brand scan first — no usable brand identity was found to import.</p> : null}
                   {brandApplySummary ? (
                     <div className="brand-essentials-summary" role="status">
                       <span className="st-label">Last application</span>
@@ -4036,12 +4257,24 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               (activePage?.blocks ?? []).map((block, layerIndex) => {
                 const geo = block.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
                 const isSelected = selectedId === block.id && !previewMode;
+                // Handles and the selection border keep a constant SCREEN size
+                // at every zoom: divide the on-screen px by the frame scale.
+                const frameScale = Math.max(0.05, zoom / 100);
+                const handlePx = Math.max(7, Math.min(16, 10 / frameScale));
+                const selPx = Math.max(1, Math.min(3, 2 / frameScale));
                 return (
                   <div
                     key={block.id}
                     data-bid={block.id}
                     className={`editor-free-block${isSelected ? ' is-selected' : ''}${block.hidden ? ' is-ghost' : ''}`}
-                    style={{ left: geo.x, top: geo.y, width: geo.w, height: geo.h, zIndex: layerIndex + 1, transform: geo.rotation ? `rotate(${geo.rotation}deg)` : undefined, cursor: canEdit && !block.locked ? 'move' : 'default' }}
+                    style={{
+                      left: geo.x, top: geo.y, width: geo.w, height: geo.h, zIndex: layerIndex + 1,
+                      transform: geo.rotation ? `rotate(${geo.rotation}deg)` : undefined,
+                      cursor: canEdit && !block.locked ? 'move' : 'default',
+                      ['--st-handle-size' as string]: `${handlePx}px`,
+                      ['--st-sel-width' as string]: `${selPx}px`,
+                      ['--st-sel-offset' as string]: `${Math.max(1, Math.min(4, 2 / frameScale))}px`,
+                    }}
                     onPointerDown={(event) => {
                       if (event.button !== 0 || spaceHeld.current) return;
                       setSelectedId(block.id);
@@ -4059,6 +4292,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                         origin: { ...geo },
                       };
                     }}
+                    onDoubleClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (!canEdit || block.locked || block.type !== 'shape') return;
+                      const pointerTarget = event.target as HTMLElement;
+                      if (pointerTarget.closest('.editor-inline-edit, [contenteditable="true"], .st-free-handle')) return;
+                      requestInlineTextEditing(block.id);
+                    }}
                     onContextMenu={(event) => openTextContextMenu(event, block)}
 
                   >
@@ -4070,7 +4311,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                         <span
                           key={dir}
                           className={`st-free-handle st-handle-${dir}`}
-                          style={{ cursor: dir.includes('n') && dir.length === 1 ? 'ns-resize' : dir.includes('s') && dir.length === 1 ? 'ns-resize' : dir === 'e' ? 'ew-resize' : dir === 'w' ? 'ew-resize' : dir === 'ne' ? 'nesw-resize' : dir === 'sw' ? 'nesw-resize' : 'nwse-resize' }}
                           onPointerDown={(event) => {
                             event.stopPropagation();
                             (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -4155,7 +4395,10 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       ) : null}
                       {block.type === 'shape' ? (
                         <div className={`content-doc-shape align-${block.align}`}>
-                          <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? DEFAULT_CONTENT_SHAPE_COLOR, width: `${block.width ?? 60}%`, height: block.height }} />
+                          <span className="editor-shape-flow-host" style={{ position: 'relative', display: 'inline-block', width: `${block.width ?? 60}%`, height: block.height }}>
+                            <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? DEFAULT_CONTENT_SHAPE_COLOR, width: '100%', height: '100%', display: 'inline-block', pointerEvents: 'none' }} />
+                            {renderShapeTextHost(block, canEdit && !block.locked, false)}
+                          </span>
                         </div>
                       ) : null}
                       {block.type === 'button' ? (
@@ -4378,6 +4621,43 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                     </div>
                   ) : null}
                   {selected.type === 'shape' ? (
+                    <>
+                      <label className="st-field">
+                        <span>Shape text</span>
+                        <textarea
+                          className="st-input"
+                          rows={2}
+                          value={selected.text ?? ''}
+                          placeholder="Double-click the shape on canvas to type inside it"
+                          disabled={!canEditBlock(selected)}
+                          onChange={(event) => patchBlock(selected.id, {
+                            text: event.target.value,
+                            // Typing here is a plain-text edit: rebuild the runs so
+                            // text and runs stay consistent instead of silently
+                            // keeping styling that no longer matches the text.
+                            richText: event.target.value ? [{ text: event.target.value }] : undefined,
+                          })}
+                        />
+                        <span className="editor-hint">Double-click the shape on canvas to style its text — bold, size, highlight. Text ink and shape fill stay independent.</span>
+                      </label>
+                      <div className="st-field">
+                        <span>Text ink</span>
+                        <div className="st-field-row">
+                          <input
+                            type="color"
+                            value={selected.textColor ?? readableShapeInk(selected.color ?? DEFAULT_CONTENT_SHAPE_COLOR)}
+                            onChange={(event) => patchBlock(selected.id, { textColor: event.target.value })}
+                            disabled={!canEditBlock(selected) || !(selected.text ?? '').length}
+                            aria-label="Shape text ink colour"
+                          />
+                          {selected.textColor ? (
+                            <button type="button" className="st-quiet-link" onClick={() => patchBlock(selected.id, { textColor: null })} disabled={!canEditBlock(selected)}>Auto contrast</button>
+                          ) : <span className="st-preview-tag">Auto contrast</span>}
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+                  {selected.type === 'shape' ? (
                     selected.svgPath ? (
                       <div className="st-field">
                         <span>Imported vector shape</span>
@@ -4530,6 +4810,20 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           </aside>
         ) : null}
       </div>
+
+      {/* ---------- transient feedback (was invisible before — now real UI) ---------- */}
+      {error || notice ? (
+        <div className={`studio-status-strip${error ? ' is-error' : ''}`} role={error ? 'alert' : 'status'}>
+          {error ? <AlertTriangle size={13} /> : <Check size={13} />}
+          <span>{error ?? notice}</span>
+          <button
+            type="button"
+            onClick={() => { setError(null); setNotice(null); }}
+            aria-label="Dismiss message"
+            title="Dismiss message"
+          >×</button>
+        </div>
+      ) : null}
 
       {/* ---------- bottom bar ---------- */}
       {!focusMode ? (
@@ -4988,7 +5282,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
 
       <AppDialog
         open={brandApplyOpen}
-        title="Apply Brand Essentials"
+        title="Import brand in canvas"
         description="Styling only — your text, links, images and layout stay exactly as they are."
         onClose={() => { if (!brandApplyBusy) setBrandApplyOpen(false); }}
         className="brand-apply-dialog"

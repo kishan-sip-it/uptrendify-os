@@ -263,6 +263,13 @@ export const contentDocBlockSchema = z.discriminatedUnion('type', [
     type: z.literal('shape'),
     shape: shapeKind,
     color,
+    /** Optional label rendered centred inside the shape; empty/absent = no text. */
+    text: z.string().max(CONTENT_DOC_MAX_TEXT).optional(),
+    richText: inlineTextRuns.optional(),
+    /** Label ink, independent of the shape fill colour. */
+    textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+    fontSize: z.coerce.number().int().min(8).max(160).optional(),
+    fontFamily: z.string().max(120).refine((value) => !/[;{}<>]/.test(value)).optional(),
     align,
     width: widthPct,
     height: z.coerce.number().int().min(24).max(480).nullish().transform((value) => value ?? 120),
@@ -461,7 +468,7 @@ export function fitDocumentBodyToChannelFormat(
         w: Math.max(24, Math.min(4000, Math.round(block.geometry.w * scale))),
         h: Math.max(24, Math.min(4000, Math.round(block.geometry.h * scale))),
       } : undefined;
-      if (block.type === 'heading' || block.type === 'text') {
+      if (block.type === 'heading' || block.type === 'text' || block.type === 'shape') {
         const hasGeometry = Boolean(block.geometry);
         const richText = block.richText?.map((run) => ({
           ...run,
@@ -481,6 +488,42 @@ export function fitDocumentBodyToChannelFormat(
   return serializeContentDocument({ ...document, pages });
 }
 
+/**
+ * Tri-state highlight read-back for a selected range: true = every segment
+ * carries a non-null highlight, false = none does, null = mixed (some
+ * highlighted, some not — an honest toolbar must not mark it highlighted).
+ */
+export function inlineRangeBackgroundState(
+  segments: Array<{ bg?: string | null }>,
+  baseBg: string | null,
+): boolean | null {
+  if (!segments.length) return false;
+  // Both undefined and null mean "inherit the block background" per the run
+  // schema contract, so both resolve against baseBg identically.
+  const values = segments.map((segment) => (segment.bg == null ? baseBg : segment.bg));
+  const isHighlighted = (value: string | null | undefined) => value != null && value !== '';
+  const first = values[0]!;
+  if (values.every((value) => value === first)) return isHighlighted(first);
+  return values.some(isHighlighted) ? null : false;
+}
+
+/** Default highlight ink for shape labels: dark text on light fills, white on dark. */
+export function readableShapeInk(fillHex: string): string {
+  const value = fillHex.replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(value)) return '#ffffff';
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance > 0.6 ? '#1d2634' : '#ffffff';
+}
+
+/** Shape label size follows the shape box until the user sets an explicit size. */
+export function defaultShapeTextFontSize(block: { geometry?: { h: number } | null; height?: number | null }): number {
+  const boxHeight = block.geometry?.h ?? block.height ?? 120;
+  return Math.max(10, Math.min(120, Math.round(boxHeight * 0.3)));
+}
+
 /** Plain-text projection used by search, summaries and text-only publishing. */
 export function documentToPlainText(doc: ContentDocument): string {
   return doc.pages
@@ -490,7 +533,7 @@ export function documentToPlainText(doc: ContentDocument): string {
         if (block.type === 'heading') return block.text.trim();
         if (block.type === 'text') return block.text.trim();
         if (block.type === 'image') return block.alt ? `[image: ${block.alt}]` : '[image]';
-        if (block.type === 'shape') return `[${block.shape}]`;
+        if (block.type === 'shape') return block.text?.trim() ? block.text.trim() : `[${block.shape}]`;
         return `[CTA: ${block.text.trim()}]`;
       })
       .filter((line) => line.length > 0)

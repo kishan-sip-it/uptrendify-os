@@ -288,21 +288,11 @@ div[class*="level-1"] { font-weight: 800; }
 
 /* Floating selection toolbar (UpTrendifyOS style: dark pill, corner ticks on the block). */
 
-/* Selection = accent outline + corner ticks (deliberately not a rounded halo). */
+/* Selection = accent outline. The old corner-tick .editor-handle-* rules were
+   dead code (nothing renders them); all real handles are .st-free-handle in
+   app/studio.css. */
 .editor-block { position: relative; }
 .editor-block.is-selected { border: 1px solid var(--accent); }
-.editor-handle {
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  background: var(--surface-card);
-  border: 1.5px solid var(--accent);
-  z-index: 31;
-}
-.editor-handle-tl { top: -4.5px; left: -4.5px; }
-.editor-handle-tr { top: -4.5px; right: -4.5px; }
-.editor-handle-bl { bottom: -4.5px; left: -4.5px; }
-.editor-handle-br { bottom: -4.5px; right: -4.5px; }
 
 /* Drop indicator while dragging blocks on the canvas or in the layer list. */
 .editor-drop-line { height: 3px; border-radius: 2px; background: var(--accent); margin: 3px 0; }
@@ -373,26 +363,17 @@ div[class*="level-1"] { font-weight: 800; }
 }
 
 /* Studio free canvas */
+/* Selection outline + .st-free-handle styles live ONLY in app/studio.css (loaded
+   after this file) — keep them out of here so import order can never revert
+   handles to the old square/inconsistent styling. */
 .editor-free-block { position: absolute; }
-.editor-free-block.is-selected { outline: 2px solid var(--accent); outline-offset: 2px; }
 .editor-free-block .editor-canvas-text.is-empty { min-height: 20px; }
-.st-free-handle { position: absolute; width: 12px; height: 12px; border-radius: 2px; background: #fff; border: 2px solid var(--st-accent); z-index: 5; }
-.st-free-handle:hover { transform: scale(1.2); }
-.st-handle-n { top: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
-.st-handle-s { bottom: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
-.st-handle-e { right: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
-.st-handle-w { left: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
-.st-handle-ne { top: -6px; right: -6px; cursor: nesw-resize; }
-.st-handle-nw { top: -6px; left: -6px; cursor: nwse-resize; }
-.st-handle-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
-.st-handle-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
 .studio-page-bg-controls { display: grid; gap: 6px; }
 
 
 /* Keep the free canvas touch-friendly; handles are independently pointer-captured. */
 .editor-free-block { touch-action: none; user-select: none; }
 .editor-free-block .editor-inline-edit { user-select: text; }
-.st-free-handle { touch-action: none; }
 .studio-upload-overlay {
   position: fixed;
   inset: 0;
