@@ -7,7 +7,7 @@ export type BrandLintIssue = {
   patch: Partial<ContentDocBlock>;
 };
 
-type BrandKit = { colors: string[] };
+type BrandKit = { colors: string[]; /** Extra accepted colours: scanned palette, derived surface, intentional fallbacks. */ allowedColors?: string[] };
 
 function normalizeColor(value: string): string {
   return value.trim().toLowerCase();
@@ -18,6 +18,9 @@ export function lintBlocks(blocks: readonly ContentDocBlock[], brand: BrandKit, 
   const palette = brand.colors.filter((value) => /^#[0-9a-f]{6}$/i.test(value));
   if (palette.length === 0) return [];
   const allowed = new Set(palette.map(normalizeColor));
+  for (const extra of brand.allowedColors ?? []) {
+    if (/^#[0-9a-f]{6}$/i.test(extra)) allowed.add(normalizeColor(extra));
+  }
   const fallback = palette[0]!;
   const issues: BrandLintIssue[] = [];
 

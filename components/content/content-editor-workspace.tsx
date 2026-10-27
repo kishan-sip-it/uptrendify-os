@@ -35,6 +35,17 @@ import {
   Undo2,
   Grid3X3,
   LayoutTemplate,
+  Highlighter,
+  ImageDown,
+  Import as ImportIcon,
+  Lock,
+  LockOpen,
+  CopyPlus,
+  AlertTriangle,
+  RefreshCw,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
 } from 'lucide-react';
 import {
   CONTENT_DOC_MAX_BLOCKS,
@@ -54,6 +65,9 @@ import {
   reorderBlocks,
   headingFontSizeForLevel,
   serializeContentDocument,
+  defaultShapeTextFontSize,
+  inlineRangeBackgroundState,
+  readableShapeInk,
   type ContentDocBlock,
   type ContentDocPage,
   type ContentDocument,
@@ -67,10 +81,23 @@ import { reconcileContentVersionState } from '@/lib/content/version-state';
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
 import { StudioTemplateLibrary } from '@/components/content/studio-template-library';
 import { buildTemplatePages } from '@/lib/studio/template-library/build';
+import {
+  applyBrandEssentials,
+  brandAccentLadderShades,
+  logoDropRect,
+  resolveBrandEssentials,
+  contrastSafeLabel,
+  type ApplyScope,
+  type ApplyStats,
+} from '@/lib/studio/apply-brand-essentials';
+import { buildBrandApplyPreview } from '@/lib/studio/brand-apply-preview';
+import { ensureBrandFontsLoaded } from '@/lib/studio/brand-fonts';
+import { contrastRatio } from '@/lib/studio/template-library/contrast';
 import { templatePaletteByName } from '@/lib/studio/template-library/art';
 import { STUDIO_LIBRARY } from '@/lib/studio/template-library';
 import { importSvgTemplate, type SvgTemplateImport } from '@/lib/studio/import-template';
 import { eraseRasterTextPixels, type RasterTextBounds } from '@/lib/studio/raster-text';
+import { isManagedStudioAssetUrl } from '@/lib/content/studio-asset-image';
 import { storyboardPagesFromScript } from '@/lib/content/parse-script';
 import { lintBlocks, healthScore, channelLimit, type BrandLintIssue } from '@/lib/studio/brand-lint';
 import { reflowPage, resolveBlockText } from '@/lib/content/document';
@@ -150,6 +177,8 @@ type RasterTextReview = {
 };
 
 const HISTORY_LIMIT = 80;
+/** Default highlighter ink — a soft legible yellow, matching the toolbar fallback. */
+const DEFAULT_HIGHLIGHT_COLOR = '#fff59d';
 
 function emptyBlock(type: EditorBlock['type']): EditorBlock {
   switch (type) {
@@ -188,6 +217,8 @@ type InlineTextToolbarState = {
   underline: boolean;
   color: string;
   bg: string;
+  /** Tri-state: true = whole range highlighted, false = none, null = mixed. */
+  bgActive: boolean | null;
   fontFamily: string;
   fontSize: number;
 };
@@ -483,6 +514,7 @@ function getInlineToolbarState(root: HTMLElement, range: Range, baseStyle: Inlin
     underline: all('underline').every((value) => value === true),
     color: typeof color === 'string' ? color : '#111827',
     bg: typeof bgValue === 'string' ? bgValue : '#fff59d',
+    bgActive: inlineRangeBackgroundState(segments.map(({ run }) => run), base.bg),
     fontFamily,
     fontSize,
   };
@@ -859,14 +891,14 @@ function CanvasText({
   }
 
   if (!value.trim()) {
+    // Visually empty artwork: no placeholder copy. Discoverability stays in
+    // the accessible tooltip; double-click enters editing as before.
     return (
       <div
         className="editor-canvas-text is-empty"
         onClick={handleCanvasClick} onDoubleClick={handleCanvasDoubleClick}
         title={disabled ? undefined : editOnDoubleClick ? 'Double-click to write directly on the canvas' : 'Click to write directly'}
-      >
-        Empty text block — click to write.
-      </div>
+      />
     );
   }
   return (
@@ -906,15 +938,6 @@ function defaultFontSize(block: EditorBlock): number {
   return 16;
 }
 
-function normalizeHttpImageUrl(value: string): string | null {
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
 function normalizeHttpLinkUrl(value: string): string | null {
   try {
     const url = new URL(value.trim());
@@ -926,9 +949,8 @@ function normalizeHttpLinkUrl(value: string): string | null {
 }
 
 function normalizeStudioAssetPath(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const path = value.trim();
-  return /^\/api\/brands\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/content\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(path) ? path : null;
+  const path = typeof value === 'string' ? value.trim() : value;
+  return isManagedStudioAssetUrl(path) ? path : null;
 }
 
 const contextMenuItemStyle: React.CSSProperties = {
@@ -1066,7 +1088,7 @@ async function sha256ForBlob(blob: Blob): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export function ContentEditorWorkspace({ brandId, organizationId, contentId, documentTitle, contentType, channel, itemCta, brand, versionNumber, body, canEdit, versions, currentVersionId, contentStatus }: {
+export function ContentEditorWorkspace({ brandId, organizationId, contentId, documentTitle, contentType, channel, itemCta, brand, brandVisual, versionNumber, body, canEdit, versions, currentVersionId, contentStatus }: {
   brandId: string;
   organizationId: string;
   contentId: string;
@@ -1075,6 +1097,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   channel: string | null;
   itemCta: string | null;
   brand: { colors: string[]; fonts: string[] };
+  brandVisual?: {
+    logoUrl: string | null;
+    palette: { hex: string; role: string }[];
+    headingFont: string | null;
+    bodyFont: string | null;
+    fonts: { family: string; evidence?: string; fontAssetUrl?: string; fontAssetFormat?: 'woff2' | 'woff' | 'opentype' | 'truetype' }[];
+    assets?: { url: string; type: string; label: string | null }[];
+  } | null;
   versionNumber: number;
   body: string;
   canEdit: boolean;
@@ -1146,7 +1176,19 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [editorStatus, setEditorStatus] = useState(contentStatus);
   const [studioActionDialog, setStudioActionDialog] = useState<StudioActionDialog | null>(null);
   const [studioDialogValue, setStudioDialogValue] = useState('');
-
+  const [brandApplyOpen, setBrandApplyOpen] = useState(false);
+  const [brandApplyScope, setBrandApplyScope] = useState<ApplyScope>('document');
+  const [brandApplyLogo, setBrandApplyLogo] = useState(true);
+  const [brandApplyBusy, setBrandApplyBusy] = useState(false);
+  const [brandApplyError, setBrandApplyError] = useState<string | null>(null);
+  const [brandApplySummary, setBrandApplySummary] = useState<ApplyStats | null>(null);
+  /** Serialized page state captured when the apply landed. Success styling is
+   * truthfully on only while THIS exact state is current — Undo past it, or
+   * any new edit, clears it; Redo back onto it re-arms it. */
+  const [brandApplySuccessSnapshot, setBrandApplySuccessSnapshot] = useState<string | null>(null);
+  const [brandFontsLoaded, setBrandFontsLoaded] = useState<string[]>([]);
+  const [brandLogoDisplayFailed, setBrandLogoDisplayFailed] = useState(false);
+  const brandLogoManagedRef = useRef<{ logoUrl: string; src: string; aspect: number } | null>(null);
   useEffect(() => {
     const reconciled = reconcileContentVersionState(
       versions,
@@ -1174,10 +1216,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [overflow, setOverflow] = useState(false);
   const [safeZones, setSafeZones] = useState(false);
   const [duplicateSize, setDuplicateSize] = useState<ContentPageSizeId>('square');
-  const [imageUrlDraft, setImageUrlDraft] = useState('');
   const [imageAltDraft, setImageAltDraft] = useState('');
-  const [backgroundImageUrl, setBackgroundImageUrl] = useState('');
-  const [showBackgroundImageUrlInput, setShowBackgroundImageUrlInput] = useState(false);
   const [backgroundPreviewOpen, setBackgroundPreviewOpen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isImportingTemplate, setIsImportingTemplate] = useState(false);
@@ -1315,9 +1354,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   }, []);
 
   useEffect(() => {
-    // Never expose internal/API asset paths as editable text by default.
-    setBackgroundImageUrl('');
-    setShowBackgroundImageUrlInput(false);
+    // Close the background-image preview whenever the page/image changes.
     setBackgroundPreviewOpen(false);
   }, [activePage?.id, activePage?.backgroundImage?.src]);
   const serialized = useMemo(
@@ -1490,9 +1527,288 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     }
   }, [localDraftReady, pages, activePageIndex, freeMode, loadedSnapshot, loadedVersionId, currentVersionId, localDraftKey]);
 
+  const brandEssentials = useMemo(() => resolveBrandEssentials(brandVisual ?? null), [brandVisual]);
+  const brandApplyPreview = useMemo(() => {
+    if (!brandApplyOpen) return null;
+    try {
+      const managed = brandLogoManagedRef.current;
+      const managedForCurrentLogo = managed && managed.logoUrl === brandEssentials.logoUrl ? managed : null;
+      const logoWanted = brandApplyLogo && Boolean(brandEssentials.logoUrl) && !brandLogoDisplayFailed;
+      return buildBrandApplyPreview({
+        pages: pagesRef.current,
+        essentials: brandEssentials,
+        scope: brandApplyScope,
+        activePageIndex: activePageIndexRef.current,
+        includeLogo: logoWanted,
+        // Managed copy when one exists; otherwise the scanned URL renders in
+        // the preview only — Apply imports a managed asset before placing.
+        logoSrc: managedForCurrentLogo?.src ?? brandEssentials.logoUrl,
+        logoAspect: managedForCurrentLogo?.aspect,
+        logoFailure: brandLogoDisplayFailed ? { reason: 'The scanned logo could not be displayed, so it will not be placed.' } : null,
+      });
+    } catch {
+      return null;
+    }
+  }, [brandApplyOpen, brandApplyScope, brandApplyLogo, brandLogoDisplayFailed, brandEssentials, pages]);
+  const brandEssentialsAvailable = Boolean(brandVisual && (brandEssentials.accent || brandEssentials.headingFont || brandEssentials.bodyFont || brandEssentials.logoUrl || brandEssentials.colors.length));
+  const brandApplyDisabled = !canEdit || !brandEssentialsAvailable || brandApplyBusy;
+  // Truthful success: only while the exact applied state is still the current one.
+  const brandApplySucceeded = brandApplySuccessSnapshot !== null
+    && history[historyIndex] === brandApplySuccessSnapshot;
+  const openBrandApply = () => {
+    if (brandApplyDisabled) return;
+    setBrandApplyError(null);
+    setBrandApplyScope('document');
+    setBrandApplyLogo(Boolean(brandEssentials.logoUrl));
+    setBrandApplyOpen(true);
+    void ensureBrandFontsLoaded(brandVisual?.fonts ?? []).then((loaded) => setBrandFontsLoaded(loaded));
+  };
+  // Placed-but-importing logo layers: 'importing' = the managed copy is being
+  // fetched in the background; 'failed' = import failed but the logo stays
+  // visible and editable, with a retry action in the element action bar.
+  const [logoImportStates, setLogoImportStates] = useState<Record<string, 'importing' | 'failed'>>({});
+  const logoImportStatesRef = useRef(logoImportStates);
+  logoImportStatesRef.current = logoImportStates;
+  const pendingLogoImportsRef = useRef<Set<Promise<void>>>(new Set());
+  const draggedLogoAspectRef = useRef<number | null>(null);
+  const logoLayerReconcileRef = useRef<Set<string>>(new Set());
+  const brandLogoImportInFlightRef = useRef<Map<string, Promise<{ src: string; aspect: number } | null>>>(new Map());
+  const LOGO_IMPORT_FAILURE_MESSAGE = 'The brand logo could not be imported from the scanned source. The placed logo stays editable — retry the import, or delete it and use Insert → image.';
+
+  const setLogoLayerState = (blockId: string, state: 'importing' | 'failed' | null) => {
+    setLogoImportStates((current) => {
+      if (state === null) {
+        if (!(blockId in current)) return current;
+        return Object.fromEntries(Object.entries(current).filter(([id]) => id !== blockId));
+      }
+      return current[blockId] === state ? current : { ...current, [blockId]: state };
+    });
+  };
+  /** Silent same-layer source swap: no extra history entry, so one gesture
+   * stays exactly one undo step. Refuses to touch a layer the user repointed
+   * while the import was in flight. */
+  const swapLogoLayerSource = (blockId: string, src: string, expectedUrl: string) => {
+    setPages(updateBlockInPages(pagesRef.current, blockId, (block) => (block.type === 'image' && block.url === expectedUrl ? { ...block, url: src } : block), activePageIndexRef.current));
+  };
+  const trackLogoImport = (blockId: string, logoUrl: string) => {
+    // Track WHILE in flight only: undo/redo can legitimately restore the same
+    // layer to the scanned URL again later, and it must re-import then too.
+    if (logoLayerReconcileRef.current.has(blockId)) return;
+    logoLayerReconcileRef.current.add(blockId);
+    setLogoLayerState(blockId, 'importing');
+    const promise = ensureBrandLogoManaged(logoUrl)
+      .then((managed) => {
+        if (!managed) throw new Error(LOGO_IMPORT_FAILURE_MESSAGE);
+        swapLogoLayerSource(blockId, managed.src, logoUrl);
+        setLogoLayerState(blockId, null);
+      })
+      .catch((importError: unknown) => {
+        const rawMessage = importError instanceof Error ? importError.message : '';
+        const message = /^(failed to fetch|load failed|networkerror)$/i.test(rawMessage) ? LOGO_IMPORT_FAILURE_MESSAGE : rawMessage || LOGO_IMPORT_FAILURE_MESSAGE;
+        setLogoLayerState(blockId, 'failed');
+        setError(message);
+      })
+      .finally(() => {
+        pendingLogoImportsRef.current.delete(promise);
+        logoLayerReconcileRef.current.delete(blockId);
+      });
+    pendingLogoImportsRef.current.add(promise);
+  };
+  const uploadBrandLogo = async (): Promise<{ src: string; aspect: number } | null> => {
+    return ensureBrandLogoManaged(brandEssentials.logoUrl);
+  };
+  const ensureBrandLogoManaged = async (logoUrl: string | null): Promise<{ src: string; aspect: number } | null> => {
+    if (!logoUrl) return null;
+    if (brandLogoManagedRef.current?.logoUrl === logoUrl) {
+      const cached = brandLogoManagedRef.current;
+      return { src: cached.src, aspect: cached.aspect };
+    }
+    const inFlight = brandLogoImportInFlightRef.current.get(logoUrl);
+    if (inFlight) return inFlight;
+    // The browser cannot fetch cross-origin scanned logo URLs (CORS), so the
+    // authorized brand's own scanned logo is downloaded, validated and stored
+    // server-side as an ordinary managed asset. Never an arbitrary-URL proxy:
+    // the route reads the logo URL from the brand row itself.
+    const request = (async () => {
+      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/brand-logo`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const body = (await response.json().catch(() => null)) as { error?: string; src?: string } | null;
+      if (!response.ok || !body?.src) {
+        throw new Error(body?.error ?? 'The brand logo could not be imported from the scanned source. Download it, then use Insert → image to place it manually.');
+      }
+      const src = body.src;
+      // The managed asset URL is same-origin, so probing its aspect works
+      // without CORS; natural dimensions need no cross-origin permission.
+      const aspect = await new Promise<number>((resolve) => {
+        const image = new Image();
+        image.onload = () => { resolve(image.naturalWidth / Math.max(1, image.naturalHeight)); };
+        image.onerror = () => { resolve(2); };
+        image.src = src;
+      });
+      brandLogoManagedRef.current = { logoUrl, src, aspect };
+      return { src, aspect };
+    })();
+    brandLogoImportInFlightRef.current.set(logoUrl, request);
+    request.finally(() => { brandLogoImportInFlightRef.current.delete(logoUrl); }).catch(() => {});
+    return request;
+  };
+  /**
+   * Place the brand logo as an editable layer IMMEDIATELY at the page-space
+   * point (Canva-style), then import the managed copy in the background and
+   * swap it onto the same layer. One gesture = one upload, one undo entry.
+   * Returns false only when the layer could not be placed at all.
+   */
+  const insertBrandLogoLayer = (pagePoint: { x: number; y: number } | null): boolean => {
+    if (!canEdit || !brandEssentials.logoUrl) return false;
+    const currentPage = pagesRef.current[activePageIndexRef.current];
+    if (!currentPage) return false;
+    if (currentPage.blocks.length >= CONTENT_DOC_MAX_BLOCKS) {
+      setError('This page has reached its element limit — remove an element to make room for the logo.');
+      return false;
+    }
+    const dims = CONTENT_PAGE_SIZES[currentPage.size ?? 'a4'];
+    const aspect = draggedLogoAspectRef.current ?? brandLogoManagedRef.current?.aspect ?? 2.5;
+    const centre = pagePoint ?? { x: dims.width - 40 - Math.round(150 * Math.min(1.8, aspect / 2)), y: 40 };
+    const rect = logoDropRect(
+      centre,
+      aspect,
+      dims,
+      currentPage.blocks.filter((block) => block.geometry).map((block) => block.geometry!),
+    );
+    const logoBlock: EditorBlock = {
+      id: newBlockId('image'),
+      type: 'image',
+      // Optimistic source: the scanned logo URL renders in <img> tags without
+      // CORS. The managed same-origin copy replaces it on the same layer once
+      // the secure import finishes — same id, geometry and selection.
+      url: brandEssentials.logoUrl,
+      alt: `${documentTitle || 'Brand'} logo`,
+      align: 'left',
+      width: 100,
+      geometry: rect,
+    };
+    const nextPages = pagesRef.current.map((page, index) => index === activePageIndexRef.current ? { ...page, blocks: [...page.blocks, logoBlock] } : page);
+    commit(nextPages, 'free');
+    setFreeMode(true);
+    setSelectedId(logoBlock.id);
+    setInspectorTab('design');
+    trackLogoImport(logoBlock.id, brandEssentials.logoUrl);
+    return true;
+  };
+  const onCanvasLogoDrop = (event: React.DragEvent) => {
+    if (!canEdit) return;
+    const logoUrl = event.dataTransfer.getData('application/x-brand-logo');
+    if (!logoUrl) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const frame = frameRef.current;
+    if (!frame) return;
+    const rect = frame.getBoundingClientRect();
+    const scale = Math.max(0.05, zoom / 100);
+    const pagePoint = { x: (event.clientX - rect.left) / scale, y: (event.clientY - rect.top) / scale };
+    insertBrandLogoLayer(pagePoint);
+  };
+  // Undo/redo or a recovered browser draft can restore a layer that still
+  // points at the scanned logo URL. Re-import quietly so no temporary source
+  // can survive silently; the managed copy is cached so this never re-uploads.
+  useEffect(() => {
+    if (!canEdit || !brandEssentials.logoUrl) return;
+    for (const page of pages) {
+      for (const block of page.blocks) {
+        if (block.type !== 'image' || block.url !== brandEssentials.logoUrl) continue;
+        if (logoLayerReconcileRef.current.has(block.id)) continue;
+        // A failed import stays failed until the user presses Retry — never
+        // re-attempt (and re-error) on every unrelated pages change.
+        if (logoImportStatesRef.current[block.id] === 'failed') continue;
+        trackLogoImport(block.id, brandEssentials.logoUrl);
+      }
+    }
+    // Prune import states for layers that no longer exist (deleted or undone
+    // away) — an orphaned 'failed' entry must never block a future save.
+    const existingIds = new Set(pages.flatMap((page) => page.blocks.map((block) => block.id)));
+    setLogoImportStates((current) => {
+      const stale = Object.keys(current).filter((id) => !existingIds.has(id));
+      return stale.length
+        ? Object.fromEntries(Object.entries(current).filter(([id]) => existingIds.has(id)))
+        : current;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages, canEdit, brandEssentials.logoUrl]);
+
+  const runBrandApply = async () => {
+    if (brandApplyDisabled) return;
+    setBrandApplyBusy(true);
+    setBrandApplyError(null);
+    try {
+      let logo: { src: string; aspect: number } | null = null;
+      let logoNotice: string | null = null;
+      if (brandApplyLogo && brandEssentials.logoUrl) {
+        try {
+          logo = await uploadBrandLogo();
+        } catch (logoError) {
+          logoNotice = logoError instanceof Error ? logoError.message : 'The brand logo could not be used.';
+        }
+      }
+      const logoFailure = logoNotice ? { reason: logoNotice } : null;
+      const result = applyBrandEssentials({
+        doc: { kind: 'uptrendify-doc', version: 1, mode: 'free', pages: pagesRef.current },
+        essentials: brandEssentials,
+        scope: brandApplyScope,
+        activePageIndex: activePageIndexRef.current,
+        logoSrc: logo?.src ?? null,
+        logoAspect: logo?.aspect,
+        includeLogo: brandApplyLogo && Boolean(brandEssentials.logoUrl),
+        logoFailure,
+      });
+      commit(result.doc.pages, 'free');
+      setFreeMode(true);
+      setSelectedId(null);
+      setBrandApplySummary(result.stats);
+      setBrandApplyOpen(false);
+      if (logoNotice) setError(logoNotice + ' The palette and typography were applied without the logo.');
+      else setError(null);
+      const logoLine = result.stats.logoFailure
+        ? ` Logo unavailable: ${result.stats.logoFailure.reason}`
+        : result.stats.logo.length
+          ? ` Logo: ${result.stats.logo.map((entry) => entry.outcome).join(', ')}.`
+          : '';
+      setNotice(`Brand essentials applied to ${result.stats.pagesThemed} page(s). ${result.stats.titlesStyled} titles, ${result.stats.headingsStyled} headings, ${result.stats.bodiesStyled} text, ${result.stats.shapesStyled} shapes and ${result.stats.buttonsStyled} buttons restyled.${logoLine} Save a new version to keep it.`);
+    } catch (applyError) {
+      setBrandApplyError(applyError instanceof Error ? applyError.message : 'Applying the brand essentials failed.');
+    } finally {
+      setBrandApplyBusy(false);
+    }
+  };
+
+  // Record WHICH serialized state the successful apply produced, so the CTA's
+  // success styling can match it exactly (Undo/redo/edit-aware, index-proof).
+  useEffect(() => {
+    if (brandApplySummary) setBrandApplySuccessSnapshot(history[historyIndex] ?? null);
+    else setBrandApplySuccessSnapshot(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brandApplySummary]);
+
+  // Notices dismiss themselves; errors stay until seen and dismissed.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice((current) => (current === notice ? null : current)), 8000);
+    return () => { window.clearTimeout(timer); };
+  }, [notice]);
+
   const brandIssues = useMemo(
-    () => lintBlocks(activePage?.blocks ?? [], { colors: brand.colors }, activePage?.bg),
-    [activePage, brand.colors],
+    () => lintBlocks(activePage?.blocks ?? [], {
+      colors: brand.colors,
+      allowedColors: [
+        ...brandEssentials.colors,
+        ...brandAccentLadderShades(brandEssentials.colors),
+        ...(brandEssentials.surface ? [brandEssentials.surface] : []),
+        '#1d2634',
+      ],
+    }, activePage?.bg),
+    [activePage, brand.colors, brandEssentials],
   );
   const health = healthScore(brandIssues, activePage?.blocks.length ?? 0);
   const linkedValues = useMemo(() => ({ title: documentTitle, cta: itemCta ?? undefined }), [documentTitle, itemCta]);
@@ -1727,31 +2043,16 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     return true;
   };
 
-  const addImageFromUrl = () => {
-    if (!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS) return;
-    const src = normalizeHttpImageUrl(imageUrlDraft);
-    if (!src) {
-      setError('Enter a valid image URL beginning with https:// or http://.');
-      return;
-    }
-    if (insertImageBlock(src, imageAltDraft.trim())) {
-      setImageUrlDraft('');
-      setImageAltDraft('');
-    }
-  };
-
-  const addImageFromFile = async (file: File) => {
-    if (!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS) {
-      setError('This page has reached its element limit or is not editable.');
-      return;
-    }
+  /** Upload an image file as a managed asset. Returns the managed URL, or
+   * null after surfacing the failure reason. */
+  const uploadImageAsset = async (file: File): Promise<string | null> => {
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       setError('Choose a PNG, JPG, or WEBP image.');
-      return;
+      return null;
     }
     if (file.size <= 0 || file.size > 2 * 1024 * 1024) {
       setError('Images must be 2 MB or smaller.');
-      return;
+      return null;
     }
     setIsUploadingImage(true);
     setError(null);
@@ -1764,13 +2065,34 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : 'Image upload failed.');
       const src = normalizeStudioAssetPath(payload?.src);
       if (!src) throw new Error('The server returned an invalid image asset reference.');
-      if (insertImageBlock(src, imageAltDraft.trim())) setImageAltDraft('');
+      return src;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Image upload failed.');
+      return null;
     } finally {
       setIsUploadingImage(false);
-      if (imageFileInputRef.current) imageFileInputRef.current.value = '';
     }
+  };
+
+  const addImageFromFile = async (file: File) => {
+    if (!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS) {
+      setError('This page has reached its element limit or is not editable.');
+      return;
+    }
+    const src = await uploadImageAsset(file);
+    if (!src) return;
+    if (insertImageBlock(src, imageAltDraft.trim())) setImageAltDraft('');
+    if (imageFileInputRef.current) imageFileInputRef.current.value = '';
+  };
+
+  /** Swap an existing image layer to a newly uploaded managed asset in place —
+   * id, geometry and alt text survive; the canvas shows the new pixels. */
+  const replaceImageFromFile = async (blockId: string, file: File) => {
+    if (!canEdit) return;
+    const src = await uploadImageAsset(file);
+    if (!src) return;
+    patchBlock(blockId, { url: src });
+    setNotice('Image replaced. The layer keeps its position, size and alt text.');
   };
 
   const uploadTemplateRaster = async (embedded: SvgTemplateImport['embeddedImages'][number], maxBytes = 2 * 1024 * 1024): Promise<string | null> => {
@@ -2144,17 +2466,12 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     event.preventDefault();
     void importSvgMarkup(match[0]);
   };
-  const applyBackgroundImageUrl = () => {
-    if (!canEdit) return;
-    const src = normalizeHttpImageUrl(backgroundImageUrl);
-    if (!src) {
-      setError('Enter a valid background image URL beginning with https:// or http://.');
-      return;
-    }
+  /** Upload an image and set it as the page background (managed asset). */
+  const applyBackgroundImageFile = async (file: File) => {
+    if (!canEdit || previewMode) return;
+    const src = await uploadImageAsset(file);
+    if (!src) return;
     setPageBackgroundImage({ src, alt: '' });
-    setBackgroundImageUrl('');
-    setShowBackgroundImageUrlInput(false);
-    setError(null);
     setNotice('Page background image updated.');
   };
   const useImageAsBackground = (block: EditorBlock) => {
@@ -2718,7 +3035,26 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     const newlyUploadedPaths: string[] = [];
     let bodyVersionSaveAttempted = false;
     try {
-      const documentSource = parseContentBody(serialized);
+      // A pending logo import must settle before the exact-artwork export so a
+      // save can never persist the temporary scanned URL as the layer source,
+      // and never export a half-loaded image. Cap the wait so a hung request
+      // cannot park the save forever.
+      const pendingLogoImports = Array.from(pendingLogoImportsRef.current);
+      if (pendingLogoImports.length) {
+        await Promise.race([
+          Promise.allSettled(pendingLogoImports),
+          new Promise((resolve) => { window.setTimeout(resolve, 20_000); }),
+        ]);
+      }
+      // Derive the guard from the ACTUAL document, not render-time state
+      // mirrors: a layer still carrying the scanned logo URL means its import
+      // failed, is stuck, or was retried — none of which may be saved as-is.
+      const unimportedLogoLayer = brandEssentials.logoUrl
+        && pagesRef.current.some((page) => page.blocks.some((block) => block.type === 'image' && block.url === brandEssentials.logoUrl));
+      if (unimportedLogoLayer) {
+        throw new Error('A brand logo on the canvas is still waiting for its secure managed copy. Retry the import from the logo’s action bar, or delete the logo layer, then save again.');
+      }
+      const documentSource = parseContentBody(serializeContentDocument({ kind: 'uptrendify-doc', version: 1, ...(freeMode ? { mode: 'free' as const } : {}), pages: pagesRef.current } satisfies ContentDocument));
       if (!documentSource) throw new Error('The canvas could not be parsed for artwork export. Your saved version has not changed.');
       const snapshotHost = snapshotHostRef.current;
       if (!snapshotHost) throw new Error('The artwork export surface is unavailable. Your saved version has not changed.');
@@ -3142,6 +3478,17 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         {range ? (
           <>
             <span className="st-float-group" aria-label="Selected text colours">
+              <button
+                type="button"
+                className={`st-highlight-toggle${range.bgActive === true ? ' is-on' : ''}${range.bgActive === null ? ' is-mixed' : ''}`}
+                onClick={() => inline!.apply('bg', range.bgActive === true ? null : DEFAULT_HIGHLIGHT_COLOR)}
+                disabled={!canEditBlock(block)}
+                title={range.bgActive === true ? 'Remove highlight' : 'Highlight selected text'}
+                aria-label={range.bgActive === true ? 'Remove highlight from selected text' : 'Highlight selected text'}
+                aria-pressed={range.bgActive === null ? 'mixed' : range.bgActive === true}
+              >
+                <Highlighter size={14} />
+              </button>
               <input type="color" value={range.color} onChange={(event) => inline!.apply('color', event.currentTarget.value)} title="Font colour" aria-label="Selected text font colour" />
               <input type="color" value={range.bg} onChange={(event) => inline!.apply('bg', event.currentTarget.value)} title="Text highlight colour" aria-label="Selected text highlight colour" />
             </span>
@@ -3186,13 +3533,60 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             ))}
           </span>
         ) : null}
-        {block.type === 'text' || block.type === 'heading' ? (
-          <span className="st-float-group" aria-label="Text alignment">
-            {(['left', 'center', 'right'] as const).map((option) => (
-              <button key={option} type="button" className={block.align === option ? 'is-on' : ''} onClick={() => patchBlock(block.id, { align: option })} disabled={!canEditBlock(block)} title={`Align text ${option}`}>{option === 'left' ? '⇤' : option === 'center' ? '≡' : '⇥'}</button>
-            ))}
+        {block.type === 'text' || block.type === 'heading' || block.type === 'shape' ? (
+          <span className="st-float-group" role="group" aria-label="Text alignment">
+            {(['left', 'center', 'right'] as const).map((option) => {
+              const AlignIcon = option === 'left' ? AlignLeft : option === 'center' ? AlignCenter : AlignRight;
+              const labels = { left: 'Align left', center: 'Align center', right: 'Align right' } as const;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={block.align === option ? 'is-on' : ''}
+                  onClick={() => patchBlock(block.id, { align: option })}
+                  disabled={!canEditBlock(block)}
+                  title={labels[option]}
+                  aria-label={labels[option]}
+                  aria-pressed={block.align === option}
+                >
+                  <AlignIcon size={13} />
+                </button>
+              );
+            })}
           </span>
         ) : null}
+        {block.type === 'image' && logoImportStates[block.id] && brandEssentials.logoUrl ? (
+          logoImportStates[block.id] === 'importing' ? (
+            <span className="st-logo-import-chip is-importing" role="status">
+              <LoaderCircle size={12} className="st-spin" /> Importing logo…
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="st-logo-import-chip is-failed"
+              onClick={() => { if (brandEssentials.logoUrl) trackLogoImport(block.id, brandEssentials.logoUrl); }}
+              title="The secure import of this logo failed — the placed copy stays editable. Retry the import."
+            >
+              <RefreshCw size={12} /> Import failed · Retry
+            </button>
+          )
+        ) : null}
+        <span className="st-float-group st-float-actions" role="group" aria-label="Element actions">
+          <button type="button" onClick={() => duplicateBlock(block.id)} disabled={!canEditBlock(block)} title="Duplicate element" aria-label="Duplicate element"><CopyPlus size={13} /></button>
+          <button type="button" onClick={() => changeLayerOrder(block.id, 'front')} disabled={!canEditBlock(block)} title="Bring to front" aria-label="Bring element to front"><BringToFront size={13} /></button>
+          <button type="button" onClick={() => changeLayerOrder(block.id, 'back')} disabled={!canEditBlock(block)} title="Send to back" aria-label="Send element to back"><SendToBack size={13} /></button>
+          <button
+            type="button"
+            onClick={() => { patchBlock(block.id, { locked: !block.locked }); }}
+            disabled={!canEdit}
+            title={block.locked ? 'Unlock element' : 'Lock element'}
+            aria-label={block.locked ? 'Unlock element' : 'Lock element'}
+            className={block.locked ? 'is-on' : ''}
+          >
+            {block.locked ? <Lock size={13} /> : <LockOpen size={13} />}
+          </button>
+          <button type="button" className="is-danger" onClick={() => removeBlock(block.id)} disabled={!canEditBlock(block)} title="Delete element" aria-label="Delete element"><Trash2 size={13} /></button>
+        </span>
       </div>
     );
   })();
@@ -3200,6 +3594,34 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   function canEditBlock(block: EditorBlock | null): boolean {
     return block !== null && canEdit && !block.locked;
   }
+
+  /** Centred, editable label inside a shape. Absent on unlabeled read-only
+   * shapes so older documents render pixel-identically. */
+  const renderShapeTextHost = (block: Extract<EditorBlock, { type: 'shape' }>, editable: boolean, snapshotMode: boolean) => {
+    const label = block.text ?? '';
+    if (!label && !block.richText?.length && !editable) return null;
+    const ink = block.textColor ?? readableShapeInk(block.color ?? DEFAULT_CONTENT_SHAPE_COLOR);
+    const fontSize = block.fontSize ?? defaultShapeTextFontSize(block);
+    return (
+      <div className={`editor-shape-text align-${block.align}`} style={{ color: ink, fontSize: `${fontSize}px`, fontFamily: block.fontFamily || undefined }}>
+        <CanvasText
+          value={label}
+          richText={block.richText}
+          baseStyle={{ color: ink, fontSize, ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }}
+          disabled={!editable}
+          multiline
+          onClick={snapshotMode ? () => undefined : () => { setSelectedId(block.id); setInspectorTab('design'); }}
+          onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs })}
+          onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)}
+          editOnDoubleClick={true}
+          isSelected={!snapshotMode && selectedId === block.id && !previewMode}
+          onInlineToolbarChange={snapshotMode ? undefined : bindInlineToolbar(block.id)}
+          editRequest={snapshotMode ? 0 : (inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0)}
+          onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)}
+        />
+      </div>
+    );
+  };
 
   const renderBlockInner = (block: EditorBlock, snapshotMode = false) => {
     const editable = !snapshotMode && canEdit && !block.locked;
@@ -3228,32 +3650,38 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             <img src={block.url} alt={block.alt} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8, pointerEvents: 'none' }} />
           </div>
         );
-      case 'shape':
-        if (block.svgPath && block.svgBounds && block.svgMatrix) {
-          return (
-            <svg
-              width="100%"
-              height="100%"
-              viewBox={"0 0 " + block.svgBounds.w + " " + block.svgBounds.h}
-              preserveAspectRatio="none"
-              aria-hidden="true"
-              style={{ display: 'block', overflow: 'visible', pointerEvents: 'none' }}
-            >
-              <path
-                d={block.svgPath}
-                transform={"translate(" + (-block.svgBounds.x) + " " + (-block.svgBounds.y) + ") matrix(" + block.svgMatrix.a + " " + block.svgMatrix.b + " " + block.svgMatrix.c + " " + block.svgMatrix.d + " " + block.svgMatrix.e + " " + block.svgMatrix.f + ")"}
-                fill={block.svgFillNone ? 'none' : (block.color ?? DEFAULT_CONTENT_SHAPE_COLOR)}
-                stroke={block.svgFillNone ? (block.color ?? block.svgStroke ?? 'none') : (block.svgStroke ?? 'none')}
-                strokeWidth={block.svgStrokeWidth ?? 1}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
-            </svg>
-          );
-        }
-        return (
+      case 'shape': {
+        const shapeVisual = block.svgPath && block.svgBounds && block.svgMatrix ? (
+          <svg
+            width="100%"
+            height="100%"
+            viewBox={"0 0 " + block.svgBounds.w + " " + block.svgBounds.h}
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            style={{ display: 'block', overflow: 'visible', pointerEvents: 'none' }}
+          >
+            <path
+              d={block.svgPath}
+              transform={"translate(" + (-block.svgBounds.x) + " " + (-block.svgBounds.y) + ") matrix(" + block.svgMatrix.a + " " + block.svgMatrix.b + " " + block.svgMatrix.c + " " + block.svgMatrix.d + " " + block.svgMatrix.e + " " + block.svgMatrix.f + ")"}
+              fill={block.svgFillNone ? 'none' : (block.color ?? DEFAULT_CONTENT_SHAPE_COLOR)}
+              stroke={block.svgFillNone ? (block.color ?? block.svgStroke ?? 'none') : (block.svgStroke ?? 'none')}
+              strokeWidth={block.svgStrokeWidth ?? 1}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          </svg>
+        ) : (
           <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? DEFAULT_CONTENT_SHAPE_COLOR, width: '100%', height: '100%', display: 'inline-block', pointerEvents: 'none' }} />
         );
+        const shapeTextHost = renderShapeTextHost(block, editable, snapshotMode);
+        if (!shapeTextHost) return shapeVisual;
+        return (
+          <div className="editor-shape-host" style={{ position: 'relative', width: '100%', height: '100%' }}>
+            {shapeVisual}
+            {shapeTextHost}
+          </div>
+        );
+      }
       case 'button':
         return (
           <span className={`content-doc-cta-button${block.color ? ' is-custom' : ''}`} style={{ ...(block.color ? { background: block.color, borderColor: 'transparent' } : {}), ...(block.textColor ? { color: block.textColor } : {}), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none', opacity: block.opacity ?? 1 }}>
@@ -3457,7 +3885,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
 
       {/* ---------- body ---------- */}
       <div
-        className={`studio-body${drawerOpen ? ' has-drawer' : ' is-drawer-closed'}${dockTab === 'templates' ? ' has-template-drawer' : ''}`}
+        className={`studio-body${drawerOpen ? ' has-drawer' : ' is-drawer-closed'}${dockTab === 'templates' || dockTab === 'brand' ? ' has-template-drawer' : ''}`}
         onTransitionEnd={(event) => {
           if (event.target !== event.currentTarget || !['grid-template-columns', 'grid-template-rows'].includes(event.propertyName) || !drawerLayoutAnimating) return;
           if (drawerLayoutAnimationTimerRef.current !== null) window.clearTimeout(drawerLayoutAnimationTimerRef.current);
@@ -3491,7 +3919,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               <span className="st-label">{dockLabels[dockTab ?? 'layers']}</span>
               <button type="button" className="st-icon" style={{ width: 32, height: 32 }} onClick={closeDockDrawer} aria-label="Close panel"><Trash2 size={0} /><span aria-hidden="true">×</span></button>
             </div>
-            {dockTab !== 'templates' ? (
+            {dockTab !== 'templates' && dockTab !== 'brand' ? (
               <div className="studio-drawer-search">
                 <input value={drawerSearch} onChange={(event) => setDrawerSearch(event.target.value)} placeholder="Search layers, blocks…" aria-label="Search layers and blocks" />
               </div>
@@ -3555,16 +3983,10 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                     />
                   </label>
                   {isUploadingImage ? <p className="editor-hint" role="status">Uploading image securely…</p> : null}
-                  <span className="st-label">Or use an image URL</span>
-                  <label className="st-field">
-                    <span>Image URL</span>
-                    <input className="st-input" type="url" inputMode="url" value={imageUrlDraft} onChange={(event) => setImageUrlDraft(event.target.value)} placeholder="https://example.com/image.png" disabled={!canEdit} />
-                  </label>
                   <label className="st-field">
                     <span>Alt text (optional)</span>
                     <input className="st-input" value={imageAltDraft} onChange={(event) => setImageAltDraft(event.target.value)} placeholder="Describe the image" disabled={!canEdit} />
                   </label>
-                  <button type="button" className="st-btn st-btn--primary" onClick={addImageFromUrl} disabled={!canEdit || !imageUrlDraft.trim() || isUploadingImage || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS}>Insert image on canvas</button>
                   <span className="st-label">Blocks</span>
                   <div className="st-insert-grid">
                     {insertTiles.filter(({ label }) => insertMatches(label)).map(({ type, label, icon: Icon }) => (
@@ -3600,6 +4022,96 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
 
               {dockTab === 'brand' ? (
                 <>
+                  <div className="brand-kit">
+                    <span className="st-label">Brand kit{brand?.colors?.length ? '' : ' · no scan yet'}</span>
+                    <div className="brand-kit-logo-row">
+                      <div
+                        className={`brand-kit-logo${brandLogoDisplayFailed ? ' is-failed' : ''}${canEdit && brandEssentials.logoUrl ? ' is-draggable' : ''}`}
+                        draggable={Boolean(canEdit && brandEssentials.logoUrl && !brandLogoDisplayFailed)}
+                        onDragStart={(event) => {
+                          if (!brandEssentials.logoUrl) return;
+                          event.dataTransfer.setData('application/x-brand-logo', brandEssentials.logoUrl);
+                          event.dataTransfer.effectAllowed = 'copy';
+                          // The ghost must match the placed layer: carry the real
+                          // aspect so the drop sizes the layer correctly at once.
+                          const image = event.currentTarget.querySelector('img');
+                          draggedLogoAspectRef.current = image && image.naturalWidth > 0 ? image.naturalWidth / image.naturalHeight : null;
+                        }}
+                        onDragEnd={(event) => { event.dataTransfer.clearData('application/x-brand-logo'); }}
+                        title={brandLogoDisplayFailed ? 'Logo detected but could not be displayed here' : 'Drag onto the canvas, or press Enter to add to this page'}
+                      >
+                        {brandEssentials.logoUrl && !brandLogoDisplayFailed ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={brandEssentials.logoUrl} alt="Brand logo" onError={() => setBrandLogoDisplayFailed(true)} />
+                        ) : (
+                          <span className="brand-kit-logo-empty">{brandLogoDisplayFailed ? 'Logo can’t display' : 'No logo scanned'}</span>
+                        )}
+                      </div>
+                      <div className="brand-kit-logo-actions">
+                        <button
+                          type="button"
+                          className="st-btn"
+                          disabled={!canEdit || !brandEssentials.logoUrl || brandLogoDisplayFailed}
+                          onClick={() => insertBrandLogoLayer(null)}
+                        >
+                          Add logo to canvas
+                        </button>
+                      </div>
+                    </div>
+                    <div className="brand-kit-swatches">
+                      {(brandEssentials.colors.length ? brandEssentials.colors : []).map((color, index) => (
+                        <span key={color + index} className="brand-kit-swatch" title={`${color} · ${index === 0 ? 'primary / buttons' : index === 1 ? 'secondary' : 'support'}`}>
+                          <span style={{ background: color }} />
+                          <small>{index === 0 ? 'Primary' : index === 1 ? 'Second' : 'Support'}</small>
+                        </span>
+                      ))}
+                      {!brandEssentials.colors.length ? <span className="editor-hint">No colours detected.</span> : null}
+                    </div>
+                    <div className="brand-kit-fonts">
+                      <span className="brand-kit-font"><small>Heading</small><b style={{ fontFamily: brandEssentials.headingFont ? `'${brandEssentials.headingFont}', Georgia, serif` : undefined }}>{brandEssentials.headingFont ?? 'Theme default'}</b>{brandEssentials.headingFont && !brandFontsLoaded.includes(brandEssentials.headingFont) ? <em>asset not loaded</em> : brandEssentials.headingFont ? <em className="is-ok">loaded</em> : null}</span>
+                      <span className="brand-kit-font"><small>Body</small><b style={{ fontFamily: brandEssentials.bodyFont ? `'${brandEssentials.bodyFont}', Arial, sans-serif` : undefined }}>{brandEssentials.bodyFont ?? 'Theme default'}</b>{brandEssentials.bodyFont && !brandFontsLoaded.includes(brandEssentials.bodyFont) ? <em>asset not loaded</em> : brandEssentials.bodyFont ? <em className="is-ok">loaded</em> : null}</span>
+                    </div>
+                    {(brandVisual?.assets?.length ?? 0) > 0 ? (
+                      <div className="brand-kit-assets">
+                        <span className="st-label">Scanned assets</span>
+                        {brandVisual!.assets!.map((asset) => (
+                          <a key={asset.url} href={asset.url} target="_blank" rel="noopener noreferrer" className="brand-kit-asset" title={asset.url}>
+                            {asset.label || asset.type || 'Asset'}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className={`brand-essentials-cta${brandApplyBusy ? ' is-busy' : ''}${brandApplySucceeded ? ' is-success' : ''}`}
+                    onClick={openBrandApply}
+                    disabled={brandApplyDisabled}
+                    title={canEdit ? 'Import the scanned brand palette, fonts and logo onto this artwork — with a Before/After preview' : 'This content is read-only, so brand essentials cannot be applied'}
+                  >
+                    <span className="brand-essentials-cta-icon" aria-hidden="true">
+                      {brandApplyBusy ? <LoaderCircle size={16} className="st-spin" /> : brandApplySucceeded ? <Check size={16} /> : <ImageDown size={16} />}
+                    </span>
+                    <span className="brand-essentials-cta-copy">
+                      <strong>{brandApplyBusy ? 'Importing brand…' : 'Import brand in canvas'}</strong>
+                      <span>{brandApplySucceeded ? 'Applied — press Undo to revert, or save a new version to keep it.' : 'Preview the palette, fonts and logo before anything changes.'}</span>
+                    </span>
+                  </button>
+                  {!canEdit ? <p className="editor-hint">This content is not editable, so brand essentials are unavailable.</p> : null}
+                  {!brandEssentialsAvailable ? <p className="editor-hint">Run a brand scan first — no usable brand identity was found to import.</p> : null}
+                  {brandApplySummary ? (
+                    <div className="brand-essentials-summary" role="status">
+                      <span className="st-label">Last application</span>
+                      <p>{brandApplySummary.pagesThemed} page(s) themed · {brandApplySummary.titlesStyled} titles · {brandApplySummary.headingsStyled} headings · {brandApplySummary.bodiesStyled} text · {brandApplySummary.shapesStyled} shapes · {brandApplySummary.buttonsStyled} buttons</p>
+                      {brandApplySummary.backgroundTreatment === 'scanned-surface' ? <p>Background: scanned site surface {brandApplySummary.backgroundColour}.</p> : null}
+                      {brandApplySummary.backgroundTreatment === 'derived-wash' ? <p>Background: derived palette tint {brandApplySummary.backgroundColour} (no explicit site background in the scan).</p> : null}
+                      {brandApplySummary.backgroundTreatment === 'preserved-media' ? <p>Background kept: your image/gradient stays.</p> : null}
+                      {brandApplySummary.contrastFallbacks > 0 ? <p>{brandApplySummary.contrastFallbacks} contrast-safe fallback(s) applied.</p> : null}
+                      {brandApplySummary.logoFailure ? <p>Logo unavailable: {brandApplySummary.logoFailure.reason}</p> : null}
+                      {brandApplySummary.logo.length ? <p>Logo: {brandApplySummary.logo.map((entry) => entry.outcome).join(', ')}.</p> : null}
+                      <p className="editor-hint">Unsaved — save a new version to keep it, or Undo to revert.</p>
+                    </div>
+                  ) : null}
                   <span className="st-label">Palette</span>
                   <div className="editor-shapes-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
                     {brand.colors.map((color) => (
@@ -3708,6 +4220,16 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom / 100})`,
             }}
             onClick={(event) => { if (event.target === frameRef.current) setSelectedId(null); }}
+            onDragOver={(event) => {
+              if (!event.dataTransfer.types.includes('application/x-brand-logo')) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'copy';
+              frameRef.current?.classList.add('is-logo-drop-target');
+            }}
+            onDragLeave={(event) => {
+              if (event.target === frameRef.current) frameRef.current?.classList.remove('is-logo-drop-target');
+            }}
+            onDrop={(event) => { frameRef.current?.classList.remove('is-logo-drop-target'); onCanvasLogoDrop(event); }}
           >
             <span className="studio-page-label">
               {isStoryboard ? <Clapperboard size={11} /> : null}
@@ -3736,12 +4258,26 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               (activePage?.blocks ?? []).map((block, layerIndex) => {
                 const geo = block.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
                 const isSelected = selectedId === block.id && !previewMode;
+                // Handles and the selection border keep a constant SCREEN size
+                // at every zoom: divide the on-screen px by the frame scale and
+                // snap to whole CSS px — fractional widths anti-alias into a
+                // blurry "glittering" line.
+                const frameScale = Math.max(0.05, zoom / 100);
+                const handlePx = Math.max(7, Math.min(16, Math.round(10 / frameScale)));
+                const selPx = Math.max(1, Math.min(3, Math.round(2 / frameScale)));
                 return (
                   <div
                     key={block.id}
                     data-bid={block.id}
                     className={`editor-free-block${isSelected ? ' is-selected' : ''}${block.hidden ? ' is-ghost' : ''}`}
-                    style={{ left: geo.x, top: geo.y, width: geo.w, height: geo.h, zIndex: layerIndex + 1, transform: geo.rotation ? `rotate(${geo.rotation}deg)` : undefined, cursor: canEdit && !block.locked ? 'move' : 'default' }}
+                    style={{
+                      left: geo.x, top: geo.y, width: geo.w, height: geo.h, zIndex: layerIndex + 1,
+                      transform: geo.rotation ? `rotate(${geo.rotation}deg)` : undefined,
+                      cursor: canEdit && !block.locked ? 'move' : 'default',
+                      ['--st-handle-size' as string]: `${handlePx}px`,
+                      ['--st-sel-width' as string]: `${selPx}px`,
+                      ['--st-sel-offset' as string]: `${Math.max(1, Math.min(4, Math.round(2 / frameScale)))}px`,
+                    }}
                     onPointerDown={(event) => {
                       if (event.button !== 0 || spaceHeld.current) return;
                       setSelectedId(block.id);
@@ -3759,6 +4295,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                         origin: { ...geo },
                       };
                     }}
+                    onDoubleClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (!canEdit || block.locked || block.type !== 'shape') return;
+                      const pointerTarget = event.target as HTMLElement;
+                      if (pointerTarget.closest('.editor-inline-edit, [contenteditable="true"], .st-free-handle')) return;
+                      requestInlineTextEditing(block.id);
+                    }}
                     onContextMenu={(event) => openTextContextMenu(event, block)}
 
                   >
@@ -3770,7 +4314,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                         <span
                           key={dir}
                           className={`st-free-handle st-handle-${dir}`}
-                          style={{ cursor: dir.includes('n') && dir.length === 1 ? 'ns-resize' : dir.includes('s') && dir.length === 1 ? 'ns-resize' : dir === 'e' ? 'ew-resize' : dir === 'w' ? 'ew-resize' : dir === 'ne' ? 'nesw-resize' : dir === 'sw' ? 'nesw-resize' : 'nwse-resize' }}
                           onPointerDown={(event) => {
                             event.stopPropagation();
                             (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -3855,7 +4398,10 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       ) : null}
                       {block.type === 'shape' ? (
                         <div className={`content-doc-shape align-${block.align}`}>
-                          <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? DEFAULT_CONTENT_SHAPE_COLOR, width: `${block.width ?? 60}%`, height: block.height }} />
+                          <span className="editor-shape-flow-host" style={{ position: 'relative', display: 'inline-block', width: `${block.width ?? 60}%`, height: block.height }}>
+                            <span className={`content-doc-shape-item is-${block.shape}`} style={{ background: block.color ?? DEFAULT_CONTENT_SHAPE_COLOR, width: '100%', height: '100%', display: 'inline-block', pointerEvents: 'none' }} />
+                            {renderShapeTextHost(block, canEdit && !block.locked, false)}
+                          </span>
                         </div>
                       ) : null}
                       {block.type === 'button' ? (
@@ -3928,24 +4474,27 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                           <img src={activePage.backgroundImage.src} alt={activePage.backgroundImage.alt || 'Page background preview'} />
                           <span><Eye size={13} /> Preview image</span>
                         </button>
-                        <div className="st-field-row">
-                          <button type="button" className="st-btn" style={{ height: 30 }} onClick={() => { setBackgroundImageUrl(''); setShowBackgroundImageUrlInput(true); }} disabled={!canEdit || previewMode}>Change image</button>
-                          <button type="button" className="st-quiet-link" onClick={() => { setPageBackgroundImage(null); setBackgroundImageUrl(''); setShowBackgroundImageUrlInput(false); }} disabled={!canEdit || previewMode}>Remove image</button>
-                        </div>
+                        <button type="button" className="st-quiet-link" onClick={() => setPageBackgroundImage(null)} disabled={!canEdit || previewMode}>Remove image</button>
                       </div>
                     ) : (
-                      <p className="editor-hint">No background image. Add an image URL to place an image behind the canvas elements.</p>
+                      <p className="editor-hint">No background image. Upload one to place it behind the canvas elements.</p>
                     )}
-                    {(!activePage?.backgroundImage || showBackgroundImageUrlInput) ? (
-                      <>
-                        <input className="st-input" type="url" inputMode="url" value={backgroundImageUrl} onChange={(event) => setBackgroundImageUrl(event.target.value)} placeholder="Paste image URL (HTTP or HTTPS)" disabled={!canEdit || previewMode} />
-                        <div className="st-field-row">
-                          <button type="button" className="st-btn" style={{ height: 30 }} onClick={applyBackgroundImageUrl} disabled={!canEdit || previewMode || !backgroundImageUrl.trim()}>Apply image</button>
-                          {activePage?.backgroundImage ? <button type="button" className="st-quiet-link" onClick={() => { setShowBackgroundImageUrlInput(false); setBackgroundImageUrl(''); }}>Cancel</button> : null}
-                        </div>
-                      </>
-                    ) : null}
-                    <span className="editor-hint">The current image opens in a visual preview; internal asset paths are never shown.</span>
+                    <label className="st-field">
+                      <span>{activePage?.backgroundImage ? 'Replace background image · PNG/JPG/WEBP, max 2 MB' : 'Upload background image · PNG/JPG/WEBP, max 2 MB'}</span>
+                      <input
+                        className="st-input"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        disabled={!canEdit || previewMode || isUploadingImage}
+                        onChange={(event) => {
+                          const input = event.currentTarget;
+                          const file = input.files?.[0];
+                          input.value = '';
+                          if (file) void applyBackgroundImageFile(file);
+                        }}
+                      />
+                      {isUploadingImage ? <p className="editor-hint" role="status">Uploading image securely…</p> : null}
+                    </label>
                   </div>
                   <div className="st-field">
                     <span>Margins</span>
@@ -4026,17 +4575,23 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       <input className="st-input" value={selected.text} onChange={(event) => patchBlock(selected.id, { text: event.target.value })} disabled={!canEditBlock(selected)} />
                     </label>
                   ) : null}
-                  {selected.type === 'text' || selected.type === 'heading' ? (
-                    <div className="st-field st-inline-edit-hint">
-                      <span>Text content</span>
-                      <p className="editor-hint">Edit on the canvas: double-click the text, or right-click and choose Edit text. No separate textbox is needed.</p>
-                    </div>
-                  ) : null}
                   {selected.type === 'image' ? (
                     <>
                       <label className="st-field">
-                        <span>Image URL</span>
-                        <input className="st-input" value={selected.url} onChange={(event) => patchBlock(selected.id, { url: event.target.value })} disabled={!canEditBlock(selected)} inputMode="url" placeholder="https://…" />
+                        <span>Replace image · PNG/JPG/WEBP, max 2 MB</span>
+                        <input
+                          className="st-input"
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          disabled={!canEditBlock(selected) || isUploadingImage}
+                          onChange={(event) => {
+                            const input = event.currentTarget;
+                            const file = input.files?.[0];
+                            input.value = '';
+                            if (file) void replaceImageFromFile(selected.id, file);
+                          }}
+                        />
+                        {isUploadingImage ? <p className="editor-hint" role="status">Uploading image securely…</p> : null}
                       </label>
                       <label className="st-field">
                         <span>Alt text</span>
@@ -4076,6 +4631,42 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                         ))}
                       </div>
                     </div>
+                  ) : null}
+                  {selected.type === 'shape' ? (
+                    <>
+                      <label className="st-field">
+                        <span>Shape text</span>
+                        <textarea
+                          className="st-input"
+                          rows={2}
+                          value={selected.text ?? ''}
+                          placeholder="Double-click the shape on canvas to type inside it"
+                          disabled={!canEditBlock(selected)}
+                          onChange={(event) => patchBlock(selected.id, {
+                            text: event.target.value,
+                            // Typing here is a plain-text edit: rebuild the runs so
+                            // text and runs stay consistent instead of silently
+                            // keeping styling that no longer matches the text.
+                            richText: event.target.value ? [{ text: event.target.value }] : undefined,
+                          })}
+                        />
+                      </label>
+                      <div className="st-field">
+                        <span>Text ink</span>
+                        <div className="st-field-row">
+                          <input
+                            type="color"
+                            value={selected.textColor ?? readableShapeInk(selected.color ?? DEFAULT_CONTENT_SHAPE_COLOR)}
+                            onChange={(event) => patchBlock(selected.id, { textColor: event.target.value })}
+                            disabled={!canEditBlock(selected) || !(selected.text ?? '').length}
+                            aria-label="Shape text ink colour"
+                          />
+                          {selected.textColor ? (
+                            <button type="button" className="st-quiet-link" onClick={() => patchBlock(selected.id, { textColor: null })} disabled={!canEditBlock(selected)}>Auto contrast</button>
+                          ) : <span className="st-preview-tag">Auto contrast</span>}
+                        </div>
+                      </div>
+                    </>
                   ) : null}
                   {selected.type === 'shape' ? (
                     selected.svgPath ? (
@@ -4230,6 +4821,20 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           </aside>
         ) : null}
       </div>
+
+      {/* ---------- transient feedback (was invisible before — now real UI) ---------- */}
+      {error || notice ? (
+        <div className={`studio-status-strip${error ? ' is-error' : ''}`} role={error ? 'alert' : 'status'}>
+          {error ? <AlertTriangle size={13} /> : <Check size={13} />}
+          <span>{error ?? notice}</span>
+          <button
+            type="button"
+            onClick={() => { setError(null); setNotice(null); }}
+            aria-label="Dismiss message"
+            title="Dismiss message"
+          >×</button>
+        </div>
+      ) : null}
 
       {/* ---------- bottom bar ---------- */}
       {!focusMode ? (
@@ -4685,6 +5290,107 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           </div>
         </div>
       ) : null}
+
+      <AppDialog
+        open={brandApplyOpen}
+        title="Import brand in canvas"
+        description="Styling only — your text, links, images and layout stay exactly as they are."
+        onClose={() => { if (!brandApplyBusy) setBrandApplyOpen(false); }}
+        className="brand-apply-dialog"
+      >
+        <div className="brand-apply-body">
+          {brandApplyError ? <p className="brand-apply-error" role="alert">{brandApplyError}</p> : null}
+          <section className="brand-apply-scope" role="radiogroup" aria-label="Apply scope">
+            <button type="button" role="radio" aria-checked={brandApplyScope === 'document'} className={brandApplyScope === 'document' ? 'is-active' : ''} disabled={brandApplyBusy} onClick={() => setBrandApplyScope('document')}>
+              <strong>Entire document</strong><span>{pages.length} page{pages.length === 1 ? '' : 's'}</span>
+            </button>
+            <button type="button" role="radio" aria-checked={brandApplyScope === 'page'} className={brandApplyScope === 'page' ? 'is-active' : ''} disabled={brandApplyBusy} onClick={() => setBrandApplyScope('page')}>
+              <strong>Current page</strong><span>Page {activePageIndex + 1} only</span>
+            </button>
+          </section>
+          {brandApplyPreview ? (
+            <section className="brand-apply-section">
+              <span className="st-label">Preview · page {brandApplyPreview.pageIndex + 1}</span>
+              <div className="brand-apply-compare">
+                <figure>
+                  <figcaption>Before</figcaption>
+                  <div className="brand-apply-mini">
+                    <ContentDocumentView body={brandApplyPreview.before} fitToBounds pageIndex={brandApplyPreview.pageIndex} />
+                  </div>
+                </figure>
+                <figure>
+                  <figcaption>After — branded</figcaption>
+                  <div className="brand-apply-mini is-after">
+                    <ContentDocumentView body={brandApplyPreview.after} fitToBounds pageIndex={brandApplyPreview.pageIndex} />
+                  </div>
+                </figure>
+              </div>
+              {brandApplyPreview.note ? <p className="editor-hint" role="status">{brandApplyPreview.note}</p> : null}
+            </section>
+          ) : null}
+          <section className="brand-apply-section">
+            <span className="st-label">Palette</span>
+            {brandEssentials.colors.length ? (
+              <div className="brand-apply-swatches">
+                {brandEssentials.colors.slice(0, 8).map((color, index) => (
+                  <span key={color} className="brand-apply-swatch" title={`Role: ${index === 0 ? 'accent / buttons' : index === 1 ? 'secondary shapes' : index === brandEssentials.colors.length - 1 && color === brandEssentials.surface ? 'page surface' : 'support'}`}>
+                    <span style={{ background: color }} />
+                    <small>{color}</small>
+                  </span>
+                ))}
+              </div>
+            ) : <p className="editor-hint">No usable brand colours were scanned. Typography will still apply.</p>}
+          </section>
+          <section className="brand-apply-section">
+            <span className="st-label">Typography</span>
+            <div className="brand-apply-type">
+              <div>
+                <small>Heading — {brandEssentials.headingFont ?? 'theme default'}{brandEssentials.headingFont && !brandFontsLoaded.includes(brandEssentials.headingFont) ? ' (fallback — asset not loaded)' : ''}</small>
+                <p style={{ fontFamily: brandEssentials.headingFont ? `'${brandEssentials.headingFont}', Georgia, serif` : undefined, fontWeight: 700, fontSize: 18 }}>Headlines that carry the brand</p>
+              </div>
+              <div>
+                <small>Body — {brandEssentials.bodyFont ?? 'theme default'}{brandEssentials.bodyFont && !brandFontsLoaded.includes(brandEssentials.bodyFont) ? ' (fallback — asset not loaded)' : ''}</small>
+                <p style={{ fontFamily: brandEssentials.bodyFont ? `'${brandEssentials.bodyFont}', Arial, sans-serif` : undefined }}>Body copy stays quiet, readable and true to the brand voice.</p>
+              </div>
+            </div>
+            {brandEssentials.accent ? (
+              <p className="editor-hint">
+                Contrast: ink on page {' '}
+                {(() => {
+                  const bg = brandEssentials.surface ?? '#ffffff';
+                  const ratio = contrastRatio(brandEssentials.ink, bg);
+                  return `${ratio.toFixed(1)}:1 ${ratio >= 4.5 ? '— AA pass' : '— a safe fallback will be used'}`;
+                })()}
+                {' · '}label on accent {' '}
+                {(() => {
+                  const ratio = contrastRatio(contrastSafeLabel(brandEssentials.accent, brandEssentials.ink), brandEssentials.accent);
+                  return `${ratio.toFixed(1)}:1 ${ratio >= 4.5 ? '— AA pass' : '— a safe fallback will be used'}`;
+                })()}
+              </p>
+            ) : null}
+          </section>
+          {brandEssentials.logoUrl ? (
+            <section className="brand-apply-section">
+              <label className="brand-apply-logo">
+                <input type="checkbox" checked={brandApplyLogo} disabled={brandApplyBusy} onChange={(event) => setBrandApplyLogo(event.target.checked)} />
+                <span>
+                  <strong>Add brand logo as a new editable layer</strong>
+                  <span>Placed in a free corner; skipped on pages with no room. Never replaces existing images.</span>
+                </span>
+              </label>
+            </section>
+          ) : (
+            <p className="editor-hint">No brand logo was detected in the scan — palette and typography will still apply.</p>
+          )}
+          <p className="editor-hint">Will change: colours, heading/body fonts, shape fills, button fills + labels{brandApplyLogo && brandEssentials.logoUrl ? ', one new logo layer per page' : ''}. Untouched: all copy, links, images, geometry, page order and sizes. Reversible with Undo; nothing is saved until you press Save new version.</p>
+          <div className="brand-apply-actions">
+            <button type="button" className="st-btn" disabled={brandApplyBusy} onClick={() => setBrandApplyOpen(false)}>Cancel</button>
+            <button type="button" className="st-btn st-btn--primary brand-apply-confirm" disabled={brandApplyDisabled} onClick={() => void runBrandApply()}>
+              {brandApplyBusy ? 'Applying…' : `Apply to ${brandApplyScope === 'document' ? `all ${pages.length} pages` : `page ${activePageIndex + 1}`}`}
+            </button>
+          </div>
+        </div>
+      </AppDialog>
 
       <AppDialog
         open={Boolean(studioActionDialog)}

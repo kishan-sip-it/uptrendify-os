@@ -473,3 +473,19 @@
     transition: none !important;
   }
 }
+
+/* Campaign index: responsive card grid — campaigns sit side by side on
+   desktop, collapse to one readable column on narrow screens. */
+.shell .campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 14px;
+}
+
+/* Two-column card layout (campaign detail Planning/Strategy, etc.):
+   side by side on desktop, stacked on narrow screens. */
+.shell .grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+}

@@ -6,9 +6,11 @@ import {
   CONTENT_PAGE_SIZES,
   DEFAULT_CONTENT_SHAPE_COLOR,
   DEFAULT_CONTENT_TEXT_COLOR,
+  defaultShapeTextFontSize,
   headingFontSizeForLevel,
   pageBackgroundStyles,
   parseContentBody,
+  readableShapeInk,
   resolveBlockText,
   type ContentDocBlock,
   type ContentDocPage,
@@ -267,8 +269,14 @@ export function ContentDocumentView({
               );
             }
             if (block.type === 'shape') {
+              const shapeLabel = block.text ?? '';
+              const shapeInk = block.textColor ?? readableShapeInk(block.color ?? DEFAULT_CONTENT_SHAPE_COLOR);
               return (
-                <div key={block.id} className={`content-doc-shape align-${block.align}`} style={geoStyle}>
+                <div
+                  key={block.id}
+                  className={`content-doc-shape align-${block.align}`}
+                  style={{ position: 'relative', ...geoStyle }}
+                >
                   {block.svgPath && block.svgBounds && block.svgMatrix ? (
                     <svg
                       width="100%"
@@ -293,6 +301,14 @@ export function ContentDocumentView({
                       style={{ background: block.color ?? DEFAULT_CONTENT_SHAPE_COLOR, width: '100%', height: '100%' }}
                     />
                   )}
+                  {shapeLabel ? (
+                    <div
+                      className={`editor-shape-text align-${block.align}`}
+                      style={{ color: shapeInk, fontSize: `${block.fontSize ?? defaultShapeTextFontSize(block)}px`, fontFamily: block.fontFamily || undefined }}
+                    >
+                      {renderInlineText(shapeLabel, block.richText)}
+                    </div>
+                  ) : null}
                 </div>
               );
             }
