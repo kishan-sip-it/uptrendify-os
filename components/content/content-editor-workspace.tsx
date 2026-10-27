@@ -43,6 +43,9 @@ import {
   CopyPlus,
   AlertTriangle,
   RefreshCw,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
 } from 'lucide-react';
 import {
   CONTENT_DOC_MAX_BLOCKS,
@@ -888,14 +891,14 @@ function CanvasText({
   }
 
   if (!value.trim()) {
+    // Visually empty artwork: no placeholder copy. Discoverability stays in
+    // the accessible tooltip; double-click enters editing as before.
     return (
       <div
         className="editor-canvas-text is-empty"
         onClick={handleCanvasClick} onDoubleClick={handleCanvasDoubleClick}
         title={disabled ? undefined : editOnDoubleClick ? 'Double-click to write directly on the canvas' : 'Click to write directly'}
-      >
-        Empty text block — click to write.
-      </div>
+      />
     );
   }
   return (
@@ -933,15 +936,6 @@ function defaultFontSize(block: EditorBlock): number {
   if (block.type === 'heading') return headingFontSizeForLevel(block.level);
   if (block.type === 'text') return block.size === 'sm' ? 13 : block.size === 'md' ? 15 : block.size === 'lg' ? 18 : 24;
   return 16;
-}
-
-function normalizeHttpImageUrl(value: string): string | null {
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
 }
 
 function normalizeHttpLinkUrl(value: string): string | null {
@@ -1222,10 +1216,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [overflow, setOverflow] = useState(false);
   const [safeZones, setSafeZones] = useState(false);
   const [duplicateSize, setDuplicateSize] = useState<ContentPageSizeId>('square');
-  const [imageUrlDraft, setImageUrlDraft] = useState('');
   const [imageAltDraft, setImageAltDraft] = useState('');
-  const [backgroundImageUrl, setBackgroundImageUrl] = useState('');
-  const [showBackgroundImageUrlInput, setShowBackgroundImageUrlInput] = useState(false);
   const [backgroundPreviewOpen, setBackgroundPreviewOpen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isImportingTemplate, setIsImportingTemplate] = useState(false);
@@ -1363,9 +1354,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   }, []);
 
   useEffect(() => {
-    // Never expose internal/API asset paths as editable text by default.
-    setBackgroundImageUrl('');
-    setShowBackgroundImageUrlInput(false);
+    // Close the background-image preview whenever the page/image changes.
     setBackgroundPreviewOpen(false);
   }, [activePage?.id, activePage?.backgroundImage?.src]);
   const serialized = useMemo(
@@ -2054,19 +2043,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     return true;
   };
 
-  const addImageFromUrl = () => {
-    if (!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS) return;
-    const src = normalizeHttpImageUrl(imageUrlDraft);
-    if (!src) {
-      setError('Enter a valid image URL beginning with https:// or http://.');
-      return;
-    }
-    if (insertImageBlock(src, imageAltDraft.trim())) {
-      setImageUrlDraft('');
-      setImageAltDraft('');
-    }
-  };
-
   /** Upload an image file as a managed asset. Returns the managed URL, or
    * null after surfacing the failure reason. */
   const uploadImageAsset = async (file: File): Promise<string | null> => {
@@ -2490,17 +2466,12 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     event.preventDefault();
     void importSvgMarkup(match[0]);
   };
-  const applyBackgroundImageUrl = () => {
-    if (!canEdit) return;
-    const src = normalizeHttpImageUrl(backgroundImageUrl);
-    if (!src) {
-      setError('Enter a valid background image URL beginning with https:// or http://.');
-      return;
-    }
+  /** Upload an image and set it as the page background (managed asset). */
+  const applyBackgroundImageFile = async (file: File) => {
+    if (!canEdit || previewMode) return;
+    const src = await uploadImageAsset(file);
+    if (!src) return;
     setPageBackgroundImage({ src, alt: '' });
-    setBackgroundImageUrl('');
-    setShowBackgroundImageUrlInput(false);
-    setError(null);
     setNotice('Page background image updated.');
   };
   const useImageAsBackground = (block: EditorBlock) => {
@@ -3562,11 +3533,26 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             ))}
           </span>
         ) : null}
-        {block.type === 'text' || block.type === 'heading' ? (
-          <span className="st-float-group" aria-label="Text alignment">
-            {(['left', 'center', 'right'] as const).map((option) => (
-              <button key={option} type="button" className={block.align === option ? 'is-on' : ''} onClick={() => patchBlock(block.id, { align: option })} disabled={!canEditBlock(block)} title={`Align text ${option}`}>{option === 'left' ? '⇤' : option === 'center' ? '≡' : '⇥'}</button>
-            ))}
+        {block.type === 'text' || block.type === 'heading' || block.type === 'shape' ? (
+          <span className="st-float-group" role="group" aria-label="Text alignment">
+            {(['left', 'center', 'right'] as const).map((option) => {
+              const AlignIcon = option === 'left' ? AlignLeft : option === 'center' ? AlignCenter : AlignRight;
+              const labels = { left: 'Align left', center: 'Align center', right: 'Align right' } as const;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={block.align === option ? 'is-on' : ''}
+                  onClick={() => patchBlock(block.id, { align: option })}
+                  disabled={!canEditBlock(block)}
+                  title={labels[option]}
+                  aria-label={labels[option]}
+                  aria-pressed={block.align === option}
+                >
+                  <AlignIcon size={13} />
+                </button>
+              );
+            })}
           </span>
         ) : null}
         {block.type === 'image' && logoImportStates[block.id] && brandEssentials.logoUrl ? (
@@ -3997,16 +3983,10 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                     />
                   </label>
                   {isUploadingImage ? <p className="editor-hint" role="status">Uploading image securely…</p> : null}
-                  <span className="st-label">Or use an image URL</span>
-                  <label className="st-field">
-                    <span>Image URL</span>
-                    <input className="st-input" type="url" inputMode="url" value={imageUrlDraft} onChange={(event) => setImageUrlDraft(event.target.value)} placeholder="https://example.com/image.png" disabled={!canEdit} />
-                  </label>
                   <label className="st-field">
                     <span>Alt text (optional)</span>
                     <input className="st-input" value={imageAltDraft} onChange={(event) => setImageAltDraft(event.target.value)} placeholder="Describe the image" disabled={!canEdit} />
                   </label>
-                  <button type="button" className="st-btn st-btn--primary" onClick={addImageFromUrl} disabled={!canEdit || !imageUrlDraft.trim() || isUploadingImage || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS}>Insert image on canvas</button>
                   <span className="st-label">Blocks</span>
                   <div className="st-insert-grid">
                     {insertTiles.filter(({ label }) => insertMatches(label)).map(({ type, label, icon: Icon }) => (
@@ -4076,7 +4056,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                         >
                           Add logo to canvas
                         </button>
-                        <span className="editor-hint">Drops in place instantly; its secure copy imports in the background.</span>
                       </div>
                     </div>
                     <div className="brand-kit-swatches">
@@ -4124,6 +4103,9 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                     <div className="brand-essentials-summary" role="status">
                       <span className="st-label">Last application</span>
                       <p>{brandApplySummary.pagesThemed} page(s) themed · {brandApplySummary.titlesStyled} titles · {brandApplySummary.headingsStyled} headings · {brandApplySummary.bodiesStyled} text · {brandApplySummary.shapesStyled} shapes · {brandApplySummary.buttonsStyled} buttons</p>
+                      {brandApplySummary.backgroundTreatment === 'scanned-surface' ? <p>Background: scanned site surface {brandApplySummary.backgroundColour}.</p> : null}
+                      {brandApplySummary.backgroundTreatment === 'derived-wash' ? <p>Background: derived palette tint {brandApplySummary.backgroundColour} (no explicit site background in the scan).</p> : null}
+                      {brandApplySummary.backgroundTreatment === 'preserved-media' ? <p>Background kept: your image/gradient stays.</p> : null}
                       {brandApplySummary.contrastFallbacks > 0 ? <p>{brandApplySummary.contrastFallbacks} contrast-safe fallback(s) applied.</p> : null}
                       {brandApplySummary.logoFailure ? <p>Logo unavailable: {brandApplySummary.logoFailure.reason}</p> : null}
                       {brandApplySummary.logo.length ? <p>Logo: {brandApplySummary.logo.map((entry) => entry.outcome).join(', ')}.</p> : null}
@@ -4277,10 +4259,12 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 const geo = block.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
                 const isSelected = selectedId === block.id && !previewMode;
                 // Handles and the selection border keep a constant SCREEN size
-                // at every zoom: divide the on-screen px by the frame scale.
+                // at every zoom: divide the on-screen px by the frame scale and
+                // snap to whole CSS px — fractional widths anti-alias into a
+                // blurry "glittering" line.
                 const frameScale = Math.max(0.05, zoom / 100);
-                const handlePx = Math.max(7, Math.min(16, 10 / frameScale));
-                const selPx = Math.max(1, Math.min(3, 2 / frameScale));
+                const handlePx = Math.max(7, Math.min(16, Math.round(10 / frameScale)));
+                const selPx = Math.max(1, Math.min(3, Math.round(2 / frameScale)));
                 return (
                   <div
                     key={block.id}
@@ -4292,7 +4276,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       cursor: canEdit && !block.locked ? 'move' : 'default',
                       ['--st-handle-size' as string]: `${handlePx}px`,
                       ['--st-sel-width' as string]: `${selPx}px`,
-                      ['--st-sel-offset' as string]: `${Math.max(1, Math.min(4, 2 / frameScale))}px`,
+                      ['--st-sel-offset' as string]: `${Math.max(1, Math.min(4, Math.round(2 / frameScale)))}px`,
                     }}
                     onPointerDown={(event) => {
                       if (event.button !== 0 || spaceHeld.current) return;
@@ -4490,24 +4474,27 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                           <img src={activePage.backgroundImage.src} alt={activePage.backgroundImage.alt || 'Page background preview'} />
                           <span><Eye size={13} /> Preview image</span>
                         </button>
-                        <div className="st-field-row">
-                          <button type="button" className="st-btn" style={{ height: 30 }} onClick={() => { setBackgroundImageUrl(''); setShowBackgroundImageUrlInput(true); }} disabled={!canEdit || previewMode}>Change image</button>
-                          <button type="button" className="st-quiet-link" onClick={() => { setPageBackgroundImage(null); setBackgroundImageUrl(''); setShowBackgroundImageUrlInput(false); }} disabled={!canEdit || previewMode}>Remove image</button>
-                        </div>
+                        <button type="button" className="st-quiet-link" onClick={() => setPageBackgroundImage(null)} disabled={!canEdit || previewMode}>Remove image</button>
                       </div>
                     ) : (
-                      <p className="editor-hint">No background image. Add an image URL to place an image behind the canvas elements.</p>
+                      <p className="editor-hint">No background image. Upload one to place it behind the canvas elements.</p>
                     )}
-                    {(!activePage?.backgroundImage || showBackgroundImageUrlInput) ? (
-                      <>
-                        <input className="st-input" type="url" inputMode="url" value={backgroundImageUrl} onChange={(event) => setBackgroundImageUrl(event.target.value)} placeholder="Paste image URL (HTTP or HTTPS)" disabled={!canEdit || previewMode} />
-                        <div className="st-field-row">
-                          <button type="button" className="st-btn" style={{ height: 30 }} onClick={applyBackgroundImageUrl} disabled={!canEdit || previewMode || !backgroundImageUrl.trim()}>Apply image</button>
-                          {activePage?.backgroundImage ? <button type="button" className="st-quiet-link" onClick={() => { setShowBackgroundImageUrlInput(false); setBackgroundImageUrl(''); }}>Cancel</button> : null}
-                        </div>
-                      </>
-                    ) : null}
-                    <span className="editor-hint">The current image opens in a visual preview; internal asset paths are never shown.</span>
+                    <label className="st-field">
+                      <span>{activePage?.backgroundImage ? 'Replace background image · PNG/JPG/WEBP, max 2 MB' : 'Upload background image · PNG/JPG/WEBP, max 2 MB'}</span>
+                      <input
+                        className="st-input"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        disabled={!canEdit || previewMode || isUploadingImage}
+                        onChange={(event) => {
+                          const input = event.currentTarget;
+                          const file = input.files?.[0];
+                          input.value = '';
+                          if (file) void applyBackgroundImageFile(file);
+                        }}
+                      />
+                      {isUploadingImage ? <p className="editor-hint" role="status">Uploading image securely…</p> : null}
+                    </label>
                   </div>
                   <div className="st-field">
                     <span>Margins</span>
@@ -4588,60 +4575,30 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       <input className="st-input" value={selected.text} onChange={(event) => patchBlock(selected.id, { text: event.target.value })} disabled={!canEditBlock(selected)} />
                     </label>
                   ) : null}
-                  {selected.type === 'text' || selected.type === 'heading' ? (
-                    <div className="st-field st-inline-edit-hint">
-                      <span>Text content</span>
-                      <p className="editor-hint">Edit on the canvas: double-click the text, or right-click and choose Edit text. No separate textbox is needed.</p>
-                    </div>
-                  ) : null}
                   {selected.type === 'image' ? (
-                    isManagedStudioAssetUrl(selected.url) ? (
-                      <>
-                        <div className="st-field">
-                          <span>Image source</span>
-                          <div className="st-managed-image" role="status">
-                            <ImageIcon size={15} aria-hidden="true" />
-                            <span>
-                              <strong>Managed image</strong>
-                              <small>Stored securely with this content — nothing to paste. Replace it below or on the canvas.</small>
-                            </span>
-                          </div>
-                        </div>
-                        <label className="st-field">
-                          <span>Replace image · PNG/JPG/WEBP, max 2 MB</span>
-                          <input
-                            className="st-input"
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            disabled={!canEditBlock(selected) || isUploadingImage}
-                            onChange={(event) => {
-                              const input = event.currentTarget;
-                              const file = input.files?.[0];
-                              input.value = '';
-                              if (file) void replaceImageFromFile(selected.id, file);
-                            }}
-                          />
-                          {isUploadingImage ? <p className="editor-hint" role="status">Uploading image securely…</p> : null}
-                        </label>
-                        <label className="st-field">
-                          <span>Alt text</span>
-                          <input className="st-input" value={selected.alt} onChange={(event) => patchBlock(selected.id, { alt: event.target.value })} disabled={!canEditBlock(selected)} placeholder="Describe the image" />
-                        </label>
-                        <button type="button" className="st-btn st-btn--primary" onClick={() => useImageAsBackground(selected)} disabled={!canEditBlock(selected)} title="Use this image as the page background instead of a separate layer">Set as page background</button>
-                      </>
-                    ) : (
-                      <>
-                        <label className="st-field">
-                          <span>Image URL</span>
-                          <input className="st-input" value={selected.url} onChange={(event) => patchBlock(selected.id, { url: event.target.value })} disabled={!canEditBlock(selected)} inputMode="url" placeholder="https://…" />
-                        </label>
-                        <label className="st-field">
-                          <span>Alt text</span>
-                          <input className="st-input" value={selected.alt} onChange={(event) => patchBlock(selected.id, { alt: event.target.value })} disabled={!canEditBlock(selected)} placeholder="Describe the image" />
-                        </label>
-                        <button type="button" className="st-btn st-btn--primary" onClick={() => useImageAsBackground(selected)} disabled={!canEditBlock(selected)} title="Use this image as the page background instead of a separate layer">Set as page background</button>
-                      </>
-                    )
+                    <>
+                      <label className="st-field">
+                        <span>Replace image · PNG/JPG/WEBP, max 2 MB</span>
+                        <input
+                          className="st-input"
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          disabled={!canEditBlock(selected) || isUploadingImage}
+                          onChange={(event) => {
+                            const input = event.currentTarget;
+                            const file = input.files?.[0];
+                            input.value = '';
+                            if (file) void replaceImageFromFile(selected.id, file);
+                          }}
+                        />
+                        {isUploadingImage ? <p className="editor-hint" role="status">Uploading image securely…</p> : null}
+                      </label>
+                      <label className="st-field">
+                        <span>Alt text</span>
+                        <input className="st-input" value={selected.alt} onChange={(event) => patchBlock(selected.id, { alt: event.target.value })} disabled={!canEditBlock(selected)} placeholder="Describe the image" />
+                      </label>
+                      <button type="button" className="st-btn st-btn--primary" onClick={() => useImageAsBackground(selected)} disabled={!canEditBlock(selected)} title="Use this image as the page background instead of a separate layer">Set as page background</button>
+                    </>
                   ) : null}
                   {selected.type === 'button' ? (
                     <label className="st-field">
@@ -4693,7 +4650,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                             richText: event.target.value ? [{ text: event.target.value }] : undefined,
                           })}
                         />
-                        <span className="editor-hint">Double-click the shape on canvas to style its text — bold, size, highlight. Text ink and shape fill stay independent.</span>
                       </label>
                       <div className="st-field">
                         <span>Text ink</span>

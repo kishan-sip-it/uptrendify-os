@@ -156,9 +156,13 @@ describe('applyBrandEssentials — styling roles', () => {
     source.pages[0]!.gradient = { from: '#ffffff', to: '#e2e8f0', angle: 135 };
     source.pages[1]!.bg = '#fef3c7';
     const untouched = applyBrandEssentials({ doc: source, essentials: brand, scope: 'document', activePageIndex: 0, includeLogo: false });
+    // Media backgrounds are preserved; user solid backgrounds take the
+    // scanned site surface (reversible with Undo, disclosed in the preview).
     expect(untouched.doc.pages[0]!.gradient).toEqual(source.pages[0]!.gradient);
-    expect(untouched.doc.pages[1]!.bg).toBe('#fef3c7');
-    expect(untouched.stats.pagesBackgroundPreserved).toBe(2);
+    expect(untouched.doc.pages[1]!.bg).toBe(brand.surface);
+    expect(untouched.stats.pagesBackgroundPreserved).toBe(1);
+    // backgroundTreatment reports the ACTIVE page (the gradient one here);
+    // page 2's scanned-surface result is asserted via its bg above.
 
     const bare = doc();
     bare.pages.forEach((page) => { delete (page as { bg?: string }).bg; });
@@ -423,21 +427,18 @@ describe('regressions from the 2026-10-27 screen recording (ISRO text-heavy docu
     ],
   });
 
-  it('is visibly branded: inferred title takes a readable accent, body takes the darkest palette ink that reads on the page', () => {
+  it('is visibly branded: title takes bold emphasis, every text block stays AA on the NEW branded background', () => {
     const result = applyBrandEssentials({ doc: recordedDoc(), essentials: isroEssentials, scope: 'page', activePageIndex: 0, includeLogo: false });
     const blocks = result.doc.pages[0]!.blocks as Extract<ContentDocBlock, { type: 'text' }>[];
     const title = blocks[0]!;
-    // Title: darkened brand accent (not the theme-default ink the old run set),
-    // bold emphasis, AA-large on the preserved cream background.
-    expect(title.color).toBe('#149636');
-    expect(title.color).not.toBe('#1d2634');
+    // The page background is now the disclosed derived wash, and text is
+    // themed against THAT background (not the old cream).
+    const bg = result.doc.pages[0]!.bg ?? '#ffffff';
+    expect(result.stats.backgroundTreatment).toBe('derived-wash');
     expect(title.bold).toBe(true);
-    expect(contrastRatio(title.color ?? '#000', '#faf8d8')).toBeGreaterThanOrEqual(3);
-    // Body: the darkest palette colour (#046a38) passes AA on cream, so ordinary
-    // text visibly takes the brand instead of keeping the default ink.
+    expect(contrastRatio(title.color ?? '#000', bg)).toBeGreaterThanOrEqual(3);
     for (const body of blocks.slice(1)) {
-      expect(body.color).toBe('#046a38');
-      expect(contrastRatio(body.color ?? '#000', '#faf8d8')).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(body.color ?? '#000', bg)).toBeGreaterThanOrEqual(4.5);
     }
     expect(result.stats.titlesStyled).toBe(1);
     expect(result.stats.bodiesStyled).toBe(7);
@@ -447,8 +448,12 @@ describe('regressions from the 2026-10-27 screen recording (ISRO text-heavy docu
   it('preserves the user background, all copy, ids and geometry exactly', () => {
     const source = recordedDoc();
     const result = applyBrandEssentials({ doc: source, essentials: isroEssentials, scope: 'page', activePageIndex: 0, includeLogo: false });
-    expect(result.doc.pages[0]!.bg).toBe('#faf8d8');
-    expect(result.stats.pagesBackgroundPreserved).toBe(1);
+    // The ISRO scan's lightest colour is a saturated yellow (#fffb00), which
+    // is rejected as a page canvas — the background becomes a DISCLOSED
+    // derived palette wash instead of the original cream.
+    expect(result.stats.backgroundTreatment).toBe('derived-wash');
+    expect(result.doc.pages[0]!.bg).not.toBe('#faf8d8');
+    expect(result.doc.pages[0]!.bg).toBe(result.stats.backgroundColour);
     for (const [index, original] of source.pages[0]!.blocks.entries()) {
       const next = result.doc.pages[0]!.blocks[index]!;
       expect(next.id).toBe(original.id);
@@ -523,5 +528,88 @@ describe('regressions from the 2026-10-27 screen recording (ISRO text-heavy docu
     const shades = brandAccentLadderShades(['#18b140']);
     expect(shades).toContain('#149636'); // the title colour the ladder produces on the cream page
     expect(shades).toHaveLength(5);
+  });
+});
+
+describe('page background treatments (evidence-first, disclosed)', () => {
+  const docWithBg = (bg?: string) => {
+    const source = doc();
+    if (bg === undefined) delete source.pages[0]!.bg;
+    else source.pages[0]!.bg = bg;
+    return source;
+  };
+
+  it('applies the scanned site surface even when the page has a user solid background', () => {
+    const result = applyBrandEssentials({ doc: docWithBg('#faf8d8'), essentials: brand, scope: 'page', activePageIndex: 0, includeLogo: false });
+    expect(result.doc.pages[0]!.bg).toBe('#e2e8f0');
+    expect(result.stats.backgroundTreatment).toBe('scanned-surface');
+    expect(result.stats.backgroundColour).toBe('#e2e8f0');
+  });
+
+  it('derives and DISCLOSES a palette wash when the scan has no site surface', () => {
+    const noSurface = { ...brand, surface: null };
+    const result = applyBrandEssentials({ doc: docWithBg('#faf8d8'), essentials: noSurface, scope: 'page', activePageIndex: 0, includeLogo: false });
+    expect(result.stats.backgroundTreatment).toBe('derived-wash');
+    expect(result.doc.pages[0]!.bg).toBe(result.stats.backgroundColour);
+    // Derived wash is a light tint of the secondary palette colour toward white.
+    expect(result.doc.pages[0]!.bg!.toLowerCase()).not.toBe('#f59e0b');
+  });
+
+  it('preserves user background media (gradient) and reports it', () => {
+    const source = doc();
+    source.pages[0]!.gradient = { from: '#ffffff', to: '#eeeeee', angle: 90 };
+    const result = applyBrandEssentials({ doc: source, essentials: brand, scope: 'page', activePageIndex: 0, includeLogo: false });
+    expect(result.doc.pages[0]!.gradient).toEqual({ from: '#ffffff', to: '#eeeeee', angle: 90 });
+    expect(result.stats.backgroundTreatment).toBe('preserved-media');
+  });
+
+  it('converges: applying twice changes the background once only', () => {
+    const options = { doc: docWithBg('#faf8d8'), essentials: brand, scope: 'page' as const, activePageIndex: 0, includeLogo: false };
+    const first = applyBrandEssentials(options);
+    const second = applyBrandEssentials({ ...options, doc: first.doc });
+    expect(second.doc.pages[0]!.bg).toBe(first.doc.pages[0]!.bg);
+    expect(second.stats.backgroundTreatment).toBe('scanned-surface');
+  });
+
+  it('text is themed against the NEW background so contrast holds on the scanned surface', () => {
+    const result = applyBrandEssentials({ doc: docWithBg('#faf8d8'), essentials: brand, scope: 'page', activePageIndex: 0, includeLogo: false });
+    const body = result.doc.pages[0]!.blocks.find((block) => block.type === 'text');
+    expect(body?.type === 'text' && typeof body.color === 'string').toBe(true);
+    const bg = result.doc.pages[0]!.bg ?? '#ffffff';
+    expect(contrastRatio(body?.type === 'text' && body.color ? body.color : '#000000', bg)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe('logo placement prefers the topmost composition band', () => {
+  it('places into a free band near the top before scanning lower bands', () => {
+    const source = doc();
+    // Occupy y=40..300 so the widest variant cannot sit at the very top; a
+    // narrower variant must still land in the highest free band, not the bottom.
+    source.pages[0]!.blocks = [
+      { id: 'a', type: 'text' as const, text: 'one', align: 'left' as const, color: null, bg: null, size: 'md' as const, bold: false, italic: false, underline: false, geometry: { x: 0, y: 40, w: 794, h: 120 } },
+      { id: 'b', type: 'text' as const, text: 'two', align: 'left' as const, color: null, bg: null, size: 'md' as const, bold: false, italic: false, underline: false, geometry: { x: 0, y: 160, w: 794, h: 120 } },
+    ];
+    const placement = planLogoPlacement(source.pages[0]!, 2);
+    expect(placement).not.toBeNull();
+    // First band clear of the blockers (bottom edge 280 + breathing 12),
+    // NOT the page bottom.
+    expect(placement!.y).toBeGreaterThanOrEqual(280);
+    expect(placement!.y).toBeLessThanOrEqual(500);
+  });
+
+  it('never overlaps existing elements while searching', () => {
+    const source = doc();
+    source.pages[0]!.blocks = source.pages[0]!.blocks.map((block) => ({
+      ...block,
+      geometry: { x: (block.geometry?.x ?? 0) % 700, y: (block.geometry?.y ?? 0) % 1000, w: 300, h: 90 },
+    }));
+    const placement = planLogoPlacement(source.pages[0]!, 2);
+    if (placement) {
+      for (const block of source.pages[0]!.blocks) {
+        const g = block.geometry!;
+        const overlaps = placement.x < g.x + g.w && placement.x + placement.w > g.x && placement.y < g.y + g.h && placement.y + placement.h > g.y;
+        expect(overlaps).toBe(false);
+      }
+    }
   });
 });

@@ -57,23 +57,34 @@ export function buildBrandApplyPreview(input: BrandApplyPreviewInput): BrandAppl
   const after = serializeContentDocument({ ...result.doc, pages: afterPages });
 
   const pageLogoEntry = result.stats.logo.find((entry) => entry.pageIndex === input.activePageIndex);
-  let note: string | null = null;
+  let logoNote: string | null = null;
   if (!input.includeLogo) {
-    note = null;
+    logoNote = null;
   } else if (input.logoFailure) {
-    note = `Logo will not be placed: ${input.logoFailure.reason}`;
+    logoNote = `Logo will not be placed: ${input.logoFailure.reason}`;
   } else if (!input.essentials.logoUrl) {
-    note = 'No logo was scanned, so none can be placed.';
+    logoNote = 'No logo was scanned, so none can be placed.';
   } else if (pageLogoEntry?.outcome === 'no-space') {
-    note = 'No free space fit the logo on this page — apply anyway and place it by hand, or remove an element.';
+    logoNote = 'No free space fit the logo on this page — apply anyway and place it by hand, or remove an element.';
   } else if (pageLogoEntry?.outcome === 'limit') {
-    note = 'This page hit its element limit, so the logo was not planned here.';
+    logoNote = 'This page hit its element limit, so the logo was not planned here.';
   } else if (isManagedStudioSrc(input.logoSrc)) {
-    note = null;
+    logoNote = null;
   } else if (input.logoSrc) {
-    note = 'Preview shows the scanned logo file; Apply imports a managed copy first.';
+    logoNote = 'Preview shows the scanned logo file; Apply imports a managed copy first.';
   } else {
-    note = 'Logo will not be placed: the brand logo asset was not imported.';
+    logoNote = 'Logo will not be placed: the brand logo asset was not imported.';
   }
+
+  // Background provenance is always disclosed: scanned value vs palette wash.
+  let backgroundNote: string | null = null;
+  if (result.stats.backgroundTreatment === 'scanned-surface') {
+    backgroundNote = `Background: the scanned site surface ${result.stats.backgroundColour}.`;
+  } else if (result.stats.backgroundTreatment === 'derived-wash') {
+    backgroundNote = `Background: a tint derived from your brand palette (${result.stats.backgroundColour}) — the scan captured no explicit site background.`;
+  } else if (result.stats.backgroundTreatment === 'preserved-media') {
+    backgroundNote = 'Background kept: your background image or gradient stays as it is.';
+  }
+  const note = [backgroundNote, logoNote].filter(Boolean).join(' ') || null;
   return { pageIndex: input.activePageIndex, before, after, note };
 }

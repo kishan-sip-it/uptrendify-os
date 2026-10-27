@@ -576,10 +576,18 @@
 .editor-free-block.is-selected {
   z-index: 30;
   /* Vars are set per-block from JS so border+handles keep a constant SCREEN
-     size at every zoom level. */
+     size at every zoom level. Whole-CSS-px values only: fractional widths
+     anti-alias into a blurry line over the scaled frame. */
   outline: var(--st-sel-width, 2px) solid var(--st-accent);
   outline-offset: var(--st-sel-offset, 2px);
 }
+/* Crisp hover affordance: solid hairline, no tint, no blur, never while the
+   block is selected, being edited, or grabbed by a handle. */
+.editor-free-block:not(.is-selected):hover:not(:has(.editor-inline-edit:focus)) {
+  outline: 1px solid color-mix(in srgb, var(--st-accent) 55%, transparent);
+  outline-offset: var(--st-sel-offset, 2px);
+}
+.editor-free-block:not(.is-selected):hover:has(.st-free-handle:hover) { outline: none; }
 .editor-free-block .content-doc-heading,
 .editor-free-block .content-doc-text { margin: 0; }
 /* A short text inside a tall free-canvas block must still enter inline editing
@@ -595,8 +603,7 @@
   border: 1.5px solid var(--st-accent);
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, .3);
-  transition: transform .12s ease;
+  /* No drop shadow: shadows over the scaled frame read as a glittering halo. */
 }
 .st-handle-n { top: 0; left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); margin-top: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
 .st-handle-s { bottom: 0; left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); margin-bottom: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
@@ -1609,6 +1616,14 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 }
 .studio-float input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
 .studio-float input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
+
+/* Shape text keeps a visible focus cue while editing (base rule strips the
+   idle outline only). */
+.editor-shape-text .editor-inline-edit:focus {
+  outline: 1.5px dashed color-mix(in srgb, var(--st-accent) 65%, transparent);
+  outline-offset: -3px;
+  border-radius: 4px;
+}
 
 /* Shape text keeps a visible focus cue while editing (base rule strips the
    idle outline only). */

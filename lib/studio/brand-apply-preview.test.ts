@@ -143,8 +143,11 @@ describe('buildBrandApplyPreview', () => {
       pages: source.pages, essentials, scope: 'page', activePageIndex: 0, includeLogo: true, logoSrc: null,
       logoFailure: { reason: 'The brand logo is not a PNG, JPG, or WEBP image.' },
     });
-    expect(unavailable.note).toBe('Logo will not be placed: The brand logo is not a PNG, JPG, or WEBP image.');
+    expect(unavailable.note).toContain('Logo will not be placed: The brand logo is not a PNG, JPG, or WEBP image.');
+    expect(unavailable.note).toContain('Background:');
     const off = buildBrandApplyPreview({ pages: source.pages, essentials, scope: 'page', activePageIndex: 0, includeLogo: false });
-    expect(off.note).toBeNull();
+    // Background disclosure stands even with the logo off.
+    expect(off.note).toContain('Background:');
+    expect(off.note).not.toContain('Logo');
   });
 });

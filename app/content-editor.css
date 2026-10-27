@@ -337,17 +337,13 @@ div[class*="level-1"] { font-weight: 800; }
 .editor-btn-group .editor-btn { padding: 8px 10px; }
 
 /* Empty blocks keep their place in the layout instead of collapsing, and show
-   an editor-only placeholder. The saved document never contains this text. */
+   an editor-only affordance. The saved document never contains this text. */
 .editor-canvas-text { min-height: 24px; }
-.editor-canvas-text.is-empty, .editor-canvas-text:empty {
-  color: var(--muted);
-  font-style: italic;
-  opacity: 0.75;
-}
-.editor-canvas-text.is-empty::before { content: 'Empty text block — click to write.'; }
-.editor-canvas .content-doc-heading:has(.editor-canvas-text:empty),
-.editor-canvas .content-doc-heading:has(.editor-canvas-text.is-empty) { min-height: 34px; }
-.editor-canvas .content-doc-heading .editor-canvas-text.is-empty::before { content: 'Empty heading — click to write.'; }
+/* Empty blocks are VISUALLY EMPTY artwork: no placeholder copy, no ghost
+   styling. Double-click still enters editing; the caret + typing make the
+   block obvious while editing. */
+.editor-canvas-text.is-empty::before { content: none; }
+.editor-canvas .content-doc-heading .editor-canvas-text.is-empty::before { content: none; }
 
 .editor-size-picker { display: inline-flex; align-items: center; gap: 6px; }
 .editor-size-picker > span { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0.05em; }

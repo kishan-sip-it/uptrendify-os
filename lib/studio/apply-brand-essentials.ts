@@ -33,6 +33,10 @@ export type ApplyScope = 'page' | 'document';
 
 export type LogoOutcome = 'added' | 'duplicate' | 'no-space' | 'limit' | 'off' | 'unavailable';
 
+/** How the page background was treated. Reported so the preview/summary can be
+ * honest about provenance: scanned value vs palette-derived tint vs preserved. */
+export type BackgroundTreatment = 'scanned-surface' | 'derived-wash' | 'preserved-media' | 'preserved-solid';
+
 export type ApplyStats = {
   pagesThemed: number;
   pagesBackgroundPreserved: number;
@@ -46,6 +50,10 @@ export type ApplyStats = {
   logo: { pageIndex: number; outcome: LogoOutcome; reason?: string }[];
   /** Set when the logo asset itself could not be fetched/validated/uploaded. */
   logoFailure: { reason: string } | null;
+  /** Background treatment applied to the active page (preview page). */
+  backgroundTreatment: BackgroundTreatment;
+  /** The background colour the active page will carry after the apply. */
+  backgroundColour: string | null;
 };
 
 export type ApplyResult = {
@@ -55,6 +63,17 @@ export type ApplyResult = {
 };
 
 const isHex = (value: unknown): value is string => typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
+
+/** True when a light colour reads as a neutral surface (low chroma), not as a
+ * saturated accent masquerading as a page background. */
+function isBackgroundLikeSurface(hex: string): boolean {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return max === 0 || (max - min) / max <= 0.25;
+}
 
 /** Distinct valid hex colours in order, capped to a sane palette size. */
 function sanitizeColors(colors: unknown[]): string[] {
@@ -289,13 +308,18 @@ export function planLogoPlacement(page: ContentDocPage, logoAspect: number, marg
   // Width variants keep the logo usable when only a narrow band is free.
   const widths = [168, 126, 92].map((base) => Math.max(64, Math.round(base * Math.min(1.4, Math.max(0.6, safeAspect / 2)))));
   const heights = widths.map((width) => Math.max(30, Math.round(width / safeAspect)));
-  for (let variant = 0; variant < widths.length; variant += 1) {
-    const w = widths[variant]!;
-    const h = heights[variant]!;
-    // Horizontal band scan top→bottom finds gaps between stacked text boxes
-    // that fixed corners miss; right first (reading-end anchor), then left.
-    for (let y = margin; y + h <= dims.height - margin; y += 24) {
-      for (const x of [dims.width - margin - w, margin]) {
+  // Topmost-fit placement: scan bands top→bottom (right anchor first, then
+  // left) and at each band accept the widest variant that fits. The x anchor
+  // is recomputed per variant so every width hugs the same page edge. The
+  // logo sits high in the composition and only shrinks/slides down when
+  // space demands.
+  for (let y = margin; y + heights[0]! <= dims.height - margin; y += 24) {
+    for (const side of ['right', 'left'] as const) {
+      for (let variant = 0; variant < widths.length; variant += 1) {
+        const w = widths[variant]!;
+        const h = heights[variant]!;
+        if (y + h > dims.height - margin) continue;
+        const x = side === 'right' ? dims.width - margin - w : margin;
         const rect = { x, y, w, h };
         const collides = solid.some((block) => rectsIntersect(rect, block.geometry!));
         if (!collides) return rect;
@@ -357,6 +381,8 @@ export function applyBrandEssentials(options: ApplyOptions): ApplyResult {
     imagesUntouched: 0,
     logo: [],
     logoFailure: options.logoFailure ?? null,
+    backgroundTreatment: 'preserved-solid',
+    backgroundColour: null,
   };
   const changedPageIds: string[] = [];
 
@@ -364,17 +390,44 @@ export function applyBrandEssentials(options: ApplyOptions): ApplyResult {
     const inScope = scope === 'document' || pageIndex === activePageIndex;
     if (!inScope) return page;
 
-    // The background the page will have AFTER this pass — text is themed
-    // against it so back-to-back applications converge (no colour flip-flop).
-    const pageBgAfterApply = page.backgroundImage
-      ? (page.bg ?? '#ffffff')
-      : page.gradient
-        ? mixOver(page.gradient.from, page.gradient.to, 0.5)
-        : (page.bg ?? essentials.surface ?? (essentials.accent ? mixOver(essentials.accent, '#ffffff', 0.08) : '#ffffff'));
-
-    // Preserve explicit user backgrounds (image/gradient) and user-picked solids.
-    if (page.backgroundImage || page.gradient || page.bg) {
-      stats.pagesBackgroundPreserved += 1;
+    // ---- Background: evidence-first, always reported honestly. -------------
+    // 1. User media (image/gradient) is preserved untouched.
+    // 2. A scanned site surface (a real light colour from the site) becomes
+    //    the page background — the artwork takes the site's actual canvas.
+    // 3. Without a usable scanned surface, a visible wash is DERIVED from the
+    //    palette (secondary/accent tinted toward white) and disclosed as
+    //    derived, never claimed as extracted.
+    // Text is themed against the post-apply background so repeat applies
+    // converge (no colour flip-flop).
+    let pageBgAfterApply: string;
+    let backgroundTreatment: BackgroundTreatment;
+    if (page.backgroundImage || page.gradient) {
+      pageBgAfterApply = page.gradient ? mixOver(page.gradient.from, page.gradient.to, 0.5) : (page.bg ?? '#ffffff');
+      backgroundTreatment = 'preserved-media';
+    } else {
+      // A scanned surface only qualifies when it is light AND background-like
+      // (near-neutral): a saturated palette colour (e.g. a pure yellow accent)
+      // would make a garish page canvas and must fall through to the wash.
+      const scannedSurface = essentials.surface
+        && relativeLuminance(essentials.surface) >= 0.75
+        && isBackgroundLikeSurface(essentials.surface)
+        ? essentials.surface
+        : null;
+      if (scannedSurface) {
+        pageBgAfterApply = scannedSurface;
+        backgroundTreatment = 'scanned-surface';
+      } else if (essentials.accent || essentials.secondary) {
+        pageBgAfterApply = mixOver((essentials.secondary ?? essentials.accent)!, '#ffffff', 0.1);
+        backgroundTreatment = 'derived-wash';
+      } else {
+        pageBgAfterApply = page.bg ?? '#ffffff';
+        backgroundTreatment = 'preserved-solid';
+      }
+    }
+    if (backgroundTreatment === 'preserved-media') stats.pagesBackgroundPreserved += 1;
+    if (pageIndex === activePageIndex) {
+      stats.backgroundTreatment = backgroundTreatment;
+      stats.backgroundColour = pageBgAfterApply;
     }
 
     let changed = false;
@@ -462,13 +515,14 @@ export function applyBrandEssentials(options: ApplyOptions): ApplyResult {
       return block;
     });
 
-    // Page background: only when the page has no explicit user-set background.
-    // A light brand tint (accent washed toward white) keeps AA trivially safe
-    // while making text-heavy pages visibly take the brand.
-    if (!page.backgroundImage && !page.gradient && !page.bg) {
-      const surface = essentials.surface ?? (essentials.accent ? mixOver(essentials.accent, '#ffffff', 0.08) : null);
-      if (surface && surface.toLowerCase() !== '#ffffff') {
-        page = { ...page, bg: surface };
+    // Page background: user media is preserved; solids always take the brand
+    // treatment (scanned surface or disclosed palette wash). Converges: a
+    // second apply computes the same colour and changes nothing. The
+    // preserved-solid path writes nothing — a bare page stays bare instead of
+    // gaining an invisible explicit white.
+    if (backgroundTreatment === 'scanned-surface' || backgroundTreatment === 'derived-wash') {
+      if (page.bg?.toLowerCase() !== pageBgAfterApply.toLowerCase()) {
+        page = { ...page, bg: pageBgAfterApply };
         changed = true;
       }
     }
