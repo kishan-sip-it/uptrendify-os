@@ -6,6 +6,7 @@ import {
   signatureMatches,
   sniffImageType,
   studioAssetStoragePath,
+  isManagedStudioAssetUrl,
   studioAssetUrl,
 } from './studio-asset-image';
 
@@ -58,5 +59,24 @@ describe('studio asset image validation', () => {
     expect(studioAssetUrl(brandId, contentId, assetId)).toBe(
       `/api/brands/${brandId}/content/${contentId}/assets/${assetId}`,
     );
+  });
+});
+
+describe('isManagedStudioAssetUrl', () => {
+  const brandId = 'e4c240a1-793e-4e58-ac66-90a17f512b20';
+  const contentId = '4fe2c6e8-9369-40e2-a7ac-4ab8db1146c4';
+  const assetId = '9f8b7c6d-5e4a-3b2c-1d0e-f1a2b3c4d5e6';
+
+  it('accepts managed asset URLs produced by studioAssetUrl (case-insensitive)', () => {
+    expect(isManagedStudioAssetUrl(studioAssetUrl(brandId, contentId, assetId))).toBe(true);
+    expect(isManagedStudioAssetUrl(studioAssetUrl(brandId, contentId, assetId).toUpperCase())).toBe(true);
+  });
+
+  it('rejects external URLs, other brand API paths, and non-string values', () => {
+    expect(isManagedStudioAssetUrl('https://cdn.example.com/logo.png')).toBe(false);
+    expect(isManagedStudioAssetUrl(`/api/brands/${brandId}/content/${contentId}/brand-logo`)).toBe(false);
+    expect(isManagedStudioAssetUrl(`/api/brands/${brandId}/content/${contentId}/assets/not-a-uuid`)).toBe(false);
+    expect(isManagedStudioAssetUrl(null)).toBe(false);
+    expect(isManagedStudioAssetUrl(42)).toBe(false);
   });
 });

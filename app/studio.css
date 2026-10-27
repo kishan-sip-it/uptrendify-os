@@ -1617,3 +1617,18 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
   outline-offset: -3px;
   border-radius: 4px;
 }
+
+/* Managed-image state in the inspector — replaces the raw internal asset URL
+   with a human-readable badge; internal endpoint paths never render. */
+.st-managed-image {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--st-ok, #16a34a) 35%, var(--st-line-strong));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--st-ok, #16a34a) 7%, var(--st-panel));
+  color: var(--st-text);
+}
+.st-managed-image > svg { flex: 0 0 auto; margin-top: 1px; color: var(--st-ok, #16a34a); }
+.st-managed-image span { display: grid; gap: 2px; min-width: 0; }
+.st-managed-image strong { font-size: 11px; font-weight: 800; }
+.st-managed-image small { font-size: 10px; color: var(--st-ink-2); line-height: 1.4; }

@@ -43,3 +43,19 @@ export function studioAssetStoragePath(organizationId: string, brandId: string, 
 export function studioAssetUrl(brandId: string, contentId: string, assetId: string) {
   return `/api/brands/${brandId}/content/${contentId}/assets/${assetId}`;
 }
+
+const MANAGED_ASSET_URL_PATTERN = new RegExp(
+  `^/api/brands/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`
+  + `/content/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`
+  + `/assets/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
+  'i',
+);
+
+/**
+ * True when the value is an internal managed-asset URL produced by
+ * studioAssetUrl / the assets upload route. UI layers use this to keep
+ * internal endpoint paths out of visible text — never render the URL itself.
+ */
+export function isManagedStudioAssetUrl(value: unknown): value is string {
+  return typeof value === 'string' && MANAGED_ASSET_URL_PATTERN.test(value);
+}

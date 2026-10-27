@@ -94,6 +94,7 @@ import { templatePaletteByName } from '@/lib/studio/template-library/art';
 import { STUDIO_LIBRARY } from '@/lib/studio/template-library';
 import { importSvgTemplate, type SvgTemplateImport } from '@/lib/studio/import-template';
 import { eraseRasterTextPixels, type RasterTextBounds } from '@/lib/studio/raster-text';
+import { isManagedStudioAssetUrl } from '@/lib/content/studio-asset-image';
 import { storyboardPagesFromScript } from '@/lib/content/parse-script';
 import { lintBlocks, healthScore, channelLimit, type BrandLintIssue } from '@/lib/studio/brand-lint';
 import { reflowPage, resolveBlockText } from '@/lib/content/document';
@@ -954,9 +955,8 @@ function normalizeHttpLinkUrl(value: string): string | null {
 }
 
 function normalizeStudioAssetPath(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const path = value.trim();
-  return /^\/api\/brands\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/content\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(path) ? path : null;
+  const path = typeof value === 'string' ? value.trim() : value;
+  return isManagedStudioAssetUrl(path) ? path : null;
 }
 
 const contextMenuItemStyle: React.CSSProperties = {
@@ -2067,18 +2067,16 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     }
   };
 
-  const addImageFromFile = async (file: File) => {
-    if (!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS) {
-      setError('This page has reached its element limit or is not editable.');
-      return;
-    }
+  /** Upload an image file as a managed asset. Returns the managed URL, or
+   * null after surfacing the failure reason. */
+  const uploadImageAsset = async (file: File): Promise<string | null> => {
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       setError('Choose a PNG, JPG, or WEBP image.');
-      return;
+      return null;
     }
     if (file.size <= 0 || file.size > 2 * 1024 * 1024) {
       setError('Images must be 2 MB or smaller.');
-      return;
+      return null;
     }
     setIsUploadingImage(true);
     setError(null);
@@ -2091,13 +2089,34 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : 'Image upload failed.');
       const src = normalizeStudioAssetPath(payload?.src);
       if (!src) throw new Error('The server returned an invalid image asset reference.');
-      if (insertImageBlock(src, imageAltDraft.trim())) setImageAltDraft('');
+      return src;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Image upload failed.');
+      return null;
     } finally {
       setIsUploadingImage(false);
-      if (imageFileInputRef.current) imageFileInputRef.current.value = '';
     }
+  };
+
+  const addImageFromFile = async (file: File) => {
+    if (!canEdit || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS) {
+      setError('This page has reached its element limit or is not editable.');
+      return;
+    }
+    const src = await uploadImageAsset(file);
+    if (!src) return;
+    if (insertImageBlock(src, imageAltDraft.trim())) setImageAltDraft('');
+    if (imageFileInputRef.current) imageFileInputRef.current.value = '';
+  };
+
+  /** Swap an existing image layer to a newly uploaded managed asset in place —
+   * id, geometry and alt text survive; the canvas shows the new pixels. */
+  const replaceImageFromFile = async (blockId: string, file: File) => {
+    if (!canEdit) return;
+    const src = await uploadImageAsset(file);
+    if (!src) return;
+    patchBlock(blockId, { url: src });
+    setNotice('Image replaced. The layer keeps its position, size and alt text.');
   };
 
   const uploadTemplateRaster = async (embedded: SvgTemplateImport['embeddedImages'][number], maxBytes = 2 * 1024 * 1024): Promise<string | null> => {
@@ -4576,17 +4595,53 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                     </div>
                   ) : null}
                   {selected.type === 'image' ? (
-                    <>
-                      <label className="st-field">
-                        <span>Image URL</span>
-                        <input className="st-input" value={selected.url} onChange={(event) => patchBlock(selected.id, { url: event.target.value })} disabled={!canEditBlock(selected)} inputMode="url" placeholder="https://…" />
-                      </label>
-                      <label className="st-field">
-                        <span>Alt text</span>
-                        <input className="st-input" value={selected.alt} onChange={(event) => patchBlock(selected.id, { alt: event.target.value })} disabled={!canEditBlock(selected)} placeholder="Describe the image" />
-                      </label>
-                      <button type="button" className="st-btn st-btn--primary" onClick={() => useImageAsBackground(selected)} disabled={!canEditBlock(selected)} title="Use this image as the page background instead of a separate layer">Set as page background</button>
-                    </>
+                    isManagedStudioAssetUrl(selected.url) ? (
+                      <>
+                        <div className="st-field">
+                          <span>Image source</span>
+                          <div className="st-managed-image" role="status">
+                            <ImageIcon size={15} aria-hidden="true" />
+                            <span>
+                              <strong>Managed image</strong>
+                              <small>Stored securely with this content — nothing to paste. Replace it below or on the canvas.</small>
+                            </span>
+                          </div>
+                        </div>
+                        <label className="st-field">
+                          <span>Replace image · PNG/JPG/WEBP, max 2 MB</span>
+                          <input
+                            className="st-input"
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            disabled={!canEditBlock(selected) || isUploadingImage}
+                            onChange={(event) => {
+                              const input = event.currentTarget;
+                              const file = input.files?.[0];
+                              input.value = '';
+                              if (file) void replaceImageFromFile(selected.id, file);
+                            }}
+                          />
+                          {isUploadingImage ? <p className="editor-hint" role="status">Uploading image securely…</p> : null}
+                        </label>
+                        <label className="st-field">
+                          <span>Alt text</span>
+                          <input className="st-input" value={selected.alt} onChange={(event) => patchBlock(selected.id, { alt: event.target.value })} disabled={!canEditBlock(selected)} placeholder="Describe the image" />
+                        </label>
+                        <button type="button" className="st-btn st-btn--primary" onClick={() => useImageAsBackground(selected)} disabled={!canEditBlock(selected)} title="Use this image as the page background instead of a separate layer">Set as page background</button>
+                      </>
+                    ) : (
+                      <>
+                        <label className="st-field">
+                          <span>Image URL</span>
+                          <input className="st-input" value={selected.url} onChange={(event) => patchBlock(selected.id, { url: event.target.value })} disabled={!canEditBlock(selected)} inputMode="url" placeholder="https://…" />
+                        </label>
+                        <label className="st-field">
+                          <span>Alt text</span>
+                          <input className="st-input" value={selected.alt} onChange={(event) => patchBlock(selected.id, { alt: event.target.value })} disabled={!canEditBlock(selected)} placeholder="Describe the image" />
+                        </label>
+                        <button type="button" className="st-btn st-btn--primary" onClick={() => useImageAsBackground(selected)} disabled={!canEditBlock(selected)} title="Use this image as the page background instead of a separate layer">Set as page background</button>
+                      </>
+                    )
                   ) : null}
                   {selected.type === 'button' ? (
                     <label className="st-field">
