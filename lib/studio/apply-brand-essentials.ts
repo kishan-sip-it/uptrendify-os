@@ -147,6 +147,41 @@ function enforceReadable(fg: string, bg: string, fontSize: number | undefined, b
   return { color: fg, fallbackUsed: false };
 }
 
+/**
+ * Geometry for a logo dropped at a canvas point: centred on the drop
+ * coordinates, aspect-preserving, clamped inside the page. Screen→page
+ * conversion happens in the caller; this is pure page-space math.
+ */
+export function logoDropRect(
+  drop: { x: number; y: number },
+  logoAspect: number,
+  page: { width: number; height: number },
+  existingRects: { x: number; y: number; w: number; h: number }[] = [],
+): { x: number; y: number; w: number; h: number } {
+  const safeAspect = Number.isFinite(logoAspect) && logoAspect > 0 ? Math.min(4, Math.max(0.4, logoAspect)) : 2;
+  const w = Math.max(64, Math.min(220, Math.round(150 * Math.max(0.6, Math.min(1.8, safeAspect / 2)))));
+  const h = Math.max(30, Math.round(w / safeAspect));
+  const within = (value: number, max: number, size: number) => Math.max(8, Math.min(max - size - 8, value));
+  let x = Math.round(within(drop.x - w / 2, page.width, w));
+  let y = Math.round(within(drop.y - h / 2, page.height, h));
+  // Nudge up to a few px if the exact centre overlaps something; never move
+  // existing content — if every nudge collides, keep the in-bounds position
+  // (z-order puts the logo on top; it remains fully user-movable).
+  const collides = (rect: { x: number; y: number; w: number; h: number }) => existingRects.some((other) => rectsOverlap(rect, other));
+  if (collides({ x, y, w, h })) {
+    const nudges: Array<[number, number]> = [[0, -8], [0, 8], [-8, 0], [8, 0], [0, -16], [0, 16], [-16, 0], [16, 0]];
+    for (const [dx, dy] of nudges) {
+      const candidate = { x: Math.round(within(x + dx, page.width, w)), y: Math.round(within(y + dy, page.height, h)), w, h };
+      if (!collides(candidate)) { x = candidate.x; y = candidate.y; break; }
+    }
+  }
+  return { x, y, w, h };
+}
+
+function rectsOverlap(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
 /** Stable logo layer id per page — repeats converge instead of duplicating. */
 export function brandLogoBlockId(pageId: string): string {
   return `brand-logo-${hashId(pageId)}`;

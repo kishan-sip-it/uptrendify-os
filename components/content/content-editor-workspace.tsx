@@ -69,6 +69,7 @@ import { StudioTemplateLibrary } from '@/components/content/studio-template-libr
 import { buildTemplatePages } from '@/lib/studio/template-library/build';
 import {
   applyBrandEssentials,
+  logoDropRect,
   resolveBrandEssentials,
   contrastSafeLabel,
   type ApplyScope,
@@ -1090,6 +1091,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     headingFont: string | null;
     bodyFont: string | null;
     fonts: { family: string; evidence?: string; fontAssetUrl?: string; fontAssetFormat?: 'woff2' | 'woff' | 'opentype' | 'truetype' }[];
+    assets?: { url: string; type: string; label: string | null }[];
   } | null;
   versionNumber: number;
   body: string;
@@ -1169,7 +1171,9 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [brandApplyError, setBrandApplyError] = useState<string | null>(null);
   const [brandApplySummary, setBrandApplySummary] = useState<ApplyStats | null>(null);
   const [brandFontsLoaded, setBrandFontsLoaded] = useState<string[]>([]);
-
+  const [brandLogoDisplayFailed, setBrandLogoDisplayFailed] = useState(false);
+  const brandLogoManagedRef = useRef<{ logoUrl: string; src: string; aspect: number } | null>(null);
+  const [brandLogoUploadBusy, setBrandLogoUploadBusy] = useState(false);
   useEffect(() => {
     const reconciled = reconcileContentVersionState(
       versions,
@@ -1514,6 +1518,26 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   }, [localDraftReady, pages, activePageIndex, freeMode, loadedSnapshot, loadedVersionId, currentVersionId, localDraftKey]);
 
   const brandEssentials = useMemo(() => resolveBrandEssentials(brandVisual ?? null), [brandVisual]);
+  const brandApplyPreview = useMemo(() => {
+    if (!brandApplyOpen) return null;
+    const source = { kind: 'uptrendify-doc' as const, version: 1 as const, mode: 'free' as const, pages: pagesRef.current };
+    try {
+      const after = applyBrandEssentials({
+        doc: source,
+        essentials: brandEssentials,
+        scope: brandApplyScope,
+        activePageIndex: activePageIndexRef.current,
+        includeLogo: false,
+      });
+      return {
+        pageIndex: activePageIndexRef.current,
+        before: serializeContentDocument(source),
+        after: serializeContentDocument(after.doc),
+      };
+    } catch {
+      return null;
+    }
+  }, [brandApplyOpen, brandApplyScope, brandEssentials, pages]);
   const brandEssentialsAvailable = Boolean(brandVisual && (brandEssentials.accent || brandEssentials.headingFont || brandEssentials.bodyFont || brandEssentials.logoUrl || brandEssentials.colors.length));
   const brandApplyDisabled = !canEdit || !brandEssentialsAvailable || brandApplyBusy;
   const openBrandApply = () => {
@@ -1525,8 +1549,15 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     void ensureBrandFontsLoaded(brandVisual?.fonts ?? []).then((loaded) => setBrandFontsLoaded(loaded));
   };
   const uploadBrandLogo = async (): Promise<{ src: string; aspect: number } | null> => {
-    if (!brandEssentials.logoUrl) return null;
-    const response = await fetch(brandEssentials.logoUrl, { mode: 'cors' });
+    return ensureBrandLogoManaged(brandEssentials.logoUrl);
+  };
+  const ensureBrandLogoManaged = async (logoUrl: string | null): Promise<{ src: string; aspect: number } | null> => {
+    if (!logoUrl) return null;
+    if (brandLogoManagedRef.current?.logoUrl === logoUrl) {
+      const cached = brandLogoManagedRef.current;
+      return { src: cached.src, aspect: cached.aspect };
+    }
+    const response = await fetch(logoUrl, { mode: 'cors' });
     if (!response.ok) throw new Error('The brand logo could not be downloaded from the scanned source.');
     const blob = await response.blob();
     const type = blob.type || response.headers.get('content-type') || '';
@@ -1548,7 +1579,68 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       const body = (await upload.json().catch(() => null)) as { error?: string } | null;
       throw new Error(body?.error ?? 'The brand logo upload was rejected.');
     }
-    return { src: `/api/brands/${brandId}/content/${contentId}/assets/${assetId}`, aspect };
+    const managed = { src: `/api/brands/${brandId}/content/${contentId}/assets/${assetId}`, aspect };
+    brandLogoManagedRef.current = { logoUrl, src: managed.src, aspect: managed.aspect };
+    return managed;
+  };
+  /** Insert the brand logo as an editable layer centred on page-space point. */
+  const insertBrandLogoLayer = async (pagePoint: { x: number; y: number } | null): Promise<boolean> => {
+    if (!canEdit || !brandEssentials.logoUrl) return false;
+    const currentPage = pagesRef.current[activePageIndexRef.current];
+    if (!currentPage) return false;
+    if (currentPage.blocks.length >= CONTENT_DOC_MAX_BLOCKS) {
+      setError('This page has reached its element limit — remove an element to make room for the logo.');
+      return false;
+    }
+    setBrandLogoUploadBusy(true);
+    try {
+      const managed = await ensureBrandLogoManaged(brandEssentials.logoUrl);
+      if (!managed) {
+        setError('The brand logo could not be imported from the scanned source. Download it, then use Insert → image to place it manually.');
+        return false;
+      }
+      const dims = CONTENT_PAGE_SIZES[currentPage.size ?? 'a4'];
+      const rect = logoDropRect(
+        pagePoint ?? { x: dims.width - 40 - Math.round(150 * Math.min(1.8, managed.aspect / 2)), y: 40 },
+        managed.aspect,
+        dims,
+        currentPage.blocks.filter((block) => block.geometry).map((block) => block.geometry!),
+      );
+      const logoBlock: EditorBlock = {
+        id: newBlockId('image'),
+        type: 'image',
+        url: managed.src,
+        alt: `${documentTitle || 'Brand'} logo`,
+        align: 'left',
+        width: 100,
+        geometry: rect,
+      };
+      const nextPages = pagesRef.current.map((page, index) => index === activePageIndexRef.current ? { ...page, blocks: [...page.blocks, logoBlock] } : page);
+      commit(nextPages, 'free');
+      setFreeMode(true);
+      setSelectedId(logoBlock.id);
+      setInspectorTab('design');
+      setNotice('Brand logo added as an editable layer. Drag to move, resize with the corner handles — aspect ratio stays locked to the corner handles.');
+      return true;
+    } catch (logoError) {
+      setError(logoError instanceof Error ? logoError.message : 'The brand logo could not be imported.');
+      return false;
+    } finally {
+      setBrandLogoUploadBusy(false);
+    }
+  };
+  const onCanvasLogoDrop = (event: React.DragEvent) => {
+    if (!canEdit) return;
+    const logoUrl = event.dataTransfer.getData('application/x-brand-logo');
+    if (!logoUrl) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const frame = frameRef.current;
+    if (!frame) return;
+    const rect = frame.getBoundingClientRect();
+    const scale = Math.max(0.05, zoom / 100);
+    const pagePoint = { x: (event.clientX - rect.left) / scale, y: (event.clientY - rect.top) / scale };
+    void insertBrandLogoLayer(pagePoint);
   };
   const runBrandApply = async () => {
     if (brandApplyDisabled) return;
@@ -3569,7 +3661,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
 
       {/* ---------- body ---------- */}
       <div
-        className={`studio-body${drawerOpen ? ' has-drawer' : ' is-drawer-closed'}${dockTab === 'templates' ? ' has-template-drawer' : ''}`}
+        className={`studio-body${drawerOpen ? ' has-drawer' : ' is-drawer-closed'}${dockTab === 'templates' || dockTab === 'brand' ? ' has-template-drawer' : ''}`}
         onTransitionEnd={(event) => {
           if (event.target !== event.currentTarget || !['grid-template-columns', 'grid-template-rows'].includes(event.propertyName) || !drawerLayoutAnimating) return;
           if (drawerLayoutAnimationTimerRef.current !== null) window.clearTimeout(drawerLayoutAnimationTimerRef.current);
@@ -3603,7 +3695,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               <span className="st-label">{dockLabels[dockTab ?? 'layers']}</span>
               <button type="button" className="st-icon" style={{ width: 32, height: 32 }} onClick={closeDockDrawer} aria-label="Close panel"><Trash2 size={0} /><span aria-hidden="true">×</span></button>
             </div>
-            {dockTab !== 'templates' ? (
+            {dockTab !== 'templates' && dockTab !== 'brand' ? (
               <div className="studio-drawer-search">
                 <input value={drawerSearch} onChange={(event) => setDrawerSearch(event.target.value)} placeholder="Search layers, blocks…" aria-label="Search layers and blocks" />
               </div>
@@ -3712,6 +3804,63 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
 
               {dockTab === 'brand' ? (
                 <>
+                  <div className="brand-kit">
+                    <span className="st-label">Brand kit{brand?.colors?.length ? '' : ' · no scan yet'}</span>
+                    <div className="brand-kit-logo-row">
+                      <div
+                        className={`brand-kit-logo${brandLogoDisplayFailed ? ' is-failed' : ''}${canEdit && brandEssentials.logoUrl ? ' is-draggable' : ''}`}
+                        draggable={Boolean(canEdit && brandEssentials.logoUrl && !brandLogoDisplayFailed)}
+                        onDragStart={(event) => {
+                          if (!brandEssentials.logoUrl) return;
+                          event.dataTransfer.setData('application/x-brand-logo', brandEssentials.logoUrl);
+                          event.dataTransfer.effectAllowed = 'copy';
+                        }}
+                        onDragEnd={(event) => { event.dataTransfer.clearData('application/x-brand-logo'); }}
+                        title={brandLogoDisplayFailed ? 'Logo detected but could not be displayed here' : 'Drag onto the canvas, or press Enter to add to this page'}
+                      >
+                        {brandEssentials.logoUrl && !brandLogoDisplayFailed ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={brandEssentials.logoUrl} alt="Brand logo" onError={() => setBrandLogoDisplayFailed(true)} />
+                        ) : (
+                          <span className="brand-kit-logo-empty">{brandLogoDisplayFailed ? 'Logo can’t display' : 'No logo scanned'}</span>
+                        )}
+                      </div>
+                      <div className="brand-kit-logo-actions">
+                        <button
+                          type="button"
+                          className="st-btn"
+                          disabled={!canEdit || brandLogoUploadBusy || !brandEssentials.logoUrl || brandLogoDisplayFailed}
+                          onClick={() => void insertBrandLogoLayer(null)}
+                        >
+                          {brandLogoUploadBusy ? 'Importing…' : 'Add to page'}
+                        </button>
+                        <span className="editor-hint">Drag it onto the canvas, or click to add here.</span>
+                      </div>
+                    </div>
+                    <div className="brand-kit-swatches">
+                      {(brandEssentials.colors.length ? brandEssentials.colors : []).map((color, index) => (
+                        <span key={color + index} className="brand-kit-swatch" title={`${color} · ${index === 0 ? 'primary / buttons' : index === 1 ? 'secondary' : 'support'}`}>
+                          <span style={{ background: color }} />
+                          <small>{index === 0 ? 'Primary' : index === 1 ? 'Second' : 'Support'}</small>
+                        </span>
+                      ))}
+                      {!brandEssentials.colors.length ? <span className="editor-hint">No colours detected.</span> : null}
+                    </div>
+                    <div className="brand-kit-fonts">
+                      <span className="brand-kit-font"><small>Heading</small><b style={{ fontFamily: brandEssentials.headingFont ? `'${brandEssentials.headingFont}', Georgia, serif` : undefined }}>{brandEssentials.headingFont ?? 'Theme default'}</b>{brandEssentials.headingFont && !brandFontsLoaded.includes(brandEssentials.headingFont) ? <em>asset not loaded</em> : brandEssentials.headingFont ? <em className="is-ok">loaded</em> : null}</span>
+                      <span className="brand-kit-font"><small>Body</small><b style={{ fontFamily: brandEssentials.bodyFont ? `'${brandEssentials.bodyFont}', Arial, sans-serif` : undefined }}>{brandEssentials.bodyFont ?? 'Theme default'}</b>{brandEssentials.bodyFont && !brandFontsLoaded.includes(brandEssentials.bodyFont) ? <em>asset not loaded</em> : brandEssentials.bodyFont ? <em className="is-ok">loaded</em> : null}</span>
+                    </div>
+                    {(brandVisual?.assets?.length ?? 0) > 0 ? (
+                      <div className="brand-kit-assets">
+                        <span className="st-label">Scanned assets</span>
+                        {brandVisual!.assets!.map((asset) => (
+                          <a key={asset.url} href={asset.url} target="_blank" rel="noopener noreferrer" className="brand-kit-asset" title={asset.url}>
+                            {asset.label || asset.type || 'Asset'}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                   <button
                     type="button"
                     className="brand-essentials-cta"
@@ -3845,6 +3994,16 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom / 100})`,
             }}
             onClick={(event) => { if (event.target === frameRef.current) setSelectedId(null); }}
+            onDragOver={(event) => {
+              if (!event.dataTransfer.types.includes('application/x-brand-logo')) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'copy';
+              frameRef.current?.classList.add('is-logo-drop-target');
+            }}
+            onDragLeave={(event) => {
+              if (event.target === frameRef.current) frameRef.current?.classList.remove('is-logo-drop-target');
+            }}
+            onDrop={(event) => { frameRef.current?.classList.remove('is-logo-drop-target'); onCanvasLogoDrop(event); }}
           >
             <span className="studio-page-label">
               {isStoryboard ? <Clapperboard size={11} /> : null}
@@ -4840,6 +4999,25 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               <strong>Current page</strong><span>Page {activePageIndex + 1} only</span>
             </button>
           </section>
+          {brandApplyPreview ? (
+            <section className="brand-apply-section">
+              <span className="st-label">Preview · page {brandApplyPreview.pageIndex + 1}</span>
+              <div className="brand-apply-compare">
+                <figure>
+                  <figcaption>Before</figcaption>
+                  <div className="brand-apply-mini">
+                    <ContentDocumentView body={brandApplyPreview.before} fitToBounds pageIndex={brandApplyPreview.pageIndex} />
+                  </div>
+                </figure>
+                <figure>
+                  <figcaption>After — branded</figcaption>
+                  <div className="brand-apply-mini is-after">
+                    <ContentDocumentView body={brandApplyPreview.after} fitToBounds pageIndex={brandApplyPreview.pageIndex} />
+                  </div>
+                </figure>
+              </div>
+            </section>
+          ) : null}
           <section className="brand-apply-section">
             <span className="st-label">Palette</span>
             {brandEssentials.colors.length ? (

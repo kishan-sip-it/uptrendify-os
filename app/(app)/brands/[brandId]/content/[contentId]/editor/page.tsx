@@ -70,6 +70,10 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
       fontAssetUrl: font.fontAssetUrl,
       fontAssetFormat: font.fontAssetFormat,
     })),
+    assets: visualIdentity.assets
+      .filter((asset) => asset.url && /^https?:\/\//i.test(asset.url))
+      .slice(0, 6)
+      .map((asset) => ({ url: asset.url, type: asset.type, label: asset.label })),
   };
 
   return (
