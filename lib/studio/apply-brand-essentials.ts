@@ -36,6 +36,7 @@ export type LogoOutcome = 'added' | 'duplicate' | 'no-space' | 'limit' | 'off' |
 export type ApplyStats = {
   pagesThemed: number;
   pagesBackgroundPreserved: number;
+  titlesStyled: number;
   headingsStyled: number;
   bodiesStyled: number;
   shapesStyled: number;
@@ -145,6 +146,87 @@ function enforceReadable(fg: string, bg: string, fontSize: number | undefined, b
     if (isReadable(candidate, bg, fontSize, bold)) return { color: candidate, fallbackUsed: true };
   }
   return { color: fg, fallbackUsed: false };
+}
+
+const LADDER_FACTORS = [0.85, 0.7, 0.55, 0.4, 0.25];
+
+/**
+ * Every shade the accent ladder can produce for these palette colours. The
+ * brand lint must accept these derived brand shades as on-brand, exactly like
+ * the colours they are darkened from.
+ */
+export function brandAccentLadderShades(colors: string[]): string[] {
+  const out: string[] = [];
+  for (const color of colors) {
+    if (!isHex(color)) continue;
+    for (const factor of LADDER_FACTORS) out.push(mixOver(color.toLowerCase(), '#000000', factor));
+  }
+  return out;
+}
+
+/**
+ * Darken an accent toward black only as far as AA requires. Unlike
+ * `enforceReadable`, this keeps a mid-tone brand accent visibly branded on
+ * light backgrounds instead of jumping straight to the ink fallback.
+ * Returns null when no darkened step reads, so the caller can fall back.
+ */
+function darkenUntilReadable(fg: string, bg: string, fontSize: number | undefined, bold: boolean): string | null {
+  if (isReadable(fg, bg, fontSize, bold)) return fg;
+  for (const factor of [0.85, 0.7, 0.55, 0.4, 0.25]) {
+    const candidate = mixOver(fg, '#000000', factor);
+    if (isReadable(candidate, bg, fontSize, bold)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Brand-derived body ink: the darkest palette colour that passes AA against
+ * this page's own background, so ordinary body copy visibly takes the brand
+ * where the data supports it. Falls back through the resolved ink ladder.
+ */
+function bodyInkForBackground(bg: string, essentials: BrandEssentials, fontSize: number | undefined, bold: boolean): string {
+  const byLuminance = [...essentials.colors].sort((a, b) => relativeLuminance(a) - relativeLuminance(b));
+  for (const color of byLuminance) {
+    if (isReadable(color, bg, fontSize, bold)) return color;
+  }
+  return enforceReadable(essentials.ink, bg, fontSize, bold, DEFAULT_INK).color;
+}
+
+/**
+ * Infer a likely title/lead block among ordinary text blocks. Typography
+ * metadata decides first (a clearly larger size than the page's median body
+ * size); without that evidence, a short block high on a multi-block page can
+ * qualify via geometry. Never blindly assumes the first text block, and
+ * returns null when the evidence is uniform or too thin.
+ */
+export function inferTitleBlockId(blocks: ContentDocBlock[], pageHeight?: number): string | null {
+  const texts = blocks.filter((block): block is Extract<ContentDocBlock, { type: 'text' }> => block.type === 'text' && !block.hidden);
+  if (texts.length < 3) return null;
+  const candidates = texts.filter((block) => {
+    const length = block.text.trim().length;
+    return length >= 3 && length <= 140;
+  });
+  if (!candidates.length) return null;
+  const topmost = (pool: typeof candidates): string =>
+    pool.reduce((best, block) => {
+      const bestY = best.geometry?.y ?? Number.POSITIVE_INFINITY;
+      const blockY = block.geometry?.y ?? Number.POSITIVE_INFINITY;
+      if (blockY < bestY) return block;
+      if (blockY === bestY && blocks.indexOf(block) < blocks.indexOf(best)) return block;
+      return best;
+    }).id;
+  const sized = texts.filter((block) => (block.fontSize ?? 0) > 0);
+  if (sized.length >= 2) {
+    const sortedSizes = sized.map((block) => block.fontSize!).sort((a, b) => a - b);
+    const median = sortedSizes[Math.floor(sortedSizes.length / 2)]!;
+    const larger = candidates.filter((block) => (block.fontSize ?? 0) >= Math.max(18, median * 1.3));
+    if (larger.length) return topmost(larger);
+  }
+  if (pageHeight && candidates.length >= 3) {
+    const upper = candidates.filter((block) => block.geometry && block.geometry.y + block.geometry.h <= pageHeight * 0.5);
+    if (upper.length) return topmost(upper);
+  }
+  return null;
 }
 
 /**
@@ -266,6 +348,7 @@ export function applyBrandEssentials(options: ApplyOptions): ApplyResult {
   const stats: ApplyStats = {
     pagesThemed: 0,
     pagesBackgroundPreserved: 0,
+    titlesStyled: 0,
     headingsStyled: 0,
     bodiesStyled: 0,
     shapesStyled: 0,
@@ -295,21 +378,24 @@ export function applyBrandEssentials(options: ApplyOptions): ApplyResult {
     }
 
     let changed = false;
+    const titleBlockId = inferTitleBlockId(page.blocks, CONTENT_PAGE_SIZES[page.size ?? 'a4'].height);
     // Content preservation ledger for this page.
     let blocks: ContentDocBlock[] = page.blocks.map((block, blockIndex) => {
       if (block.type === 'heading') {
         const next: ContentDocBlock = { ...block };
         const bg = blockBackground(pageBgAfterApply, block);
-        // Headings carry the brand: readable accent first, ink as the safe fallback.
+        // Headings carry the brand: the accent ladder darkens only as far as
+        // AA requires, keeping mid-tone accents visible; ink is the fallback.
         const accentHeading = essentials.accent
-          ? enforceReadable(essentials.accent, bg, block.fontSize, true, essentials.ink)
-          : enforceReadable(essentials.ink, bg, block.fontSize, true, DEFAULT_INK);
-        if (accentHeading.fallbackUsed) stats.contrastFallbacks += 1;
-        if (accentHeading.color !== block.color) { next.color = accentHeading.color; changed = true; }
+          ? darkenUntilReadable(essentials.accent, bg, block.fontSize, true)
+          : null;
+        const headingColor = accentHeading ?? enforceReadable(essentials.ink, bg, block.fontSize, true, DEFAULT_INK).color;
+        if (accentHeading === null && essentials.accent) stats.contrastFallbacks += 1;
+        if (headingColor !== block.color) { next.color = headingColor; changed = true; }
         if (essentials.headingFont && block.fontFamily !== essentials.headingFont) { next.fontFamily = essentials.headingFont; changed = true; }
-        if (accentHeading.color !== block.color || (essentials.headingFont && block.fontFamily !== essentials.headingFont)) stats.headingsStyled += 1;
+        if (headingColor !== block.color || (essentials.headingFont && block.fontFamily !== essentials.headingFont)) stats.headingsStyled += 1;
         if (block.richText?.length) {
-          const { runs, fallbacks } = themeRichText(block.richText, pageBgAfterApply, accentHeading.color);
+          const { runs, fallbacks } = themeRichText(block.richText, pageBgAfterApply, headingColor);
           if (fallbacks) stats.contrastFallbacks += fallbacks;
           next.richText = runs;
         }
@@ -318,20 +404,36 @@ export function applyBrandEssentials(options: ApplyOptions): ApplyResult {
       if (block.type === 'text') {
         const next: ContentDocBlock = { ...block };
         const bg = blockBackground(pageBgAfterApply, block);
-        // Bold short lines are labels/eyebrows — give them the readable accent
-        // variant so text-heavy pages visibly take the brand. Body copy stays ink.
-        const isLabel = Boolean(block.bold) && block.text.trim().length > 0 && block.text.trim().length <= 80;
-        const labelColor = essentials.accent
-          ? enforceReadable(essentials.accent, bg, block.fontSize, Boolean(block.bold), essentials.ink)
-          : enforceReadable(essentials.ink, bg, block.fontSize, Boolean(block.bold), DEFAULT_INK);
-        const bodyColor = enforceReadable(essentials.ink, bg, block.fontSize, Boolean(block.bold), DEFAULT_INK);
-        const chosen = isLabel ? labelColor : bodyColor;
-        if (chosen.fallbackUsed) stats.contrastFallbacks += 1;
-        if (chosen.color !== block.color) { next.color = chosen.color; changed = true; }
-        if (essentials.bodyFont && block.fontFamily !== essentials.bodyFont) { next.fontFamily = essentials.bodyFont; changed = true; }
-        if (chosen.color !== block.color || (essentials.bodyFont && block.fontFamily !== essentials.bodyFont)) stats.bodiesStyled += 1;
+        const isTitle = block.id === titleBlockId;
+        // Bold short lines are labels/eyebrows and a reliable title/lead takes
+        // the heading treatment — both use the readable accent ladder. Body
+        // copy gets the darkest palette ink that reads on this page, so
+        // text-heavy pages visibly take the brand without touching copy.
+        const isLabel = !isTitle && Boolean(block.bold) && block.text.trim().length > 0 && block.text.trim().length <= 80;
+        let chosenColor: string;
+        let usedFallback = false;
+        if (isTitle || isLabel) {
+          const accentColor = essentials.accent ? darkenUntilReadable(essentials.accent, bg, block.fontSize, true) : null;
+          if (accentColor) {
+            chosenColor = accentColor;
+          } else {
+            chosenColor = enforceReadable(essentials.ink, bg, block.fontSize, true, DEFAULT_INK).color;
+            usedFallback = true;
+          }
+        } else {
+          chosenColor = bodyInkForBackground(bg, essentials, block.fontSize, Boolean(block.bold));
+        }
+        if (usedFallback) stats.contrastFallbacks += 1;
+        const titleEmphasis = isTitle && !block.bold;
+        if (chosenColor !== block.color) { next.color = chosenColor; changed = true; }
+        if (isTitle && essentials.headingFont && block.fontFamily !== essentials.headingFont) { next.fontFamily = essentials.headingFont; changed = true; }
+        if (titleEmphasis) { next.bold = true; changed = true; }
+        if (!isTitle && essentials.bodyFont && block.fontFamily !== essentials.bodyFont) { next.fontFamily = essentials.bodyFont; changed = true; }
+        if (isTitle) {
+          if (chosenColor !== block.color || titleEmphasis || (essentials.headingFont && block.fontFamily !== essentials.headingFont)) stats.titlesStyled += 1;
+        } else if (chosenColor !== block.color || (essentials.bodyFont && block.fontFamily !== essentials.bodyFont)) stats.bodiesStyled += 1;
         if (block.richText?.length) {
-          const { runs, fallbacks } = themeRichText(block.richText, pageBgAfterApply, chosen.color);
+          const { runs, fallbacks } = themeRichText(block.richText, pageBgAfterApply, chosenColor);
           if (fallbacks) stats.contrastFallbacks += fallbacks;
           next.richText = runs;
         }
@@ -400,7 +502,7 @@ export function applyBrandEssentials(options: ApplyOptions): ApplyResult {
         }
       }
     } else if (includeLogo && !logoSrc && essentials.logoUrl) {
-      stats.logo.push({ pageIndex, outcome: 'no-space' });
+      stats.logo.push({ pageIndex, outcome: 'unavailable', reason: 'The brand logo asset was not imported.' });
     }
 
     if (changed) {

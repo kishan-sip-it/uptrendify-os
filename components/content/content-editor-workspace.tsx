@@ -69,12 +69,14 @@ import { StudioTemplateLibrary } from '@/components/content/studio-template-libr
 import { buildTemplatePages } from '@/lib/studio/template-library/build';
 import {
   applyBrandEssentials,
+  brandAccentLadderShades,
   logoDropRect,
   resolveBrandEssentials,
   contrastSafeLabel,
   type ApplyScope,
   type ApplyStats,
 } from '@/lib/studio/apply-brand-essentials';
+import { buildBrandApplyPreview } from '@/lib/studio/brand-apply-preview';
 import { ensureBrandFontsLoaded } from '@/lib/studio/brand-fonts';
 import { contrastRatio } from '@/lib/studio/template-library/contrast';
 import { templatePaletteByName } from '@/lib/studio/template-library/art';
@@ -1520,24 +1522,26 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const brandEssentials = useMemo(() => resolveBrandEssentials(brandVisual ?? null), [brandVisual]);
   const brandApplyPreview = useMemo(() => {
     if (!brandApplyOpen) return null;
-    const source = { kind: 'uptrendify-doc' as const, version: 1 as const, mode: 'free' as const, pages: pagesRef.current };
     try {
-      const after = applyBrandEssentials({
-        doc: source,
+      const managed = brandLogoManagedRef.current;
+      const managedForCurrentLogo = managed && managed.logoUrl === brandEssentials.logoUrl ? managed : null;
+      const logoWanted = brandApplyLogo && Boolean(brandEssentials.logoUrl) && !brandLogoDisplayFailed;
+      return buildBrandApplyPreview({
+        pages: pagesRef.current,
         essentials: brandEssentials,
         scope: brandApplyScope,
         activePageIndex: activePageIndexRef.current,
-        includeLogo: false,
+        includeLogo: logoWanted,
+        // Managed copy when one exists; otherwise the scanned URL renders in
+        // the preview only — Apply imports a managed asset before placing.
+        logoSrc: managedForCurrentLogo?.src ?? brandEssentials.logoUrl,
+        logoAspect: managedForCurrentLogo?.aspect,
+        logoFailure: brandLogoDisplayFailed ? { reason: 'The scanned logo could not be displayed, so it will not be placed.' } : null,
       });
-      return {
-        pageIndex: activePageIndexRef.current,
-        before: serializeContentDocument(source),
-        after: serializeContentDocument(after.doc),
-      };
     } catch {
       return null;
     }
-  }, [brandApplyOpen, brandApplyScope, brandEssentials, pages]);
+  }, [brandApplyOpen, brandApplyScope, brandApplyLogo, brandLogoDisplayFailed, brandEssentials, pages]);
   const brandEssentialsAvailable = Boolean(brandVisual && (brandEssentials.accent || brandEssentials.headingFont || brandEssentials.bodyFont || brandEssentials.logoUrl || brandEssentials.colors.length));
   const brandApplyDisabled = !canEdit || !brandEssentialsAvailable || brandApplyBusy;
   const openBrandApply = () => {
@@ -1557,31 +1561,30 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       const cached = brandLogoManagedRef.current;
       return { src: cached.src, aspect: cached.aspect };
     }
-    const response = await fetch(logoUrl, { mode: 'cors' });
-    if (!response.ok) throw new Error('The brand logo could not be downloaded from the scanned source.');
-    const blob = await response.blob();
-    const type = blob.type || response.headers.get('content-type') || '';
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(type)) throw new Error('The brand logo is not a PNG, JPG, or WEBP image.');
-    if (blob.size <= 0 || blob.size > 2 * 1024 * 1024) throw new Error('The brand logo is larger than 2 MB.');
-    const aspect = await new Promise<number>((resolve) => {
-      const url = URL.createObjectURL(blob);
-      const image = new Image();
-      image.onload = () => { resolve(image.naturalWidth / Math.max(1, image.naturalHeight)); URL.revokeObjectURL(url); };
-      image.onerror = () => { resolve(2); URL.revokeObjectURL(url); };
-      image.src = url;
+    // The browser cannot fetch cross-origin scanned logo URLs (CORS), so the
+    // authorized brand's own scanned logo is downloaded, validated and stored
+    // server-side as an ordinary managed asset. Never an arbitrary-URL proxy:
+    // the route reads the logo URL from the brand row itself.
+    const response = await fetch(`/api/brands/${brandId}/content/${contentId}/brand-logo`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
     });
-    const assetId = crypto.randomUUID();
-    const form = new FormData();
-    const extension = type.split('/')[1] === 'jpeg' ? 'jpg' : type.split('/')[1] || 'png';
-    form.append('file', new File([blob], `brand-logo.${extension}`, { type }));
-    const upload = await fetch(`/api/brands/${brandId}/content/${contentId}/assets/${assetId}`, { method: 'POST', body: form });
-    if (!upload.ok) {
-      const body = (await upload.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(body?.error ?? 'The brand logo upload was rejected.');
+    const body = (await response.json().catch(() => null)) as { error?: string; src?: string } | null;
+    if (!response.ok || !body?.src) {
+      throw new Error(body?.error ?? 'The brand logo could not be imported from the scanned source. Download it, then use Insert → image to place it manually.');
     }
-    const managed = { src: `/api/brands/${brandId}/content/${contentId}/assets/${assetId}`, aspect };
-    brandLogoManagedRef.current = { logoUrl, src: managed.src, aspect: managed.aspect };
-    return managed;
+    const src = body.src;
+    // The managed asset URL is same-origin, so probing its aspect works
+    // without CORS; natural dimensions need no cross-origin permission.
+    const aspect = await new Promise<number>((resolve) => {
+      const image = new Image();
+      image.onload = () => { resolve(image.naturalWidth / Math.max(1, image.naturalHeight)); };
+      image.onerror = () => { resolve(2); };
+      image.src = src;
+    });
+    brandLogoManagedRef.current = { logoUrl, src, aspect };
+    return { src, aspect };
   };
   /** Insert the brand logo as an editable layer centred on page-space point. */
   const insertBrandLogoLayer = async (pagePoint: { x: number; y: number } | null): Promise<boolean> => {
@@ -1679,7 +1682,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         : result.stats.logo.length
           ? ` Logo: ${result.stats.logo.map((entry) => entry.outcome).join(', ')}.`
           : '';
-      setNotice(`Brand essentials applied to ${result.stats.pagesThemed} page(s). ${result.stats.headingsStyled + result.stats.bodiesStyled} text, ${result.stats.shapesStyled} shapes and ${result.stats.buttonsStyled} buttons restyled.${logoLine} Save a new version to keep it.`);
+      setNotice(`Brand essentials applied to ${result.stats.pagesThemed} page(s). ${result.stats.titlesStyled} titles, ${result.stats.headingsStyled} headings, ${result.stats.bodiesStyled} text, ${result.stats.shapesStyled} shapes and ${result.stats.buttonsStyled} buttons restyled.${logoLine} Save a new version to keep it.`);
     } catch (applyError) {
       setBrandApplyError(applyError instanceof Error ? applyError.message : 'Applying the brand essentials failed.');
     } finally {
@@ -1692,6 +1695,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       colors: brand.colors,
       allowedColors: [
         ...brandEssentials.colors,
+        ...brandAccentLadderShades(brandEssentials.colors),
         ...(brandEssentials.surface ? [brandEssentials.surface] : []),
         '#1d2634',
       ],
@@ -3879,7 +3883,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                   {brandApplySummary ? (
                     <div className="brand-essentials-summary" role="status">
                       <span className="st-label">Last application</span>
-                      <p>{brandApplySummary.pagesThemed} page(s) themed · {brandApplySummary.headingsStyled} headings · {brandApplySummary.bodiesStyled} text · {brandApplySummary.shapesStyled} shapes · {brandApplySummary.buttonsStyled} buttons</p>
+                      <p>{brandApplySummary.pagesThemed} page(s) themed · {brandApplySummary.titlesStyled} titles · {brandApplySummary.headingsStyled} headings · {brandApplySummary.bodiesStyled} text · {brandApplySummary.shapesStyled} shapes · {brandApplySummary.buttonsStyled} buttons</p>
                       {brandApplySummary.contrastFallbacks > 0 ? <p>{brandApplySummary.contrastFallbacks} contrast-safe fallback(s) applied.</p> : null}
                       {brandApplySummary.logoFailure ? <p>Logo unavailable: {brandApplySummary.logoFailure.reason}</p> : null}
                       {brandApplySummary.logo.length ? <p>Logo: {brandApplySummary.logo.map((entry) => entry.outcome).join(', ')}.</p> : null}
@@ -5016,6 +5020,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                   </div>
                 </figure>
               </div>
+              {brandApplyPreview.note ? <p className="editor-hint" role="status">{brandApplyPreview.note}</p> : null}
             </section>
           ) : null}
           <section className="brand-apply-section">

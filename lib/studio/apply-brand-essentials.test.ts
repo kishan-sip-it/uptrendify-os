@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { CONTENT_DOC_MAX_BLOCKS, contentDocumentSchema, serializeContentDocument, parseContentBody, type ContentDocument } from '@/lib/content/document';
 import type { ContentDocBlock } from '@/lib/content/document';
+import { contrastRatio } from '@/lib/studio/template-library/contrast';
 import {
   applyBrandEssentials,
+  brandAccentLadderShades,
   brandLogoBlockId,
   contrastSafeLabel,
+  inferTitleBlockId,
   planLogoPlacement,
   resolveBrandEssentials,
   type BrandEssentials,
@@ -366,5 +369,159 @@ describe('brand lint accepts the scanned palette and intentional fallbacks', () 
     // unknown colour is still flagged
     const flagged = lintBlocks([{ ...blocks[0]!, color: '#ff00ff' } as ContentDocBlock], { colors: ['#0f766e'], allowedColors: [] });
     expect(flagged.some((issue) => issue.kind === 'off-brand-colour')).toBe(true);
+  });
+});
+
+describe('regressions from the 2026-10-27 screen recording (ISRO text-heavy document)', () => {
+  // The real scanned brand: mid-tone green primary, dark green secondary that
+  // misses the ≥7:1-vs-white ink gate (6.7:1), no usable font roles, and a
+  // crawler-captured logo URL. The real document: one A4 page, a user-set
+  // cream background, eight ordinary text blocks, no headings/shapes/buttons.
+  const isroEssentials = resolveBrandEssentials({
+    palette: [
+      { hex: '#18b140', role: 'primary' },
+      { hex: '#046a38', role: 'secondary' },
+      { hex: '#ff8035', role: 'accent' },
+      { hex: '#ffc8c9', role: 'support' },
+      { hex: '#fffb00', role: 'support' },
+    ],
+    primaryColor: '#18b140',
+    secondaryColors: ['#046a38'],
+    headingFont: null,
+    bodyFont: null,
+    fonts: [],
+    logoUrl: 'https://www.isro.gov.in/media/isro_logo.png',
+  });
+
+  const recordedDoc = (): ContentDocument => ({
+    kind: 'uptrendify-doc',
+    version: 1,
+    mode: 'free',
+    pages: [
+      {
+        id: 'page-rec',
+        size: 'a4',
+        bg: '#faf8d8',
+        blocks: [
+          { id: 't0', type: 'text', text: '*Opening shot*: Earth rotating above the Indian subcontinent at sunrise.', fontSize: 22, align: 'left', color: null, bg: null, size: 'md', bold: false, italic: false, underline: false, geometry: { x: 40, y: 36, w: 700, h: 64 } },
+          ...Array.from({ length: 7 }, (_, index) => ({
+            id: `tb${index}`,
+            type: 'text' as const,
+            text: `Voice-over and on-screen copy block ${index} with production notes for the ISRO explainer.`,
+            fontSize: index % 2 === 0 ? 12 : 13,
+            align: 'left' as const,
+            color: null,
+            bg: null,
+            size: 'md' as const,
+            bold: false,
+            italic: false,
+            underline: false,
+            geometry: { x: 40, y: 140 + index * 110, w: 640, h: 72 },
+          })),
+        ],
+      },
+    ],
+  });
+
+  it('is visibly branded: inferred title takes a readable accent, body takes the darkest palette ink that reads on the page', () => {
+    const result = applyBrandEssentials({ doc: recordedDoc(), essentials: isroEssentials, scope: 'page', activePageIndex: 0, includeLogo: false });
+    const blocks = result.doc.pages[0]!.blocks as Extract<ContentDocBlock, { type: 'text' }>[];
+    const title = blocks[0]!;
+    // Title: darkened brand accent (not the theme-default ink the old run set),
+    // bold emphasis, AA-large on the preserved cream background.
+    expect(title.color).toBe('#149636');
+    expect(title.color).not.toBe('#1d2634');
+    expect(title.bold).toBe(true);
+    expect(contrastRatio(title.color ?? '#000', '#faf8d8')).toBeGreaterThanOrEqual(3);
+    // Body: the darkest palette colour (#046a38) passes AA on cream, so ordinary
+    // text visibly takes the brand instead of keeping the default ink.
+    for (const body of blocks.slice(1)) {
+      expect(body.color).toBe('#046a38');
+      expect(contrastRatio(body.color ?? '#000', '#faf8d8')).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(result.stats.titlesStyled).toBe(1);
+    expect(result.stats.bodiesStyled).toBe(7);
+    expect(result.stats.pagesThemed).toBe(1);
+  });
+
+  it('preserves the user background, all copy, ids and geometry exactly', () => {
+    const source = recordedDoc();
+    const result = applyBrandEssentials({ doc: source, essentials: isroEssentials, scope: 'page', activePageIndex: 0, includeLogo: false });
+    expect(result.doc.pages[0]!.bg).toBe('#faf8d8');
+    expect(result.stats.pagesBackgroundPreserved).toBe(1);
+    for (const [index, original] of source.pages[0]!.blocks.entries()) {
+      const next = result.doc.pages[0]!.blocks[index]!;
+      expect(next.id).toBe(original.id);
+      expect(next.geometry).toEqual(original.geometry);
+      if ('text' in next && 'text' in original) expect(next.text).toBe(original.text);
+    }
+  });
+
+  it('stays idempotent on the recorded document: the second application changes nothing', () => {
+    const first = applyBrandEssentials({ doc: recordedDoc(), essentials: isroEssentials, scope: 'page', activePageIndex: 0, includeLogo: false });
+    const second = applyBrandEssentials({ doc: first.doc, essentials: isroEssentials, scope: 'page', activePageIndex: 0, includeLogo: false });
+    expect(second.stats.pagesThemed).toBe(0);
+    expect(second.changedPageIds).toEqual([]);
+    expect(JSON.stringify(second.doc)).toBe(JSON.stringify(first.doc));
+  });
+
+  it('places the managed logo on the recorded text-heavy page without overlapping content', () => {
+    const result = applyBrandEssentials({ doc: recordedDoc(), essentials: isroEssentials, scope: 'page', activePageIndex: 0, logoSrc: '/api/brands/b/content/c/assets/a', logoAspect: 2.6, includeLogo: true });
+    expect(result.stats.logo[0]?.outcome).toBe('added');
+    const logo = result.doc.pages[0]!.blocks.find((block) => block.id.startsWith('brand-logo-')) as Extract<ContentDocBlock, { type: 'image' }>;
+    expect(logo.url).toBe('/api/brands/b/content/c/assets/a');
+    expect(logo.geometry!.y + logo.geometry!.h).toBeLessThanOrEqual(1123 - 40);
+    for (const block of result.doc.pages[0]!.blocks.filter((entry) => entry.id !== logo.id)) {
+      const g1 = logo.geometry!; const g2 = block.geometry!;
+      const overlaps = g1.x - 12 < g2.x + g2.w && g1.x + g1.w + 12 > g2.x && g1.y - 12 < g2.y + g2.h && g1.y + g1.h + 12 > g2.y;
+      expect(overlaps).toBe(false);
+    }
+  });
+
+  it('infers the title by typography evidence, not position alone, and returns null on uniform small type without geometry', () => {
+    const blocks = (offset: number, largeIndex: number | null): ContentDocBlock[] =>
+      Array.from({ length: 5 }, (_, index) => ({
+        id: `x${index}`,
+        type: 'text' as const,
+        text: `Block ${index} copy`,
+        fontSize: largeIndex === index ? 26 : 12,
+        align: 'left' as const,
+        color: null,
+        bg: null,
+        size: 'md' as const,
+        bold: false,
+        italic: false,
+        underline: false,
+        geometry: { x: 40, y: offset + index * 90, w: 600, h: 40 },
+      }));
+    expect(inferTitleBlockId(blocks(0, 3), 1123)).toBe('x3');
+    expect(inferTitleBlockId(blocks(0, null), 1123)).toBe('x0'); // geometry fallback: topmost in the upper half
+    const floating = Array.from({ length: 5 }, (_, index) => ({
+      id: `f${index}`,
+      type: 'text' as const,
+      text: `Block ${index} copy`,
+      fontSize: 12,
+      align: 'left' as const,
+      color: null,
+      bg: null,
+      size: 'md' as const,
+      bold: false,
+      italic: false,
+      underline: false,
+    }));
+    expect(inferTitleBlockId(floating, 1123)).toBeNull();
+    expect(inferTitleBlockId([{ id: 'solo', type: 'text', text: 'Only one', fontSize: 30, align: 'left', color: null, bg: null, size: 'md', bold: false, italic: false, underline: false }])).toBeNull();
+  });
+
+  it('reports a missing logo source as unavailable, never no-space', () => {
+    const result = applyBrandEssentials({ doc: recordedDoc(), essentials: isroEssentials, scope: 'page', activePageIndex: 0, logoSrc: null, includeLogo: true });
+    expect(result.stats.logo[0]?.outcome).toBe('unavailable');
+    expect(result.stats.logo[0]?.reason).toContain('not imported');
+  });
+
+  it('exposes the accent ladder shades so brand lint accepts derived brand colours', () => {
+    const shades = brandAccentLadderShades(['#18b140']);
+    expect(shades).toContain('#149636'); // the title colour the ladder produces on the cream page
+    expect(shades).toHaveLength(5);
   });
 });

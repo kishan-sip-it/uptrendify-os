@@ -1382,7 +1382,7 @@
   font-size: 10.5px; color: var(--st-text);
 }
 .brand-essentials-summary p { margin: 0; }
-.brand-apply-dialog { max-width: min(640px, 94vw); }
+.brand-apply-dialog { max-width: min(920px, 94vw); }
 .brand-apply-body { display: grid; gap: 14px; }
 .brand-apply-error {
   margin: 0; padding: 8px 10px; border-radius: 8px;
@@ -1450,10 +1450,13 @@
 .brand-apply-compare figure { margin: 0; display: grid; gap: 4px; min-width: 0; }
 .brand-apply-compare figcaption { font-size: 10px; font-weight: 700; color: var(--st-ink-2); }
 .brand-apply-mini {
-  height: 170px; display: grid; place-items: center; overflow: hidden;
+  height: clamp(300px, 46vh, 460px); display: grid; place-items: center; overflow: hidden;
   border: 1px solid var(--st-line-strong); border-radius: 8px; background: #fff;
 }
 .brand-apply-mini.is-after { border-color: var(--st-accent); }
-@media (max-width: 560px) { .brand-apply-compare { grid-template-columns: 1fr; } }
+@media (max-width: 560px) {
+  .brand-apply-compare { grid-template-columns: 1fr; }
+  .brand-apply-mini { height: clamp(260px, 52vh, 420px); }
+}
 /* hide the generic drawer search on brand tab too (kit has its own structure) */
 .studio-body.has-template-drawer > .studio-drawer .brand-kit { padding: 10px; }
