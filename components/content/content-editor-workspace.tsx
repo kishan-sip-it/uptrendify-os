@@ -1089,7 +1089,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     palette: { hex: string; role: string }[];
     headingFont: string | null;
     bodyFont: string | null;
-    fonts: { family: string; fontAssetUrl?: string; fontAssetFormat?: 'woff2' | 'woff' | 'opentype' | 'truetype' }[];
+    fonts: { family: string; evidence?: string; fontAssetUrl?: string; fontAssetFormat?: 'woff2' | 'woff' | 'opentype' | 'truetype' }[];
   } | null;
   versionNumber: number;
   body: string;
@@ -1564,6 +1564,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           logoNotice = logoError instanceof Error ? logoError.message : 'The brand logo could not be used.';
         }
       }
+      const logoFailure = logoNotice ? { reason: logoNotice } : null;
       const result = applyBrandEssentials({
         doc: { kind: 'uptrendify-doc', version: 1, mode: 'free', pages: pagesRef.current },
         essentials: brandEssentials,
@@ -1572,6 +1573,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         logoSrc: logo?.src ?? null,
         logoAspect: logo?.aspect,
         includeLogo: brandApplyLogo && Boolean(brandEssentials.logoUrl),
+        logoFailure,
       });
       commit(result.doc.pages, 'free');
       setFreeMode(true);
@@ -1580,9 +1582,11 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       setBrandApplyOpen(false);
       if (logoNotice) setError(logoNotice + ' The palette and typography were applied without the logo.');
       else setError(null);
-      const logoLine = result.stats.logo.length
-        ? ` Logo: ${result.stats.logo.map((entry) => entry.outcome).join(', ')}.`
-        : '';
+      const logoLine = result.stats.logoFailure
+        ? ` Logo unavailable: ${result.stats.logoFailure.reason}`
+        : result.stats.logo.length
+          ? ` Logo: ${result.stats.logo.map((entry) => entry.outcome).join(', ')}.`
+          : '';
       setNotice(`Brand essentials applied to ${result.stats.pagesThemed} page(s). ${result.stats.headingsStyled + result.stats.bodiesStyled} text, ${result.stats.shapesStyled} shapes and ${result.stats.buttonsStyled} buttons restyled.${logoLine} Save a new version to keep it.`);
     } catch (applyError) {
       setBrandApplyError(applyError instanceof Error ? applyError.message : 'Applying the brand essentials failed.');
@@ -1592,8 +1596,15 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   };
 
   const brandIssues = useMemo(
-    () => lintBlocks(activePage?.blocks ?? [], { colors: brand.colors }, activePage?.bg),
-    [activePage, brand.colors],
+    () => lintBlocks(activePage?.blocks ?? [], {
+      colors: brand.colors,
+      allowedColors: [
+        ...brandEssentials.colors,
+        ...(brandEssentials.surface ? [brandEssentials.surface] : []),
+        '#1d2634',
+      ],
+    }, activePage?.bg),
+    [activePage, brand.colors, brandEssentials],
   );
   const health = healthScore(brandIssues, activePage?.blocks.length ?? 0);
   const linkedValues = useMemo(() => ({ title: documentTitle, cta: itemCta ?? undefined }), [documentTitle, itemCta]);
@@ -3721,6 +3732,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       <span className="st-label">Last application</span>
                       <p>{brandApplySummary.pagesThemed} page(s) themed · {brandApplySummary.headingsStyled} headings · {brandApplySummary.bodiesStyled} text · {brandApplySummary.shapesStyled} shapes · {brandApplySummary.buttonsStyled} buttons</p>
                       {brandApplySummary.contrastFallbacks > 0 ? <p>{brandApplySummary.contrastFallbacks} contrast-safe fallback(s) applied.</p> : null}
+                      {brandApplySummary.logoFailure ? <p>Logo unavailable: {brandApplySummary.logoFailure.reason}</p> : null}
                       {brandApplySummary.logo.length ? <p>Logo: {brandApplySummary.logo.map((entry) => entry.outcome).join(', ')}.</p> : null}
                       <p className="editor-hint">Unsaved — save a new version to keep it, or Undo to revert.</p>
                     </div>

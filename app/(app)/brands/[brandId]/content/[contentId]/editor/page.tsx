@@ -66,6 +66,7 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
     bodyFont: visualIdentity.bodyFont,
     fonts: visualIdentity.fonts.slice(0, 6).map((font) => ({
       family: font.family,
+      evidence: font.evidence,
       fontAssetUrl: font.fontAssetUrl,
       fontAssetFormat: font.fontAssetFormat,
     })),

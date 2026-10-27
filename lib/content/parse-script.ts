@@ -42,10 +42,27 @@ export function storyboardPagesFromScript(script: string, pageSize: ContentPageS
       note: 'Imported from the existing video script. Edit the beat text directly on the canvas.',
       blocks: [
         { id: headingId, type: 'heading', text: heading, level: 2, align: 'left', color: null, bg: null, bold: true, italic: false, underline: false, geometry: { x: 40, y: 56, w: dims.width - 80, h: 110 } },
-        { id: textId, type: 'text', text: copy, size: 'md', align: 'left', color: null, bg: null, bold: false, italic: false, underline: false, geometry: { x: 40, y: 190, w: dims.width - 80, h: dims.height - 240 } },
+        // Content-sized box (same line estimate as layoutPageForFreeCanvas),
+        // clamped to the page: an oversized hitbox blocks logo placement and
+        // free-canvas selection across the rest of the page.
+        { id: textId, type: 'text', text: copy, size: 'md', align: 'left', color: null, bg: null, bold: false, italic: false, underline: false, geometry: { x: 40, y: 190, w: dims.width - 80, h: storyboardTextHeight(copy, dims.width, dims.height) } },
       ],
     };
   });
+}
+
+/**
+ * Height for a storyboard scene text box: the same width-per-character line
+ * estimate the free-canvas flow conversion uses, grown 15% for estimate error
+ * and clamped inside the page.
+ */
+function storyboardTextHeight(copy: string, pageWidth: number, pageHeight: number): number {
+  const fontSize = 16;
+  const maxWidth = pageWidth - 80;
+  const charsPerLine = Math.max(12, Math.floor(maxWidth / Math.max(7, fontSize * 0.54)));
+  const lines = copy.split(/\r?\n/).reduce((total, line) => total + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
+  const estimated = Math.ceil(lines * fontSize * 1.45 * 1.15) + 12;
+  return Math.max(120, Math.min(pageHeight - 240, estimated));
 }
 
 /** Approximate spoken duration at 150 words per minute. */

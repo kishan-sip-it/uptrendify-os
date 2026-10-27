@@ -246,3 +246,125 @@ describe('logo placement', () => {
     expect(a!.x + a!.w).toBeLessThanOrEqual(760);
   });
 });
+
+describe('regressions from the preview failure report', () => {
+  it('derives heading/body roles from detected font evidence when explicit roles are missing', () => {
+    const essentials = resolveBrandEssentials({
+      palette: [{ hex: '#0f766e', role: 'primary' }],
+      fonts: [
+        { family: 'Playfair Display', evidence: 'matched heading selector h1-h6' },
+        { family: 'Source Sans', evidence: 'matched body/html selector' },
+      ],
+      headingFont: null,
+      bodyFont: null,
+    });
+    expect(essentials.headingFont).toBe('Playfair Display');
+    expect(essentials.bodyFont).toBe('Source Sans');
+  });
+
+  it('gives a text-heavy page visible brand styling: accent heading + AA-safe label + page tint', async () => {
+    const source = doc();
+    source.pages[0]!.blocks = [
+      { id: 'h', type: 'heading', text: 'Title', level: 1, fontSize: 40, align: 'left', color: '#111111', bg: null, bold: true, italic: false, underline: false, geometry: { x: 40, y: 40, w: 680, h: 80 } },
+      ...Array.from({ length: 7 }, (_, index) => ({
+        id: `t${index}`,
+        type: 'text' as const,
+        text: index === 0 ? 'WHY US' : `Paragraph ${index} with real copy.`,
+        fontSize: index === 0 ? 15 : 17,
+        align: 'left' as const,
+        color: '#111111',
+        bg: null,
+        size: 'md' as const,
+        bold: index === 0,
+        italic: false,
+        underline: false,
+        geometry: { x: 40, y: 140 + index * 70, w: 680, h: 50 },
+      })),
+    ];
+    delete (source.pages[0] as { bg?: string }).bg;
+    source.pages[0]!.blocks.forEach((block) => { void block; });
+    const result = applyBrandEssentials({ doc: source, essentials: brand, scope: 'document', activePageIndex: 0, includeLogo: false });
+    const blocks = result.doc.pages[0]!.blocks;
+    const heading = blocks[0] as Extract<ContentDocBlock, { type: 'heading' }>;
+    expect(heading.color).toBe(brand.accent); // visible brand accent on the title
+    const label = blocks[1] as Extract<ContentDocBlock, { type: 'text' }>;
+    // AA at 15px requires 4.5:1 — the accent misses it on the tint, so the
+    // ladder must fall back to a readable ink rather than force the accent.
+    const { contrastRatio } = await import('@/lib/studio/template-library/contrast');
+    expect(contrastRatio(label.color ?? '#000', result.doc.pages[0]!.bg ?? '#fff')).toBeGreaterThanOrEqual(4.5);
+    expect(result.doc.pages[0]!.bg).toBeTruthy(); // brand surface/tint applied
+    expect(result.stats.headingsStyled).toBe(2); // page-2 heading is also in document scope
+    // copy untouched
+    expect((blocks[2] as { text: string }).text).toBe('Paragraph 1 with real copy.');
+  });
+
+  it('places a logo in the empty band of a text-heavy page (fixed corners previously failed)', () => {
+    const source = doc();
+    // Stacked near-full-width text boxes with vertical gaps between them.
+    source.pages[0]!.blocks = Array.from({ length: 7 }, (_, index) => ({
+      id: `t${index}`,
+      type: 'text' as const,
+      text: `Block ${index}`,
+      fontSize: 16,
+      align: 'left' as const,
+      color: null,
+      bg: null,
+      size: 'md' as const,
+      bold: false,
+      italic: false,
+      underline: false,
+      geometry: { x: 40, y: 120 + index * 140, w: 690, h: 60 },
+    }));
+    const result = applyBrandEssentials({ doc: source, essentials: brand, scope: 'page', activePageIndex: 0, logoSrc: '/managed', logoAspect: 2.5, includeLogo: true });
+    expect(result.stats.logo[0]?.outcome).toBe('added');
+    const logo = result.doc.pages[0]!.blocks.find((block) => block.id.startsWith('brand-logo-')) as Extract<ContentDocBlock, { type: 'image' }>;
+    expect(logo.geometry!.y + logo.geometry!.h).toBeLessThanOrEqual(1123 - 40);
+    // no overlap with any text block
+    for (const block of result.doc.pages[0]!.blocks.filter((entry) => entry.id !== logo.id)) {
+      const g1 = logo.geometry!; const g2 = block.geometry!;
+      const overlaps = g1.x - 12 < g2.x + g2.w && g1.x + g1.w + 12 > g2.x && g1.y - 12 < g2.y + g2.h && g1.y + g1.h + 12 > g2.y;
+      expect(overlaps).toBe(false);
+    }
+  });
+
+  it('reports logo download/upload failures as unavailable with the reason, never no-space', () => {
+    const source = doc();
+    const result = applyBrandEssentials({
+      doc: source,
+      essentials: brand,
+      scope: 'document',
+      activePageIndex: 0,
+      logoSrc: null,
+      includeLogo: true,
+      logoFailure: { reason: 'The brand logo is not a PNG, JPG, or WEBP image.' },
+    });
+    expect(result.stats.logoFailure).toEqual({ reason: 'The brand logo is not a PNG, JPG, or WEBP image.' });
+    for (const entry of result.stats.logo) {
+      expect(entry.outcome).toBe('unavailable');
+      expect(entry.reason).toContain('PNG');
+    }
+    expect(result.doc.pages[0]!.blocks.some((block) => block.id.startsWith('brand-logo-'))).toBe(false);
+  });
+
+  it('stays idempotent with the new accent heading/label mapping', () => {
+    const first = applyBrandEssentials({ doc: doc(), essentials: brand, scope: 'document', activePageIndex: 0, includeLogo: false });
+    const second = applyBrandEssentials({ doc: first.doc, essentials: brand, scope: 'document', activePageIndex: 0, includeLogo: false });
+    expect(JSON.stringify(second.doc)).toBe(JSON.stringify(first.doc));
+  });
+});
+
+describe('brand lint accepts the scanned palette and intentional fallbacks', () => {
+  it('does not flag scanned palette colours, derived surface, or the ink fallback', async () => {
+    const { lintBlocks } = await import('@/lib/studio/brand-lint');
+    const blocks: ContentDocBlock[] = [
+      { id: 'a', type: 'heading', text: 'T', level: 1, align: 'left', color: '#0f766e', bg: null, bold: true, italic: false, underline: false },
+      { id: 'b', type: 'text', text: 'Body', align: 'left', color: '#1d2634', bg: null, size: 'md', bold: false, italic: false, underline: false },
+      { id: 'c', type: 'shape', shape: 'rectangle', color: '#e2e8f0', align: 'left', width: 50, height: 100 },
+    ];
+    const issues = lintBlocks(blocks, { colors: ['#0f766e'], allowedColors: ['#0f766e', '#f59e0b', '#e2e8f0', '#1d2634'] });
+    expect(issues.filter((issue) => issue.kind === 'off-brand-colour')).toEqual([]);
+    // unknown colour is still flagged
+    const flagged = lintBlocks([{ ...blocks[0]!, color: '#ff00ff' } as ContentDocBlock], { colors: ['#0f766e'], allowedColors: [] });
+    expect(flagged.some((issue) => issue.kind === 'off-brand-colour')).toBe(true);
+  });
+});

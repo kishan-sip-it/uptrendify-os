@@ -1,5 +1,6 @@
 import { CONTENT_PAGE_SIZES, hashId, type ContentDocBlock, type ContentDocPage, type ContentDocument } from '@/lib/content/document';
 import { contrastRatio, mixOver, relativeLuminance, requiredRatio } from '@/lib/studio/template-library/contrast';
+import { resolveFontRoles } from '@/lib/brand/identity-mapping';
 
 /**
  * Apply Brand Essentials — pure transformation core.
@@ -30,7 +31,7 @@ export type BrandEssentials = {
 
 export type ApplyScope = 'page' | 'document';
 
-export type LogoOutcome = 'added' | 'duplicate' | 'no-space' | 'limit' | 'off';
+export type LogoOutcome = 'added' | 'duplicate' | 'no-space' | 'limit' | 'off' | 'unavailable';
 
 export type ApplyStats = {
   pagesThemed: number;
@@ -41,7 +42,9 @@ export type ApplyStats = {
   buttonsStyled: number;
   contrastFallbacks: number;
   imagesUntouched: number;
-  logo: { pageIndex: number; outcome: LogoOutcome }[];
+  logo: { pageIndex: number; outcome: LogoOutcome; reason?: string }[];
+  /** Set when the logo asset itself could not be fetched/validated/uploaded. */
+  logoFailure: { reason: string } | null;
 };
 
 export type ApplyResult = {
@@ -76,6 +79,7 @@ export function resolveBrandEssentials(
     secondaryColors?: string[] | null;
     headingFont?: string | null;
     bodyFont?: string | null;
+    fonts?: { family: string; evidence?: string }[] | null;
     logoUrl?: string | null;
   } | null,
   fallbackInk: string = DEFAULT_INK,
@@ -95,14 +99,21 @@ export function resolveBrandEssentials(
   const byLuminance = [...colors].sort((a, b) => relativeLuminance(a) - relativeLuminance(b));
   const ink = byLuminance.length > 0 && contrastRatio(byLuminance[0]!, '#ffffff') >= 7 ? byLuminance[0]! : fallbackInk;
   const surface = [...colors].sort((a, b) => relativeLuminance(b) - relativeLuminance(a)).find((color) => relativeLuminance(color) >= 0.84) ?? null;
+  // Explicit scan roles win; otherwise derive from detected font evidence
+  // using the existing identity-mapping helper. A detected family without
+  // usable evidence still falls back to the first detected family only when
+  // resolveFontRoles found one at all.
+  const explicitHeading = identity?.headingFont?.trim() || null;
+  const explicitBody = identity?.bodyFont?.trim() || null;
+  const detected = resolveFontRoles(identity?.fonts ?? []);
   return {
     colors,
     accent,
     secondary,
     ink,
     surface,
-    headingFont: identity?.headingFont?.trim() || null,
-    bodyFont: identity?.bodyFont?.trim() || null,
+    headingFont: explicitHeading ?? detected.headingFont,
+    bodyFont: explicitBody ?? detected.bodyFont,
     logoUrl: identity?.logoUrl?.trim() || null,
   };
 }
@@ -116,9 +127,9 @@ export function contrastSafeLabel(fill: string, ink: string): string {
   return ink;
 }
 
-function blockBackground(page: ContentDocPage, block: ContentDocBlock): string {
+function blockBackground(pageBgAfterApply: string, block: ContentDocBlock): string {
   const ownBg = block.type === 'heading' || block.type === 'text' ? block.bg : null;
-  return ownBg ?? page.bg ?? '#ffffff';
+  return ownBg ?? pageBgAfterApply;
 }
 
 function isReadable(fg: string, bg: string, fontSize: number | undefined, bold: boolean): boolean {
@@ -157,26 +168,29 @@ export function planLogoPlacement(page: ContentDocPage, logoAspect: number, marg
   const dims = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
   if (page.blocks.length >= 40) return null;
   const safeAspect = Number.isFinite(logoAspect) && logoAspect > 0 ? Math.min(4, Math.max(0.4, logoAspect)) : 2;
-  const w = Math.max(72, Math.min(200, Math.round(168 * safeAspect)));
-  const h = Math.max(32, Math.round(w / safeAspect));
-  const candidates = [
-    { x: dims.width - margin - w, y: margin },
-    { x: margin, y: margin },
-    { x: dims.width - margin - w, y: dims.height - margin - h },
-    { x: margin, y: dims.height - margin - h },
-  ];
-  for (const candidate of candidates) {
-    const rect = { ...candidate, w, h };
-    if (rect.x < 0 || rect.y < 0 || rect.x + rect.w > dims.width || rect.y + rect.h > dims.height) continue;
-    const collides = page.blocks.some((block) => block.geometry ? rectsIntersect(rect, block.geometry) : false);
-    if (!collides) return rect;
+  const solid = page.blocks.filter((block) => !block.hidden && block.geometry);
+  // Width variants keep the logo usable when only a narrow band is free.
+  const widths = [168, 126, 92].map((base) => Math.max(64, Math.round(base * Math.min(1.4, Math.max(0.6, safeAspect / 2)))));
+  const heights = widths.map((width) => Math.max(30, Math.round(width / safeAspect)));
+  for (let variant = 0; variant < widths.length; variant += 1) {
+    const w = widths[variant]!;
+    const h = heights[variant]!;
+    // Horizontal band scan top→bottom finds gaps between stacked text boxes
+    // that fixed corners miss; right first (reading-end anchor), then left.
+    for (let y = margin; y + h <= dims.height - margin; y += 24) {
+      for (const x of [dims.width - margin - w, margin]) {
+        const rect = { x, y, w, h };
+        const collides = solid.some((block) => rectsIntersect(rect, block.geometry!));
+        if (!collides) return rect;
+      }
+    }
   }
   return null;
 }
 
 function themeRichText(
   runs: NonNullable<Extract<ContentDocBlock, { type: 'heading' | 'text' }>['richText']>,
-  page: ContentDocPage,
+  pageBg: string,
   ink: string,
 ): { runs: typeof runs; fallbacks: number } {
   let fallbacks = 0;
@@ -184,7 +198,7 @@ function themeRichText(
     const next = { ...run };
     if (typeof next.color === 'string' && next.color) {
       // Runs may sit on their own highlight; judge against it, else the page.
-      const surface = next.bg ?? page.bg ?? '#ffffff';
+      const surface = next.bg ?? pageBg;
       if (!isReadable(next.color, surface, next.fontSize, next.bold ?? false)) {
         next.color = ink;
         fallbacks += 1;
@@ -204,6 +218,8 @@ export type ApplyOptions = {
   logoSrc?: string | null;
   logoAspect?: number;
   includeLogo: boolean;
+  /** Set when the logo asset could not be fetched/validated/uploaded. */
+  logoFailure?: { reason: string } | null;
 };
 
 /**
@@ -222,12 +238,21 @@ export function applyBrandEssentials(options: ApplyOptions): ApplyResult {
     contrastFallbacks: 0,
     imagesUntouched: 0,
     logo: [],
+    logoFailure: options.logoFailure ?? null,
   };
   const changedPageIds: string[] = [];
 
   const pages = doc.pages.map((page, pageIndex) => {
     const inScope = scope === 'document' || pageIndex === activePageIndex;
     if (!inScope) return page;
+
+    // The background the page will have AFTER this pass — text is themed
+    // against it so back-to-back applications converge (no colour flip-flop).
+    const pageBgAfterApply = page.backgroundImage
+      ? (page.bg ?? '#ffffff')
+      : page.gradient
+        ? mixOver(page.gradient.from, page.gradient.to, 0.5)
+        : (page.bg ?? essentials.surface ?? (essentials.accent ? mixOver(essentials.accent, '#ffffff', 0.08) : '#ffffff'));
 
     // Preserve explicit user backgrounds (image/gradient) and user-picked solids.
     if (page.backgroundImage || page.gradient || page.bg) {
@@ -239,14 +264,17 @@ export function applyBrandEssentials(options: ApplyOptions): ApplyResult {
     let blocks: ContentDocBlock[] = page.blocks.map((block, blockIndex) => {
       if (block.type === 'heading') {
         const next: ContentDocBlock = { ...block };
-        const bg = blockBackground(page, block);
-        const { color, fallbackUsed } = enforceReadable(essentials.ink, bg, block.fontSize, true, DEFAULT_INK);
-        if (fallbackUsed) stats.contrastFallbacks += 1;
-        if (color !== block.color) { next.color = color; changed = true; }
+        const bg = blockBackground(pageBgAfterApply, block);
+        // Headings carry the brand: readable accent first, ink as the safe fallback.
+        const accentHeading = essentials.accent
+          ? enforceReadable(essentials.accent, bg, block.fontSize, true, essentials.ink)
+          : enforceReadable(essentials.ink, bg, block.fontSize, true, DEFAULT_INK);
+        if (accentHeading.fallbackUsed) stats.contrastFallbacks += 1;
+        if (accentHeading.color !== block.color) { next.color = accentHeading.color; changed = true; }
         if (essentials.headingFont && block.fontFamily !== essentials.headingFont) { next.fontFamily = essentials.headingFont; changed = true; }
-        if (color !== block.color || (essentials.headingFont && block.fontFamily !== essentials.headingFont)) stats.headingsStyled += 1;
+        if (accentHeading.color !== block.color || (essentials.headingFont && block.fontFamily !== essentials.headingFont)) stats.headingsStyled += 1;
         if (block.richText?.length) {
-          const { runs, fallbacks } = themeRichText(block.richText, page, color);
+          const { runs, fallbacks } = themeRichText(block.richText, pageBgAfterApply, accentHeading.color);
           if (fallbacks) stats.contrastFallbacks += fallbacks;
           next.richText = runs;
         }
@@ -254,14 +282,21 @@ export function applyBrandEssentials(options: ApplyOptions): ApplyResult {
       }
       if (block.type === 'text') {
         const next: ContentDocBlock = { ...block };
-        const bg = blockBackground(page, block);
-        const { color, fallbackUsed } = enforceReadable(essentials.ink, bg, block.fontSize, block.bold, DEFAULT_INK);
-        if (fallbackUsed) stats.contrastFallbacks += 1;
-        if (color !== block.color) { next.color = color; changed = true; }
+        const bg = blockBackground(pageBgAfterApply, block);
+        // Bold short lines are labels/eyebrows — give them the readable accent
+        // variant so text-heavy pages visibly take the brand. Body copy stays ink.
+        const isLabel = Boolean(block.bold) && block.text.trim().length > 0 && block.text.trim().length <= 80;
+        const labelColor = essentials.accent
+          ? enforceReadable(essentials.accent, bg, block.fontSize, Boolean(block.bold), essentials.ink)
+          : enforceReadable(essentials.ink, bg, block.fontSize, Boolean(block.bold), DEFAULT_INK);
+        const bodyColor = enforceReadable(essentials.ink, bg, block.fontSize, Boolean(block.bold), DEFAULT_INK);
+        const chosen = isLabel ? labelColor : bodyColor;
+        if (chosen.fallbackUsed) stats.contrastFallbacks += 1;
+        if (chosen.color !== block.color) { next.color = chosen.color; changed = true; }
         if (essentials.bodyFont && block.fontFamily !== essentials.bodyFont) { next.fontFamily = essentials.bodyFont; changed = true; }
-        if (color !== block.color || (essentials.bodyFont && block.fontFamily !== essentials.bodyFont)) stats.bodiesStyled += 1;
+        if (chosen.color !== block.color || (essentials.bodyFont && block.fontFamily !== essentials.bodyFont)) stats.bodiesStyled += 1;
         if (block.richText?.length) {
-          const { runs, fallbacks } = themeRichText(block.richText, page, color);
+          const { runs, fallbacks } = themeRichText(block.richText, pageBgAfterApply, chosen.color);
           if (fallbacks) stats.contrastFallbacks += fallbacks;
           next.richText = runs;
         }
@@ -291,13 +326,20 @@ export function applyBrandEssentials(options: ApplyOptions): ApplyResult {
     });
 
     // Page background: only when the page has no explicit user-set background.
-    if (!page.backgroundImage && !page.gradient && !page.bg && essentials.surface) {
-      page = { ...page, bg: essentials.surface };
-      changed = true;
+    // A light brand tint (accent washed toward white) keeps AA trivially safe
+    // while making text-heavy pages visibly take the brand.
+    if (!page.backgroundImage && !page.gradient && !page.bg) {
+      const surface = essentials.surface ?? (essentials.accent ? mixOver(essentials.accent, '#ffffff', 0.08) : null);
+      if (surface && surface.toLowerCase() !== '#ffffff') {
+        page = { ...page, bg: surface };
+        changed = true;
+      }
     }
 
     // Logo layer: opt-in, deterministic id, non-overlapping placement only.
-    if (includeLogo && logoSrc && essentials.logoUrl) {
+    if (includeLogo && stats.logoFailure) {
+      stats.logo.push({ pageIndex, outcome: 'unavailable', reason: stats.logoFailure.reason });
+    } else if (includeLogo && logoSrc && essentials.logoUrl) {
       const logoId = brandLogoBlockId(page.id);
       if (blocks.some((block) => block.id === logoId)) {
         stats.logo.push({ pageIndex, outcome: 'duplicate' });
