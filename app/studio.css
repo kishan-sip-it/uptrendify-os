@@ -575,11 +575,11 @@
 .editor-free-block.is-ghost { opacity: .38; }
 .editor-free-block.is-selected {
   z-index: 30;
-  /* Vars are set per-block from JS so border+handles keep a constant SCREEN
-     size at every zoom level. Whole-CSS-px values only: fractional widths
-     anti-alias into a blurry line over the scaled frame. */
-  outline: var(--st-sel-width, 2px) solid var(--st-accent);
-  outline-offset: var(--st-sel-offset, 2px);
+  /* Selection chrome (outline + handles) moved to the frame-level
+     .st-selection-overlay so blocks at the page edge are never clipped by
+     .studio-page-clip. Overlay vars come from JS so border+handles keep a
+     constant SCREEN size at every zoom level. Whole-CSS-px values only:
+     fractional widths anti-alias into a blurry line over the scaled frame. */
 }
 /* Crisp hover affordance: solid hairline, no tint, no blur, never while the
    block is selected, being edited, or grabbed by a handle. */
@@ -593,8 +593,25 @@
 /* A short text inside a tall free-canvas block must still enter inline editing
    when the blank area is clicked, so the editable text fills the whole block. */
 .editor-free-block .editor-canvas-text { min-height: 100%; }
+/* Selection chrome lives in a frame-level overlay rendered as a sibling of
+   .studio-page-clip, so the boundary, resize handles and rotate grip stay
+   visible for selections at (or partially beyond) the page edge. The overlay
+   is click-through; only the grips take pointer events. */
+.st-selection-overlay {
+  position: absolute;
+  z-index: 55;
+  pointer-events: none;
+  outline: var(--st-sel-width, 2px) solid var(--st-accent);
+  outline-offset: var(--st-sel-offset, 2px);
+}
+.st-selection-overlay .st-free-handle,
+.st-selection-overlay .st-free-rotate { pointer-events: auto; }
+
 /* Single source of truth for selection handles: round, white-filled, blue
-   outline, constant screen size. content-editor.css defines no competing rules. */
+   outline, constant screen size. content-editor.css defines no competing rules.
+   Handles sit centred ON the selection boundary line: the outline is drawn
+   --st-sel-offset outside the block edge, so each grip's edge anchor is
+   shifted out by the same amount. */
 .st-free-handle {
   position: absolute;
   z-index: 60;
@@ -605,17 +622,40 @@
   background: #fff;
   /* No drop shadow: shadows over the scaled frame read as a glittering halo. */
 }
-.st-handle-n { top: 0; left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); margin-top: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
-.st-handle-s { bottom: 0; left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); margin-bottom: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
-.st-handle-e { top: 50%; right: 0; margin-top: calc(var(--st-handle-size, 10px) / -2); margin-right: calc(var(--st-handle-size, 10px) / -2); cursor: ew-resize; }
-.st-handle-w { top: 50%; left: 0; margin-top: calc(var(--st-handle-size, 10px) / -2); margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: ew-resize; }
-.st-handle-ne { top: 0; right: 0; margin-top: calc(var(--st-handle-size, 10px) / -2); margin-right: calc(var(--st-handle-size, 10px) / -2); cursor: nesw-resize; }
-.st-handle-nw { top: 0; left: 0; margin-top: calc(var(--st-handle-size, 10px) / -2); margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: nwse-resize; }
-.st-handle-se { bottom: 0; right: 0; margin-bottom: calc(var(--st-handle-size, 10px) / -2); margin-right: calc(var(--st-handle-size, 10px) / -2); cursor: nwse-resize; }
-.st-handle-sw { bottom: 0; left: 0; margin-bottom: calc(var(--st-handle-size, 10px) / -2); margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: nesw-resize; }
+.st-handle-n { top: calc(0px - var(--st-sel-offset, 2px)); left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); margin-top: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
+.st-handle-s { bottom: calc(0px - var(--st-sel-offset, 2px)); left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); margin-bottom: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
+.st-handle-e { top: 50%; right: calc(0px - var(--st-sel-offset, 2px)); margin-top: calc(var(--st-handle-size, 10px) / -2); margin-right: calc(var(--st-handle-size, 10px) / -2); cursor: ew-resize; }
+.st-handle-w { top: 50%; left: calc(0px - var(--st-sel-offset, 2px)); margin-top: calc(var(--st-handle-size, 10px) / -2); margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: ew-resize; }
+.st-handle-ne { top: calc(0px - var(--st-sel-offset, 2px)); right: calc(0px - var(--st-sel-offset, 2px)); margin-top: calc(var(--st-handle-size, 10px) / -2); margin-right: calc(var(--st-handle-size, 10px) / -2); cursor: nesw-resize; }
+.st-handle-nw { top: calc(0px - var(--st-sel-offset, 2px)); left: calc(0px - var(--st-sel-offset, 2px)); margin-top: calc(var(--st-handle-size, 10px) / -2); margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: nwse-resize; }
+.st-handle-se { bottom: calc(0px - var(--st-sel-offset, 2px)); right: calc(0px - var(--st-sel-offset, 2px)); margin-bottom: calc(var(--st-handle-size, 10px) / -2); margin-right: calc(var(--st-handle-size, 10px) / -2); cursor: nwse-resize; }
+.st-handle-sw { bottom: calc(0px - var(--st-sel-offset, 2px)); left: calc(0px - var(--st-sel-offset, 2px)); margin-bottom: calc(var(--st-handle-size, 10px) / -2); margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: nesw-resize; }
 .st-free-handle:hover { transform: scale(1.25); }
 .editor-free-block,
 .st-free-handle { touch-action: none; }
+
+/* Canva-style rotate grip hanging below the bottom edge. Sits just past the
+   selection boundary (sel-offset + a fixed gap) and orbits with the box when
+   the block is rotated. */
+.st-free-rotate {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: var(--st-rotate-size, 24px);
+  height: var(--st-rotate-size, 24px);
+  margin: calc(var(--st-sel-offset, 2px) + 6px) 0 0 calc(var(--st-rotate-size, 24px) / -2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--st-accent);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--st-accent);
+  cursor: grab;
+  touch-action: none;
+}
+.st-free-rotate:active { cursor: grabbing; }
+.st-free-rotate-icon { width: 62%; height: 62%; }
 .editor-free-block .editor-inline-edit { user-select: text; }
 
 /* Selection toolbar is positioned against the selected block by JS. */
@@ -1483,8 +1523,9 @@
    light + dark themes and import order stay coherent.
    ========================================================================== */
 
-/* Constant-screen-size selection feedback is driven per block by JS vars:
-   --st-handle-size, --st-sel-width, --st-sel-offset (see the free-block style). */
+/* Constant-screen-size selection feedback is driven by JS vars:
+   --st-handle-size, --st-sel-width, --st-sel-offset (set on each free block and
+   on its .st-selection-overlay). */
 
 /* Element action bar (duplicate / layer order / lock / delete + import chip). */
 .st-float-actions { margin-left: 2px; padding-left: 6px; border-left: 1px solid var(--st-line-strong); }

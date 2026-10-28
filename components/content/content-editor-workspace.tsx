@@ -46,6 +46,7 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  RotateCw,
 } from 'lucide-react';
 import {
   CONTENT_DOC_MAX_BLOCKS,
@@ -1040,8 +1041,17 @@ function defaultGeometryForNewBlock(block: EditorBlock, page: ContentDocPage): C
     w = Math.min(usableWidth, Math.max(220, Math.ceil(Math.min(block.text.length, 90) * defaultFontSize(block) * 0.54 + 24)));
     h = 112;
   } else if (block.type === 'shape') {
-    w = Math.round(usableWidth * ((block.width ?? 60) / 100));
-    h = block.height ?? 120;
+    // Kind-aware, proportionate defaults: circles/squares/stars stay regular
+    // (1:1) so they never render squashed, and rectangles get a modest
+    // card-sized footprint instead of a page-wide bar. Only affects freshly
+    // inserted shapes; existing geometry is never re-derived.
+    const shapeTarget = block.shape === 'rectangle' ? { w: 280, h: 170 }
+      : block.shape === 'square' ? { w: 190, h: 190 }
+      : block.shape === 'circle' ? { w: 180, h: 180 }
+      : block.shape === 'triangle' ? { w: 210, h: 170 }
+      : { w: 200, h: 200 }; // star, pyramid
+    w = Math.min(usableWidth, shapeTarget.w);
+    h = shapeTarget.h;
   } else if (block.type === 'button') {
     w = Math.round(usableWidth * ((block.width ?? 60) / 100));
     h = 56;
@@ -1227,6 +1237,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const contextSubmenuRef = useRef<HTMLDivElement | null>(null);
   const [copiedTextStyle, setCopiedTextStyle] = useState<TextStyleSnapshot | null>(null);
+  /** Fill/opacity snapshot for shape/button "Copy style" in the layer context menu. */
+  const [copiedObjectStyle, setCopiedObjectStyle] = useState<{ color: string | null; opacity: number | null } | null>(null);
   const internalTextClipboardRef = useRef<string | null>(null);
   const [textAssist, setTextAssist] = useState<TextAssistState | null>(null);
   const reusableTextComponentsKey = `uptrendify-studio-components-v1:${brandId}`;
@@ -1238,6 +1250,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const dragIndex = useRef<number | null>(null);
   const freeDrag = useRef<{ id: string; pointerId: number; startX: number; startY: number; scale: number; moved: boolean; origin: CanvasGeometry } | null>(null);
   const freeResize = useRef<{ id: string; dir: string; startX: number; startY: number; origin: CanvasGeometry; next: CanvasGeometry; scale?: number } | null>(null);
+  const freeRotate = useRef<{ id: string; pointerId: number; cx: number; cy: number; startAngle: number; origin: CanvasGeometry; next: number } | null>(null);
   const saveInFlight = useRef(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const stagePointerRef = useRef({ x: 0, y: 0 });
@@ -1894,6 +1907,11 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       if (element) {
         element.style.left = `${nextX}px`;
         element.style.top = `${nextY}px`;
+      }
+      const overlay = frameRef.current?.querySelector<HTMLElement>('[data-studio-selection-overlay]');
+      if (overlay && overlay.dataset.forId === drag.id) {
+        overlay.style.left = `${nextX}px`;
+        overlay.style.top = `${nextY}px`;
       }
     };
     const handlePointerUp = (event: PointerEvent) => {
@@ -2670,10 +2688,32 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     setTextContextMenu(null);
   };
 
-  const alignTextToPage = (blockId: string, position: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
+  /** Fill/opacity style sheet for shapes and buttons, mirroring the text Copy/Paste style flow. */
+  const copyObjectStyle = (blockId: string) => {
+    const block = findBlockById(blockId);
+    if (!block || (block.type !== 'shape' && block.type !== 'button')) return;
+    setCopiedObjectStyle({ color: block.color ?? null, opacity: block.opacity ?? null });
+    setNotice('Style copied. Right-click another shape or button and choose Paste style.');
+    setTextContextMenu(null);
+  };
+
+  const pasteObjectStyle = (blockId: string) => {
+    const block = findBlockById(blockId);
+    if (!block || !copiedObjectStyle || !canEditBlock(block)) return;
+    if (block.type !== 'shape' && block.type !== 'button') return;
+    patchBlock(blockId, {
+      color: copiedObjectStyle.color,
+      ...(copiedObjectStyle.opacity !== null ? { opacity: copiedObjectStyle.opacity } : {}),
+    });
+    setSelectedId(blockId);
+    setNotice('Copied style applied.');
+    setTextContextMenu(null);
+  };
+
+  const alignBlockToPage = (blockId: string, position: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
     const page = pages[activePageIndex];
     const block = page?.blocks.find((entry) => entry.id === blockId);
-    if (!page || !isEditableTextBlock(block) || !canEditBlock(block) || !freeMode) return;
+    if (!page || !block || !canEditBlock(block) || !freeMode) return;
     const size = CONTENT_PAGE_SIZES[page.size ?? 'a4'];
     const current = block.geometry ?? defaultGeometryForNewBlock(block, page);
     const maxX = Math.max(0, size.width - current.w);
@@ -2685,7 +2725,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     };
     patchBlock(blockId, { geometry });
     setSelectedId(blockId);
-    setNotice(`Text aligned to page ${position}.`);
+    setNotice(`${BLOCK_LABEL[block.type]} aligned to page ${position}.`);
     setTextContextMenu(null);
   };
 
@@ -2864,9 +2904,9 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     setTextContextMenu(null);
   };
 
-  const openTextContextMenu = (event: React.MouseEvent, block: EditorBlock) => {
-    if (previewMode || !canEdit || !isEditableTextBlock(block)) return;
-    // Always use Studio's text-action menu, even while the inline editor has focus.
+  const openBlockContextMenu = (event: React.MouseEvent, block: EditorBlock) => {
+    if (previewMode || !canEdit) return;
+    // Always use Studio's context menu, even while the inline editor has focus.
     // Otherwise the browser's native context menu replaces Studio's actions whenever
     // the caret is blinking inside the editable text.
     event.preventDefault();
@@ -3742,6 +3782,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       el.style.top = `${next.y}px`;
       el.style.width = `${next.w}px`;
       el.style.height = `${next.h}px`;
+      syncSelectionOverlay(id, next);
 
       if (isCorner && block && (block.type === 'heading' || block.type === 'text')) {
         const baseSize = block.fontSize ?? defaultFontSize(block);
@@ -3818,6 +3859,62 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     } else {
       patchBlock(id, geometryPatch);
     }
+  };
+
+  /** The selection overlay lives outside the page clip (so edge selections are
+   * never cut off); gestures must move it in lockstep with the block element. */
+  const syncSelectionOverlay = (id: string, next: CanvasGeometry) => {
+    const overlay = frameRef.current?.querySelector<HTMLElement>('[data-studio-selection-overlay]');
+    if (!overlay || overlay.dataset.forId !== id) return;
+    overlay.style.left = `${next.x}px`;
+    overlay.style.top = `${next.y}px`;
+    overlay.style.width = `${next.w}px`;
+    overlay.style.height = `${next.h}px`;
+    overlay.style.transform = next.rotation ? `rotate(${next.rotation}deg)` : '';
+  };
+
+  const startFreeRotate = (block: EditorBlock, geo: CanvasGeometry) => (event: React.PointerEvent) => {
+    event.stopPropagation();
+    const el = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${block.id}"]`);
+    if (!el) return;
+    // The bounding box of a rotated rectangle still centres on the rotation pivot.
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    freeRotate.current = {
+      id: block.id,
+      pointerId: event.pointerId,
+      cx,
+      cy,
+      startAngle: Math.atan2(event.clientY - cy, event.clientX - cx),
+      origin: { ...geo },
+      next: geo.rotation ?? 0,
+    };
+  };
+
+  const onFreeRotateMove = (event: React.PointerEvent) => {
+    const rotate = freeRotate.current;
+    if (!rotate || rotate.pointerId !== event.pointerId) return;
+    const delta = Math.atan2(event.clientY - rotate.cy, event.clientX - rotate.cx) - rotate.startAngle;
+    let rotation = Math.round((rotate.origin.rotation ?? 0) + (delta * 180) / Math.PI);
+    if (event.shiftKey) rotation = Math.round(rotation / 15) * 15;
+    // Normalise to the sidebar's [-180, 180] range.
+    rotation = (((rotation + 180) % 360) + 360) % 360 - 180;
+    rotate.next = rotation;
+    const transform = rotation ? `rotate(${rotation}deg)` : '';
+    const el = frameRef.current?.querySelector<HTMLElement>(`[data-bid="${rotate.id}"]`);
+    if (el) el.style.transform = transform;
+    const overlay = frameRef.current?.querySelector<HTMLElement>('[data-studio-selection-overlay]');
+    if (overlay && overlay.dataset.forId === rotate.id) overlay.style.transform = transform;
+  };
+
+  const finishFreeRotate = (id: string) => {
+    const rotate = freeRotate.current;
+    if (!rotate || rotate.id !== id) return;
+    freeRotate.current = null;
+    if (rotate.next === (rotate.origin.rotation ?? 0)) return;
+    patchBlock(id, { geometry: { ...rotate.origin, rotation: rotate.next } });
   };
 
   return (
@@ -4303,36 +4400,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       if (pointerTarget.closest('.editor-inline-edit, [contenteditable="true"], .st-free-handle')) return;
                       requestInlineTextEditing(block.id);
                     }}
-                    onContextMenu={(event) => openTextContextMenu(event, block)}
+                    onContextMenu={(event) => openBlockContextMenu(event, block)}
 
                   >
                     <div className="editor-free-block-content" style={{ opacity: block.opacity ?? 1 }}>
                       {renderBlockInner(block)}
                     </div>
-                    {isSelected && canEdit && !block.locked ? (
-                      (['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const).map((dir) => (
-                        <span
-                          key={dir}
-                          className={`st-free-handle st-handle-${dir}`}
-                          onPointerDown={(event) => {
-                            event.stopPropagation();
-                            (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-                            freeResize.current = {
-                              id: block.id,
-                              dir,
-                              startX: event.clientX,
-                              startY: event.clientY,
-                              origin: { ...geo },
-                              next: { ...geo },
-                              scale: 1,
-                            };
-                          }}
-                          onPointerMove={(event) => onFreeResizeMove(event, block.id, dir)}
-                          onPointerUp={() => finishFreeResize(block.id)}
-                          onPointerCancel={() => finishFreeResize(block.id)}
-                        />
-                      ))
-                    ) : null}
+                    {/* Selection outline + handles render once in the frame-level
+                        overlay below, so blocks at the page edge are never clipped. */}
                   </div>
                 );
               })
@@ -4351,7 +4426,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       className={`editor-block${isSelected ? ' is-selected' : ''}${block.hidden ? ' is-ghost' : ''}`}
                       onClick={() => setSelectedId(block.id)}
                       data-block-name={`${BLOCK_LABEL[block.type]}: ${blockName(block)}`}
-                      onContextMenu={(event) => openTextContextMenu(event, block)}
+                      onContextMenu={(event) => openBlockContextMenu(event, block)}
                       draggable={editable}
                       onDragStart={(event) => {
                         const target = event.target;
@@ -4417,6 +4492,74 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 })
             )}
             </div>
+            {/* Frame-level selection chrome. Living outside .studio-page-clip keeps
+                the boundary, resize handles and rotate handle fully visible for
+                selections at (or partially beyond) the page edge. */}
+            {freeMode && selectedId && !previewMode ? (() => {
+              const block = (activePage?.blocks ?? []).find((entry) => entry.id === selectedId) ?? null;
+              if (!block) return null;
+              const geo = block.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
+              // Handles, border and rotate grip keep a constant SCREEN size at
+              // every zoom: divide the on-screen px by the frame scale and snap
+              // to whole CSS px — fractional widths anti-alias into a blurry
+              // "glittering" line.
+              const frameScale = Math.max(0.05, zoom / 100);
+              const handlePx = Math.max(9, Math.min(18, Math.round(12 / frameScale)));
+              const selPx = Math.max(1, Math.min(3, Math.round(2 / frameScale)));
+              return (
+                <div
+                  data-studio-selection-overlay=""
+                  data-for-id={block.id}
+                  className="st-selection-overlay"
+                  style={{
+                    left: geo.x, top: geo.y, width: geo.w, height: geo.h,
+                    transform: geo.rotation ? `rotate(${geo.rotation}deg)` : undefined,
+                    ['--st-handle-size' as string]: `${handlePx}px`,
+                    ['--st-sel-width' as string]: `${selPx}px`,
+                    ['--st-sel-offset' as string]: `${Math.max(1, Math.min(4, Math.round(2 / frameScale)))}px`,
+                    ['--st-rotate-size' as string]: `${Math.max(20, Math.round(24 / frameScale))}px`,
+                  }}
+                >
+                  {canEdit && !block.locked ? (
+                    <>
+                      {(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const).map((dir) => (
+                        <span
+                          key={dir}
+                          className={`st-free-handle st-handle-${dir}`}
+                          onPointerDown={(event) => {
+                            event.stopPropagation();
+                            (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+                            freeResize.current = {
+                              id: block.id,
+                              dir,
+                              startX: event.clientX,
+                              startY: event.clientY,
+                              origin: { ...geo },
+                              next: { ...geo },
+                              scale: 1,
+                            };
+                          }}
+                          onPointerMove={(event) => onFreeResizeMove(event, block.id, dir)}
+                          onPointerUp={() => finishFreeResize(block.id)}
+                          onPointerCancel={() => finishFreeResize(block.id)}
+                        />
+                      ))}
+                      <span
+                        className="st-free-rotate"
+                        title="Drag to rotate · hold Shift to snap to 15° steps"
+                        aria-label="Rotate"
+                        onPointerDown={startFreeRotate(block, geo)}
+                        onPointerMove={onFreeRotateMove}
+                        onPointerUp={() => finishFreeRotate(block.id)}
+                        onPointerCancel={() => finishFreeRotate(block.id)}
+                      >
+                        <RotateCw className="st-free-rotate-icon" aria-hidden="true" />
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+              );
+            })() : null}
           </div>
         </div>
 
@@ -4986,7 +5129,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             AI edits are previewed before replacing text. Components are stored locally for this brand in this browser.
           </div>
         </div>
-        {textContextMenu.submenu ? (
+        {textContextMenu.submenu === 'heading' || textContextMenu.submenu === 'component' ? (
           <div ref={contextSubmenuRef} className="st-context-menu st-context-submenu" data-studio-text-context-menu role="menu" aria-label="Text action options"
             onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
             style={{
@@ -4998,7 +5141,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               boxShadow: '0 20px 48px rgba(15, 23, 42, .18)', color: 'var(--text, #292820)', fontSize: 12,
             }}>
             <div className="st-context-menu-subtitle">
-              {textContextMenu.submenu === 'heading' ? 'HEADING LEVEL' : textContextMenu.submenu === 'layer' ? 'LAYER ORDER' : textContextMenu.submenu === 'align' ? 'ALIGN TO PAGE' : 'REUSABLE COMPONENTS'}
+              {textContextMenu.submenu === 'heading' ? 'HEADING LEVEL' : 'REUSABLE COMPONENTS'}
             </div>
             {textContextMenu.submenu === 'heading' && contextMenuBlock.type === 'heading' ? (
               ([1, 2, 3] as const).map((level) => (
@@ -5007,24 +5150,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                   style={{ ...contextMenuItemStyle, fontWeight: contextMenuBlock.level === level ? 800 : 600 }}>
                   <span>H{level}</span><span style={contextMenuShortcutStyle}>{headingFontSizeForLevel(level)} px</span>
                 </button>
-              ))
-            ) : null}
-            {textContextMenu.submenu === 'layer' ? (
-              ([
-                ['Bring to front', 'front'], ['Bring forward', 'forward'],
-                ['Send backward', 'backward'], ['Send to back', 'back'],
-              ] as const).map(([label, destination]) => (
-                <button className="st-context-item" key={destination} type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) < 2}
-                  onClick={() => { changeLayerOrder(contextMenuBlock.id, destination); setTextContextMenu(null); }} style={contextMenuItemStyle}>{label}</button>
-              ))
-            ) : null}
-            {textContextMenu.submenu === 'align' ? (
-              ([
-                ['Left', 'left'], ['Center horizontally', 'center'], ['Right', 'right'],
-                ['Top', 'top'], ['Middle vertically', 'middle'], ['Bottom', 'bottom'],
-              ] as const).map(([label, position]) => (
-                <button className="st-context-item" key={position} type="button" role="menuitem" disabled={!freeMode || !canEditBlock(contextMenuBlock)}
-                  onClick={() => alignTextToPage(contextMenuBlock.id, position)} style={contextMenuItemStyle}>{label}</button>
               ))
             ) : null}
             {textContextMenu.submenu === 'component' ? (
@@ -5039,6 +5164,100 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           </div>
         ) : null}
         </>,
+        document.body
+      ) : null}
+
+      {/* Canva-style context menu for non-text layers (shapes, images, buttons).
+          Shares the textContextMenu state; the two menus are mutually exclusive. */}
+      {textContextMenu && contextMenuBlock && !isEditableTextBlock(contextMenuBlock) ? createPortal(
+        <div ref={contextMenuRef} className="st-context-menu" data-studio-text-context-menu role="menu" aria-label="Layer actions"
+          onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
+          style={{
+            position: 'fixed', left: textContextMenu.left, top: textContextMenu.top, zIndex: 100300,
+            width: 276, maxWidth: 'calc(100vw - 16px)', maxHeight: 'min(calc(100vh - 16px), 640px)', overflowY: 'auto',
+            padding: 8, borderRadius: 14, border: '1px solid var(--line, #e2dbcf)',
+            background: 'var(--surface-card, var(--panel, #fffdf8))',
+            boxShadow: '0 20px 48px rgba(15, 23, 42, .18)',
+            backdropFilter: 'blur(20px)', color: 'var(--text, #292820)', fontSize: 12,
+          }}>
+          <div className="st-context-menu-heading">
+            <span className="st-context-menu-icon"><Layers size={15} /></span>
+            <span><strong>{contextMenuBlock.type === 'shape' ? 'SHAPE ACTIONS' : 'LAYER ACTIONS'}</strong><small>{blockName(contextMenuBlock)}</small></span>
+          </div>
+          {contextMenuBlock.type === 'shape' ? (
+            <button className="st-context-item st-context-item--primary" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => requestInlineTextEditing(contextMenuBlock.id)} style={contextMenuItemStyle}>
+              <span>Edit text on canvas</span><span style={contextMenuShortcutStyle}>Enter</span>
+            </button>
+          ) : null}
+          <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} onClick={() => { duplicateBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={contextMenuItemStyle}>
+            <span>Duplicate</span><span style={contextMenuShortcutStyle}>Ctrl+D</span>
+          </button>
+          <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || ((activePage?.blocks.length ?? 0) <= 1 && pages.length === 1)} onClick={() => { removeBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={{ ...contextMenuItemStyle, color: 'var(--text-danger, #b42318)' }}>
+            <span>Delete</span><span style={contextMenuShortcutStyle}>Del</span>
+          </button>
+          {contextMenuBlock.type === 'shape' || contextMenuBlock.type === 'button' ? (
+            <>
+              <div style={contextMenuDividerStyle} />
+              <button className="st-context-item" type="button" role="menuitem" onClick={() => copyObjectStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
+                <span>Copy style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+C</span>
+              </button>
+              <button className="st-context-item" type="button" role="menuitem" disabled={!copiedObjectStyle || !canEditBlock(contextMenuBlock)} onClick={() => pasteObjectStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
+                <span>Paste style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+V</span>
+              </button>
+            </>
+          ) : null}
+          <div style={contextMenuDividerStyle} />
+          <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="layer" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'layer'}
+            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'layer' ? null : 'layer', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
+            <span>Layer</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'layer' ? '⌄' : '›'}</span>
+          </button>
+          <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="align" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'align'}
+            disabled={!freeMode || !canEditBlock(contextMenuBlock)}
+            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'align' ? null : 'align', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
+            <span>Align to page</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'align' ? '⌄' : '›'}</span>
+          </button>
+          <div style={contextMenuDividerStyle} />
+          <button className="st-context-item" type="button" role="menuitem" onClick={() => { patchBlock(contextMenuBlock.id, { locked: !contextMenuBlock.locked }); setNotice(contextMenuBlock.locked ? 'Layer unlocked.' : 'Layer locked.'); setTextContextMenu(null); }} style={contextMenuItemStyle}>
+            <span>{contextMenuBlock.locked ? 'Unlock' : 'Lock'}</span><span style={contextMenuShortcutStyle}>Alt+Shift+L</span>
+          </button>
+        </div>,
+        document.body
+      ) : null}
+
+      {/* Layer order / page alignment flyout, shared by the text and layer menus. */}
+      {textContextMenu && contextMenuBlock && (textContextMenu.submenu === 'layer' || textContextMenu.submenu === 'align') ? createPortal(
+        <div ref={contextSubmenuRef} className="st-context-menu st-context-submenu" data-studio-text-context-menu role="menu" aria-label="Layer options"
+          onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
+          style={{
+            position: 'fixed', left: textContextMenu.submenuLeft ?? textContextMenu.left + 284,
+            top: textContextMenu.submenuTop ?? textContextMenu.top, zIndex: 100301,
+            width: 232, maxWidth: 'calc(100vw - 16px)', maxHeight: 'min(calc(100vh - 16px), 480px)', overflowY: 'auto',
+            padding: 8, borderRadius: 14, border: '1px solid var(--line, #e2dbcf)',
+            background: 'var(--surface-card, var(--panel, #fffdf8))',
+            boxShadow: '0 20px 48px rgba(15, 23, 42, .18)', color: 'var(--text, #292820)', fontSize: 12,
+          }}>
+          <div className="st-context-menu-subtitle">
+            {textContextMenu.submenu === 'layer' ? 'LAYER ORDER' : 'ALIGN TO PAGE'}
+          </div>
+          {textContextMenu.submenu === 'layer' ? (
+            ([
+              ['Bring to front', 'front'], ['Bring forward', 'forward'],
+              ['Send backward', 'backward'], ['Send to back', 'back'],
+            ] as const).map(([label, destination]) => (
+              <button className="st-context-item" key={destination} type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) < 2}
+                onClick={() => { changeLayerOrder(contextMenuBlock.id, destination); setTextContextMenu(null); }} style={contextMenuItemStyle}>{label}</button>
+            ))
+          ) : null}
+          {textContextMenu.submenu === 'align' ? (
+            ([
+              ['Left', 'left'], ['Center horizontally', 'center'], ['Right', 'right'],
+              ['Top', 'top'], ['Middle vertically', 'middle'], ['Bottom', 'bottom'],
+            ] as const).map(([label, position]) => (
+              <button className="st-context-item" key={position} type="button" role="menuitem" disabled={!freeMode || !canEditBlock(contextMenuBlock)}
+                onClick={() => alignBlockToPage(contextMenuBlock.id, position)} style={contextMenuItemStyle}>{label}</button>
+            ))
+          ) : null}
+        </div>,
         document.body
       ) : null}
 
