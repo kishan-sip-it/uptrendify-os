@@ -3958,7 +3958,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             ))}
           </select>
         ) : (
-          <span className="editor-version">v{displayVersion}</span>
+          <span className="editor-version">{displayVersion > 0 ? 'v' + displayVersion : 'New draft'}</span>
         )}
         <span className={`studio-save-state${dirty ? ' is-dirty' : saved ? ' is-saved' : ''}`} role="status">
           <span className="dot" />
