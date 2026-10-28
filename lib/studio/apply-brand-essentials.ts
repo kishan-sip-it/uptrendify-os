@@ -157,28 +157,43 @@ function isReadable(fg: string, bg: string, fontSize: number | undefined, bold: 
 }
 
 /** Darken toward black until the pair passes AA (bounded steps; may still fail). */
-function enforceReadable(fg: string, bg: string, fontSize: number | undefined, bold: boolean, fallback: string): { color: string; fallbackUsed: boolean } {
-  if (isReadable(fg, bg, fontSize, bold)) return { color: fg, fallbackUsed: false };
-  if (isReadable(fallback, bg, fontSize, bold)) return { color: fallback, fallbackUsed: true };
-  for (const factor of [0.85, 0.7, 0.55, 0.4, 0.25]) {
-    const candidate = mixOver(fg, '#000000', factor);
-    if (isReadable(candidate, bg, fontSize, bold)) return { color: candidate, fallbackUsed: true };
+/** Contrast ladder shared by the readability helpers: walk fg toward the
+ * direction that CAN become readable on this background. On dark backgrounds
+ * (gradient hero pages) the readable direction is LIGHTER — darkening ink
+ * into a dark page produces invisible text. */
+function readableToward(fg: string, bg: string, fontSize: number | undefined, bold: boolean): string | null {
+  if (isReadable(fg, bg, fontSize, bold)) return fg;
+  const toward = relativeLuminance(bg) < 0.18 ? '#ffffff' : '#000000';
+  for (const factor of LADDER_FACTORS) {
+    const candidate = mixOver(fg, toward, factor);
+    if (isReadable(candidate, bg, fontSize, bold)) return candidate;
   }
+  return null;
+}
+
+function enforceReadable(fg: string, bg: string, fontSize: number | undefined, bold: boolean, fallback: string): { color: string; fallbackUsed: boolean } {
+  const direct = readableToward(fg, bg, fontSize, bold);
+  if (direct) return { color: direct, fallbackUsed: direct !== fg };
+  if (isReadable(fallback, bg, fontSize, bold)) return { color: fallback, fallbackUsed: true };
   return { color: fg, fallbackUsed: false };
 }
 
 const LADDER_FACTORS = [0.85, 0.7, 0.55, 0.4, 0.25];
 
 /**
- * Every shade the accent ladder can produce for these palette colours. The
+ * Every shade the contrast ladders can produce for these palette colours —
+ * darkened for light backgrounds AND lightened for dark gradient pages. The
  * brand lint must accept these derived brand shades as on-brand, exactly like
- * the colours they are darkened from.
+ * the colours they are derived from.
  */
 export function brandAccentLadderShades(colors: string[]): string[] {
   const out: string[] = [];
   for (const color of colors) {
     if (!isHex(color)) continue;
-    for (const factor of LADDER_FACTORS) out.push(mixOver(color.toLowerCase(), '#000000', factor));
+    for (const factor of LADDER_FACTORS) {
+      out.push(mixOver(color.toLowerCase(), '#000000', factor));
+      out.push(mixOver(color.toLowerCase(), '#ffffff', factor));
+    }
   }
   return out;
 }
@@ -190,12 +205,7 @@ export function brandAccentLadderShades(colors: string[]): string[] {
  * Returns null when no darkened step reads, so the caller can fall back.
  */
 function darkenUntilReadable(fg: string, bg: string, fontSize: number | undefined, bold: boolean): string | null {
-  if (isReadable(fg, bg, fontSize, bold)) return fg;
-  for (const factor of [0.85, 0.7, 0.55, 0.4, 0.25]) {
-    const candidate = mixOver(fg, '#000000', factor);
-    if (isReadable(candidate, bg, fontSize, bold)) return candidate;
-  }
-  return null;
+  return readableToward(fg, bg, fontSize, bold);
 }
 
 /**
@@ -204,8 +214,11 @@ function darkenUntilReadable(fg: string, bg: string, fontSize: number | undefine
  * where the data supports it. Falls back through the resolved ink ladder.
  */
 function bodyInkForBackground(bg: string, essentials: BrandEssentials, fontSize: number | undefined, bold: boolean): string {
-  const byLuminance = [...essentials.colors].sort((a, b) => relativeLuminance(a) - relativeLuminance(b));
-  for (const color of byLuminance) {
+  // Highest-contrast palette colour first: identical choice to
+  // "darkest that passes" on light backgrounds, and the sane direction
+  // (light ink) on dark gradient pages.
+  const byContrast = [...essentials.colors].sort((a, b) => contrastRatio(b, bg) - contrastRatio(a, bg));
+  for (const color of byContrast) {
     if (isReadable(color, bg, fontSize, bold)) return color;
   }
   return enforceReadable(essentials.ink, bg, fontSize, bold, DEFAULT_INK).color;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONTENT_DOC_MAX_BLOCKS, contentDocumentSchema, serializeContentDocument, parseContentBody, type ContentDocument } from '@/lib/content/document';
 import type { ContentDocBlock } from '@/lib/content/document';
-import { contrastRatio } from '@/lib/studio/template-library/contrast';
+import { contrastRatio, mixOver } from '@/lib/studio/template-library/contrast';
 import {
   applyBrandEssentials,
   brandAccentLadderShades,
@@ -527,7 +527,7 @@ describe('regressions from the 2026-10-27 screen recording (ISRO text-heavy docu
   it('exposes the accent ladder shades so brand lint accepts derived brand colours', () => {
     const shades = brandAccentLadderShades(['#18b140']);
     expect(shades).toContain('#149636'); // the title colour the ladder produces on the cream page
-    expect(shades).toHaveLength(5);
+    expect(shades).toHaveLength(10); // five darkened + five lightened steps
   });
 });
 
@@ -610,6 +610,34 @@ describe('logo placement prefers the topmost composition band', () => {
         const overlaps = placement.x < g.x + g.w && placement.x + placement.w > g.x && placement.y < g.y + g.h && placement.y + placement.h > g.y;
         expect(overlaps).toBe(false);
       }
+    }
+  });
+});
+
+describe('dark gradient pages get light, readable text (generated canvases)', () => {
+  it('lifts headings and body ink on a dark gradient instead of darkening into it', () => {
+    const gradientPage: ContentDocument = {
+      kind: 'uptrendify-doc',
+      version: 1,
+      mode: 'free',
+      pages: [{
+        id: 'gp-1',
+        size: 'square',
+        gradient: { from: '#123f3a', to: '#0d2b28', angle: 150 },
+        blocks: [
+          { id: 'gh', type: 'heading', text: 'Big title', level: 1, fontSize: 44, align: 'left', color: null, bg: null, bold: false, italic: false, underline: false, geometry: { x: 60, y: 60, w: 600, h: 90 } },
+          { id: 'gt', type: 'text', text: 'Supporting line', align: 'left', color: null, bg: null, size: 'md', bold: false, italic: false, underline: false, fontSize: 20, geometry: { x: 60, y: 200, w: 500, h: 48 } },
+        ],
+      }],
+    };
+    const result = applyBrandEssentials({ doc: gradientPage, essentials: brand, scope: 'document', activePageIndex: 0, includeLogo: false });
+    const midpoint = mixOver('#123f3a', '#0d2b28', 0.5);
+    for (const block of result.doc.pages[0]!.blocks) {
+      if (block.type !== 'heading' && block.type !== 'text') continue;
+      const color = block.color ?? '#1d2634';
+      // Headings are large text (3:1); body copy needs 4.5:1.
+      const need = block.type === 'heading' ? 3 : 4.5;
+      expect(contrastRatio(color, midpoint)).toBeGreaterThanOrEqual(need);
     }
   });
 });

@@ -744,7 +744,7 @@
   padding-inline: 4px;
   font-variant-numeric: tabular-nums;
 }
-.studio .studio-float .st-inline-range-reset {
+.studio .studio-float .st-inline-range-reset, .studio .studio-context-bar .st-bar-reset {
   flex: 0 0 28px;
   width: 28px;
   min-width: 28px;
@@ -1557,14 +1557,14 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 @keyframes st-spin { to { transform: rotate(360deg); } }
 
 /* Highlight control — truthful tri-state (off / on / mixed). */
-.studio-float .st-highlight-toggle { position: relative; }
-.studio-float .st-highlight-toggle::after {
+.studio-float .st-highlight-toggle, .studio-context-bar .st-highlight-toggle { position: relative; }
+.studio-float .st-highlight-toggle, .studio-context-bar .st-highlight-toggle::after {
   content: ''; position: absolute; left: 6px; right: 6px; bottom: 4px; height: 3px;
   border-radius: 2px; background: transparent; pointer-events: none;
 }
-.studio-float .st-highlight-toggle.is-on { border-color: var(--st-accent); background: color-mix(in srgb, var(--st-accent) 12%, transparent); }
-.studio-float .st-highlight-toggle.is-on::after { background: #f5d90a; }
-.studio-float .st-highlight-toggle.is-mixed { border-style: dashed; border-color: var(--st-accent); }
+.studio-float .st-highlight-toggle, .studio-context-bar .st-highlight-toggle.is-on { border-color: var(--st-accent); background: color-mix(in srgb, var(--st-accent) 12%, transparent); }
+.studio-float .st-highlight-toggle, .studio-context-bar .st-highlight-toggle.is-on::after { background: #f5d90a; }
+.studio-float .st-highlight-toggle, .studio-context-bar .st-highlight-toggle.is-mixed { border-style: dashed; border-color: var(--st-accent); }
 
 /* Editable text inside shapes — centred, padded, honest empty state. */
 .editor-shape-text {
@@ -1691,3 +1691,176 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 .st-managed-image span { display: grid; gap: 2px; min-width: 0; }
 .st-managed-image strong { font-size: 11px; font-weight: 800; }
 .st-managed-image small { font-size: 10px; color: var(--st-ink-2); line-height: 1.4; }
+
+/* ---------- Canva-style contextual toolbar (reserved strip above the page) ----------
+   Replaces the old floating toolbar that covered the selected artwork: object
+   formatting now lives in a dedicated horizontal row at the top of the stage
+   column. The row is always mounted so selection changes never shift layout. */
+.studio-stage-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+.studio-stage-col .studio-stage {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+.studio-context-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 5px 8px;
+  border: 1px solid var(--st-line-strong);
+  border-radius: 11px;
+  background: var(--st-panel, var(--surface-card, #fffdf8));
+  color: var(--st-text, var(--text, #292820));
+  box-shadow: 0 4px 16px rgba(15, 23, 42, .08);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.studio-context-bar.is-idle { justify-content: center; }
+.st-context-bar-hint {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--st-ink-2, var(--muted, #756f63));
+  white-space: nowrap;
+}
+.st-bar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.st-bar-group + .st-bar-group { margin-left: 3px; padding-left: 7px; border-left: 1px solid var(--st-line, var(--line, #e2dbcf)); }
+.st-bar-subgroup { display: inline-flex; align-items: center; gap: 2px; margin-left: 3px; padding-left: 6px; border-left: 1px dashed var(--st-line, var(--line, #e2dbcf)); }
+.st-context-bar-sep { flex: 0 0 1px; align-self: stretch; margin: 3px 4px; background: var(--st-line, var(--line, #e2dbcf)); }
+.studio-context-bar button,
+.st-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 10.5px;
+  font-weight: 750;
+  flex-shrink: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.studio-context-bar button:hover:not(:disabled),
+.studio-context-bar button.is-on,
+.st-bar-btn:hover,
+.st-bar-btn.is-on { border-color: var(--st-line, var(--line, #e2dbcf)); background: var(--st-surface, var(--surface-hover, var(--panel-2, #f0ebe1))); }
+.studio-context-bar button.is-danger { color: var(--st-danger, var(--text-danger, #b42318)); }
+.studio-context-bar button:disabled,
+.st-bar-btn:disabled { opacity: .4; cursor: not-allowed; }
+.studio-context-bar input[type="color"] {
+  flex: 0 0 25px;
+  width: 25px;
+  min-width: 25px;
+  max-width: 25px;
+  height: 25px;
+  padding: 2px;
+  border: 1px solid var(--st-line, var(--line, #e2dbcf));
+  border-radius: 5px;
+  background: var(--st-surface, var(--surface-input, var(--panel, #fffdf8)));
+  cursor: pointer;
+}
+.st-bar-select {
+  max-width: 138px;
+  height: 26px;
+  padding: 0 4px;
+  border: 1px solid var(--st-line, var(--line, #e2dbcf));
+  border-radius: 6px;
+  background: var(--st-surface, var(--surface-input, var(--panel, #fffdf8)));
+  color: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.st-bar-size-input,
+.studio-context-bar input[type="number"] {
+  width: 44px;
+  min-width: 44px;
+  height: 26px;
+  padding: 0 3px;
+  border: 1px solid var(--st-line, var(--line, #e2dbcf));
+  border-radius: 6px;
+  background: var(--st-surface, var(--surface-input, var(--panel, #fffdf8)));
+  color: inherit;
+  font-size: 11px;
+  text-align: center;
+}
+.st-bar-stepper { display: inline-flex; align-items: center; gap: 1px; }
+.st-bar-stepper button { min-width: 22px; padding: 0 3px; }
+.st-bar-reset { font-size: 10px; }
+.st-bar-opacity { gap: 6px; }
+.st-bar-opacity input[type="range"] { width: 84px; accent-color: var(--st-accent, var(--accent, #4f8b72)); }
+.st-bar-opacity-value { min-width: 32px; font-size: 10.5px; font-weight: 750; color: var(--st-ink-2, var(--muted, #756f63)); font-variant-numeric: tabular-nums; }
+.studio-context-bar label.st-bar-btn { cursor: pointer; }
+
+/* ---------- compact selection pill (quick actions beside the selection) ---------- */
+.studio-selection-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--st-line-strong, var(--line, #e2dbcf));
+  border-radius: 10px;
+  background: var(--st-panel, var(--surface-card, #fffdf8));
+  color: var(--st-text, var(--text, #292820));
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .22);
+  z-index: 100;
+}
+.studio-selection-pill button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.studio-selection-pill button:hover:not(:disabled),
+.studio-selection-pill button.is-on { border-color: var(--st-line, var(--line, #e2dbcf)); background: var(--st-surface, var(--surface-hover, var(--panel-2, #f0ebe1))); }
+.studio-selection-pill button.is-danger { color: var(--st-danger, var(--text-danger, #b42318)); }
+.studio-selection-pill button:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ---------- live rotation readout ---------- */
+.st-rotate-hud {
+  padding: 5px 10px;
+  border: 1px solid var(--st-line-strong, var(--line, #e2dbcf));
+  border-radius: 9px;
+  background: var(--st-panel, var(--surface-card, #fffdf8));
+  color: var(--st-text, var(--text, #292820));
+  font-size: 11.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, .25);
+  pointer-events: none;
+}
+
+@media (max-width: 760px) {
+  .studio-context-bar { min-height: 38px; padding: 4px 6px; }
+  .st-bar-select { max-width: 104px; }
+  .st-bar-opacity input[type="range"] { width: 62px; }
+  .studio-selection-pill { scale: .95; }
+}

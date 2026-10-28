@@ -16,7 +16,7 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
   const supabase = await createSupabaseServerClient();
   const { data: brand } = await supabase
     .from('brands')
-    .select('id,name,primary_color,secondary_colors,visual_identity')
+    .select('id,name,industry,primary_color,secondary_colors,visual_identity')
     .eq('id', brandId)
     .eq('organization_id', auth.context.organizationId)
     .maybeSingle();
@@ -79,6 +79,22 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
       .map((asset) => ({ url: asset.url, type: asset.type, label: asset.label })),
   };
 
+  // Brand strategy profile for "generate a design from this brand" on an
+  // empty canvas: the scanned Brand Brain facts (positioning, messaging,
+  // calls to action) plus the brand row basics. Absent fields degrade to
+  // safe fallbacks inside the generator.
+  const ai = visualIdentity.aiProfile;
+  const brandProfile = {
+    name: brand.name,
+    industry: brand.industry ?? ai?.industry ?? null,
+    audience: ai?.audience ?? null,
+    valueProposition: ai?.valueProposition ?? null,
+    messagingThemes: (ai?.messagingThemes ?? []).slice(0, 6),
+    callsToAction: (ai?.callsToAction ?? []).slice(0, 6),
+    painPoints: (ai?.painPoints ?? []).slice(0, 6),
+    useCases: (ai?.useCases ?? []).slice(0, 6),
+  };
+
   return (
     <>
       <ContentEditorWorkspace
@@ -91,6 +107,7 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
         itemCta={version?.cta ?? item.cta ?? null}
         brand={{ colors: brandColors, fonts: brandFonts }}
         brandVisual={brandVisual}
+        brandProfile={brandProfile}
         versionNumber={version?.version ?? 0}
         body={version?.body ?? ''}
         canEdit={Boolean(canEdit)}

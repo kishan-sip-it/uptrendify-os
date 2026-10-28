@@ -64,6 +64,8 @@ import {
   AlignEndHorizontal,
   Pencil,
   Link2,
+  Ellipsis,
+  Replace,
 } from 'lucide-react';
 import {
   CONTENT_DOC_MAX_BLOCKS,
@@ -111,6 +113,7 @@ import {
   type ApplyStats,
 } from '@/lib/studio/apply-brand-essentials';
 import { buildBrandApplyPreview } from '@/lib/studio/brand-apply-preview';
+import { brandCanvasSizeLabel, generateBrandCanvas } from '@/lib/studio/brand-canvas-generation';
 import { ensureBrandFontsLoaded } from '@/lib/studio/brand-fonts';
 import { contrastRatio } from '@/lib/studio/template-library/contrast';
 import { templatePaletteByName } from '@/lib/studio/template-library/art';
@@ -157,11 +160,11 @@ type TextStyleSnapshot = {
   opacity?: number;
 };
 type TextAssistAction = 'rewrite' | 'shorten' | 'expand' | 'tone' | 'translate';
-type TextContextSubmenu = 'layer' | 'align' | 'heading' | 'component' | null;
+type TextContextSubmenu = 'layer' | 'align' | 'heading' | 'component' | 'transparency' | null;
 type TextAssistState = { blockId: string; originalText: string; action: TextAssistAction; tone: string; targetLanguage: string; result: string; loading: boolean; error: string | null };
 type StoredReusableTextComponent = { id: string; name: string; createdAt: number; type: 'heading' | 'text'; text: string; style: TextStyleSnapshot };
 type StudioActionDialog =
-  | { kind: 'confirm'; title: string; description: string; confirmLabel: string; destructive?: boolean; onConfirm: () => void }
+  | { kind: 'confirm'; title: string; description: string; confirmLabel: string; destructive?: boolean; onConfirm: () => void; onCancel?: () => void }
   | { kind: 'input'; title: string; description: string; confirmLabel: string; placeholder: string; onConfirm: (value: string) => void };
 type LocalStudioDraft = {
   schemaVersion: 1;
@@ -589,7 +592,7 @@ function CanvasText({
     onInlineToolbarChangeRef.current?.(state, applyInlineFormatRef.current, prepareToolbarInteractionRef.current);
   };
   const isInlineToolbarFocused = () => {
-    const toolbar = document.querySelector('.studio-float[data-inline-selection="true"]');
+    const toolbar = document.querySelector('.studio-float[data-inline-selection="true"], .studio-context-bar[data-inline-selection="true"]');
     return Boolean(toolbar?.contains(document.activeElement));
   };
   const prepareToolbarInteraction = () => {
@@ -877,7 +880,7 @@ function CanvasText({
         }}
         onInput={(event) => updateDraftFromDom(event.currentTarget)}
         onBlur={(event) => {
-          const toolbar = document.querySelector('.studio-float[data-inline-selection="true"]');
+          const toolbar = document.querySelector('.studio-float[data-inline-selection="true"], .studio-context-bar[data-inline-selection="true"]');
           if (event.relatedTarget instanceof Node && toolbar?.contains(event.relatedTarget)) return;
           finishEditing();
         }}
@@ -1118,7 +1121,7 @@ async function sha256ForBlob(blob: Blob): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export function ContentEditorWorkspace({ brandId, organizationId, contentId, documentTitle, contentType, channel, itemCta, brand, brandVisual, versionNumber, body, canEdit, versions, currentVersionId, contentStatus }: {
+export function ContentEditorWorkspace({ brandId, organizationId, contentId, documentTitle, contentType, channel, itemCta, brand, brandVisual, brandProfile, versionNumber, body, canEdit, versions, currentVersionId, contentStatus }: {
   brandId: string;
   organizationId: string;
   contentId: string;
@@ -1134,6 +1137,18 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     bodyFont: string | null;
     fonts: { family: string; evidence?: string; fontAssetUrl?: string; fontAssetFormat?: 'woff2' | 'woff' | 'opentype' | 'truetype' }[];
     assets?: { url: string; type: string; label: string | null }[];
+  } | null;
+  /** Scanned Brand Brain facts (strategy, messaging, CTAs) — powers
+   * "generate a design from this brand" on an empty canvas. */
+  brandProfile?: {
+    name: string;
+    industry: string | null;
+    audience: string | null;
+    valueProposition: string | null;
+    messagingThemes: string[];
+    callsToAction: string[];
+    painPoints: string[];
+    useCases: string[];
   } | null;
   versionNumber: number;
   body: string;
@@ -1259,9 +1274,26 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [rasterReview, setRasterReview] = useState<RasterTextReview | null>(null);
   const [isApplyingRasterText, setIsApplyingRasterText] = useState(false);
   const [textContextMenu, setTextContextMenu] = useState<{ blockId: string; left: number; top: number; submenu: TextContextSubmenu; submenuLeft?: number; submenuTop?: number } | null>(null);
+  // The "…" More menu — dropdown from the top contextual toolbar and from the
+  // compact selection pill. Shares the right-click menu's handlers and submenu
+  // model, so every action has exactly one underlying implementation.
+  const [moreMenu, setMoreMenu] = useState<{ blockId: string; left: number; top: number; submenu: TextContextSubmenu; submenuLeft?: number; submenuTop?: number } | null>(null);
+  // Position popover opened from the contextual toolbar (Layer + Align groups).
+  const [toolbarPopover, setToolbarPopover] = useState<{ kind: 'layer' | 'align'; left: number; top: number } | null>(null);
+  // True while a drag/resize/rotate gesture is in flight — hides the pill and
+  // contextual controls so nothing obstructs the artwork mid-gesture.
+  const [gestureActive, setGestureActive] = useState(false);
+  // Live readout during free rotation: angle + unrotated canvas dimensions.
+  const [rotateHud, setRotateHud] = useState<{ angle: number; w: number; h: number; x: number; y: number } | null>(null);
   const [inlineTextEditRequest, setInlineTextEditRequest] = useState<{ blockId: string; sequence: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const contextSubmenuRef = useRef<HTMLDivElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const moreSubmenuRef = useRef<HTMLDivElement | null>(null);
+  // Shared "Replace image…" entry point for the More menu: a hidden file input
+  // clicked on demand, with the target block id kept beside it.
+  const imageReplaceClickRef = useRef<HTMLInputElement | null>(null);
+  const [imageReplaceTargetId, setImageReplaceTargetId] = useState<string | null>(null);
   const [copiedTextStyle, setCopiedTextStyle] = useState<TextStyleSnapshot | null>(null);
   /** Fill/opacity snapshot for shape/button "Copy style" in the layer context menu. */
   const [copiedObjectStyle, setCopiedObjectStyle] = useState<{ color: string | null; opacity: number | null } | null>(null);
@@ -1281,6 +1313,9 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const stageRef = useRef<HTMLDivElement | null>(null);
   const stagePointerRef = useRef({ x: 0, y: 0 });
   const frameRef = useRef<HTMLDivElement | null>(null);
+  // True only for pointerdowns that began on the frame/page-clip background;
+  // guards the click-to-deselect handlers against retargeted pointerups.
+  const framePointerDownOnChrome = useRef(false);
   const snapshotHostRef = useRef<HTMLDivElement | null>(null);
   const manualZoomRef = useRef(false);
   const offsetRef = useRef({ x: 0, y: 0 });
@@ -1337,6 +1372,85 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [textContextMenu]);
+
+  // Clamp the More dropdown + its submenu into the viewport. Runs ONCE per
+  // (block, submenu) combination: a feedback clamp (read rects -> write state)
+  // re-runs on every state change and can oscillate into React error #185.
+  const moreMenuClampRef = useRef('');
+  useLayoutEffect(() => {
+    if (!moreMenu) { moreMenuClampRef.current = ''; return; }
+    const combo = `${moreMenu.blockId}|${moreMenu.submenu ?? ''}`;
+    if (moreMenuClampRef.current === combo) return;
+    const menu = moreMenuRef.current;
+    if (!menu) return;
+    const rect = menu.getBoundingClientRect();
+    const left = Math.max(8, Math.min(moreMenu.left, window.innerWidth - rect.width - 8));
+    const top = Math.max(8, Math.min(moreMenu.top, window.innerHeight - rect.height - 8));
+    let submenuLeft = moreMenu.submenuLeft;
+    let submenuTop = moreMenu.submenuTop;
+    if (moreMenu.submenu && moreSubmenuRef.current) {
+      const submenuRect = moreSubmenuRef.current.getBoundingClientRect();
+      const trigger = menu.querySelector<HTMLElement>(`[data-submenu-trigger="${moreMenu.submenu}"]`);
+      const triggerRect = trigger?.getBoundingClientRect();
+      const nextMenuRight = left + rect.width + 8;
+      const roomRight = window.innerWidth - nextMenuRight - 8;
+      submenuLeft = roomRight >= submenuRect.width ? nextMenuRight : Math.max(8, left - submenuRect.width - 8);
+      const triggerOffsetTop = triggerRect ? triggerRect.top - rect.top : 0;
+      submenuTop = Math.max(8, Math.min(top + triggerOffsetTop, window.innerHeight - submenuRect.height - 8));
+    }
+    moreMenuClampRef.current = combo;
+    setMoreMenu((current) => current ? {
+      ...current,
+      left: Math.round(left),
+      top: Math.round(top),
+      submenuLeft: submenuLeft === undefined ? undefined : Math.round(submenuLeft),
+      submenuTop: submenuTop === undefined ? undefined : Math.round(submenuTop),
+    } : current);
+  }, [moreMenu]);
+
+  // Dismiss the More dropdown on outside pointerdown and Escape — same
+  // contract as the right-click menus.
+  useEffect(() => {
+    if (!moreMenu) return;
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && (target.closest('[data-studio-more-menu]') || target.closest('[data-studio-more-trigger]'))) return;
+      setMoreMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMoreMenu(null);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [moreMenu]);
+
+  // Selection/page changes close the More menu; the block it targeted may be gone.
+  useEffect(() => {
+    setMoreMenu(null);
+    setToolbarPopover(null);
+  }, [selectedId, activePageIndex, previewMode, focusMode]);
+
+  useEffect(() => {
+    if (!toolbarPopover) return;
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && (target.closest('[data-studio-position-popover]') || target.closest('[data-studio-position-trigger]'))) return;
+      setToolbarPopover(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setToolbarPopover(null);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [toolbarPopover]);
 
   useEffect(() => {
     try {
@@ -1591,17 +1705,45 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   }, [brandApplyOpen, brandApplyScope, brandApplyLogo, brandLogoDisplayFailed, brandEssentials, pages]);
   const brandEssentialsAvailable = Boolean(brandVisual && (brandEssentials.accent || brandEssentials.headingFont || brandEssentials.bodyFont || brandEssentials.logoUrl || brandEssentials.colors.length));
   const brandApplyDisabled = !canEdit || !brandEssentialsAvailable || brandApplyBusy;
-  // Truthful success: only while the exact applied state is still the current one.
-  const brandApplySucceeded = brandApplySuccessSnapshot !== null
-    && history[historyIndex] === brandApplySuccessSnapshot;
-  const openBrandApply = () => {
-    if (brandApplyDisabled) return;
+  // An empty canvas (manual blank draft, or every page cleared) cannot be
+  // meaningfully "styled" — offer to compose a first design from the brand.
+  // The manual-blank flow seeds one EMPTY text block, which still counts as
+  // empty: no real copy, no media, no shapes, no page background.
+  const canvasIsEmpty = (() => {
+    if (pages.some((page) => page.backgroundImage || page.gradient)) return false;
+    const blocks = pages.flatMap((page) => page.blocks);
+    if (blocks.length === 0) return true;
+    return blocks.every((block) =>
+      block.type === 'text'
+      && !block.text.trim()
+      && !(block.richText?.some((run) => (run.text ?? '').trim()))
+      && !block.href);
+  })();
+  const openStylingOnlyBrandApply = () => {
     setBrandApplyError(null);
     setBrandApplyScope('document');
     setBrandApplyLogo(Boolean(brandEssentials.logoUrl));
     setBrandApplyOpen(true);
     void ensureBrandFontsLoaded(brandVisual?.fonts ?? []).then((loaded) => setBrandFontsLoaded(loaded));
   };
+  const openBrandApply = () => {
+    if (brandApplyDisabled) return;
+    if (canvasIsEmpty && brandProfile) {
+      setStudioActionDialog({
+        kind: 'confirm',
+        title: `Generate a design from ${brandProfile.name}?`,
+        description: `This canvas is empty, so there is nothing to restyle. Studio can replace it with a first draft designed from the brand — a ${brandCanvasSizeLabel({ brandName: brandProfile.name, title: documentTitle, cta: itemCta, contentType, channel, seed: contentId })} layout using ${brandEssentials.colors.length ? 'the brand colours, gradients' : 'the brand typography'}${brandEssentials.logoUrl ? ' and logo' : ''}, with copy drawn from the brand's strategy and messaging. Cancel to import the brand as styling only.`,
+        confirmLabel: 'Generate design',
+        onCancel: openStylingOnlyBrandApply,
+        onConfirm: () => { void runBrandCanvasGeneration(); },
+      });
+      return;
+    }
+    openStylingOnlyBrandApply();
+  };
+  // Truthful success: only while the exact applied state is still the current one.
+  const brandApplySucceeded = brandApplySuccessSnapshot !== null
+    && history[historyIndex] === brandApplySuccessSnapshot;
   // Placed-but-importing logo layers: 'importing' = the managed copy is being
   // fetched in the background; 'failed' = import failed but the logo stays
   // visible and editable, with a retry action in the element action bar.
@@ -1822,6 +1964,64 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     }
   };
 
+  // Empty-canvas path: compose a first page from the brand brief + essentials,
+  // then run it through applyBrandEssentials so the logo placement, contrast
+  // fallbacks and stats land through the same authoritative pipeline.
+  const runBrandCanvasGeneration = async () => {
+    if (brandApplyDisabled || !brandProfile) return;
+    setBrandApplyBusy(true);
+    setBrandApplyError(null);
+    try {
+      let logo: { src: string; aspect: number } | null = null;
+      let logoNotice: string | null = null;
+      if (brandEssentials.logoUrl) {
+        try {
+          logo = await uploadBrandLogo();
+        } catch (logoError) {
+          logoNotice = logoError instanceof Error ? logoError.message : 'The brand logo could not be used.';
+        }
+      }
+      const pages = generateBrandCanvas({
+        brandName: brandProfile.name,
+        title: documentTitle,
+        cta: itemCta,
+        contentType,
+        channel,
+        industry: brandProfile.industry,
+        audience: brandProfile.audience,
+        valueProposition: brandProfile.valueProposition,
+        messagingThemes: brandProfile.messagingThemes,
+        callsToAction: brandProfile.callsToAction,
+        painPoints: brandProfile.painPoints,
+        useCases: brandProfile.useCases,
+        seed: contentId,
+      }, brandEssentials);
+      const result = applyBrandEssentials({
+        doc: { kind: 'uptrendify-doc', version: 1, mode: 'free', pages },
+        essentials: brandEssentials,
+        scope: 'document',
+        activePageIndex: 0,
+        logoSrc: logo?.src ?? null,
+        logoAspect: logo?.aspect,
+        includeLogo: Boolean(brandEssentials.logoUrl),
+        logoFailure: logoNotice ? { reason: logoNotice } : null,
+      });
+      commit(result.doc.pages, 'free');
+      setFreeMode(true);
+      setSelectedId(null);
+      setBrandApplySummary(result.stats);
+      setError(logoNotice ? logoNotice + ' The design was generated without the logo.' : null);
+      const logoPlaced = Boolean(brandEssentials.logoUrl && !logoNotice);
+      setNotice(`Generated a ${brandCanvasSizeLabel({ brandName: brandProfile.name, title: documentTitle, cta: itemCta, contentType, channel, seed: contentId })} draft from the ${brandProfile.name} brand — palette, typography${logoPlaced ? ', logo' : ''} and layout. Every element stays fully editable; Undo reverts it. Save a new version to keep it.`);
+    } catch (generateError) {
+      const message = generateError instanceof Error ? generateError.message : 'Generating the design failed.';
+      setBrandApplyError(message);
+      setError(message);
+    } finally {
+      setBrandApplyBusy(false);
+    }
+  };
+
   // Record WHICH serialized state the successful apply produced, so the CTA's
   // success styling can match it exactly (Undo/redo/edit-aware, index-proof).
   useEffect(() => {
@@ -1854,6 +2054,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const charLimit = channelLimit(channel);
   const selected = activePage?.blocks.find((block) => block.id === selectedId) ?? null;
   const contextMenuBlock = textContextMenu ? pages[activePageIndex]?.blocks.find((block) => block.id === textContextMenu.blockId) ?? null : null;
+  const moreMenuBlock = moreMenu ? pages[activePageIndex]?.blocks.find((block) => block.id === moreMenu.blockId) ?? null : null;
   const selectedGeometry = selected?.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
   const selectedIndex = activePage?.blocks.findIndex((block) => block.id === selectedId) ?? -1;
 
@@ -1924,7 +2125,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       const screenX = event.clientX - drag.startX;
       const screenY = event.clientY - drag.startY;
       if (!drag.moved && Math.hypot(screenX, screenY) < 6) return;
-      drag.moved = true;
+      if (!drag.moved) { drag.moved = true; setGestureActive(true); }
       event.preventDefault();
       window.getSelection()?.removeAllRanges();
       const nextX = clampCanvasCoordinate(drag.origin.x + screenX / drag.scale);
@@ -1944,6 +2145,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       const drag = freeDrag.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
       freeDrag.current = null;
+      setGestureActive(false);
       if (!drag.moved) {
         setSelectedId(drag.id);
         return;
@@ -1962,6 +2164,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       const drag = freeDrag.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
       freeDrag.current = null;
+      setGestureActive(false);
       const element = findBlockElement(drag.id);
       if (element) {
         element.style.left = `${drag.origin.x}px`;
@@ -2717,22 +2920,25 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   /** Fill/opacity style sheet for shapes and buttons, mirroring the text Copy/Paste style flow. */
   const copyObjectStyle = (blockId: string) => {
     const block = findBlockById(blockId);
-    if (!block || (block.type !== 'shape' && block.type !== 'button')) return;
-    setCopiedObjectStyle({ color: block.color ?? null, opacity: block.opacity ?? null });
-    setNotice('Style copied. Right-click another shape or button and choose Paste style.');
+    if (!block || (block.type !== 'shape' && block.type !== 'button' && block.type !== 'image')) return;
+    setCopiedObjectStyle({ color: block.type === 'image' ? null : (block as { color?: string | null }).color ?? null, opacity: block.opacity ?? null });
+    setNotice('Style copied. Paste it on another shape, button or image.');
     setTextContextMenu(null);
   };
 
   const pasteObjectStyle = (blockId: string) => {
     const block = findBlockById(blockId);
     if (!block || !copiedObjectStyle || !canEditBlock(block)) return;
-    if (block.type !== 'shape' && block.type !== 'button') return;
+    if (block.type !== 'shape' && block.type !== 'button' && block.type !== 'image') return;
+    // Images carry no fill colour — only the transparency half of the style applies.
+    // For shapes/buttons color:null is meaningful: it resets to theme inheritance.
+    if (block.type === 'image' && copiedObjectStyle.opacity === null) return;
     patchBlock(blockId, {
-      color: copiedObjectStyle.color,
+      ...(block.type !== 'image' ? { color: copiedObjectStyle.color } : {}),
       ...(copiedObjectStyle.opacity !== null ? { opacity: copiedObjectStyle.opacity } : {}),
     });
     setSelectedId(blockId);
-    setNotice('Copied style applied.');
+    setNotice(block.type === 'image' ? 'Copied transparency applied.' : 'Copied style applied.');
     setTextContextMenu(null);
   };
 
@@ -3475,184 +3681,317 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       : current?.blockId === blockId ? null : current);
   };
 
-  const floatToolbar = (() => {
-    if (previewMode || !floatAnchor) return null;
-    const block = selected;
-    if (!block || !canEditBlock(block)) return null;
+  // ---------- Canva-style contextual toolbar (top of the stage column) ----------
+  // The old floating toolbar covered the selected artwork; formatting controls
+  // now live in a reserved strip ABOVE the page. A compact selection pill keeps
+  // only the quick actions (duplicate / lock / delete / More) beside the
+  // selection, and both menus route through the same handlers as right-click.
 
-    const inlineCandidate = inlineSelectionToolbar?.blockId === block.id ? inlineSelectionToolbar : null;
-    const inline = inlineCandidate && (block.type === 'text' || block.type === 'heading') ? inlineCandidate : null;
-    const range = inline?.state ?? null;
-    const left = typeof window !== 'undefined'
-      ? Math.max(8, Math.min(floatAnchor.x, window.innerWidth - 720))
-      : floatAnchor.x;
+  const contextBar = (() => {
+    if (focusMode || previewMode) {
+      return (
+        <div className="studio-context-bar is-idle" role="toolbar" aria-label="Element formatting">
+          <span className="st-context-bar-hint">{previewMode ? 'Preview — exit to edit' : 'Select an element to format it'}</span>
+        </div>
+      );
+    }
+    const block = selected;
+    const inlineCandidate = block && inlineSelectionToolbar?.blockId === block.id ? inlineSelectionToolbar : null;
+    const inline = block && inlineCandidate && (block.type === 'text' || block.type === 'heading') ? inlineCandidate : null;
+    const range = block && !gestureActive ? (inline?.state ?? null) : null;
+    const editable = Boolean(block && canEditBlock(block));
+    const moreOpenHere = Boolean(block && moreMenu?.blockId === block.id);
+    const opacityPercent = block ? Math.round((block.opacity ?? 1) * 100) : 100;
 
     return (
       <div
-        className="studio-float"
+        className={`studio-context-bar${range ? ' has-inline-range' : ''}${block ? '' : ' is-idle'}`}
         data-inline-selection={range ? 'true' : undefined}
         role="toolbar"
-        aria-label={range ? 'Text and selected-range formatting' : 'Text formatting'}
-        style={{
-          position: 'fixed',
-          left,
-          top: Math.max(8, floatAnchor.y - 46),
-          width: 'max-content',
-          maxWidth: 'min(660px, calc(100vw - 16px))',
-        }}
+        aria-label={range ? 'Text and selected-range formatting' : 'Element formatting'}
         onMouseDown={(event) => {
           if (!inline) return;
           if ((event.target as HTMLElement).closest('button')) event.preventDefault();
           inline.prepare();
         }}
       >
-        {block.type === 'text' ? (
-          <span className="st-float-group" aria-label="Text size preset">
-            {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
-              <button key={size} type="button" className={block.size === size ? 'is-on' : ''} onClick={() => patchBlock(block.id, { size, fontSize: undefined })} disabled={!canEditBlock(block)} title={`Set text size ${size.toUpperCase()}`}>{size.toUpperCase()}</button>
-            ))}
-          </span>
-        ) : null}
-        {block.type === 'text' || block.type === 'heading' ? (
-          <span className="st-float-group" aria-label={range ? 'Format selected text' : 'Text emphasis'}>
-            <button
-              type="button"
-              className={(range ? range.bold : block.bold) ? 'is-on' : ''}
-              onClick={() => range ? inline!.apply('bold') : patchBlock(block.id, { bold: !block.bold })}
-              disabled={!canEditBlock(block)}
-              title={range ? 'Bold selected text' : 'Bold text'}
-              aria-label={range ? 'Bold selected text' : 'Bold text'}
-            ><strong>B</strong></button>
-            <button
-              type="button"
-              className={(range ? range.italic : block.italic) ? 'is-on' : ''}
-              onClick={() => range ? inline!.apply('italic') : patchBlock(block.id, { italic: !block.italic })}
-              disabled={!canEditBlock(block)}
-              title={range ? 'Italic selected text' : 'Italic text'}
-              aria-label={range ? 'Italic selected text' : 'Italic text'}
-            ><em>I</em></button>
-            <button
-              type="button"
-              className={(range ? range.underline : block.underline) ? 'is-on' : ''}
-              onClick={() => range ? inline!.apply('underline') : patchBlock(block.id, { underline: !block.underline })}
-              disabled={!canEditBlock(block)}
-              title={range ? 'Underline selected text' : 'Underline text'}
-              aria-label={range ? 'Underline selected text' : 'Underline text'}
-            ><u>U</u></button>
-          </span>
-        ) : null}
-        {range ? (
+        {!block || !canEdit || gestureActive ? (
+          <span className="st-context-bar-hint">{gestureActive ? 'Release to keep editing' : canEdit ? 'Select an element to format it' : 'This content is read-only'}</span>
+        ) : range ? (
           <>
-            <span className="st-float-group" aria-label="Selected text colours">
+            <span className="st-bar-group" aria-label="Selected text font">
+              <select
+                className="st-bar-select"
+                aria-label="Selected text font family"
+                title="Selected text font family"
+                value={range.fontFamily}
+                onChange={(event) => inline!.apply('fontFamily', event.currentTarget.value)}
+              >
+                {Array.from(new Set([range.fontFamily, 'Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'monospace'])).map((font) => <option key={font} value={font}>{font}</option>)}
+              </select>
+              <input
+                className="st-bar-size-input"
+                type="number"
+                min={8}
+                max={160}
+                step={1}
+                aria-label="Selected text font size"
+                title="Selected text font size"
+                value={range.fontSize}
+                onChange={(event) => {
+                  const nextSize = Number(event.currentTarget.value);
+                  if (Number.isFinite(nextSize) && nextSize >= 8 && nextSize <= 160) inline!.apply('fontSize', Math.round(nextSize));
+                }}
+              />
+            </span>
+            <span className="st-bar-group" aria-label="Selected text colours">
+              <input type="color" value={range.color} onChange={(event) => inline!.apply('color', event.currentTarget.value)} title="Font colour" aria-label="Selected text font colour" />
               <button
                 type="button"
                 className={`st-highlight-toggle${range.bgActive === true ? ' is-on' : ''}${range.bgActive === null ? ' is-mixed' : ''}`}
                 onClick={() => inline!.apply('bg', range.bgActive === true ? null : DEFAULT_HIGHLIGHT_COLOR)}
-                disabled={!canEditBlock(block)}
+                disabled={!editable}
                 title={range.bgActive === true ? 'Remove highlight' : 'Highlight selected text'}
                 aria-label={range.bgActive === true ? 'Remove highlight from selected text' : 'Highlight selected text'}
                 aria-pressed={range.bgActive === null ? 'mixed' : range.bgActive === true}
               >
                 <Highlighter size={14} />
               </button>
-              <input type="color" value={range.color} onChange={(event) => inline!.apply('color', event.currentTarget.value)} title="Font colour" aria-label="Selected text font colour" />
               <input type="color" value={range.bg} onChange={(event) => inline!.apply('bg', event.currentTarget.value)} title="Text highlight colour" aria-label="Selected text highlight colour" />
+              <button type="button" className="st-bar-reset" title="Reset selected text colour" aria-label="Reset selected text colour" onClick={() => inline!.apply('color', null)}>A×</button>
+              <button type="button" className="st-bar-reset" title="Clear selected text highlight" aria-label="Clear selected text highlight" onClick={() => inline!.apply('bg', null)}>▧×</button>
             </span>
-            <select
-              className="st-inline-range-select"
-              aria-label="Selected text font family"
-              title="Selected text font family"
-              style={{ flex: '0 0 108px', width: 108, minWidth: 108, maxWidth: 108, boxSizing: 'border-box' }}
-              value={range.fontFamily}
-              onChange={(event) => inline!.apply('fontFamily', event.currentTarget.value)}
-            >
-              {Array.from(new Set([range.fontFamily, 'Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'monospace'])).map((font) => <option key={font} value={font}>{font}</option>)}
-            </select>
-            <input
-              className="st-inline-range-size"
-              type="number"
-              min={8}
-              max={160}
-              step={1}
-              aria-label="Selected text font size"
-              title="Selected text font size"
-              style={{ flex: '0 0 54px', width: 54, minWidth: 54, maxWidth: 54, boxSizing: 'border-box' }}
-              value={range.fontSize}
-              onChange={(event) => {
-                const nextSize = Number(event.currentTarget.value);
-                if (Number.isFinite(nextSize) && nextSize >= 8 && nextSize <= 160) inline!.apply('fontSize', Math.round(nextSize));
-              }}
-            />
-            <button type="button" className="st-inline-range-reset" style={{ flex: '0 0 28px', width: 28, minWidth: 28, maxWidth: 28 }} title="Reset selected text colour" aria-label="Reset selected text colour" onClick={() => inline!.apply('color', null)}>A×</button>
-            <button type="button" className="st-inline-range-reset" style={{ flex: '0 0 28px', width: 28, minWidth: 28, maxWidth: 28 }} title="Clear selected text highlight" aria-label="Clear selected text highlight" onClick={() => inline!.apply('bg', null)}>▧×</button>
+            <span className="st-bar-group" aria-label="Selected text emphasis">
+              <button type="button" className={range.bold ? 'is-on' : ''} onClick={() => inline!.apply('bold')} disabled={!editable} title="Bold selected text" aria-label="Bold selected text"><strong>B</strong></button>
+              <button type="button" className={range.italic ? 'is-on' : ''} onClick={() => inline!.apply('italic')} disabled={!editable} title="Italic selected text" aria-label="Italic selected text"><em>I</em></button>
+              <button type="button" className={range.underline ? 'is-on' : ''} onClick={() => inline!.apply('underline')} disabled={!editable} title="Underline selected text" aria-label="Underline selected text"><u>U</u></button>
+            </span>
           </>
-        ) : null}
-        {block.type === 'shape' ? (
-          <span className="st-float-group">
-            <input type="color" value={block.color ?? '#8b7cff'} onChange={(event) => patchBlock(block.id, { color: event.target.value })} disabled={!canEditBlock(block)} aria-label="Fill colour" />
-          </span>
-        ) : null}
-        {block.type === 'heading' ? (
-          <span className="st-float-group" aria-label="Heading level">
-            {([1, 2, 3] as const).map((level) => (
-              <button key={level} type="button" className={block.level === level ? 'is-on' : ''} onClick={() => patchBlock(block.id, { level, fontSize: headingFontSizeForLevel(level) })} disabled={!canEditBlock(block)} aria-label={`Set heading level H${level}`} title={`Heading H${level}`}>H{level}</button>
-            ))}
-          </span>
-        ) : null}
-        {block.type === 'text' || block.type === 'heading' || block.type === 'shape' ? (
-          <span className="st-float-group" role="group" aria-label="Text alignment">
-            {(['left', 'center', 'right'] as const).map((option) => {
-              const AlignIcon = option === 'left' ? AlignLeft : option === 'center' ? AlignCenter : AlignRight;
-              const labels = { left: 'Align left', center: 'Align center', right: 'Align right' } as const;
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  className={block.align === option ? 'is-on' : ''}
-                  onClick={() => patchBlock(block.id, { align: option })}
-                  disabled={!canEditBlock(block)}
-                  title={labels[option]}
-                  aria-label={labels[option]}
-                  aria-pressed={block.align === option}
+        ) : (
+          <>
+            {(block.type === 'text' || block.type === 'heading') ? (
+              <span className="st-bar-group" aria-label="Font">
+                <select
+                  className="st-bar-select"
+                  aria-label="Font family"
+                  title="Font family"
+                  value={block.fontFamily ?? ''}
+                  onChange={(event) => patchBlock(block.id, { fontFamily: event.currentTarget.value || undefined })}
+                  disabled={!editable}
                 >
-                  <AlignIcon size={13} />
+                  <option value="">Theme font</option>
+                  {['Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'monospace'].map((font) => <option key={font} value={font}>{font}</option>)}
+                </select>
+                <span className="st-bar-stepper" aria-label="Font size">
+                  <button type="button" aria-label="Decrease font size" title="Smaller text" disabled={!editable} onClick={() => patchBlock(block.id, { fontSize: Math.max(8, (block.fontSize ?? defaultFontSize(block)) - 1) })}><Minus size={12} /></button>
+                  <input
+                    type="number"
+                    min={8}
+                    max={160}
+                    aria-label="Font size"
+                    title="Font size"
+                    disabled={!editable}
+                    value={block.fontSize ?? defaultFontSize(block)}
+                    onChange={(event) => {
+                      const nextSize = Number(event.currentTarget.value);
+                      if (Number.isFinite(nextSize) && nextSize >= 8 && nextSize <= 160) patchBlock(block.id, { fontSize: Math.round(nextSize) });
+                    }}
+                  />
+                  <button type="button" aria-label="Increase font size" title="Bigger text" disabled={!editable} onClick={() => patchBlock(block.id, { fontSize: Math.min(160, (block.fontSize ?? defaultFontSize(block)) + 1) })}><Plus size={12} /></button>
+                </span>
+                {block.type === 'text' ? (
+                  <span className="st-bar-subgroup" aria-label="Text size preset">
+                    {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
+                      <button key={size} type="button" className={block.size === size ? 'is-on' : ''} onClick={() => patchBlock(block.id, { size, fontSize: undefined })} disabled={!editable} title={`Set text size ${size.toUpperCase()}`}>{size.toUpperCase()}</button>
+                    ))}
+                  </span>
+                ) : null}
+                {block.type === 'heading' ? (
+                  <span className="st-bar-subgroup" aria-label="Heading level">
+                    {([1, 2, 3] as const).map((level) => (
+                      <button key={level} type="button" className={block.level === level ? 'is-on' : ''} onClick={() => patchBlock(block.id, { level, fontSize: headingFontSizeForLevel(level) })} disabled={!editable} aria-label={`Set heading level H${level}`} title={`Heading H${level}`}>H{level}</button>
+                    ))}
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+            {block.type === 'text' || block.type === 'heading' ? (
+              <span className="st-bar-group" aria-label="Text colour">
+                <input type="color" value={block.color ?? '#000000'} onChange={(event) => patchBlock(block.id, { color: event.currentTarget.value })} disabled={!editable} title="Font colour" aria-label="Font colour" />
+                <input type="color" value={block.bg ?? '#ffffff'} onChange={(event) => patchBlock(block.id, { bg: event.currentTarget.value })} disabled={!editable} title="Text background colour" aria-label="Text background colour" />
+              </span>
+            ) : null}
+            {block.type === 'text' || block.type === 'heading' ? (
+              <span className="st-bar-group" aria-label="Text emphasis">
+                <button type="button" className={block.bold ? 'is-on' : ''} onClick={() => patchBlock(block.id, { bold: !block.bold })} disabled={!editable} title="Bold text" aria-label="Bold text"><strong>B</strong></button>
+                <button type="button" className={block.italic ? 'is-on' : ''} onClick={() => patchBlock(block.id, { italic: !block.italic })} disabled={!editable} title="Italic text" aria-label="Italic text"><em>I</em></button>
+                <button type="button" className={block.underline ? 'is-on' : ''} onClick={() => patchBlock(block.id, { underline: !block.underline })} disabled={!editable} title="Underline text" aria-label="Underline text"><u>U</u></button>
+              </span>
+            ) : null}
+            {block.type === 'text' || block.type === 'heading' || block.type === 'shape' ? (
+              <span className="st-bar-group" role="group" aria-label="Text alignment">
+                {(['left', 'center', 'right'] as const).map((option) => {
+                  const AlignIcon = option === 'left' ? AlignLeft : option === 'center' ? AlignCenter : AlignRight;
+                  const labels = { left: 'Align left', center: 'Align center', right: 'Align right' } as const;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      className={block.align === option ? 'is-on' : ''}
+                      onClick={() => patchBlock(block.id, { align: option })}
+                      disabled={!editable}
+                      title={labels[option]}
+                      aria-label={labels[option]}
+                      aria-pressed={block.align === option}
+                    >
+                      <AlignIcon size={13} />
+                    </button>
+                  );
+                })}
+              </span>
+            ) : null}
+            {block.type === 'shape' ? (
+              <span className="st-bar-group" aria-label="Shape fill">
+                <input type="color" value={block.color ?? '#8b7cff'} onChange={(event) => patchBlock(block.id, { color: event.currentTarget.value })} disabled={!editable} title="Fill colour" aria-label="Fill colour" />
+                {block.text || block.richText?.length ? (
+                  <input type="color" value={block.textColor ?? '#ffffff'} onChange={(event) => patchBlock(block.id, { textColor: event.currentTarget.value })} disabled={!editable} title="Shape text colour" aria-label="Shape text colour" />
+                ) : null}
+              </span>
+            ) : null}
+            {block.type === 'button' ? (
+              <span className="st-bar-group" aria-label="Button colours">
+                <input type="color" value={block.color ?? '#4f8b72'} onChange={(event) => patchBlock(block.id, { color: event.currentTarget.value })} disabled={!editable} title="Button colour" aria-label="Button colour" />
+                <input type="color" value={block.textColor ?? '#ffffff'} onChange={(event) => patchBlock(block.id, { textColor: event.currentTarget.value })} disabled={!editable} title="Label colour" aria-label="Label colour" />
+              </span>
+            ) : null}
+            {block.type === 'image' ? (
+              <span className="st-bar-group">
+                <label className="st-bar-btn" title="Replace this image with an upload (PNG/JPG/WEBP, max 2 MB)">
+                  <Replace size={13} /> Replace image
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    style={{ display: 'none' }}
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      event.currentTarget.value = '';
+                      if (file) void replaceImageFromFile(block.id, file);
+                    }}
+                  />
+                </label>
+              </span>
+            ) : null}
+            {block.type === 'image' && logoImportStates[block.id] && brandEssentials.logoUrl ? (
+              logoImportStates[block.id] === 'importing' ? (
+                <span className="st-logo-import-chip is-importing" role="status">
+                  <LoaderCircle size={12} className="st-spin" /> Importing logo…
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="st-logo-import-chip is-failed"
+                  onClick={() => { if (brandEssentials.logoUrl) trackLogoImport(block.id, brandEssentials.logoUrl); }}
+                  title="The secure import of this logo failed — the placed copy stays editable. Retry the import."
+                >
+                  <RefreshCw size={12} /> Import failed · Retry
                 </button>
-              );
-            })}
-          </span>
-        ) : null}
-        {block.type === 'image' && logoImportStates[block.id] && brandEssentials.logoUrl ? (
-          logoImportStates[block.id] === 'importing' ? (
-            <span className="st-logo-import-chip is-importing" role="status">
-              <LoaderCircle size={12} className="st-spin" /> Importing logo…
+              )
+            ) : null}
+            <span className="st-bar-group st-bar-opacity" aria-label="Transparency">
+              <input
+                type="range"
+                min={10}
+                max={100}
+                step={5}
+                value={opacityPercent}
+                onChange={(event) => patchBlock(block.id, { opacity: Number(event.currentTarget.value) / 100 })}
+                disabled={!editable}
+                aria-label="Transparency"
+                title="Transparency"
+              />
+              <span className="st-bar-opacity-value" aria-hidden="true">{opacityPercent}%</span>
             </span>
-          ) : (
+            <span className="st-context-bar-sep" aria-hidden="true" />
             <button
               type="button"
-              className="st-logo-import-chip is-failed"
-              onClick={() => { if (brandEssentials.logoUrl) trackLogoImport(block.id, brandEssentials.logoUrl); }}
-              title="The secure import of this logo failed — the placed copy stays editable. Retry the import."
+              className="st-bar-btn"
+              data-studio-position-trigger=""
+              aria-haspopup="menu"
+              aria-expanded={toolbarPopover !== null}
+              disabled={!editable}
+              onClick={(event) => {
+                const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+                setToolbarPopover((current) => current ? null : { kind: 'layer', left: rect.left, top: rect.bottom + 6 });
+              }}
+              title="Layer order and page alignment"
             >
-              <RefreshCw size={12} /> Import failed · Retry
+              <Layers size={13} /> Position
             </button>
-          )
-        ) : null}
-        <span className="st-float-group st-float-actions" role="group" aria-label="Element actions">
-          <button type="button" onClick={() => duplicateBlock(block.id)} disabled={!canEditBlock(block)} title="Duplicate element" aria-label="Duplicate element"><CopyPlus size={13} /></button>
-          <button type="button" onClick={() => changeLayerOrder(block.id, 'front')} disabled={!canEditBlock(block)} title="Bring to front" aria-label="Bring element to front"><BringToFront size={13} /></button>
-          <button type="button" onClick={() => changeLayerOrder(block.id, 'back')} disabled={!canEditBlock(block)} title="Send to back" aria-label="Send element to back"><SendToBack size={13} /></button>
-          <button
-            type="button"
-            onClick={() => { patchBlock(block.id, { locked: !block.locked }); }}
-            disabled={!canEdit}
-            title={block.locked ? 'Unlock element' : 'Lock element'}
-            aria-label={block.locked ? 'Unlock element' : 'Lock element'}
-            className={block.locked ? 'is-on' : ''}
-          >
-            {block.locked ? <Lock size={13} /> : <LockOpen size={13} />}
-          </button>
-          <button type="button" className="is-danger" onClick={() => removeBlock(block.id)} disabled={!canEditBlock(block)} title="Delete element" aria-label="Delete element"><Trash2 size={13} /></button>
-        </span>
+            <span className="st-context-bar-sep" aria-hidden="true" />
+            <button
+              type="button"
+              className={`st-bar-btn${moreOpenHere ? ' is-on' : ''}`}
+              data-studio-more-trigger=""
+              aria-haspopup="menu"
+              aria-expanded={moreOpenHere}
+              onClick={(event) => {
+                const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+                if (moreOpenHere) { setMoreMenu(null); return; }
+                setMoreMenu({ blockId: block.id, left: rect.left, top: rect.bottom + 6, submenu: null });
+              }}
+              title="More actions"
+              aria-label="More actions"
+            >
+              <Ellipsis size={15} />
+            </button>
+          </>
+        )}
+      </div>
+    );
+  })();
+
+  // Compact Canva-style quick-action strip beside the selection. Collision
+  // avoidance: it prefers the slot above the selection outline and flips below
+  // it when the page edge (or the contextual toolbar row) is in the way.
+  const selectionPill = (() => {
+    if (previewMode || focusMode || gestureActive || rotateHud) return null;
+    const block = selected;
+    if (!block || !canEdit || !floatAnchor) return null;
+    const stageRect = stageRef.current?.getBoundingClientRect();
+    const pillWidth = 136;
+    const maxLeft = stageRect ? stageRect.right - pillWidth - 8 : window.innerWidth - pillWidth - 8;
+    const minLeft = stageRect ? stageRect.left + 8 : 8;
+    const left = Math.max(minLeft, Math.min(floatAnchor.x + floatAnchor.w / 2 - pillWidth / 2, maxLeft));
+    let top = floatAnchor.y - 48;
+    if (stageRect && top < stageRect.top + 8) top = floatAnchor.y + floatAnchor.h + 12;
+    const moreOpenHere = moreMenu?.blockId === block.id;
+    return (
+      <div
+        className="studio-selection-pill"
+        role="toolbar"
+        aria-label="Element quick actions"
+        onMouseDown={(event) => { if ((event.target as HTMLElement).closest('button')) event.preventDefault(); }}
+        style={{ position: 'fixed', left, top: Math.max(8, top) }}
+      >
+        <button type="button" onClick={() => duplicateBlock(block.id)} disabled={!canEditBlock(block)} title="Duplicate element" aria-label="Duplicate element"><CopyPlus size={13} /></button>
+        <button type="button" onClick={() => { patchBlock(block.id, { locked: !block.locked }); }} disabled={!canEdit} title={block.locked ? 'Unlock element' : 'Lock element'} aria-label={block.locked ? 'Unlock element' : 'Lock element'} className={block.locked ? 'is-on' : ''}>
+          {block.locked ? <Lock size={13} /> : <LockOpen size={13} />}
+        </button>
+        <button type="button" className="is-danger" onClick={() => removeBlock(block.id)} disabled={!canEditBlock(block)} title="Delete element" aria-label="Delete element"><Trash2 size={13} /></button>
+        <button
+          type="button"
+          className={moreOpenHere ? 'is-on' : ''}
+          data-studio-more-trigger=""
+          aria-haspopup="menu"
+          aria-expanded={moreOpenHere}
+          onClick={(event) => {
+            const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+            if (moreOpenHere) { setMoreMenu(null); return; }
+            setMoreMenu({ blockId: block.id, left: rect.left, top: rect.bottom + 6, submenu: null });
+          }}
+          title="More actions"
+          aria-label="More actions"
+        ><Ellipsis size={15} /></button>
       </div>
     );
   })();
@@ -3853,6 +4192,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     const resize = freeResize.current;
     if (!resize || resize.id !== id) return;
     freeResize.current = null;
+    setGestureActive(false);
     const block = findBlockById(id);
     // Restore temporary measurement styles; the committed geometry now owns the
     // size. Leaving height:auto/overflow:visible inline can desync edit and preview.
@@ -3917,6 +4257,15 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       origin: { ...geo },
       next: geo.rotation ?? 0,
     };
+    // Obstructive chrome steps aside; the live readout takes over until release.
+    setGestureActive(true);
+    setRotateHud({
+      angle: geo.rotation ?? 0,
+      w: geo.w,
+      h: geo.h,
+      x: rect.left + rect.width / 2,
+      y: rect.top,
+    });
   };
 
   const onFreeRotateMove = (event: React.PointerEvent) => {
@@ -3933,12 +4282,15 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     if (el) el.style.transform = transform;
     const overlay = frameRef.current?.querySelector<HTMLElement>('[data-studio-selection-overlay]');
     if (overlay && overlay.dataset.forId === rotate.id) overlay.style.transform = transform;
+    setRotateHud((current) => current ? { ...current, angle: rotation } : current);
   };
 
   const finishFreeRotate = (id: string) => {
     const rotate = freeRotate.current;
     if (!rotate || rotate.id !== id) return;
     freeRotate.current = null;
+    setGestureActive(false);
+    setRotateHud(null);
     if (rotate.next === (rotate.origin.rotation ?? 0)) return;
     patchBlock(id, { geometry: { ...rotate.origin, rotation: rotate.next } });
   };
@@ -4308,6 +4660,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         {!drawerOpen && !focusMode ? <div className="studio-drawer-placeholder" aria-hidden="true" /> : null}
 
         {/* ---------- stage ---------- */}
+        <div className="studio-stage-col">
+        {contextBar}
         <div
           className={`studio-stage${gridOn ? '' : ' no-grid'}${drawerLayoutAnimating ? ' is-layout-transitioning' : ''}`}
           ref={stageRef}
@@ -4343,7 +4697,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               ...pageBackgroundStyles(activePage ?? {}),
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom / 100})`,
             }}
-            onClick={(event) => { if (event.target === frameRef.current) setSelectedId(null); }}
+            onPointerDown={(event) => { if (event.target === event.currentTarget) framePointerDownOnChrome.current = true; }}
+            onClick={(event) => {
+              // Clear only when the whole gesture started on the frame itself.
+              // Retargeted clicks (pointerup landing on selection chrome above a
+              // tiny block) bubble here from a common ancestor and must NOT
+              // deselect what pointerdown just selected.
+              if (event.target === frameRef.current && framePointerDownOnChrome.current) setSelectedId(null);
+            }}
             onDragOver={(event) => {
               if (!event.dataTransfer.types.includes('application/x-brand-logo')) return;
               event.preventDefault();
@@ -4362,7 +4723,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             <div
               key={activePage?.id ?? 'empty-page'}
               className="studio-page-clip"
-              onClick={(event) => { if (event.target === event.currentTarget) setSelectedId(null); }}
+              onPointerDown={(event) => { if (event.target === event.currentTarget) framePointerDownOnChrome.current = true; }}
+              onClick={(event) => { if (event.target === event.currentTarget && framePointerDownOnChrome.current) setSelectedId(null); }}
             >
             {isStoryboard && activePage?.note ? (
               <span className="studio-director-chip" title="Director's note from the script">
@@ -4556,6 +4918,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                           onPointerDown={(event) => {
                             event.stopPropagation();
                             (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+                            setGestureActive(true);
                             freeResize.current = {
                               id: block.id,
                               dir,
@@ -4588,6 +4951,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               );
             })() : null}
           </div>
+        </div>
         </div>
 
         {/* ---------- inspector ---------- */}
@@ -5070,7 +5434,194 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         <button type="button" className="studio-exit-focus" onClick={() => setFocusMode(false)}>Exit focus (F)</button>
       )}
 
-      {floatToolbar}
+      {selectionPill}
+      <input
+        ref={imageReplaceClickRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        style={{ display: 'none' }}
+        aria-hidden="true"
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = '';
+          const targetId = imageReplaceTargetId;
+          setImageReplaceTargetId(null);
+          if (file && targetId) void replaceImageFromFile(targetId, file);
+        }}
+      />
+      {rotateHud ? createPortal(
+        <div className="st-rotate-hud" role="status" aria-live="off" title="Live rotation readout" style={{ position: 'fixed', left: Math.max(60, Math.min(rotateHud.x, window.innerWidth - 60)), top: Math.max(44, rotateHud.y), transform: 'translate(-50%, -130%)', zIndex: 100310 }}>
+          {rotateHud.angle}° · W {rotateHud.w} · H {rotateHud.h}
+        </div>,
+        document.body,
+      ) : null}
+
+      {/* "…" More menu — dropdown twin of the right-click menus. Same handlers,
+          curated item list, its own submenu portal (Layer / Align / Transparency). */}
+      {moreMenu && moreMenuBlock ? createPortal(
+        <>
+        <div ref={moreMenuRef} className="st-context-menu" data-studio-more-menu role="menu" aria-label="More actions"
+          onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
+          style={{
+            position: 'fixed', left: moreMenu.left, top: moreMenu.top, zIndex: 100300,
+            width: 248, maxWidth: 'calc(100vw - 16px)', maxHeight: 'min(calc(100vh - 16px), 560px)', overflowY: 'auto',
+            padding: 8, borderRadius: 14, border: '1px solid var(--line, #e2dbcf)',
+            background: 'var(--surface-card, var(--panel, #fffdf8))',
+            boxShadow: '0 20px 48px rgba(15, 23, 42, .18)',
+            backdropFilter: 'blur(20px)', color: 'var(--text, #292820)', fontSize: 12,
+          }}>
+          {isEditableTextBlock(moreMenuBlock) ? (
+            <button className="st-context-item st-context-item--primary" type="button" role="menuitem" disabled={!canEditBlock(moreMenuBlock)} onClick={() => { requestInlineTextEditing(moreMenuBlock.id); setMoreMenu(null); }} style={contextMenuItemStyle}>
+              <span style={contextMenuActionStyle}><Pencil size={14} /> Edit text on canvas</span><span style={contextMenuShortcutStyle}>Enter</span>
+            </button>
+          ) : null}
+          {moreMenuBlock.type === 'shape' ? (
+            <button className="st-context-item st-context-item--primary" type="button" role="menuitem" disabled={!canEditBlock(moreMenuBlock)} onClick={() => { requestInlineTextEditing(moreMenuBlock.id); setMoreMenu(null); }} style={contextMenuItemStyle}>
+              <span style={contextMenuActionStyle}><Pencil size={14} /> Edit text on canvas</span><span style={contextMenuShortcutStyle}>Enter</span>
+            </button>
+          ) : null}
+          <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(moreMenuBlock) || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} onClick={() => { duplicateBlock(moreMenuBlock.id); setMoreMenu(null); }} style={contextMenuItemStyle}>
+            <span style={contextMenuActionStyle}><CopyPlus size={14} /> Duplicate</span><span style={contextMenuShortcutStyle}>Ctrl+D</span>
+          </button>
+          {isEditableTextBlock(moreMenuBlock) ? (
+            <>
+              <button className="st-context-item" type="button" role="menuitem" onClick={() => { copyTextStyle(moreMenuBlock.id); setMoreMenu(null); }} style={contextMenuItemStyle}>
+                <span style={contextMenuActionStyle}><Paintbrush size={14} /> Copy style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+C</span>
+              </button>
+              <button className="st-context-item" type="button" role="menuitem" disabled={!copiedTextStyle || !canEditBlock(moreMenuBlock)} onClick={() => { pasteTextStyle(moreMenuBlock.id); setMoreMenu(null); }} style={contextMenuItemStyle}>
+                <span style={contextMenuActionStyle}><Paintbrush size={14} /> Paste style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+V</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(moreMenuBlock)} onClick={() => { copyObjectStyle(moreMenuBlock.id); setMoreMenu(null); }} style={contextMenuItemStyle}>
+                <span style={contextMenuActionStyle}><Paintbrush size={14} /> Copy style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+C</span>
+              </button>
+              <button className="st-context-item" type="button" role="menuitem" disabled={!copiedObjectStyle || !canEditBlock(moreMenuBlock)} onClick={() => { pasteObjectStyle(moreMenuBlock.id); setMoreMenu(null); }} style={contextMenuItemStyle}>
+                <span style={contextMenuActionStyle}><Paintbrush size={14} /> Paste style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+V</span>
+              </button>
+            </>
+          )}
+          <div style={contextMenuDividerStyle} />
+          <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="layer" aria-haspopup="menu" aria-expanded={moreMenu.submenu === 'layer'}
+            onClick={() => setMoreMenu((current) => current ? { ...current, submenu: current.submenu === 'layer' ? null : 'layer', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
+            <span style={contextMenuActionStyle}><Layers size={14} /> Layer</span><span style={contextMenuShortcutStyle}>{moreMenu.submenu === 'layer' ? '⌄' : '›'}</span>
+          </button>
+          <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="align" aria-haspopup="menu" aria-expanded={moreMenu.submenu === 'align'}
+            disabled={!freeMode || !canEditBlock(moreMenuBlock)}
+            onClick={() => setMoreMenu((current) => current ? { ...current, submenu: current.submenu === 'align' ? null : 'align', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
+            <span style={contextMenuActionStyle}><AlignHorizontalJustifyCenter size={14} /> Align to page</span><span style={contextMenuShortcutStyle}>{moreMenu.submenu === 'align' ? '⌄' : '›'}</span>
+          </button>
+          <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="transparency" aria-haspopup="menu" aria-expanded={moreMenu.submenu === 'transparency'}
+            disabled={!canEditBlock(moreMenuBlock)}
+            onClick={() => setMoreMenu((current) => current ? { ...current, submenu: current.submenu === 'transparency' ? null : 'transparency', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
+            <span style={contextMenuActionStyle}><Eye size={14} /> Transparency</span><span style={contextMenuShortcutStyle}>{Math.round((moreMenuBlock.opacity ?? 1) * 100)}% · ›</span>
+          </button>
+          <div style={contextMenuDividerStyle} />
+          <button className="st-context-item" type="button" role="menuitem" onClick={() => { patchBlock(moreMenuBlock.id, { locked: !moreMenuBlock.locked }); setNotice(moreMenuBlock.locked ? 'Layer unlocked.' : 'Layer locked.'); setMoreMenu(null); }} style={contextMenuItemStyle}>
+            <span style={contextMenuActionStyle}>{moreMenuBlock.locked ? <><LockOpen size={14} /> Unlock</> : <><Lock size={14} /> Lock</>}</span><span style={contextMenuShortcutStyle}>Alt+Shift+L</span>
+          </button>
+          {isEditableTextBlock(moreMenuBlock) ? (
+            <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(moreMenuBlock)} onClick={() => { editTextLink(moreMenuBlock.id); setMoreMenu(null); }} style={contextMenuItemStyle}>
+              <span style={contextMenuActionStyle}><Link2 size={14} /> {moreMenuBlock.href ? 'Edit link…' : 'Link…'}</span><span style={contextMenuShortcutStyle}>Ctrl+K</span>
+            </button>
+          ) : null}
+          {moreMenuBlock.type === 'image' ? (
+            <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(moreMenuBlock)} onClick={() => { setImageReplaceTargetId(moreMenuBlock.id); imageReplaceClickRef.current?.click(); setMoreMenu(null); }} style={contextMenuItemStyle}>
+              <span style={contextMenuActionStyle}><Replace size={14} /> Replace image…</span>
+            </button>
+          ) : null}
+          <div style={contextMenuDividerStyle} />
+          <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(moreMenuBlock) || ((activePage?.blocks.length ?? 0) <= 1 && pages.length === 1)} onClick={() => { removeBlock(moreMenuBlock.id); setMoreMenu(null); }} style={{ ...contextMenuItemStyle, color: 'var(--text-danger, #b42318)' }}>
+            <span style={contextMenuActionStyle}><Trash2 size={14} /> Delete</span><span style={contextMenuShortcutStyle}>Del</span>
+          </button>
+        </div>
+        {moreMenu.submenu ? (
+          <div ref={moreSubmenuRef} className="st-context-menu st-context-submenu" data-studio-more-menu role="menu" aria-label="More action options"
+            onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
+            style={{
+              position: 'fixed', left: moreMenu.submenuLeft ?? moreMenu.left + 256,
+              top: moreMenu.submenuTop ?? moreMenu.top, zIndex: 100301,
+              width: 232, maxWidth: 'calc(100vw - 16px)', maxHeight: 'min(calc(100vh - 16px), 480px)', overflowY: 'auto',
+              padding: 8, borderRadius: 14, border: '1px solid var(--line, #e2dbcf)',
+              background: 'var(--surface-card, var(--panel, #fffdf8))',
+              boxShadow: '0 20px 48px rgba(15, 23, 42, .18)', color: 'var(--text, #292820)', fontSize: 12,
+            }}>
+            <div className="st-context-menu-subtitle">
+              {moreMenu.submenu === 'layer' ? 'LAYER ORDER' : moreMenu.submenu === 'align' ? 'ALIGN TO PAGE' : 'TRANSPARENCY'}
+            </div>
+            {moreMenu.submenu === 'layer' ? (
+              ([
+                ['Bring to front', 'front', <BringToFront key="btf" size={14} />], ['Bring forward', 'forward', <ArrowUp key="bf" size={14} />],
+                ['Send backward', 'backward', <ArrowDown key="sb" size={14} />], ['Send to back', 'back', <SendToBack key="stb" size={14} />],
+              ] as const).map(([label, destination, icon]) => (
+                <button className="st-context-item" key={destination} type="button" role="menuitem" disabled={!canEditBlock(moreMenuBlock) || (activePage?.blocks.length ?? 0) < 2}
+                  onClick={() => { changeLayerOrder(moreMenuBlock.id, destination); setMoreMenu(null); }} style={contextMenuItemStyle}><span style={contextMenuActionStyle}>{icon} {label}</span></button>
+              ))
+            ) : null}
+            {moreMenu.submenu === 'align' ? (
+              ([
+                ['Left', 'left', <AlignStartVertical key="al" size={14} />], ['Center horizontally', 'center', <AlignCenterVertical key="ac" size={14} />], ['Right', 'right', <AlignEndVertical key="ar" size={14} />],
+                ['Top', 'top', <AlignStartHorizontal key="at" size={14} />], ['Middle vertically', 'middle', <AlignCenterHorizontal key="am" size={14} />], ['Bottom', 'bottom', <AlignEndHorizontal key="ab" size={14} />],
+              ] as const).map(([label, position, icon]) => (
+                <button className="st-context-item" key={position} type="button" role="menuitem" disabled={!freeMode || !canEditBlock(moreMenuBlock)}
+                  onClick={() => { alignBlockToPage(moreMenuBlock.id, position); setMoreMenu(null); }} style={contextMenuItemStyle}><span style={contextMenuActionStyle}>{icon} {label}</span></button>
+              ))
+            ) : null}
+            {moreMenu.submenu === 'transparency' ? (
+              <>
+                {([100, 75, 50, 25] as const).map((percent) => (
+                  <button className="st-context-item" key={percent} type="button" role="menuitem" aria-checked={Math.round((moreMenuBlock.opacity ?? 1) * 100) === percent}
+                    onClick={() => { patchBlock(moreMenuBlock.id, { opacity: percent / 100 }); setMoreMenu(null); }}
+                    style={{ ...contextMenuItemStyle, fontWeight: Math.round((moreMenuBlock.opacity ?? 1) * 100) === percent ? 800 : 600 }}>
+                    <span style={contextMenuActionStyle}><Eye size={14} /> {percent}%</span>
+                  </button>
+                ))}
+                <label className="st-context-item" style={{ ...contextMenuItemStyle, gridTemplateColumns: '1fr', gap: 6, cursor: 'pointer' }}>
+                  <span style={contextMenuActionStyle}><Eye size={14} /> Fine-tune</span>
+                  <input type="range" min={10} max={100} step={5} value={Math.round((moreMenuBlock.opacity ?? 1) * 100)} style={{ width: '100%' }}
+                    onChange={(event) => patchBlock(moreMenuBlock.id, { opacity: Number(event.currentTarget.value) / 100 })} aria-label="Transparency percent" />
+                </label>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+        </>,
+        document.body,
+      ) : null}
+
+      {/* Position popover from the contextual toolbar: Layer + Align in one panel. */}
+      {toolbarPopover && selected ? createPortal(
+        <div data-studio-position-popover role="menu" aria-label="Position on page"
+          onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
+          style={{
+            position: 'fixed', left: Math.max(8, Math.min(toolbarPopover.left, window.innerWidth - 244)), top: toolbarPopover.top, zIndex: 100300,
+            width: 236, maxHeight: 'min(calc(100vh - 16px), 420px)', overflowY: 'auto',
+            padding: 8, borderRadius: 14, border: '1px solid var(--line, #e2dbcf)',
+            background: 'var(--surface-card, var(--panel, #fffdf8))',
+            boxShadow: '0 20px 48px rgba(15, 23, 42, .18)',
+            backdropFilter: 'blur(20px)', color: 'var(--text, #292820)', fontSize: 12,
+          }}>
+          <div className="st-context-menu-subtitle">LAYER ORDER</div>
+          {([
+            ['Bring to front', 'front', <BringToFront key="pbtf" size={14} />], ['Bring forward', 'forward', <ArrowUp key="pbf" size={14} />],
+            ['Send backward', 'backward', <ArrowDown key="psb" size={14} />], ['Send to back', 'back', <SendToBack key="pstb" size={14} />],
+          ] as const).map(([label, destination, icon]) => (
+            <button className="st-context-item" key={destination} type="button" role="menuitem" disabled={!canEditBlock(selected) || (activePage?.blocks.length ?? 0) < 2}
+              onClick={() => { changeLayerOrder(selected.id, destination); setToolbarPopover(null); }} style={contextMenuItemStyle}><span style={contextMenuActionStyle}>{icon} {label}</span></button>
+          ))}
+          <div className="st-context-menu-subtitle" style={{ marginTop: 6 }}>ALIGN TO PAGE</div>
+          {([
+            ['Left', 'left', <AlignStartVertical key="pal" size={14} />], ['Center horizontally', 'center', <AlignCenterVertical key="pac" size={14} />], ['Right', 'right', <AlignEndVertical key="par" size={14} />],
+            ['Top', 'top', <AlignStartHorizontal key="pat" size={14} />], ['Middle vertically', 'middle', <AlignCenterHorizontal key="pam" size={14} />], ['Bottom', 'bottom', <AlignEndHorizontal key="pab" size={14} />],
+          ] as const).map(([label, position, icon]) => (
+            <button className="st-context-item" key={position} type="button" role="menuitem" disabled={!freeMode || !canEditBlock(selected)}
+              onClick={() => { alignBlockToPage(selected.id, position); setToolbarPopover(null); }} style={contextMenuItemStyle}><span style={contextMenuActionStyle}>{icon} {label}</span></button>
+          ))}
+        </div>,
+        document.body,
+      ) : null}
       {textContextMenu && contextMenuBlock && isEditableTextBlock(contextMenuBlock) ? createPortal(
         <>
         <div ref={contextMenuRef} className="st-context-menu" data-studio-text-context-menu role="menu" aria-label="Text actions"
@@ -5125,6 +5676,11 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             disabled={!freeMode || !canEditBlock(contextMenuBlock)}
             onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'align' ? null : 'align', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
             <span style={contextMenuActionStyle}><AlignHorizontalJustifyCenter size={14} /> Align to page</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'align' ? '⌄' : '›'}</span>
+          </button>
+          <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="transparency" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'transparency'}
+            disabled={!canEditBlock(contextMenuBlock)}
+            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'transparency' ? null : 'transparency', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
+            <span style={contextMenuActionStyle}><Eye size={14} /> Transparency</span><span style={contextMenuShortcutStyle}>{Math.round((contextMenuBlock.opacity ?? 1) * 100)}% · ›</span>
           </button>
           <div style={contextMenuDividerStyle} />
           <button className="st-context-item" type="button" role="menuitem" onClick={() => { patchBlock(contextMenuBlock.id, { locked: !contextMenuBlock.locked }); setNotice(contextMenuBlock.locked ? 'Text unlocked.' : 'Text locked.'); setTextContextMenu(null); }} style={contextMenuItemStyle}>
@@ -5214,7 +5770,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || ((activePage?.blocks.length ?? 0) <= 1 && pages.length === 1)} onClick={() => { removeBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={{ ...contextMenuItemStyle, color: 'var(--text-danger, #b42318)' }}>
             <span style={contextMenuActionStyle}><Trash2 size={14} /> Delete</span><span style={contextMenuShortcutStyle}>Del</span>
           </button>
-          {contextMenuBlock.type === 'shape' || contextMenuBlock.type === 'button' ? (
+          {contextMenuBlock.type === 'shape' || contextMenuBlock.type === 'button' || contextMenuBlock.type === 'image' ? (
             <>
               <div style={contextMenuDividerStyle} />
               <button className="st-context-item" type="button" role="menuitem" onClick={() => copyObjectStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
@@ -5235,16 +5791,26 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'align' ? null : 'align', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
             <span style={contextMenuActionStyle}><AlignHorizontalJustifyCenter size={14} /> Align to page</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'align' ? '⌄' : '›'}</span>
           </button>
+          <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="transparency" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'transparency'}
+            disabled={!canEditBlock(contextMenuBlock)}
+            onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'transparency' ? null : 'transparency', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
+            <span style={contextMenuActionStyle}><Eye size={14} /> Transparency</span><span style={contextMenuShortcutStyle}>{Math.round((contextMenuBlock.opacity ?? 1) * 100)}% · ›</span>
+          </button>
           <div style={contextMenuDividerStyle} />
           <button className="st-context-item" type="button" role="menuitem" onClick={() => { patchBlock(contextMenuBlock.id, { locked: !contextMenuBlock.locked }); setNotice(contextMenuBlock.locked ? 'Layer unlocked.' : 'Layer locked.'); setTextContextMenu(null); }} style={contextMenuItemStyle}>
             <span style={contextMenuActionStyle}>{contextMenuBlock.locked ? <><LockOpen size={14} /> Unlock</> : <><Lock size={14} /> Lock</>}</span><span style={contextMenuShortcutStyle}>Alt+Shift+L</span>
           </button>
+          {contextMenuBlock.type === 'image' ? (
+            <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => { setImageReplaceTargetId(contextMenuBlock.id); imageReplaceClickRef.current?.click(); setTextContextMenu(null); }} style={contextMenuItemStyle}>
+              <span style={contextMenuActionStyle}><Replace size={14} /> Replace image…</span>
+            </button>
+          ) : null}
         </div>,
         document.body
       ) : null}
 
-      {/* Layer order / page alignment flyout, shared by the text and layer menus. */}
-      {textContextMenu && contextMenuBlock && (textContextMenu.submenu === 'layer' || textContextMenu.submenu === 'align') ? createPortal(
+      {/* Layer order / page alignment / transparency flyout, shared by the text and layer menus. */}
+      {textContextMenu && contextMenuBlock && (textContextMenu.submenu === 'layer' || textContextMenu.submenu === 'align' || textContextMenu.submenu === 'transparency') ? createPortal(
         <div ref={contextSubmenuRef} className="st-context-menu st-context-submenu" data-studio-text-context-menu role="menu" aria-label="Layer options"
           onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
           style={{
@@ -5256,7 +5822,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             boxShadow: '0 20px 48px rgba(15, 23, 42, .18)', color: 'var(--text, #292820)', fontSize: 12,
           }}>
           <div className="st-context-menu-subtitle">
-            {textContextMenu.submenu === 'layer' ? 'LAYER ORDER' : 'ALIGN TO PAGE'}
+            {textContextMenu.submenu === 'layer' ? 'LAYER ORDER' : textContextMenu.submenu === 'align' ? 'ALIGN TO PAGE' : 'TRANSPARENCY'}
           </div>
           {textContextMenu.submenu === 'layer' ? (
             ([
@@ -5275,6 +5841,22 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               <button className="st-context-item" key={position} type="button" role="menuitem" disabled={!freeMode || !canEditBlock(contextMenuBlock)}
                 onClick={() => alignBlockToPage(contextMenuBlock.id, position)} style={contextMenuItemStyle}><span style={contextMenuActionStyle}>{icon} {label}</span></button>
             ))
+          ) : null}
+          {textContextMenu.submenu === 'transparency' ? (
+            <>
+              {([100, 75, 50, 25] as const).map((percent) => (
+                <button className="st-context-item" key={percent} type="button" role="menuitem" aria-checked={Math.round((contextMenuBlock.opacity ?? 1) * 100) === percent}
+                  onClick={() => { patchBlock(contextMenuBlock.id, { opacity: percent / 100 }); setTextContextMenu(null); }}
+                  style={{ ...contextMenuItemStyle, fontWeight: Math.round((contextMenuBlock.opacity ?? 1) * 100) === percent ? 800 : 600 }}>
+                  <span style={contextMenuActionStyle}><Eye size={14} /> {percent}%</span>
+                </button>
+              ))}
+              <label className="st-context-item" style={{ ...contextMenuItemStyle, gridTemplateColumns: '1fr', gap: 6, cursor: 'pointer' }}>
+                <span style={contextMenuActionStyle}><Eye size={14} /> Fine-tune</span>
+                <input type="range" min={10} max={100} step={5} value={Math.round((contextMenuBlock.opacity ?? 1) * 100)} style={{ width: '100%' }}
+                  onChange={(event) => patchBlock(contextMenuBlock.id, { opacity: Number(event.currentTarget.value) / 100 })} aria-label="Transparency percent" />
+              </label>
+            </>
           ) : null}
         </div>,
         document.body
@@ -5643,7 +6225,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         open={Boolean(studioActionDialog)}
         title={studioActionDialog?.title ?? 'Confirm action'}
         description={studioActionDialog?.description}
-        onClose={() => setStudioActionDialog(null)}
+        onClose={() => { studioActionDialog?.kind === 'confirm' ? studioActionDialog.onCancel?.() : undefined; setStudioActionDialog(null); }}
         className="studio-action-dialog"
       >
         {studioActionDialog?.kind === 'input' ? (
@@ -5666,7 +6248,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         ) : studioActionDialog?.kind === 'confirm' ? (
           <div className="app-dialog__form">
             <div className="app-dialog__actions">
-              <button type="button" className="app-dialog__button" onClick={() => setStudioActionDialog(null)}>Cancel</button>
+              <button type="button" className="app-dialog__button" onClick={() => { const dialog = studioActionDialog; setStudioActionDialog(null); if (dialog?.kind === 'confirm') dialog.onCancel?.(); }}>Cancel</button>
               <button type="button" className={'app-dialog__button ' + (studioActionDialog.destructive ? 'app-dialog__button--danger' : 'app-dialog__button--primary')} onClick={() => {
                 const dialog = studioActionDialog;
                 if (dialog?.kind !== 'confirm') return;

@@ -1,0 +1,162 @@
+[
+  {
+    "name": "login",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "A1 context bar mounted",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "A2 toolbar shows formatting when text selected",
+    "pass": true,
+    "detail": "font select present"
+  },
+  {
+    "name": "A3 toolbar does not cover the text block",
+    "pass": true,
+    "detail": "{\"barBottom\":219.59375,\"blockTop\":336.6237487792969}"
+  },
+  {
+    "name": "A4 no floating .studio-float toolbar",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "A5 selection pill visible",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "A6 pill does not overlap block",
+    "pass": true,
+    "detail": "{\"pill\":{\"x\":779.5,\"y\":288.609375,\"width\":128,\"height\":38},\"block\":{\"x\":803.0135498046875,\"y\":336.6237487792969,\"width\":129,\"height\":20.639984130859375}}"
+  },
+  {
+    "name": "B1 shape bar has fill colour",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "B2 shape bar has Position trigger",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "B3 shape bar has opacity slider",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "B4 heading bar has H1-H3 group",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "C1 More menu opens",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "C2 transparency 50% applied via More",
+    "pass": true,
+    "detail": "opacity=0.5"
+  },
+  {
+    "name": "D1 context menu opens on right-click",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "D2 shape menu has Copy style",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "D3 shape menu has Transparency",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "E1 rotate grip present",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "E2 rotation HUD shows angle+W+H",
+    "pass": true,
+    "detail": "-53° · W 280 · H 170"
+  },
+  {
+    "name": "E3 pill hidden during rotation",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "E4 HUD cleared after release",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "E5 rotation committed",
+    "pass": true,
+    "detail": "rotate(-53deg)"
+  },
+  {
+    "name": "F1 double-click enters inline text editing",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "F2 edited text not covered by toolbar",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "G1 blank item opens with empty canvas",
+    "pass": true,
+    "detail": "blocks=1"
+  },
+  {
+    "name": "G2 Import brand CTA visible + enabled",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "G3 confirm dialog offers generation",
+    "pass": true,
+    "detail": "Generate a design from Canvas QA Brand?This canvas is empty, so there is nothing to restyle. Studio can replace it with "
+  },
+  {
+    "name": "G7 cancel opens styling-only Import dialog",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "G4 canvas populated from brand",
+    "pass": true,
+    "detail": "blocks=8"
+  },
+  {
+    "name": "G5 generated copy carries brand/strategy",
+    "pass": true,
+    "detail": "WELLNESSBlank Canvas QAYoga that fits between meetingsJoin tonight’s classCanvas QA Brand"
+  },
+  {
+    "name": "G6 gradient applied",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "G8 undo reverts generation",
+    "pass": true,
+    "detail": "blocks=1"
+  },
+  {
+    "name": "Z1 no new console errors",
+    "pass": true,
+    "detail": ""
+  }
+]
