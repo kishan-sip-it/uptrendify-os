@@ -25,6 +25,11 @@
     "detail": ""
   },
   {
+    "name": "A3b bar has no horizontal scroller",
+    "pass": true,
+    "detail": ""
+  },
+  {
     "name": "A4 bar is translucent + blurred",
     "pass": true,
     "detail": ""
@@ -32,7 +37,7 @@
   {
     "name": "A5 page does not shift on selection",
     "pass": true,
-    "detail": "{\"frameBefore\":{\"x\":641.6513671875,\"y\":218.59375,\"width\":389.06005859375,\"height\":550.27001953125},\"frameAfter\":{\"x\":641.6513671875,\"y\":218.59375,\"width\":389.06005859375,\"height\":550.27001953125}}"
+    "detail": "{\"frameBefore\":{\"x\":641.6513671875,\"y\":240.59375,\"width\":389.06005859375,\"height\":550.27001953125},\"frameAfter\":{\"x\":641.6513671875,\"y\":240.59375,\"width\":389.06005859375,\"height\":550.27001953125}}"
   },
   {
     "name": "A6 no More (…) inside the top bar",
@@ -40,7 +45,7 @@
     "detail": ""
   },
   {
-    "name": "A7 round colour pickers",
+    "name": "A7 colour pickers are perfect circles",
     "pass": true,
     "detail": ""
   },
@@ -52,7 +57,7 @@
   {
     "name": "A6 pill does not overlap block",
     "pass": true,
-    "detail": "{\"pill\":{\"x\":804.4375,\"y\":229.875,\"width\":128,\"height\":38},\"block\":{\"x\":798.94140625,\"y\":277.8837585449219,\"width\":147,\"height\":23.519989013671875}}"
+    "detail": "{\"pill\":{\"x\":804.4375,\"y\":251.875,\"width\":128,\"height\":38},\"block\":{\"x\":798.94140625,\"y\":299.8837585449219,\"width\":147,\"height\":23.519989013671875}}"
   },
   {
     "name": "B1 shape bar has fill colour",
@@ -87,7 +92,7 @@
   {
     "name": "D1 context menu opens on right-click",
     "pass": true,
-    "detail": ""
+    "detail": "{\"shapeBoxD\":{\"x\":642.141357421875,\"y\":241.083740234375,\"width\":137.20001220703125,\"height\":83.30001831054688},\"dHit\":\"DIV.editor-canvas-text is-empty\",\"menuCount\":1}"
   },
   {
     "name": "D2 shape menu has Copy style",
@@ -107,7 +112,7 @@
   {
     "name": "E2 rotation HUD shows angle+W+H",
     "pass": true,
-    "detail": "-51° · W 280 · H 170"
+    "detail": "{\"gripHit\":\"svg.[object SVGAnimatedString]\",\"hudVisible\":true,\"hudText\":\"-51° · W 280 · H 170\"}"
   },
   {
     "name": "E3 pill hidden during rotation",

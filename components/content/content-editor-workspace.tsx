@@ -555,6 +555,7 @@ function CanvasText({
   onDraftInput,
   onInlineToolbarChange,
   isSelected = false,
+  editGateRef,
   editOnDoubleClick = false,
   editRequest = 0,
   onEditingEnd,
@@ -569,6 +570,8 @@ function CanvasText({
   onDraftInput?: (next: string, runs?: InlineTextRun[]) => void;
   onInlineToolbarChange?: InlineTextToolbarChange;
   isSelected?: boolean;
+  /** Ref flag: was this block already selected when the current click began? */
+  editGateRef?: React.MutableRefObject<boolean>;
   editOnDoubleClick?: boolean;
   editRequest?: number;
   onEditingEnd?: () => void;
@@ -630,11 +633,14 @@ function CanvasText({
   };
 
   const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    // Capture whether THIS block was already selected before onClick updates
+    // the selection — the click that selects must never also start editing.
+    const alreadySelected = editGateRef?.current ?? isSelected;
     onClick();
     if (disabled) return;
     // First click selects the block; a subsequent click enters text editing.
     // On a double-click's second click, preserve the clicked word as selection.
-    if (!editOnDoubleClick || isSelected) beginEditing(event, event.detail >= 2);
+    if (!editOnDoubleClick || alreadySelected) beginEditing(event, event.detail >= 2);
   };
 
   const handleCanvasDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -1088,8 +1094,13 @@ function defaultGeometryForNewBlock(block: EditorBlock, page: ContentDocPage): C
 function fitZoom(stage: { w: number; h: number }, page: { w: number; h: number }, pad = 56): number {
   return Math.min((stage.w - pad * 2) / page.w, (stage.h - pad * 2) / page.h, 1.5);
 }
-function centerOffset(stage: { w: number; h: number }, page: { w: number; h: number }, z: number): { x: number; y: number } {
-  return { x: (stage.w - page.w * z) / 2, y: (stage.h - page.h * z) / 2 };
+/** Extra vertical headroom above the page for the floating contextual bar —
+ * the page centres slightly low so the bar hovers over bare workspace, never
+ * over artwork (Canva-style). */
+export const STUDIO_BAR_CLEARANCE = 44;
+
+function centerOffset(stage: { w: number; h: number }, page: { w: number; h: number }, z: number, chromeTop = 0): { x: number; y: number } {
+  return { x: (stage.w - page.w * z) / 2, y: chromeTop + (stage.h - chromeTop - page.h * z) / 2 };
 }
 
 const SNAPSHOT_MAX_BYTES = 2_097_152;
@@ -1316,6 +1327,10 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   // True only for pointerdowns that began on the frame/page-clip background;
   // guards the click-to-deselect handlers against retargeted pointerups.
   const framePointerDownOnChrome = useRef(false);
+  // Whether the clicked block was ALREADY selected when the pointer went down.
+  // The click-to-edit gate reads this instead of the (already-updated) render
+  // state, so the first click reliably selects and only the next click edits.
+  const blockSelectedAtPointerDown = useRef(false);
   const snapshotHostRef = useRef<HTMLDivElement | null>(null);
   const manualZoomRef = useRef(false);
   const offsetRef = useRef({ x: 0, y: 0 });
@@ -3158,8 +3173,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     const rect = { w: stage.clientWidth, h: stage.clientHeight };
     const z = Math.max(0.05, fitZoom(rect, { w: pageDims.width, h: pageDims.height }));
     setZoom(Math.round(z * 100));
-    setOffset(centerOffset(rect, { w: pageDims.width, h: pageDims.height }, z));
-  }, [pageDims.width, pageDims.height]);
+    setOffset(centerOffset(rect, { w: pageDims.width, h: pageDims.height }, z, previewMode || focusMode ? 0 : STUDIO_BAR_CLEARANCE));
+  }, [pageDims.width, pageDims.height, previewMode, focusMode]);
 
   const beginDrawerLayoutTransition = () => {
     if (drawerLayoutAnimationTimerRef.current !== null) window.clearTimeout(drawerLayoutAnimationTimerRef.current);
@@ -3998,7 +4013,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           baseStyle={{ color: ink, fontSize, ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }}
           disabled={!editable}
           multiline
-          onClick={snapshotMode ? () => undefined : () => { setSelectedId(block.id); setInspectorTab('design'); }}
+          editGateRef={blockSelectedAtPointerDown}
+          onClick={snapshotMode ? () => undefined : () => { blockSelectedAtPointerDown.current = selectedId === block.id; setSelectedId(block.id); setInspectorTab('design'); }}
           onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs })}
           onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)}
           editOnDoubleClick={true}
@@ -4021,13 +4037,13 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       case 'heading':
         return (
           <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden', opacity: block.opacity ?? 1 }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={!snapshotMode && selectedId === block.id && !previewMode} onInlineToolbarChange={snapshotMode ? undefined : bindInlineToolbar(block.id)} editRequest={snapshotMode ? 0 : (inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0)} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} editGateRef={blockSelectedAtPointerDown} isSelected={!snapshotMode && selectedId === block.id && !previewMode} onInlineToolbarChange={snapshotMode ? undefined : bindInlineToolbar(block.id)} editRequest={snapshotMode ? 0 : (inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0)} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
           </div>
         );
       case 'text':
         return (
           <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={!snapshotMode && selectedId === block.id && !previewMode} onInlineToolbarChange={snapshotMode ? undefined : bindInlineToolbar(block.id)} editRequest={snapshotMode ? 0 : (inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0)} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} editGateRef={blockSelectedAtPointerDown} isSelected={!snapshotMode && selectedId === block.id && !previewMode} onInlineToolbarChange={snapshotMode ? undefined : bindInlineToolbar(block.id)} editRequest={snapshotMode ? 0 : (inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0)} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
           </div>
         );
       case 'image':
@@ -4756,6 +4772,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                     }}
                     onPointerDown={(event) => {
                       if (event.button !== 0 || spaceHeld.current) return;
+                      blockSelectedAtPointerDown.current = selectedId === block.id;
                       setSelectedId(block.id);
                       const pointerTarget = event.target as HTMLElement;
                       // Text selection inside an active editor must win over element dragging.
@@ -4795,7 +4812,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 const isSelected = selectedId === block.id && !previewMode;
                 const dropBefore = dropTarget?.index === index && !dropTarget.below;
                 const dropAfter = dropTarget?.index === index && dropTarget.below;
-                const textProps = { onClick: () => { setSelectedId(block.id); setInspectorTab('design'); }, onCommit: (next: string, runs?: InlineTextRun[]) => patchBlock(block.id, { text: next, ...(block.type === 'heading' || block.type === 'text' ? { richText: runs } : {}) }) };
+                const textProps = { onClick: () => { blockSelectedAtPointerDown.current = selectedId === block.id; setSelectedId(block.id); setInspectorTab('design'); }, onCommit: (next: string, runs?: InlineTextRun[]) => patchBlock(block.id, { text: next, ...(block.type === 'heading' || block.type === 'text' ? { richText: runs } : {}) }) };
                 const editable = canEdit && !block.locked;
                 return (
                   <div key={block.id} className="editor-drop-wrap">

@@ -1713,48 +1713,48 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
    selected, so the stage geometry never changes on selection. */
 .studio-context-bar {
   position: absolute;
-  top: 10px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 90;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 4px;
-  max-width: calc(100% - 16px);
-  min-height: 40px;
-  padding: 4px 8px;
-  border: 1px solid color-mix(in srgb, var(--st-line-strong, #cbd5e1) 55%, transparent);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--st-panel, var(--surface-card, #fffdf8)) 76%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  gap: 4px 6px;
+  width: max-content;
+  max-width: calc(100vw - 140px);
+  min-height: 44px;
+  padding: 5px 12px;
+  border: 1px solid rgb(255 255 255 / .35);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--st-panel, var(--surface-card, #fffdf8)) 82%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
   color: var(--st-text, var(--text, #292820));
-  box-shadow: 0 14px 40px rgba(15, 23, 42, .22), 0 2px 8px rgba(15, 23, 42, .12);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, .28), 0 2px 10px rgba(15, 23, 42, .14), inset 0 1px 0 rgb(255 255 255 / .35);
 }
 .st-bar-group {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   flex-shrink: 0;
 }
-.st-bar-group + .st-bar-group { margin-left: 3px; padding-left: 7px; border-left: 1px solid var(--st-line, var(--line, #e2dbcf)); }
-.st-bar-subgroup { display: inline-flex; align-items: center; gap: 2px; margin-left: 3px; padding-left: 6px; border-left: 1px dashed var(--st-line, var(--line, #e2dbcf)); }
-.st-context-bar-sep { flex: 0 0 1px; align-self: stretch; margin: 3px 4px; background: var(--st-line, var(--line, #e2dbcf)); }
+.st-bar-group + .st-bar-group { margin-left: 6px; padding-left: 10px; border-left: 1px solid color-mix(in srgb, var(--st-line-strong, #cbd5e1) 60%, transparent); }
+.st-bar-subgroup { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; padding: 2px; border-left: none; border-radius: 999px; background: color-mix(in srgb, var(--st-line, var(--line, #e2dbcf)) 35%, transparent); }
+.st-bar-subgroup button { border-radius: 999px !important; }
+.st-bar-subgroup button.is-on { background: var(--st-panel, var(--surface-card, #fffdf8)) !important; box-shadow: 0 1px 3px rgb(15 23 42 / .2); }
+.st-context-bar-sep { flex: 0 0 1px; align-self: stretch; margin: 4px 6px; background: color-mix(in srgb, var(--st-line-strong, #cbd5e1) 60%, transparent); }
 .studio-context-bar button,
 .st-bar-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  min-width: 24px;
-  height: 25px;
-  padding: 0 4px;
+  gap: 4px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 999px;
   background: transparent;
   color: inherit;
   font-size: 10.5px;
@@ -1762,6 +1762,7 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
   flex-shrink: 0;
   cursor: pointer;
   white-space: nowrap;
+  transition: background .12s ease, border-color .12s ease;
 }
 .studio-context-bar button:hover:not(:disabled),
 .studio-context-bar button.is-on,
@@ -1774,16 +1775,20 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 .studio-inspector input[type="color"] {
   -webkit-appearance: none;
   appearance: none;
-  flex: 0 0 22px;
-  width: 22px;
-  min-width: 22px;
-  max-width: 22px;
-  height: 22px;
+  flex: 0 0 24px;
+  width: 24px;
+  min-width: 24px;
+  max-width: 24px;
+  height: 24px;
+  min-height: 0;
+  aspect-ratio: 1 / 1;
   padding: 0;
-  border: 1.5px solid var(--st-line-strong, var(--line, #e2dbcf));
+  border: 2px solid rgb(255 255 255 / .9);
+  outline: 1px solid var(--st-line-strong, var(--line, #e2dbcf));
   border-radius: 50%;
   background: transparent;
   cursor: pointer;
+  box-shadow: 0 1px 4px rgb(15 23 42 / .25);
 }
 .studio-context-bar input[type="color"]::-webkit-color-swatch-wrapper,
 .studio-inspector input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
@@ -1792,35 +1797,43 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 .studio-context-bar input[type="color"]::-moz-color-swatch,
 .studio-inspector input[type="color"]::-moz-color-swatch { border: none; border-radius: 50%; }
 .st-bar-select {
-  max-width: 108px;
-  height: 26px;
-  padding: 0 4px;
-  border: 1px solid var(--st-line, var(--line, #e2dbcf));
-  border-radius: 6px;
-  background: var(--st-surface, var(--surface-input, var(--panel, #fffdf8)));
+  max-width: 112px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--st-line, var(--line, #e2dbcf)) 30%, transparent);
   color: inherit;
   font-size: 11px;
   font-weight: 650;
   cursor: pointer;
 }
+.st-bar-select:hover { border-color: var(--st-line-strong, var(--line, #e2dbcf)); }
 .st-bar-size-input,
 .studio-context-bar input[type="number"] {
   width: 40px;
   min-width: 40px;
-  height: 26px;
-  padding: 0 3px;
-  border: 1px solid var(--st-line, var(--line, #e2dbcf));
-  border-radius: 6px;
-  background: var(--st-surface, var(--surface-input, var(--panel, #fffdf8)));
+  height: 28px;
+  padding: 0 2px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   color: inherit;
-  font-size: 11px;
+  font-size: 11.5px;
   text-align: center;
 }
-.st-bar-stepper { display: inline-flex; align-items: center; gap: 1px; }
-.st-bar-stepper button { min-width: 22px; padding: 0 3px; }
+.st-bar-stepper {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--st-line, var(--line, #e2dbcf)) 30%, transparent);
+}
+.st-bar-stepper:hover { background: color-mix(in srgb, var(--st-line, var(--line, #e2dbcf)) 45%, transparent); }
+.st-bar-stepper button { min-width: 22px; padding: 0 3px; background: transparent !important; }
 .st-bar-reset { font-size: 10px; }
 .st-bar-opacity { gap: 6px; }
-.st-bar-opacity input[type="range"] { width: 72px; }
+.st-bar-opacity input[type="range"] { width: 76px; }
 /* Filled track driven by --p so 100% actually reaches the right edge —
    native accent tracks leave a thumb-shaped gap at max. */
 .studio-context-bar input[type="range"],
@@ -1922,8 +1935,8 @@ input[type="range"][style*="--p"]::-webkit-slider-thumb {
 }
 
 @media (max-width: 760px) {
-  .studio-context-bar { min-height: 38px; padding: 4px 8px; top: 6px; max-width: calc(100% - 16px); }
-  .st-bar-select { max-width: 104px; }
-  .st-bar-opacity input[type="range"] { width: 62px; }
+  .studio-context-bar { min-height: 40px; padding: 4px 10px; top: 6px; max-width: calc(100% - 16px); }
+  .st-bar-select { max-width: 96px; }
+  .st-bar-opacity input[type="range"] { width: 60px; }
   .studio-selection-pill { scale: .95; }
 }
