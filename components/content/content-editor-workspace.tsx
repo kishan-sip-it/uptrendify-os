@@ -47,6 +47,7 @@ import {
   AlignCenter,
   AlignRight,
   RotateCw,
+  Presentation,
 } from 'lucide-react';
 import {
   CONTENT_DOC_MAX_BLOCKS,
@@ -78,6 +79,7 @@ import {
   type InlineTextRun,
 } from '@/lib/content/document';
 import { ContentDocumentView } from '@/components/content/content-document-view';
+import { ContentDocumentViewer } from '@/components/content/content-document-viewer';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { reconcileContentVersionState } from '@/lib/content/version-state';
 import { STUDIO_TEMPLATES, buildTemplatePage } from '@/lib/studio/templates';
@@ -1159,6 +1161,12 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
+  // Fullscreen read-only presentation of the current canvas; never mutates it.
+  const [presenting, setPresenting] = useState(false);
+  const presentBody = useMemo(
+    () => serializeContentDocument({ kind: 'uptrendify-doc', version: 1, ...(freeMode ? { mode: 'free' as const } : {}), pages }),
+    [freeMode, pages],
+  );
   const [zoom, setZoom] = useState(100);
   const [zoomManual, setZoomManual] = useState(false);
 
@@ -3973,6 +3981,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         <button type="button" className="st-icon" onClick={() => setHistoryIndex((index) => { if (index >= history.length - 1) return index; const target = history[index + 1]; const doc = parseContentBody(target); if (doc) { setPages(doc.pages); setFreeMode(doc.mode === 'free'); setActivePageIndex((current) => Math.min(current, doc.pages.length - 1)); setLoadedVersionId(target === loadedSnapshot ? loadedBaselineVersionIdRef.current : null); } return index + 1; })} disabled={historyIndex >= history.length - 1} title="Redo (Ctrl+Y)" aria-label="Redo"><Redo2 size={15} /></button>
         <button type="button" className={`st-btn${freeMode ? ' st-btn--primary' : ''}`} onClick={toggleCanvasMode} aria-pressed={freeMode} title="Switch between stacked flow layout and independently movable/resizable canvas layers">Free canvas{freeMode ? ' ✓' : ''}</button>
         <button type="button" className="st-btn" onClick={() => setPreviewMode((value) => !value)} aria-pressed={previewMode}>{previewMode ? 'Exit preview' : 'Preview'}</button>
+        <button type="button" className="st-btn" onClick={() => setPresenting(true)} title="Present the current canvas one page at a time, fullscreen with minimal chrome"><Presentation size={13} /> Present</button>
         <button type="button" className="st-btn" onClick={() => void save()} disabled={busy || !canEdit || (!dirty && !needsSnapshot)} title={!canEdit ? 'Editing is available in draft, after change requests, or after rejection.' : !dirty && needsSnapshot ? 'Create the immutable image snapshot for this saved design.' : !dirty ? 'Nothing changed and the saved artwork already exists.' : 'Save these edits and their exact image snapshots as a new version'}>
           {busy ? 'Saving…' : 'Save new version'}
         </button>
@@ -5260,6 +5269,15 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           ) : null}
         </div>,
         document.body
+      ) : null}
+
+      {presenting ? createPortal(
+        <ContentDocumentViewer
+          body={presentBody}
+          linkedValues={{ title: documentTitle, cta: itemCta }}
+          onClose={() => setPresenting(false)}
+        />,
+        document.body,
       ) : null}
 
       {backgroundPreviewOpen && activePage?.backgroundImage ? createPortal(

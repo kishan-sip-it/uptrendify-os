@@ -148,17 +148,29 @@
 .content-artwork-preview__open { display:inline-flex; align-items:center; justify-content:center; gap:6px; border:1px solid var(--border,#d6dde6); border-radius:8px; padding:7px 10px; background:transparent; color:var(--text,#172033); font-size:11px; font-weight:750; cursor:pointer; }
 .content-artwork-preview__open:hover { border-color:var(--accent,#6366f1); background:var(--surface-hover,rgba(99,102,241,.07)); }
 .content-artwork-preview__legacy { width:100%; max-height:92px; overflow:hidden; text-align:left; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.45; border:1px solid var(--border,#d6dde6); border-radius:8px; padding:10px; background:var(--panel,#fff); color:var(--text,#172033); cursor:pointer; }
-.content-artwork-dialog { width:min(1040px,calc(100vw - 28px)); }
-.content-artwork-dialog .app-dialog__panel { max-height:min(90dvh,1000px); }
-.content-artwork-dialog .app-dialog__body { overflow:auto; }
-.content-artwork-preview__full-document { max-height:min(68dvh,740px); min-height:160px; overflow:auto; overscroll-behavior:contain; padding:12px; border:1px solid var(--border,#d6dde6); border-radius:10px; background:#f1f5f9; }
-.content-artwork-preview__full-document .content-doc { margin-inline:auto; }
-.content-artwork-preview__full-document .content-doc.is-free { width:max-content; }
+.content-artwork-overlay { position:fixed; inset:0; z-index:1600; display:grid; place-items:center; padding:20px; background:rgba(3,7,13,.72); }
+.content-artwork-overlay__panel { display:flex; flex-direction:column; width:min(1040px,calc(100vw - 28px)); max-height:calc(100vh - 40px); }
+.content-artwork-overlay .app-dialog__header { flex:0 0 auto; }
+.content-artwork-overlay .app-dialog__body { display:flex; overflow:hidden; flex:1 1 auto; min-height:0; padding:14px 18px 18px; }
+.content-artwork-overlay .app-dialog__body > * { flex:1 1 auto; min-width:0; min-height:0; }
 .content-artwork-preview__legacy-full { min-height:120px; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.65; color:#1d2634; background:#fff; padding:18px; border-radius:8px; }
-.content-artwork-preview__pager { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding-top:12px; color:var(--muted,#64748b); font-size:11px; }
 @media (max-width: 560px) {
   .content-artwork-preview__pages { grid-template-columns:repeat(auto-fill,minmax(74px,1fr)); gap:6px; }
   .content-artwork-preview__thumbnail { height:108px; }
-  .content-artwork-dialog { width:calc(100vw - 16px); }
-  .content-artwork-preview__full-document { padding:6px; }
+  .content-artwork-overlay { padding:8px; }
+  .content-artwork-overlay__panel { width:calc(100vw - 16px); }
 }
+
+/* ---------- one-page-at-a-time viewer (Normal + Presentation modes) ---------- */
+.content-doc-viewer { display:flex; flex-direction:column; gap:10px; min-height:0; height:100%; }
+.content-doc-viewer-stage { flex:1 1 auto; min-height:0; min-width:0; }
+.content-doc-viewer-legacy { width:100%; max-height:100%; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.55; color:var(--text,#172033); }
+.content-doc-viewer-controls { display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; flex:0 0 auto; }
+.content-doc-viewer-gap { flex:1 1 12px; }
+.content-doc-viewer-count { font-size:11px; font-weight:700; color:var(--muted,#64748b); font-variant-numeric:tabular-nums; }
+.content-doc-viewer-btn { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border,#d6dde6); border-radius:8px; padding:7px 11px; background:var(--panel,#fff); color:var(--text,#172033); font-size:11.5px; font-weight:700; cursor:pointer; }
+.content-doc-viewer-btn:hover:not(:disabled) { border-color:var(--accent,#6366f1); background:var(--surface-hover,rgba(99,102,241,.07)); }
+.content-doc-viewer-btn:disabled { opacity:.45; cursor:not-allowed; }
+.content-doc-viewer-presentation { position:fixed; inset:0; z-index:100400; display:flex; flex-direction:column; background:#05080d; --border:rgba(255,255,255,.24); --panel:rgba(255,255,255,.07); --text:#f4f6fb; --muted:rgba(244,246,251,.78); --surface-hover:rgba(255,255,255,.12); color-scheme:dark; }
+.content-doc-viewer-presentation-stage { flex:1 1 auto; min-height:0; padding:clamp(10px,3vh,36px) clamp(10px,3vw,36px) 0; }
+.content-doc-viewer-presentation .content-doc-viewer-controls { padding:10px 4px 12px; }

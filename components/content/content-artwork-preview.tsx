@@ -1,13 +1,19 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Eye } from 'lucide-react';
-import { AppDialog } from '@/components/ui/app-dialog';
+import { useEffect, useState } from 'react';
+import { Eye, X } from 'lucide-react';
 import { ContentDocumentView } from '@/components/content/content-document-view';
+import { ContentDocumentViewer } from '@/components/content/content-document-viewer';
 import { CONTENT_PAGE_SIZES, parseContentBody } from '@/lib/content/document';
 
 type LinkedValues = { title?: string | null; cta?: string | null };
 
+/**
+ * Saved-artwork preview card: page thumbnails plus a one-page-at-a-time
+ * dialog (Normal + Presentation modes). A plain fixed overlay rather than a
+ * native <dialog>: the viewer's fullscreen presentation portal must be able
+ * to paint above it, which top-layer dialog elements would forbid.
+ */
 export function ContentArtworkPreview({
   title,
   body,
@@ -21,19 +27,20 @@ export function ContentArtworkPreview({
 }) {
   const [open, setOpen] = useState(false);
   const [activePage, setActivePage] = useState(0);
-  const fullDocumentRef = useRef<HTMLDivElement | null>(null);
   const doc = parseContentBody(body);
   const pageCount = Math.max(1, doc?.pages.length ?? 1);
   const currentPage = Math.min(activePage, pageCount - 1);
 
+  // Escape closes the dialog — unless the viewer's presentation overlay
+  // already consumed the key (it listens in the capture phase).
   useEffect(() => {
-    if (!open || !doc) return;
-    const container = fullDocumentRef.current;
-    const page = container?.querySelector<HTMLElement>('[data-content-page-index="' + currentPage + '"]');
-    if (!container || !page) return;
-    const top = page.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
-    container.scrollTo({ top, behavior: 'smooth' });
-  }, [open, currentPage, pageCount]);
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
 
   return (
     <section className="content-artwork-preview" aria-label="Saved content preview">
@@ -74,36 +81,35 @@ export function ContentArtworkPreview({
         </button>
       </div>
 
-      <AppDialog
-        open={open}
-        title={title}
-        description={(versionLabel ? versionLabel + ' · ' : '') + pageCount + ' ' + (pageCount === 1 ? 'page' : 'pages') + '. Scroll through the complete saved artwork below.'}
-        onClose={() => setOpen(false)}
-        className="content-artwork-dialog"
-      >
-        {open ? (
-          <>
-            <div ref={fullDocumentRef} className="content-artwork-preview__full-document">
+      {open ? (
+        <div
+          className="content-artwork-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}
+        >
+          <section className="app-dialog__panel content-artwork-overlay__panel">
+            <header className="app-dialog__header">
+              <div className="app-dialog__heading">
+                <h2>{title}</h2>
+                <p>{(versionLabel ? versionLabel + ' · ' : '') + pageCount + ' ' + (pageCount === 1 ? 'page' : 'pages') + '. One page at a time — flip pages, or switch to Presentation mode.'}</p>
+              </div>
+              <button type="button" className="app-dialog__close" onClick={() => setOpen(false)} aria-label="Close preview" autoFocus>
+                <X size={17} />
+              </button>
+            </header>
+            <div className="app-dialog__body">
               {doc ? (
-                <ContentDocumentView body={body} linkedValues={linkedValues} />
+                // key: a thumbnail click re-opens the dialog at that page.
+                <ContentDocumentViewer key={'v' + currentPage} body={body} linkedValues={linkedValues} initialPage={currentPage} />
               ) : (
                 <div className="content-artwork-preview__legacy-full">{body || 'No saved content body.'}</div>
               )}
             </div>
-            {pageCount > 1 ? (
-              <div className="content-artwork-preview__pager" aria-label="Page navigation">
-                <button type="button" className="app-dialog__button" onClick={() => setActivePage((index) => Math.max(0, index - 1))} disabled={currentPage === 0}>
-                  <ArrowLeft size={14} /> Previous
-                </button>
-                <span>Selected page {currentPage + 1} of {pageCount}</span>
-                <button type="button" className="app-dialog__button" onClick={() => setActivePage((index) => Math.min(pageCount - 1, index + 1))} disabled={currentPage >= pageCount - 1}>
-                  Next <ArrowRight size={14} />
-                </button>
-              </div>
-            ) : null}
-          </>
-        ) : null}
-      </AppDialog>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
