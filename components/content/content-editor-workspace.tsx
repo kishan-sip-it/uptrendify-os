@@ -185,9 +185,9 @@ const DEFAULT_HIGHLIGHT_COLOR = '#fff59d';
 function emptyBlock(type: EditorBlock['type']): EditorBlock {
   switch (type) {
     case 'heading':
-      return { id: newBlockId('heading'), type, text: 'New heading', level: 2, align: 'left', color: null, bg: null, bold: false, italic: false, underline: false };
+      return { id: newBlockId('heading'), type, text: 'New heading', level: 2, align: 'left', color: '#000000', bg: null, bold: false, italic: false, underline: false };
     case 'text':
-      return { id: newBlockId('text'), type, text: 'Write here…', align: 'left', color: null, bg: null, size: 'md', bold: false, italic: false, underline: false };
+      return { id: newBlockId('text'), type, text: 'Write here…', align: 'left', color: '#000000', bg: null, size: 'md', bold: false, italic: false, underline: false };
     case 'image':
       return { id: newBlockId('image'), type, url: 'https://example.com/image.jpg', alt: '', align: 'center', width: 80 };
     case 'shape':

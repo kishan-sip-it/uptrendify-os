@@ -630,12 +630,14 @@ export function updateBlockInPages(
 /** Wrap legacy plain text into a one-page editable document. */
 export function createDocumentFromText(body: string, pageSize: ContentPageSizeId = 'a4'): ContentDocument {
   const paragraphs = body.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  // New text defaults to pure black ink (an explicit colour, so the dim
+  // saved-document fallback for legacy null-colour blocks stays untouched).
   const blocks: ContentDocBlock[] = (paragraphs.length > 0 ? paragraphs : ['']).map((paragraph, index) => ({
     id: `text-${index}-${hashId(`${index}|${paragraph}`)}`,
     type: 'text' as const,
     text: paragraph.slice(0, CONTENT_DOC_MAX_TEXT),
     align: 'left' as const,
-    color: null,
+    color: '#000000',
     bg: null,
     size: 'md' as const,
     bold: false,

@@ -4,6 +4,7 @@ import {
   contentBodyToPlainText,
   defaultPageSizeForType,
   defaultPageSizeForChannel,
+  DEFAULT_CONTENT_TEXT_COLOR,
   fitDocumentBodyToChannelFormat,
   reflowPage,
   updateBlockInPages,
@@ -194,6 +195,17 @@ describe('content document body format', () => {
     expect(new Set(doc.pages[0]?.blocks.map((block) => block.id)).size).toBe(2);
     expect(newBlockId('text')).not.toBe(newBlockId('text'));
     expect(newPage().blocks).toEqual([]);
+  });
+
+  it('gives newly created text pure black ink while the saved null-colour fallback stays dim', () => {
+    // New text entering the editor defaults to pure black, not the dim ink.
+    const doc = createDocumentFromText('Fresh copy.');
+    for (const block of doc.pages[0]?.blocks ?? []) {
+      if (block.type === 'text') expect(block.color).toBe('#000000');
+    }
+    // Existing saved artwork with an explicitly null colour must keep its
+    // dim fallback — new-text defaults must not recolor it.
+    expect(DEFAULT_CONTENT_TEXT_COLOR).toBe('#1d2634');
   });
 
   it('reorders blocks by list index for drag-and-drop and move controls', () => {
