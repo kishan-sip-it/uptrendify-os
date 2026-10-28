@@ -1320,6 +1320,9 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const manualZoomRef = useRef(false);
   const offsetRef = useRef({ x: 0, y: 0 });
   const panRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  // True once a stage pan actually moved the canvas — an empty-stage CLICK
+  // (down+up, no movement) deselects, a pan drag does not.
+  const stagePannedRef = useRef(false);
   const spaceHeld = useRef(false);
 
   const [history, setHistory] = useState<string[]>([serializeContentDocument(initialDoc)]);
@@ -3688,27 +3691,23 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   // selection, and both menus route through the same handlers as right-click.
 
   const contextBar = (() => {
-    if (focusMode || previewMode) {
-      return (
-        <div className="studio-context-bar is-idle" role="toolbar" aria-label="Element formatting">
-          <span className="st-context-bar-hint">{previewMode ? 'Preview — exit to edit' : 'Select an element to format it'}</span>
-        </div>
-      );
-    }
+    // Canva-style: the bar only exists while something is selected — it floats
+    // above the workspace (see .studio-context-bar) instead of reserving space.
+    if (focusMode || previewMode || !selected) return null;
     const block = selected;
     const inlineCandidate = block && inlineSelectionToolbar?.blockId === block.id ? inlineSelectionToolbar : null;
     const inline = block && inlineCandidate && (block.type === 'text' || block.type === 'heading') ? inlineCandidate : null;
     const range = block && !gestureActive ? (inline?.state ?? null) : null;
     const editable = Boolean(block && canEditBlock(block));
-    const moreOpenHere = Boolean(block && moreMenu?.blockId === block.id);
-    const opacityPercent = block ? Math.round((block.opacity ?? 1) * 100) : 100;
+    const opacityPercent = Math.round((block.opacity ?? 1) * 100);
 
     return (
       <div
-        className={`studio-context-bar${range ? ' has-inline-range' : ''}${block ? '' : ' is-idle'}`}
+        className={`studio-context-bar${range ? ' has-inline-range' : ''}`}
         data-inline-selection={range ? 'true' : undefined}
         role="toolbar"
         aria-label={range ? 'Text and selected-range formatting' : 'Element formatting'}
+        style={{ backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
         onMouseDown={(event) => {
           if (!inline) return;
           if ((event.target as HTMLElement).closest('button')) event.preventDefault();
@@ -3904,6 +3903,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 max={100}
                 step={5}
                 value={opacityPercent}
+                style={{ ['--p' as string]: `${opacityPercent}%` }}
                 onChange={(event) => patchBlock(block.id, { opacity: Number(event.currentTarget.value) / 100 })}
                 disabled={!editable}
                 aria-label="Transparency"
@@ -3926,23 +3926,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               title="Layer order and page alignment"
             >
               <Layers size={13} /> Position
-            </button>
-            <span className="st-context-bar-sep" aria-hidden="true" />
-            <button
-              type="button"
-              className={`st-bar-btn${moreOpenHere ? ' is-on' : ''}`}
-              data-studio-more-trigger=""
-              aria-haspopup="menu"
-              aria-expanded={moreOpenHere}
-              onClick={(event) => {
-                const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-                if (moreOpenHere) { setMoreMenu(null); return; }
-                setMoreMenu({ blockId: block.id, left: rect.left, top: rect.bottom + 6, submenu: null });
-              }}
-              title="More actions"
-              aria-label="More actions"
-            >
-              <Ellipsis size={15} />
             </button>
           </>
         )}
@@ -4668,15 +4651,18 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           onPointerEnter={(event) => { stagePointerRef.current = { x: event.clientX, y: event.clientY }; }}
           onPointerDown={(event) => {
             const pan = event.button === 1 || spaceHeld.current || event.target === event.currentTarget;
+            stagePannedRef.current = false;
             if (!pan) return;
             panRef.current = { x: event.clientX, y: event.clientY, ox: offsetRef.current.x, oy: offsetRef.current.y };
             (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
           }}
+
           onPointerMove={(event) => {
             stagePointerRef.current = { x: event.clientX, y: event.clientY };
             const pan = panRef.current;
             if (!pan || !frameRef.current) return;
             const next = { x: pan.ox + (event.clientX - pan.x), y: pan.oy + (event.clientY - pan.y) };
+            stagePannedRef.current = true;
             offsetRef.current = next;
             frameRef.current.style.transform = `translate(${next.x}px, ${next.y}px) scale(${zoom / 100})`;
           }}
@@ -4686,6 +4672,10 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             const next = { x: pan.ox + (event.clientX - pan.x), y: pan.oy + (event.clientY - pan.y) };
             panRef.current = null;
             setOffset(next);
+            // A bare-workspace click (down+up on the stage itself, no pan
+            // movement) clears the selection — pointer capture swallows the
+            // click event, so this cannot live in onClick.
+            if (!stagePannedRef.current && event.target === stageRef.current) setSelectedId(null);
           }}
         >
           <div
@@ -4893,7 +4883,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               // to whole CSS px — fractional widths anti-alias into a blurry
               // "glittering" line.
               const frameScale = Math.max(0.05, zoom / 100);
-              const handlePx = Math.max(9, Math.min(18, Math.round(12 / frameScale)));
+              // Handles must never grow wider than a third of the block's
+              // on-screen size — oversized chrome over a tiny block would
+              // intercept the presses meant to select/move it.
+              const handlePx = Math.max(7, Math.min(
+                18,
+                Math.round(12 / frameScale),
+                Math.floor((Math.min(geo.w, geo.h) * frameScale) / 3) || 7,
+              ));
               const selPx = Math.max(1, Math.min(3, Math.round(2 / frameScale)));
               return (
                 <div
@@ -5069,20 +5066,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               ) : inspectorTab === 'design' ? (
                 <>
                   <span className="st-label">{BLOCK_LABEL[selected.type]} · design</span>
-                  <label className="st-field">
-                    <span>Opacity · {Math.round((selected.opacity ?? 1) * 100)}%</span>
-                    <input
-                      className="st-range"
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={Math.round((selected.opacity ?? 1) * 100)}
-                      onChange={(event) => patchBlock(selected.id, { opacity: Number(event.target.value) / 100 })}
-                      disabled={!canEditBlock(selected)}
-                      aria-label="Selected element opacity"
-                    />
-                  </label>
                   {selected.type === 'text' && charLimit ? (
                     <div className="st-field">
                       <span>Channel meter · {channel}</span>
@@ -5112,22 +5095,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                   {selected.type === 'image' ? (
                     <>
                       <label className="st-field">
-                        <span>Replace image · PNG/JPG/WEBP, max 2 MB</span>
-                        <input
-                          className="st-input"
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp"
-                          disabled={!canEditBlock(selected) || isUploadingImage}
-                          onChange={(event) => {
-                            const input = event.currentTarget;
-                            const file = input.files?.[0];
-                            input.value = '';
-                            if (file) void replaceImageFromFile(selected.id, file);
-                          }}
-                        />
-                        {isUploadingImage ? <p className="editor-hint" role="status">Uploading image securely…</p> : null}
-                      </label>
-                      <label className="st-field">
                         <span>Alt text</span>
                         <input className="st-input" value={selected.alt} onChange={(event) => patchBlock(selected.id, { alt: event.target.value })} disabled={!canEditBlock(selected)} placeholder="Describe the image" />
                       </label>
@@ -5140,32 +5107,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       <input className="st-input" value={selected.href ?? ''} onChange={(event) => patchBlock(selected.id, { href: event.target.value })} disabled={!canEditBlock(selected)} inputMode="url" placeholder="https://destination (optional)" />
                     </label>
                   ) : null}
-                  {selected.type === 'heading' || selected.type === 'text' ? (
-                    <>
-                      <label className="st-field">
-                        <span>Font family</span>
-                        <select className="st-select" value={selected.fontFamily ?? ''} disabled={!canEditBlock(selected)} onChange={(event) => patchBlock(selected.id, { fontFamily: event.target.value || undefined })}>
-                          <option value="">Theme default</option>
-                          {Array.from(new Set([...brand.fonts, 'Arial', 'Georgia', 'Inter', 'Roboto', 'Verdana', 'Trebuchet MS'])).map((font) => <option key={font} value={font}>{font}</option>)}
-                        </select>
-                      </label>
-                      <label className="st-field">
-                        <span>Font size · px</span>
-                        <input className="st-input" type="number" min={8} max={160} step={1} value={selected.fontSize ?? defaultFontSize(selected)} disabled={!canEditBlock(selected)} onChange={(event) => patchBlock(selected.id, { fontSize: Math.max(8, Math.min(160, Math.round(Number(event.target.value) || 8))) })} />
-                      </label>
-                    </>
-                  ) : null}
 
-                  {selected.type === 'text' ? (
-                    <div className="st-field">
-                      <span>Size</span>
-                      <div className="st-field-row">
-                        {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
-                          <button key={size} type="button" className={`st-btn${selected.size === size ? ' st-btn--primary' : ''}`} style={{ height: 32, padding: '0 10px' }} onClick={() => patchBlock(selected.id, { size })} disabled={!canEditBlock(selected)}>{size.toUpperCase()}</button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
                   {selected.type === 'shape' ? (
                     <>
                       <label className="st-field">
@@ -5185,21 +5127,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                           })}
                         />
                       </label>
-                      <div className="st-field">
-                        <span>Text ink</span>
-                        <div className="st-field-row">
-                          <input
-                            type="color"
-                            value={selected.textColor ?? readableShapeInk(selected.color ?? DEFAULT_CONTENT_SHAPE_COLOR)}
-                            onChange={(event) => patchBlock(selected.id, { textColor: event.target.value })}
-                            disabled={!canEditBlock(selected) || !(selected.text ?? '').length}
-                            aria-label="Shape text ink colour"
-                          />
-                          {selected.textColor ? (
-                            <button type="button" className="st-quiet-link" onClick={() => patchBlock(selected.id, { textColor: null })} disabled={!canEditBlock(selected)}>Auto contrast</button>
-                          ) : <span className="st-preview-tag">Auto contrast</span>}
-                        </div>
-                      </div>
                     </>
                   ) : null}
                   {selected.type === 'shape' ? (
@@ -5217,12 +5144,10 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       </div>
                     )
                   ) : null}
-                  {selected.type !== 'image' ? (
+                  {selected.type !== 'image' && selected.color ? (
                     <div className="st-field">
-                      <span>Colour</span>
                       <div className="st-field-row">
-                        <input type="color" value={selected.color ?? '#111111'} onChange={(event) => patchBlock(selected.id, { color: event.target.value })} disabled={!canEditBlock(selected)} aria-label="Block colour" />
-                        <button type="button" className="st-quiet-link" onClick={() => patchBlock(selected.id, { color: null })} disabled={!canEditBlock(selected) || !selected.color}>Use theme default</button>
+                        <button type="button" className="st-quiet-link" onClick={() => patchBlock(selected.id, { color: null })} disabled={!canEditBlock(selected)}>Reset colour to theme default</button>
                       </div>
                     </div>
                   ) : null}
@@ -5230,7 +5155,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                     <div className="st-field">
                       <span>Background</span>
                       <div className="st-field-row">
-                        <input type="color" value={selected.bg ?? '#ffffff'} onChange={(event) => patchBlock(selected.id, { bg: event.target.value })} disabled={!canEditBlock(selected)} aria-label="Text background colour" />
                         <button
                           type="button"
                           className={`st-btn${selected.bg == null ? ' st-btn--primary' : ''}`}
@@ -5580,7 +5504,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 ))}
                 <label className="st-context-item" style={{ ...contextMenuItemStyle, gridTemplateColumns: '1fr', gap: 6, cursor: 'pointer' }}>
                   <span style={contextMenuActionStyle}><Eye size={14} /> Fine-tune</span>
-                  <input type="range" min={10} max={100} step={5} value={Math.round((moreMenuBlock.opacity ?? 1) * 100)} style={{ width: '100%' }}
+                  <input type="range" min={10} max={100} step={5} value={Math.round((moreMenuBlock.opacity ?? 1) * 100)} style={{ width: '100%', ['--p' as string]: `${Math.round((moreMenuBlock.opacity ?? 1) * 100)}%` }}
                     onChange={(event) => patchBlock(moreMenuBlock.id, { opacity: Number(event.currentTarget.value) / 100 })} aria-label="Transparency percent" />
                 </label>
               </>
@@ -5704,9 +5628,6 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'component' ? null : 'component', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
             <span style={contextMenuActionStyle}><Boxes size={14} /> Insert reusable component</span><span style={contextMenuShortcutStyle}>{reusableTextComponents.length ? reusableTextComponents.length : 'None'} · ›</span>
           </button>
-          <div className="st-context-menu-footnote">
-            AI edits are previewed before replacing text. Components are stored locally for this brand in this browser.
-          </div>
         </div>
         {textContextMenu.submenu === 'heading' || textContextMenu.submenu === 'component' ? (
           <div ref={contextSubmenuRef} className="st-context-menu st-context-submenu" data-studio-text-context-menu role="menu" aria-label="Text action options"

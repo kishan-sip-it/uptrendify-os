@@ -530,8 +530,10 @@ export function readableShapeInk(fillHex: string): string {
 
 /** Shape label size follows the shape box until the user sets an explicit size. */
 export function defaultShapeTextFontSize(block: { geometry?: { h: number } | null; height?: number | null }): number {
-  const boxHeight = block.geometry?.h ?? block.height ?? 120;
-  return Math.max(10, Math.min(120, Math.round(boxHeight * 0.3)));
+  // 14px reads well inside any default-sized shape; larger type is a choice
+  // (explicit fontSize), never a surprise derived from the box height.
+  void block;
+  return 14;
 }
 
 /** Plain-text projection used by search, summaries and text-only publishing. */

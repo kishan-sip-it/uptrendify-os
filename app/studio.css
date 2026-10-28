@@ -1575,7 +1575,7 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 .editor-shape-text.align-left { justify-content: flex-start; text-align: left; }
 .editor-shape-text.align-center { justify-content: center; text-align: center; }
 .editor-shape-text.align-right { justify-content: flex-end; text-align: right; }
-.editor-shape-text .editor-canvas-text { width: 100%; }
+.editor-shape-text .editor-canvas-text { width: 100%; overflow-wrap: anywhere; word-break: break-word; }
 .editor-shape-text .editor-canvas-text.is-empty::before { content: none; }
 .editor-shape-text .editor-inline-edit { outline: none; }
 
@@ -1697,9 +1697,9 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
    formatting now lives in a dedicated horizontal row at the top of the stage
    column. The row is always mounted so selection changes never shift layout. */
 .studio-stage-col {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   min-width: 0;
   min-height: 0;
 }
@@ -1708,29 +1708,32 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
   height: auto;
   min-height: 0;
 }
+/* Canva-style floating contextual bar: hovers over the workspace above the
+   page with a translucent blurred surface. Renders only while a block is
+   selected, so the stage geometry never changes on selection. */
 .studio-context-bar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 5px;
-  flex: 0 0 auto;
-  min-height: 42px;
-  padding: 5px 8px;
-  border: 1px solid var(--st-line-strong);
-  border-radius: 11px;
-  background: var(--st-panel, var(--surface-card, #fffdf8));
+  gap: 4px;
+  max-width: calc(100% - 16px);
+  min-height: 40px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--st-line-strong, #cbd5e1) 55%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--st-panel, var(--surface-card, #fffdf8)) 76%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   color: var(--st-text, var(--text, #292820));
-  box-shadow: 0 4px 16px rgba(15, 23, 42, .08);
+  box-shadow: 0 14px 40px rgba(15, 23, 42, .22), 0 2px 8px rgba(15, 23, 42, .12);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
-}
-.studio-context-bar.is-idle { justify-content: center; }
-.st-context-bar-hint {
-  font-size: 11px;
-  font-weight: 650;
-  color: var(--st-ink-2, var(--muted, #756f63));
-  white-space: nowrap;
 }
 .st-bar-group {
   display: inline-flex;
@@ -1746,10 +1749,10 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-width: 26px;
-  height: 26px;
-  padding: 0 6px;
+  gap: 3px;
+  min-width: 24px;
+  height: 25px;
+  padding: 0 4px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -1767,20 +1770,29 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 .studio-context-bar button.is-danger { color: var(--st-danger, var(--text-danger, #b42318)); }
 .studio-context-bar button:disabled,
 .st-bar-btn:disabled { opacity: .4; cursor: not-allowed; }
-.studio-context-bar input[type="color"] {
-  flex: 0 0 25px;
-  width: 25px;
-  min-width: 25px;
-  max-width: 25px;
-  height: 25px;
-  padding: 2px;
-  border: 1px solid var(--st-line, var(--line, #e2dbcf));
-  border-radius: 5px;
-  background: var(--st-surface, var(--surface-input, var(--panel, #fffdf8)));
+.studio-context-bar input[type="color"],
+.studio-inspector input[type="color"] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 0 0 22px;
+  width: 22px;
+  min-width: 22px;
+  max-width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1.5px solid var(--st-line-strong, var(--line, #e2dbcf));
+  border-radius: 50%;
+  background: transparent;
   cursor: pointer;
 }
+.studio-context-bar input[type="color"]::-webkit-color-swatch-wrapper,
+.studio-inspector input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.studio-context-bar input[type="color"]::-webkit-color-swatch,
+.studio-inspector input[type="color"]::-webkit-color-swatch { border: none; border-radius: 50%; }
+.studio-context-bar input[type="color"]::-moz-color-swatch,
+.studio-inspector input[type="color"]::-moz-color-swatch { border: none; border-radius: 50%; }
 .st-bar-select {
-  max-width: 138px;
+  max-width: 108px;
   height: 26px;
   padding: 0 4px;
   border: 1px solid var(--st-line, var(--line, #e2dbcf));
@@ -1793,8 +1805,8 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 }
 .st-bar-size-input,
 .studio-context-bar input[type="number"] {
-  width: 44px;
-  min-width: 44px;
+  width: 40px;
+  min-width: 40px;
   height: 26px;
   padding: 0 3px;
   border: 1px solid var(--st-line, var(--line, #e2dbcf));
@@ -1808,7 +1820,39 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 .st-bar-stepper button { min-width: 22px; padding: 0 3px; }
 .st-bar-reset { font-size: 10px; }
 .st-bar-opacity { gap: 6px; }
-.st-bar-opacity input[type="range"] { width: 84px; accent-color: var(--st-accent, var(--accent, #4f8b72)); }
+.st-bar-opacity input[type="range"] { width: 72px; }
+/* Filled track driven by --p so 100% actually reaches the right edge —
+   native accent tracks leave a thumb-shaped gap at max. */
+.studio-context-bar input[type="range"],
+.studio-inspector input.st-range[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  padding: 0;
+  border: none;
+  background: linear-gradient(90deg, var(--st-accent, var(--accent, #4f8b72)) var(--p, 50%), color-mix(in srgb, var(--st-line-strong, #cbd5e1) 70%, transparent) var(--p, 50%));
+  cursor: pointer;
+}
+.studio-context-bar input[type="range"]::-webkit-slider-thumb,
+.studio-inspector input.st-range[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid var(--st-accent, var(--accent, #4f8b72));
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .3);
+}
+.studio-context-bar input[type="range"]::-moz-range-thumb,
+.studio-inspector input.st-range[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid var(--st-accent, var(--accent, #4f8b72));
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .3);
+}
 .st-bar-opacity-value { min-width: 32px; font-size: 10.5px; font-weight: 750; color: var(--st-ink-2, var(--muted, #756f63)); font-variant-numeric: tabular-nums; }
 .studio-context-bar label.st-bar-btn { cursor: pointer; }
 
@@ -1844,6 +1888,25 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 .studio-selection-pill button:disabled { opacity: .4; cursor: not-allowed; }
 
 /* ---------- live rotation readout ---------- */
+input[type="range"][style*="--p"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  padding: 0;
+  border: none;
+  background: linear-gradient(90deg, var(--st-accent, var(--accent, #4f8b72)) var(--p, 50%), color-mix(in srgb, var(--st-line-strong, #cbd5e1) 70%, transparent) var(--p, 50%));
+  cursor: pointer;
+}
+input[type="range"][style*="--p"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid var(--st-accent, var(--accent, #4f8b72));
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .3);
+}
 .st-rotate-hud {
   padding: 5px 10px;
   border: 1px solid var(--st-line-strong, var(--line, #e2dbcf));
@@ -1859,7 +1922,7 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 }
 
 @media (max-width: 760px) {
-  .studio-context-bar { min-height: 38px; padding: 4px 6px; }
+  .studio-context-bar { min-height: 38px; padding: 4px 8px; top: 6px; max-width: calc(100% - 16px); }
   .st-bar-select { max-width: 104px; }
   .st-bar-opacity input[type="range"] { width: 62px; }
   .studio-selection-pill { scale: .95; }

@@ -5,7 +5,12 @@
     "detail": ""
   },
   {
-    "name": "A1 context bar mounted",
+    "name": "A0 no bar while nothing is selected",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "A1 bar appears on selection",
     "pass": true,
     "detail": ""
   },
@@ -15,12 +20,27 @@
     "detail": "font select present"
   },
   {
-    "name": "A3 toolbar does not cover the text block",
+    "name": "A3 bar floats (absolute, not in-flow)",
     "pass": true,
-    "detail": "{\"barBottom\":219.59375,\"blockTop\":336.6237487792969}"
+    "detail": ""
   },
   {
-    "name": "A4 no floating .studio-float toolbar",
+    "name": "A4 bar is translucent + blurred",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "A5 page does not shift on selection",
+    "pass": true,
+    "detail": "{\"frameBefore\":{\"x\":641.6513671875,\"y\":218.59375,\"width\":389.06005859375,\"height\":550.27001953125},\"frameAfter\":{\"x\":641.6513671875,\"y\":218.59375,\"width\":389.06005859375,\"height\":550.27001953125}}"
+  },
+  {
+    "name": "A6 no More (…) inside the top bar",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "A7 round colour pickers",
     "pass": true,
     "detail": ""
   },
@@ -32,7 +52,7 @@
   {
     "name": "A6 pill does not overlap block",
     "pass": true,
-    "detail": "{\"pill\":{\"x\":779.5,\"y\":288.609375,\"width\":128,\"height\":38},\"block\":{\"x\":803.0135498046875,\"y\":336.6237487792969,\"width\":129,\"height\":20.639984130859375}}"
+    "detail": "{\"pill\":{\"x\":804.4375,\"y\":229.875,\"width\":128,\"height\":38},\"block\":{\"x\":798.94140625,\"y\":277.8837585449219,\"width\":147,\"height\":23.519989013671875}}"
   },
   {
     "name": "B1 shape bar has fill colour",
@@ -87,7 +107,7 @@
   {
     "name": "E2 rotation HUD shows angle+W+H",
     "pass": true,
-    "detail": "-53° · W 280 · H 170"
+    "detail": "-51° · W 280 · H 170"
   },
   {
     "name": "E3 pill hidden during rotation",
@@ -102,7 +122,42 @@
   {
     "name": "E5 rotation committed",
     "pass": true,
-    "detail": "rotate(-53deg)"
+    "detail": "rotate(-51deg)"
+  },
+  {
+    "name": "H1 small text block selectable at low zoom",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "H2 click-away on empty page deselects",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "H3 click on bare workspace deselects",
+    "pass": true,
+    "detail": "{\"hitAtPoint\":\"DIV.studio-stage\",\"afterSelect\":1,\"afterStageClick\":0,\"clicksSeen\":[1,\"DIV.studio-stage\"]}"
+  },
+  {
+    "name": "H4 inspector has no font-family/size/presets/opacity duplicates",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "H5 footnote removed from context menu",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "H6 opacity slider reports 100% fill",
+    "pass": true,
+    "detail": "--p=100%"
+  },
+  {
+    "name": "H7 track uses --p gradient",
+    "pass": true,
+    "detail": ""
   },
   {
     "name": "F1 double-click enters inline text editing",
@@ -137,12 +192,12 @@
   {
     "name": "G4 canvas populated from brand",
     "pass": true,
-    "detail": "blocks=8"
+    "detail": "blocks=5"
   },
   {
     "name": "G5 generated copy carries brand/strategy",
     "pass": true,
-    "detail": "WELLNESSBlank Canvas QAYoga that fits between meetingsJoin tonight’s classCanvas QA Brand"
+    "detail": "Blank Canvas QAYoga that fits between meetingsJoin tonight’s classCanvas QA Brand"
   },
   {
     "name": "G6 gradient applied",

@@ -470,11 +470,11 @@ describe('shape label helpers', () => {
     expect(readableShapeInk('nonsense')).toBe('#ffffff');
   });
 
-  it('derives the default label size from the shape box and clamps it', () => {
-    expect(defaultShapeTextFontSize({ geometry: { h: 200 } })).toBe(60);
-    expect(defaultShapeTextFontSize({ height: 24 })).toBe(10);
-    expect(defaultShapeTextFontSize({ height: 4000 })).toBe(120);
-    expect(defaultShapeTextFontSize({})).toBe(36);
+  it('defaults shape label size to a flat 14px regardless of the box', () => {
+    expect(defaultShapeTextFontSize({ geometry: { h: 200 } })).toBe(14);
+    expect(defaultShapeTextFontSize({ height: 24 })).toBe(14);
+    expect(defaultShapeTextFontSize({ height: 4000 })).toBe(14);
+    expect(defaultShapeTextFontSize({})).toBe(14);
   });
 });
 
