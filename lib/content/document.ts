@@ -159,6 +159,16 @@ export function headingFontSizeForLevel(level: 1 | 2 | 3): number {
   return level === 1 ? 36 : level === 2 ? 28 : 22;
 }
 
+/**
+ * Font size each text size preset resolves to. Single source shared by the
+ * editor canvas and the saved-document renderer (whose .size-* CSS rules must
+ * match these values), so a preset renders identically everywhere.
+ */
+export const TEXT_SIZE_PRESET_FONT_SIZES: Record<'sm' | 'md' | 'lg' | 'xl', number> = { sm: 13, md: 15, lg: 18, xl: 24 };
+export function textPresetFontSize(size: 'sm' | 'md' | 'lg' | 'xl'): number {
+  return TEXT_SIZE_PRESET_FONT_SIZES[size];
+}
+
 const linkedField = z.enum(['title', 'cta']).optional();
 const externalHref = z.string().max(2048).url().refine((value) => /^https?:\/\//i.test(value), 'Only HTTP and HTTPS links are allowed.').optional();
 
@@ -620,12 +630,14 @@ export function updateBlockInPages(
 /** Wrap legacy plain text into a one-page editable document. */
 export function createDocumentFromText(body: string, pageSize: ContentPageSizeId = 'a4'): ContentDocument {
   const paragraphs = body.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  // New text defaults to pure black ink (an explicit colour, so the dim
+  // saved-document fallback for legacy null-colour blocks stays untouched).
   const blocks: ContentDocBlock[] = (paragraphs.length > 0 ? paragraphs : ['']).map((paragraph, index) => ({
     id: `text-${index}-${hashId(`${index}|${paragraph}`)}`,
     type: 'text' as const,
     text: paragraph.slice(0, CONTENT_DOC_MAX_TEXT),
     align: 'left' as const,
-    color: null,
+    color: '#000000',
     bg: null,
     size: 'md' as const,
     bold: false,

@@ -31,9 +31,12 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
     .maybeSingle();
   if (!item) redirect(`/brands/${brandId}/content`);
 
+  // Manual designs are first-class: an item with no version yet opens the
+  // Studio on a blank canvas and saves version 1 through the normal PATCH
+  // flow. Role and status gates are unchanged — only the AI-version
+  // prerequisite is dropped.
   const canEdit = CAN_GENERATE_CONTENT.includes(auth.context.role)
-    && EDITABLE_BODY_STATUSES.includes(item.status)
-    && Boolean(item.current_version_id);
+    && EDITABLE_BODY_STATUSES.includes(item.status);
 
   // All saved versions (newest first) feed the editor's version picker; the
   // canvas opens the current version.
@@ -90,7 +93,7 @@ export default async function BrandContentEditorPage({ params }: { params: Promi
         brandVisual={brandVisual}
         versionNumber={version?.version ?? 0}
         body={version?.body ?? ''}
-        canEdit={Boolean(canEdit && version)}
+        canEdit={Boolean(canEdit)}
         versions={versions}
         currentVersionId={item.current_version_id}
         contentStatus={item.status}

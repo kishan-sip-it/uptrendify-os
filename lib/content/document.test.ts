@@ -4,6 +4,7 @@ import {
   contentBodyToPlainText,
   defaultPageSizeForType,
   defaultPageSizeForChannel,
+  DEFAULT_CONTENT_TEXT_COLOR,
   fitDocumentBodyToChannelFormat,
   reflowPage,
   updateBlockInPages,
@@ -22,6 +23,8 @@ import {
   defaultShapeTextFontSize,
   inlineRangeBackgroundState,
   readableShapeInk,
+  TEXT_SIZE_PRESET_FONT_SIZES,
+  textPresetFontSize,
 } from './document';
 
 const BLOCKS: ContentDocBlock[] = [
@@ -192,6 +195,17 @@ describe('content document body format', () => {
     expect(new Set(doc.pages[0]?.blocks.map((block) => block.id)).size).toBe(2);
     expect(newBlockId('text')).not.toBe(newBlockId('text'));
     expect(newPage().blocks).toEqual([]);
+  });
+
+  it('gives newly created text pure black ink while the saved null-colour fallback stays dim', () => {
+    // New text entering the editor defaults to pure black, not the dim ink.
+    const doc = createDocumentFromText('Fresh copy.');
+    for (const block of doc.pages[0]?.blocks ?? []) {
+      if (block.type === 'text') expect(block.color).toBe('#000000');
+    }
+    // Existing saved artwork with an explicitly null colour must keep its
+    // dim fallback — new-text defaults must not recolor it.
+    expect(DEFAULT_CONTENT_TEXT_COLOR).toBe('#1d2634');
   });
 
   it('reorders blocks by list index for drag-and-drop and move controls', () => {
@@ -461,5 +475,18 @@ describe('shape label helpers', () => {
     expect(defaultShapeTextFontSize({ height: 24 })).toBe(10);
     expect(defaultShapeTextFontSize({ height: 4000 })).toBe(120);
     expect(defaultShapeTextFontSize({})).toBe(36);
+  });
+});
+
+describe('text size presets', () => {
+  it('maps every preset to a distinct, increasing font size', () => {
+    expect(TEXT_SIZE_PRESET_FONT_SIZES).toEqual({ sm: 13, md: 15, lg: 18, xl: 24 });
+    expect(textPresetFontSize('sm')).toBe(13);
+    expect(textPresetFontSize('md')).toBe(15);
+    expect(textPresetFontSize('lg')).toBe(18);
+    expect(textPresetFontSize('xl')).toBe(24);
+    expect(textPresetFontSize('sm')).toBeLessThan(textPresetFontSize('md'));
+    expect(textPresetFontSize('md')).toBeLessThan(textPresetFontSize('lg'));
+    expect(textPresetFontSize('lg')).toBeLessThan(textPresetFontSize('xl'));
   });
 });

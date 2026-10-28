@@ -393,6 +393,7 @@
 }
 .st-textarea { min-height: 80px; resize: vertical; line-height: 1.5; }
 .st-input[type="color"] { width: 42px; min-height: 32px; padding: 3px; cursor: pointer; }
+.st-input[type="number"] { font-variant-numeric: tabular-nums; }
 .st-field input[type="file"] { width: 100%; max-width: 100%; color: var(--st-ink-2); font-size: 10px; }
 .st-field input[type="file"]::file-selector-button {
   margin-right: 8px;
@@ -663,6 +664,7 @@
   position: absolute;
   z-index: 100;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   max-width: calc(100% - 16px);
@@ -674,6 +676,7 @@
   box-shadow: 0 8px 28px rgba(0,0,0,.24);
 }
 .st-float-group { display: inline-flex; align-items: center; gap: 2px; }
+.st-float-group + .st-float-group { margin-left: 4px; padding-left: 6px; border-left: 1px solid var(--line, #e2dbcf); }
 .studio-float button {
   display: inline-flex;
   align-items: center;
@@ -712,7 +715,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  max-width: min(660px, calc(100vw - 16px));
+  max-width: min(720px, calc(100vw - 16px));
 }
 .studio .studio-float select.st-inline-range-select,
 .studio .studio-float input.st-inline-range-size {
