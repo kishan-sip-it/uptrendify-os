@@ -69,6 +69,7 @@ import {
   defaultShapeTextFontSize,
   inlineRangeBackgroundState,
   readableShapeInk,
+  textPresetFontSize,
   type ContentDocBlock,
   type ContentDocPage,
   type ContentDocument,
@@ -935,7 +936,7 @@ function blockName(block: EditorBlock): string {
 
 function defaultFontSize(block: EditorBlock): number {
   if (block.type === 'heading') return headingFontSizeForLevel(block.level);
-  if (block.type === 'text') return block.size === 'sm' ? 13 : block.size === 'md' ? 15 : block.size === 'lg' ? 18 : 24;
+  if (block.type === 'text') return textPresetFontSize(block.size);
   return 16;
 }
 
@@ -3483,7 +3484,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
         {block.type === 'text' ? (
           <span className="st-float-group" aria-label="Text size preset">
             {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
-              <button key={size} type="button" className={block.size === size ? 'is-on' : ''} onClick={() => patchBlock(block.id, { size })} disabled={!canEditBlock(block)} title={`Set text size ${size.toUpperCase()}`}>{size.toUpperCase()}</button>
+              <button key={size} type="button" className={block.size === size ? 'is-on' : ''} onClick={() => patchBlock(block.id, { size, fontSize: undefined })} disabled={!canEditBlock(block)} title={`Set text size ${size.toUpperCase()}`}>{size.toUpperCase()}</button>
             ))}
           </span>
         ) : null}

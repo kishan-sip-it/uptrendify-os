@@ -159,6 +159,16 @@ export function headingFontSizeForLevel(level: 1 | 2 | 3): number {
   return level === 1 ? 36 : level === 2 ? 28 : 22;
 }
 
+/**
+ * Font size each text size preset resolves to. Single source shared by the
+ * editor canvas and the saved-document renderer (whose .size-* CSS rules must
+ * match these values), so a preset renders identically everywhere.
+ */
+export const TEXT_SIZE_PRESET_FONT_SIZES: Record<'sm' | 'md' | 'lg' | 'xl', number> = { sm: 13, md: 15, lg: 18, xl: 24 };
+export function textPresetFontSize(size: 'sm' | 'md' | 'lg' | 'xl'): number {
+  return TEXT_SIZE_PRESET_FONT_SIZES[size];
+}
+
 const linkedField = z.enum(['title', 'cta']).optional();
 const externalHref = z.string().max(2048).url().refine((value) => /^https?:\/\//i.test(value), 'Only HTTP and HTTPS links are allowed.').optional();
 
