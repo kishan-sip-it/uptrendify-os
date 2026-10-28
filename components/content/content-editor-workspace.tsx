@@ -48,6 +48,22 @@ import {
   AlignRight,
   RotateCw,
   Presentation,
+  ClipboardPaste,
+  Paintbrush,
+  Component,
+  Boxes,
+  Heading2,
+  Heading3,
+  Languages,
+  AlignHorizontalJustifyCenter,
+  AlignStartVertical,
+  AlignCenterVertical,
+  AlignEndVertical,
+  AlignStartHorizontal,
+  AlignCenterHorizontal,
+  AlignEndHorizontal,
+  Pencil,
+  Link2,
 } from 'lucide-react';
 import {
   CONTENT_DOC_MAX_BLOCKS,
@@ -962,6 +978,7 @@ const contextMenuItemStyle: React.CSSProperties = {
   width: '100%', minHeight: 32, padding: '7px 9px', border: 0, borderRadius: 5,
   background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: 12,
 };
+const contextMenuActionStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 9 };
 const contextMenuShortcutStyle: React.CSSProperties = {
   marginLeft: 'auto', color: 'var(--muted, #756f63)', fontSize: 10, whiteSpace: 'nowrap',
 };
@@ -3467,7 +3484,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     const inline = inlineCandidate && (block.type === 'text' || block.type === 'heading') ? inlineCandidate : null;
     const range = inline?.state ?? null;
     const left = typeof window !== 'undefined'
-      ? Math.max(8, Math.min(floatAnchor.x, window.innerWidth - 660))
+      ? Math.max(8, Math.min(floatAnchor.x, window.innerWidth - 720))
       : floatAnchor.x;
 
     return (
@@ -5066,39 +5083,35 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             boxShadow: '0 20px 48px rgba(15, 23, 42, .18)',
             backdropFilter: 'blur(20px)', color: 'var(--text, #292820)', fontSize: 12,
           }}>
-          <div className="st-context-menu-heading">
-            <span className="st-context-menu-icon"><Type size={15} /></span>
-            <span><strong>TEXT ACTIONS</strong><small>{contextMenuBlock.text.trim().slice(0, 34) || 'Selected text'}{contextMenuBlock.text.trim().length > 34 ? '…' : ''}</small></span>
-          </div>
           <button className="st-context-item st-context-item--primary" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => requestInlineTextEditing(contextMenuBlock.id)} style={contextMenuItemStyle}>
-            <span>Edit text on canvas</span><span style={contextMenuShortcutStyle}>Enter</span>
+            <span style={contextMenuActionStyle}><Pencil size={14} /> Edit text on canvas</span><span style={contextMenuShortcutStyle}>Enter</span>
           </button>
           <button className="st-context-item" type="button" role="menuitem" onClick={() => void copyTextFromBlock(contextMenuBlock.id)} style={contextMenuItemStyle}>
-            <span>Copy</span><span style={contextMenuShortcutStyle}>Ctrl+C</span>
+            <span style={contextMenuActionStyle}><Copy size={14} /> Copy</span><span style={contextMenuShortcutStyle}>Ctrl+C</span>
           </button>
           <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => void pasteTextIntoBlock(contextMenuBlock.id)} style={contextMenuItemStyle}>
-            <span>Paste</span><span style={contextMenuShortcutStyle}>Ctrl+V</span>
+            <span style={contextMenuActionStyle}><ClipboardPaste size={14} /> Paste</span><span style={contextMenuShortcutStyle}>Ctrl+V</span>
           </button>
           <div style={contextMenuDividerStyle} />
           <button className="st-context-item" type="button" role="menuitem" onClick={() => copyTextStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
-            <span>Copy style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+C</span>
+            <span style={contextMenuActionStyle}><Paintbrush size={14} /> Copy style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+C</span>
           </button>
           <button className="st-context-item" type="button" role="menuitem" disabled={!copiedTextStyle || !canEditBlock(contextMenuBlock)} onClick={() => pasteTextStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
-            <span>Paste style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+V</span>
+            <span style={contextMenuActionStyle}><Paintbrush size={14} /> Paste style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+V</span>
           </button>
           <div style={contextMenuDividerStyle} />
           <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} onClick={() => { duplicateBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={contextMenuItemStyle}>
-            <span>Duplicate</span><span style={contextMenuShortcutStyle}>Ctrl+D</span>
+            <span style={contextMenuActionStyle}><CopyPlus size={14} /> Duplicate</span><span style={contextMenuShortcutStyle}>Ctrl+D</span>
           </button>
           <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || ((activePage?.blocks.length ?? 0) <= 1 && pages.length === 1)} onClick={() => { removeBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={{ ...contextMenuItemStyle, color: 'var(--text-danger, #b42318)' }}>
-            <span>Delete</span><span style={contextMenuShortcutStyle}>Del</span>
+            <span style={contextMenuActionStyle}><Trash2 size={14} /> Delete</span><span style={contextMenuShortcutStyle}>Del</span>
           </button>
           {contextMenuBlock.type === 'heading' ? (
             <>
               <div style={contextMenuDividerStyle} />
               <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="heading" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'heading'}
                 onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'heading' ? null : 'heading', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
-                <span>Heading level</span><span style={contextMenuShortcutStyle}>H{contextMenuBlock.level} · ›</span>
+                <span style={contextMenuActionStyle}><Heading1 size={14} /> Heading level</span><span style={contextMenuShortcutStyle}>H{contextMenuBlock.level} · ›</span>
               </button>
 
             </>
@@ -5106,34 +5119,34 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           <div style={contextMenuDividerStyle} />
           <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="layer" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'layer'}
             onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'layer' ? null : 'layer', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
-            <span>Layer</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'layer' ? '⌄' : '›'}</span>
+            <span style={contextMenuActionStyle}><Layers size={14} /> Layer</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'layer' ? '⌄' : '›'}</span>
           </button>
           <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="align" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'align'}
             disabled={!freeMode || !canEditBlock(contextMenuBlock)}
             onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'align' ? null : 'align', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
-            <span>Align to page</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'align' ? '⌄' : '›'}</span>
+            <span style={contextMenuActionStyle}><AlignHorizontalJustifyCenter size={14} /> Align to page</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'align' ? '⌄' : '›'}</span>
           </button>
           <div style={contextMenuDividerStyle} />
           <button className="st-context-item" type="button" role="menuitem" onClick={() => { patchBlock(contextMenuBlock.id, { locked: !contextMenuBlock.locked }); setNotice(contextMenuBlock.locked ? 'Text unlocked.' : 'Text locked.'); setTextContextMenu(null); }} style={contextMenuItemStyle}>
-            <span>{contextMenuBlock.locked ? 'Unlock' : 'Lock'}</span><span style={contextMenuShortcutStyle}>Alt+Shift+L</span>
+            <span style={contextMenuActionStyle}>{contextMenuBlock.locked ? <><LockOpen size={14} /> Unlock</> : <><Lock size={14} /> Lock</>}</span><span style={contextMenuShortcutStyle}>Alt+Shift+L</span>
           </button>
           <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => editTextLink(contextMenuBlock.id)} style={contextMenuItemStyle}>
-            <span>{contextMenuBlock.href ? 'Edit link…' : 'Link…'}</span><span style={contextMenuShortcutStyle}>Ctrl+K</span>
+            <span style={contextMenuActionStyle}><Link2 size={14} /> {contextMenuBlock.href ? 'Edit link…' : 'Link…'}</span><span style={contextMenuShortcutStyle}>Ctrl+K</span>
           </button>
           <div style={contextMenuDividerStyle} />
           <button className="st-context-item st-context-ai-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => openTextAssist(contextMenuBlock.id, 'rewrite')} style={{ ...contextMenuItemStyle, minHeight: 42 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}><Sparkles size={15} /> Magic Write</span><span style={contextMenuShortcutStyle}>AI</span>
+            <span style={contextMenuActionStyle}><Sparkles size={15} /> Magic Write</span><span style={contextMenuShortcutStyle}>AI</span>
           </button>
           <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => openTextAssist(contextMenuBlock.id, 'translate')} style={contextMenuItemStyle}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>文A <span>Translate text…</span></span><span style={contextMenuShortcutStyle}>AI</span>
+            <span style={contextMenuActionStyle}><Languages size={15} /> <span>Translate text…</span></span><span style={contextMenuShortcutStyle}>AI</span>
           </button>
           <div style={contextMenuDividerStyle} />
           <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => createReusableTextComponent(contextMenuBlock.id)} style={contextMenuItemStyle}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}><Layers size={15} /> Create component…</span><span style={contextMenuShortcutStyle}>Save</span>
+            <span style={contextMenuActionStyle}><Component size={15} /> Create component…</span><span style={contextMenuShortcutStyle}>Save</span>
           </button>
           <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="component" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'component'} disabled={!reusableTextComponents.length || !canEdit}
             onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'component' ? null : 'component', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
-            <span>Insert reusable component</span><span style={contextMenuShortcutStyle}>{reusableTextComponents.length ? reusableTextComponents.length : 'None'} · ›</span>
+            <span style={contextMenuActionStyle}><Boxes size={14} /> Insert reusable component</span><span style={contextMenuShortcutStyle}>{reusableTextComponents.length ? reusableTextComponents.length : 'None'} · ›</span>
           </button>
           <div className="st-context-menu-footnote">
             AI edits are previewed before replacing text. Components are stored locally for this brand in this browser.
@@ -5158,7 +5171,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 <button className="st-context-item" key={level} type="button" role="menuitem" aria-checked={contextMenuBlock.level === level}
                   onClick={() => { patchBlock(contextMenuBlock.id, { level, fontSize: headingFontSizeForLevel(level) }); setTextContextMenu(null); }}
                   style={{ ...contextMenuItemStyle, fontWeight: contextMenuBlock.level === level ? 800 : 600 }}>
-                  <span>H{level}</span><span style={contextMenuShortcutStyle}>{headingFontSizeForLevel(level)} px</span>
+                  <span style={contextMenuActionStyle}>{level === 1 ? <Heading1 size={14} /> : level === 2 ? <Heading2 size={14} /> : <Heading3 size={14} />} H{level}</span><span style={contextMenuShortcutStyle}>{headingFontSizeForLevel(level)} px</span>
                 </button>
               ))
             ) : null}
@@ -5190,45 +5203,41 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             boxShadow: '0 20px 48px rgba(15, 23, 42, .18)',
             backdropFilter: 'blur(20px)', color: 'var(--text, #292820)', fontSize: 12,
           }}>
-          <div className="st-context-menu-heading">
-            <span className="st-context-menu-icon"><Layers size={15} /></span>
-            <span><strong>{contextMenuBlock.type === 'shape' ? 'SHAPE ACTIONS' : 'LAYER ACTIONS'}</strong><small>{blockName(contextMenuBlock)}</small></span>
-          </div>
           {contextMenuBlock.type === 'shape' ? (
             <button className="st-context-item st-context-item--primary" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock)} onClick={() => requestInlineTextEditing(contextMenuBlock.id)} style={contextMenuItemStyle}>
-              <span>Edit text on canvas</span><span style={contextMenuShortcutStyle}>Enter</span>
+              <span style={contextMenuActionStyle}><Pencil size={14} /> Edit text on canvas</span><span style={contextMenuShortcutStyle}>Enter</span>
             </button>
           ) : null}
           <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) >= CONTENT_DOC_MAX_BLOCKS} onClick={() => { duplicateBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={contextMenuItemStyle}>
-            <span>Duplicate</span><span style={contextMenuShortcutStyle}>Ctrl+D</span>
+            <span style={contextMenuActionStyle}><CopyPlus size={14} /> Duplicate</span><span style={contextMenuShortcutStyle}>Ctrl+D</span>
           </button>
           <button className="st-context-item" type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || ((activePage?.blocks.length ?? 0) <= 1 && pages.length === 1)} onClick={() => { removeBlock(contextMenuBlock.id); setTextContextMenu(null); }} style={{ ...contextMenuItemStyle, color: 'var(--text-danger, #b42318)' }}>
-            <span>Delete</span><span style={contextMenuShortcutStyle}>Del</span>
+            <span style={contextMenuActionStyle}><Trash2 size={14} /> Delete</span><span style={contextMenuShortcutStyle}>Del</span>
           </button>
           {contextMenuBlock.type === 'shape' || contextMenuBlock.type === 'button' ? (
             <>
               <div style={contextMenuDividerStyle} />
               <button className="st-context-item" type="button" role="menuitem" onClick={() => copyObjectStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
-                <span>Copy style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+C</span>
+                <span style={contextMenuActionStyle}><Paintbrush size={14} /> Copy style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+C</span>
               </button>
               <button className="st-context-item" type="button" role="menuitem" disabled={!copiedObjectStyle || !canEditBlock(contextMenuBlock)} onClick={() => pasteObjectStyle(contextMenuBlock.id)} style={contextMenuItemStyle}>
-                <span>Paste style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+V</span>
+                <span style={contextMenuActionStyle}><Paintbrush size={14} /> Paste style</span><span style={contextMenuShortcutStyle}>Ctrl+Alt+V</span>
               </button>
             </>
           ) : null}
           <div style={contextMenuDividerStyle} />
           <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="layer" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'layer'}
             onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'layer' ? null : 'layer', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
-            <span>Layer</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'layer' ? '⌄' : '›'}</span>
+            <span style={contextMenuActionStyle}><Layers size={14} /> Layer</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'layer' ? '⌄' : '›'}</span>
           </button>
           <button className="st-context-item" type="button" role="menuitem" data-submenu-trigger="align" aria-haspopup="menu" aria-expanded={textContextMenu.submenu === 'align'}
             disabled={!freeMode || !canEditBlock(contextMenuBlock)}
             onClick={() => setTextContextMenu((current) => current ? { ...current, submenu: current.submenu === 'align' ? null : 'align', submenuLeft: undefined, submenuTop: undefined } : current)} style={contextMenuItemStyle}>
-            <span>Align to page</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'align' ? '⌄' : '›'}</span>
+            <span style={contextMenuActionStyle}><AlignHorizontalJustifyCenter size={14} /> Align to page</span><span style={contextMenuShortcutStyle}>{textContextMenu.submenu === 'align' ? '⌄' : '›'}</span>
           </button>
           <div style={contextMenuDividerStyle} />
           <button className="st-context-item" type="button" role="menuitem" onClick={() => { patchBlock(contextMenuBlock.id, { locked: !contextMenuBlock.locked }); setNotice(contextMenuBlock.locked ? 'Layer unlocked.' : 'Layer locked.'); setTextContextMenu(null); }} style={contextMenuItemStyle}>
-            <span>{contextMenuBlock.locked ? 'Unlock' : 'Lock'}</span><span style={contextMenuShortcutStyle}>Alt+Shift+L</span>
+            <span style={contextMenuActionStyle}>{contextMenuBlock.locked ? <><LockOpen size={14} /> Unlock</> : <><Lock size={14} /> Lock</>}</span><span style={contextMenuShortcutStyle}>Alt+Shift+L</span>
           </button>
         </div>,
         document.body
@@ -5251,20 +5260,20 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           </div>
           {textContextMenu.submenu === 'layer' ? (
             ([
-              ['Bring to front', 'front'], ['Bring forward', 'forward'],
-              ['Send backward', 'backward'], ['Send to back', 'back'],
-            ] as const).map(([label, destination]) => (
+              ['Bring to front', 'front', <BringToFront key="btf" size={14} />], ['Bring forward', 'forward', <ArrowUp key="bf" size={14} />],
+              ['Send backward', 'backward', <ArrowDown key="sb" size={14} />], ['Send to back', 'back', <SendToBack key="stb" size={14} />],
+            ] as const).map(([label, destination, icon]) => (
               <button className="st-context-item" key={destination} type="button" role="menuitem" disabled={!canEditBlock(contextMenuBlock) || (activePage?.blocks.length ?? 0) < 2}
-                onClick={() => { changeLayerOrder(contextMenuBlock.id, destination); setTextContextMenu(null); }} style={contextMenuItemStyle}>{label}</button>
+                onClick={() => { changeLayerOrder(contextMenuBlock.id, destination); setTextContextMenu(null); }} style={contextMenuItemStyle}><span style={contextMenuActionStyle}>{icon} {label}</span></button>
             ))
           ) : null}
           {textContextMenu.submenu === 'align' ? (
             ([
-              ['Left', 'left'], ['Center horizontally', 'center'], ['Right', 'right'],
-              ['Top', 'top'], ['Middle vertically', 'middle'], ['Bottom', 'bottom'],
-            ] as const).map(([label, position]) => (
+              ['Left', 'left', <AlignStartVertical key="al" size={14} />], ['Center horizontally', 'center', <AlignCenterVertical key="ac" size={14} />], ['Right', 'right', <AlignEndVertical key="ar" size={14} />],
+              ['Top', 'top', <AlignStartHorizontal key="at" size={14} />], ['Middle vertically', 'middle', <AlignCenterHorizontal key="am" size={14} />], ['Bottom', 'bottom', <AlignEndHorizontal key="ab" size={14} />],
+            ] as const).map(([label, position, icon]) => (
               <button className="st-context-item" key={position} type="button" role="menuitem" disabled={!freeMode || !canEditBlock(contextMenuBlock)}
-                onClick={() => alignBlockToPage(contextMenuBlock.id, position)} style={contextMenuItemStyle}>{label}</button>
+                onClick={() => alignBlockToPage(contextMenuBlock.id, position)} style={contextMenuItemStyle}><span style={contextMenuActionStyle}>{icon} {label}</span></button>
             ))
           ) : null}
         </div>,
