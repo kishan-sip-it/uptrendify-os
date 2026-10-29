@@ -3979,7 +3979,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               <Grid3X3 className="st-bar-opacity-icon" size={13} aria-hidden="true" />
               <input
                 type="range"
-                min={10}
+                min={0}
                 max={100}
                 step={5}
                 value={opacityPercent}
@@ -5577,7 +5577,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             ) : null}
             {moreMenu.submenu === 'transparency' ? (
               <>
-                {([100, 75, 50, 25] as const).map((percent) => (
+                {([100, 75, 50, 25, 0] as const).map((percent) => (
                   <button className="st-context-item" key={percent} type="button" role="menuitem" aria-checked={Math.round((moreMenuBlock.opacity ?? 1) * 100) === percent}
                     onClick={() => { patchBlock(moreMenuBlock.id, { opacity: percent / 100 }); setMoreMenu(null); }}
                     style={{ ...contextMenuItemStyle, fontWeight: Math.round((moreMenuBlock.opacity ?? 1) * 100) === percent ? 800 : 600 }}>
@@ -5586,7 +5586,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 ))}
                 <label className="st-context-item" style={{ ...contextMenuItemStyle, gridTemplateColumns: '1fr', gap: 6, cursor: 'pointer' }}>
                   <span style={contextMenuActionStyle}><Eye size={14} /> Fine-tune</span>
-                  <input type="range" min={10} max={100} step={5} value={Math.round((moreMenuBlock.opacity ?? 1) * 100)} style={{ width: '100%', ['--p' as string]: `${Math.round((moreMenuBlock.opacity ?? 1) * 100)}%` }}
+                  <input type="range" min={0} max={100} step={5} value={Math.round((moreMenuBlock.opacity ?? 1) * 100)} style={{ width: '100%', ['--p' as string]: `${Math.round((moreMenuBlock.opacity ?? 1) * 100)}%` }}
                     onChange={(event) => patchBlock(moreMenuBlock.id, { opacity: Number(event.currentTarget.value) / 100 })} aria-label="Transparency percent" />
                 </label>
               </>
@@ -5847,7 +5847,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
           ) : null}
           {textContextMenu.submenu === 'transparency' ? (
             <>
-              {([100, 75, 50, 25] as const).map((percent) => (
+              {([100, 75, 50, 25, 0] as const).map((percent) => (
                 <button className="st-context-item" key={percent} type="button" role="menuitem" aria-checked={Math.round((contextMenuBlock.opacity ?? 1) * 100) === percent}
                   onClick={() => { patchBlock(contextMenuBlock.id, { opacity: percent / 100 }); setTextContextMenu(null); }}
                   style={{ ...contextMenuItemStyle, fontWeight: Math.round((contextMenuBlock.opacity ?? 1) * 100) === percent ? 800 : 600 }}>
@@ -5856,7 +5856,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               ))}
               <label className="st-context-item" style={{ ...contextMenuItemStyle, gridTemplateColumns: '1fr', gap: 6, cursor: 'pointer' }}>
                 <span style={contextMenuActionStyle}><Eye size={14} /> Fine-tune</span>
-                <input type="range" min={10} max={100} step={5} value={Math.round((contextMenuBlock.opacity ?? 1) * 100)} style={{ width: '100%' }}
+                <input type="range" min={0} max={100} step={5} value={Math.round((contextMenuBlock.opacity ?? 1) * 100)} style={{ width: '100%', ['--p' as string]: `${Math.round((contextMenuBlock.opacity ?? 1) * 100)}%` }}
                   onChange={(event) => patchBlock(contextMenuBlock.id, { opacity: Number(event.currentTarget.value) / 100 })} aria-label="Transparency percent" />
               </label>
             </>
