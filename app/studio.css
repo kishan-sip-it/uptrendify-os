@@ -506,7 +506,7 @@
   position: absolute;
   inset: 10% 8%;
   z-index: 45;
-  border: 1px dashed var(--st-selection-blue, #3b82f6);
+  border: 2px dashed var(--st-selection-blue, #3b82f6);
   border-radius: 8px;
   pointer-events: none;
   background: transparent;
@@ -602,6 +602,12 @@
 }
 .editor-free-block .content-doc-heading,
 .editor-free-block .content-doc-text { margin: 0; }
+/* The legacy document editor adds a hover box-shadow to editable text. In
+   free-canvas mode the block already has a blue hover/selection boundary, so
+   suppress only that nested shadow to avoid a second inner outline. */
+.studio .editor-free-block .editor-canvas-text.is-editable:hover {
+  box-shadow: none;
+}
 /* A short text inside a tall free-canvas block must still enter inline editing
    when the blank area is clicked, so the editable text fills the whole block. */
 .editor-free-block .editor-canvas-text { min-height: 100%; }
@@ -621,10 +627,8 @@
 .st-selection-overlay .st-free-rotate { pointer-events: auto; }
 
 /* Single source of truth for selection handles: round, white-filled, blue
-   outline, constant screen size. content-editor.css defines no competing rules.
-   Handles sit centred ON the selection boundary line: the outline is drawn
-   --st-sel-offset outside the block edge, so each grip's edge anchor is
-   shifted out by the same amount. */
+   outline, constant screen size. Handles sit just outside the block edge so
+   they stay easy to grab without covering glyphs near a text element's edge. */
 .st-free-handle {
   position: absolute;
   z-index: 60;
@@ -635,14 +639,14 @@
   background: #fff;
   /* Grips sit just outside the selection edge so they never cover text. */
 }
-.st-handle-n { top: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
-.st-handle-s { bottom: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
-.st-handle-e { top: 50%; right: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); margin-top: calc(var(--st-handle-size, 10px) / -2); cursor: ew-resize; }
-.st-handle-w { top: 50%; left: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); margin-top: calc(var(--st-handle-size, 10px) / -2); cursor: ew-resize; }
-.st-handle-ne { top: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); right: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); cursor: nesw-resize; }
-.st-handle-nw { top: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); left: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); cursor: nwse-resize; }
-.st-handle-se { bottom: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); right: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); cursor: nwse-resize; }
-.st-handle-sw { bottom: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); left: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); cursor: nesw-resize; }
+.st-handle-n { top: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px) - 2px); left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
+.st-handle-s { bottom: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px) - 2px); left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
+.st-handle-e { top: 50%; right: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px) - 2px); margin-top: calc(var(--st-handle-size, 10px) / -2); cursor: ew-resize; }
+.st-handle-w { top: 50%; left: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px) - 2px); margin-top: calc(var(--st-handle-size, 10px) / -2); cursor: ew-resize; }
+.st-handle-ne { top: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px) - 2px); right: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px) - 2px); cursor: nesw-resize; }
+.st-handle-nw { top: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px) - 2px); left: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px) - 2px); cursor: nwse-resize; }
+.st-handle-se { bottom: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px) - 2px); right: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px) - 2px); cursor: nwse-resize; }
+.st-handle-sw { bottom: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px) - 2px); left: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px) - 2px); cursor: nesw-resize; }
 .st-free-handle:hover { transform: scale(1.25); }
 .editor-free-block,
 .st-free-handle { touch-action: none; }
@@ -2090,17 +2094,34 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 input[type="range"][style*="--p"] {
   -webkit-appearance: none;
   appearance: none;
-  height: 6px;
+  height: 14px;
+  margin: 0;
   border-radius: 999px;
   padding: 0;
   border: none;
-  background: linear-gradient(90deg, var(--st-accent, var(--accent, #4f8b72)) var(--p, 50%), color-mix(in srgb, var(--st-line-strong, #cbd5e1) 70%, transparent) var(--p, 50%));
+  background: transparent;
   cursor: pointer;
+}
+input[type="range"][style*="--p"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--st-accent, var(--accent, #4f8b72)) var(--p, 50%), color-mix(in srgb, var(--st-line-strong, #cbd5e1) 70%, transparent) var(--p, 50%));
+}
+input[type="range"][style*="--p"]::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--st-line-strong, #cbd5e1) 70%, transparent);
+}
+input[type="range"][style*="--p"]::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--st-accent, var(--accent, #4f8b72));
 }
 input[type="range"][style*="--p"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 14px;
   height: 14px;
+  margin-top: -4px;
   border-radius: 50%;
   background: #fff;
   border: 1.5px solid var(--st-accent, var(--accent, #4f8b72));
@@ -2109,15 +2130,31 @@ input[type="range"][style*="--p"]::-webkit-slider-thumb {
 /* Keep the transparency control visible on both light and dark toolbars. */
 .studio-context-bar .st-bar-opacity input[type="range"] {
   width: 76px;
-  min-width: 64px;
+  min-width: 76px;
   flex: 0 0 76px;
-  height: 8px;
-  border: 1px solid color-mix(in srgb, var(--st-text) 28%, var(--st-panel));
+  height: 14px;
+  background: transparent;
+}
+.studio-context-bar .st-bar-opacity input[type="range"]::-webkit-slider-runnable-track {
   background: linear-gradient(
     90deg,
     var(--st-selection-blue, #3b82f6) var(--p, 100%),
     color-mix(in srgb, var(--st-text) 30%, var(--st-panel)) var(--p, 100%)
   );
+}
+.studio-context-bar .st-bar-opacity input[type="range"]::-moz-range-track {
+  background: color-mix(in srgb, var(--st-text) 30%, var(--st-panel));
+}
+.studio-context-bar .st-bar-opacity input[type="range"]::-moz-range-progress {
+  background: var(--st-selection-blue, #3b82f6);
+}
+.studio-context-bar .st-bar-opacity input[type="range"]::-webkit-slider-thumb,
+.studio-context-bar .st-bar-opacity input[type="range"]::-moz-range-thumb {
+  border-color: var(--st-selection-blue, #3b82f6);
+}
+.studio-context-bar .st-bar-opacity input[type="range"]:focus-visible {
+  outline: 2px solid var(--st-selection-blue, #3b82f6);
+  outline-offset: 2px;
 }
 .st-rotate-hud {
   padding: 5px 10px;
