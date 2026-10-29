@@ -15,6 +15,7 @@
   --st-border: var(--line, #e2dbcf);
   --st-line-strong: var(--line, #e2dbcf);
   --st-accent: var(--accent, #8b5cf6);
+  --st-selection-blue: #3b82f6;
   --st-ok: var(--text-success, #2e9d70);
   --st-warn: var(--text-warning, #b7791f);
   --st-danger: var(--text-danger, #dc4d5b);
@@ -505,11 +506,10 @@
   position: absolute;
   inset: 10% 8%;
   z-index: 45;
-  border: 1px dashed color-mix(in srgb, var(--st-accent) 86%, var(--st-text));
+  border: 1px dashed var(--st-selection-blue, #3b82f6);
   border-radius: 8px;
   pointer-events: none;
-  /* Opposing light/dark keylines keep guides legible over either artwork tone. */
-  box-shadow: 0 0 0 1px rgb(255 255 255 / .88), 0 0 0 2px rgb(15 23 42 / .72);
+  background: transparent;
 }
 .studio-page-label {
   position: absolute;
@@ -596,11 +596,9 @@
    Hover only applies to unselected, non-editing blocks; selected/gesture chrome
    is rendered separately by .st-selection-overlay. */
 .editor-free-block:not(.is-selected):hover:not(:has(.editor-inline-edit:focus)) {
-  outline: var(--st-sel-width, 2px) solid color-mix(in srgb, var(--st-accent) 82%, var(--st-text));
-  outline-offset: var(--st-sel-offset, 2px);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--st-panel) 78%, transparent),
-    0 0 6px color-mix(in srgb, var(--st-accent) 30%, transparent);
+  outline: var(--st-sel-width, 2px) solid var(--st-selection-blue, #3b82f6);
+  outline-offset: 0;
+  box-shadow: none;
 }
 .editor-free-block .content-doc-heading,
 .editor-free-block .content-doc-text { margin: 0; }
@@ -615,11 +613,9 @@
   position: absolute;
   z-index: 55;
   pointer-events: none;
-  outline: var(--st-sel-width, 2px) solid color-mix(in srgb, var(--st-accent) 82%, var(--st-text));
-  outline-offset: var(--st-sel-offset, 2px);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--st-panel) 78%, transparent),
-    0 0 5px color-mix(in srgb, var(--st-accent) 22%, transparent);
+  outline: var(--st-sel-width, 2px) solid var(--st-selection-blue, #3b82f6);
+  outline-offset: 0;
+  box-shadow: none;
 }
 .st-selection-overlay .st-free-handle,
 .st-selection-overlay .st-free-rotate { pointer-events: auto; }
@@ -634,19 +630,19 @@
   z-index: 60;
   width: var(--st-handle-size, 10px);
   height: var(--st-handle-size, 10px);
-  border: 2px solid color-mix(in srgb, var(--st-accent) 82%, var(--st-text));
+  border: 2px solid var(--st-selection-blue, #3b82f6);
   border-radius: 50%;
   background: #fff;
-  /* No drop shadow: shadows over the scaled frame read as a glittering halo. */
+  /* Grips sit just outside the selection edge so they never cover text. */
 }
-.st-handle-n { top: calc(0px - var(--st-sel-offset, 2px)); left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); margin-top: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
-.st-handle-s { bottom: calc(0px - var(--st-sel-offset, 2px)); left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); margin-bottom: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
-.st-handle-e { top: 50%; right: calc(0px - var(--st-sel-offset, 2px)); margin-top: calc(var(--st-handle-size, 10px) / -2); margin-right: calc(var(--st-handle-size, 10px) / -2); cursor: ew-resize; }
-.st-handle-w { top: 50%; left: calc(0px - var(--st-sel-offset, 2px)); margin-top: calc(var(--st-handle-size, 10px) / -2); margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: ew-resize; }
-.st-handle-ne { top: calc(0px - var(--st-sel-offset, 2px)); right: calc(0px - var(--st-sel-offset, 2px)); margin-top: calc(var(--st-handle-size, 10px) / -2); margin-right: calc(var(--st-handle-size, 10px) / -2); cursor: nesw-resize; }
-.st-handle-nw { top: calc(0px - var(--st-sel-offset, 2px)); left: calc(0px - var(--st-sel-offset, 2px)); margin-top: calc(var(--st-handle-size, 10px) / -2); margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: nwse-resize; }
-.st-handle-se { bottom: calc(0px - var(--st-sel-offset, 2px)); right: calc(0px - var(--st-sel-offset, 2px)); margin-bottom: calc(var(--st-handle-size, 10px) / -2); margin-right: calc(var(--st-handle-size, 10px) / -2); cursor: nwse-resize; }
-.st-handle-sw { bottom: calc(0px - var(--st-sel-offset, 2px)); left: calc(0px - var(--st-sel-offset, 2px)); margin-bottom: calc(var(--st-handle-size, 10px) / -2); margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: nesw-resize; }
+.st-handle-n { top: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
+.st-handle-s { bottom: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); left: 50%; margin-left: calc(var(--st-handle-size, 10px) / -2); cursor: ns-resize; }
+.st-handle-e { top: 50%; right: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); margin-top: calc(var(--st-handle-size, 10px) / -2); cursor: ew-resize; }
+.st-handle-w { top: 50%; left: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); margin-top: calc(var(--st-handle-size, 10px) / -2); cursor: ew-resize; }
+.st-handle-ne { top: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); right: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); cursor: nesw-resize; }
+.st-handle-nw { top: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); left: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); cursor: nwse-resize; }
+.st-handle-se { bottom: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); right: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); cursor: nwse-resize; }
+.st-handle-sw { bottom: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); left: calc(0px - var(--st-sel-offset, 2px) - var(--st-handle-size, 10px)); cursor: nesw-resize; }
 .st-free-handle:hover { transform: scale(1.25); }
 .editor-free-block,
 .st-free-handle { touch-action: none; }
@@ -664,10 +660,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid color-mix(in srgb, var(--st-accent) 82%, var(--st-text));
+  border: 2px solid var(--st-selection-blue, #3b82f6);
   border-radius: 50%;
   background: #fff;
-  color: var(--st-accent);
+  color: var(--st-selection-blue, #3b82f6);
   cursor: grab;
   touch-action: none;
 }
@@ -2021,8 +2017,9 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 .st-bar-stepper:hover { background: color-mix(in srgb, var(--st-line, var(--line, #e2dbcf)) 45%, transparent); }
 .st-bar-stepper button { min-width: 22px; padding: 0 3px; background: transparent !important; }
 .st-bar-reset { font-size: 10px; }
-.st-bar-opacity { gap: 6px; }
+.st-bar-opacity { gap: 7px; min-width: 0; }
 .st-bar-opacity input[type="range"] { width: 76px; }
+.st-bar-opacity-icon { flex: 0 0 auto; color: var(--st-text); opacity: .95; }
 /* Filled track driven by --p so 100% actually reaches the right edge —
    native accent tracks leave a thumb-shaped gap at max. */
 .studio-context-bar input[type="range"],
@@ -2108,6 +2105,19 @@ input[type="range"][style*="--p"]::-webkit-slider-thumb {
   background: #fff;
   border: 1.5px solid var(--st-accent, var(--accent, #4f8b72));
   box-shadow: 0 1px 4px rgba(15, 23, 42, .3);
+}
+/* Keep the transparency control visible on both light and dark toolbars. */
+.studio-context-bar .st-bar-opacity input[type="range"] {
+  width: 76px;
+  min-width: 64px;
+  flex: 0 0 76px;
+  height: 8px;
+  border: 1px solid color-mix(in srgb, var(--st-text) 28%, var(--st-panel));
+  background: linear-gradient(
+    90deg,
+    var(--st-selection-blue, #3b82f6) var(--p, 100%),
+    color-mix(in srgb, var(--st-text) 30%, var(--st-panel)) var(--p, 100%)
+  );
 }
 .st-rotate-hud {
   padding: 5px 10px;

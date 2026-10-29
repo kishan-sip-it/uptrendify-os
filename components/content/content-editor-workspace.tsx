@@ -1311,7 +1311,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   useEffect(() => { setEditorStatus(contentStatus); }, [contentStatus]);
   const [dropTarget, setDropTarget] = useState<{ index: number; below: boolean } | null>(null);
   const [overflow, setOverflow] = useState(false);
-  const [safeZones, setSafeZones] = useState(false);
+  const [safeZones, setSafeZones] = useState(true);
   const [duplicateSize, setDuplicateSize] = useState<ContentPageSizeId>('square');
   const [imageAltDraft, setImageAltDraft] = useState('');
   const [backgroundPreviewOpen, setBackgroundPreviewOpen] = useState(false);
@@ -3975,7 +3975,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 </button>
               )
             ) : null}
-            <span className="st-bar-group st-bar-opacity" aria-label="Transparency">
+            <span className="st-bar-group st-bar-opacity" role="group" aria-label="Transparency">
+              <Grid3X3 className="st-bar-opacity-icon" size={13} aria-hidden="true" />
               <input
                 type="range"
                 min={10}
@@ -4807,7 +4808,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 <button type="button" onClick={fitText}>Fit text</button>
               </span>
             ) : null}
-            {safeZones ? (
+            {safeZones && !previewMode ? (
               <div aria-hidden="true" className="studio-safe-zone-guides" />
             ) : null}
             {freeMode ? (
