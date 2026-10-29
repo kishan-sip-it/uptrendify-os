@@ -506,8 +506,10 @@
   position: absolute;
   inset: 10% 8%;
   z-index: 45;
-  border: 2px dashed var(--st-selection-blue, #3b82f6);
-  border-radius: 8px;
+  /* One restrained blue guide, readable over light/dark artwork without a
+     second decorative stroke or any effect on saved content. */
+  border: 1px dashed #3b82f6;
+  border-radius: 6px;
   pointer-events: none;
   background: transparent;
 }
@@ -605,7 +607,12 @@
 /* The legacy document editor adds a hover box-shadow to editable text. In
    free-canvas mode the block already has a blue hover/selection boundary, so
    suppress only that nested shadow to avoid a second inner outline. */
-.studio .editor-free-block .editor-canvas-text.is-editable:hover {
+.studio .editor-free-block .editor-canvas-text.is-editable:hover,
+.studio .editor-free-block .editor-canvas-text.is-editable:focus,
+.studio .editor-free-block .editor-canvas-text.is-editable:focus-within {
+  /* Free-canvas interaction chrome is the single blue block boundary. Do not
+     show the legacy inner hover/focus box on top of that boundary. */
+  outline: none;
   box-shadow: none;
 }
 /* A short text inside a tall free-canvas block must still enter inline editing
@@ -2136,21 +2143,31 @@ input[type="range"][style*="--p"]::-webkit-slider-thumb {
   background: transparent;
 }
 .studio-context-bar .st-bar-opacity input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
   background: linear-gradient(
     90deg,
-    var(--st-selection-blue, #3b82f6) var(--p, 100%),
-    color-mix(in srgb, var(--st-text) 30%, var(--st-panel)) var(--p, 100%)
+    #3b82f6 var(--p, 100%),
+    color-mix(in srgb, var(--st-text, #e5e7eb) 42%, var(--st-panel, #111827)) var(--p, 100%)
   );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--st-text, #e5e7eb) 24%, transparent);
 }
 .studio-context-bar .st-bar-opacity input[type="range"]::-moz-range-track {
-  background: color-mix(in srgb, var(--st-text) 30%, var(--st-panel));
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--st-text, #e5e7eb) 42%, var(--st-panel, #111827));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--st-text, #e5e7eb) 24%, transparent);
 }
 .studio-context-bar .st-bar-opacity input[type="range"]::-moz-range-progress {
-  background: var(--st-selection-blue, #3b82f6);
+  height: 6px;
+  border-radius: 999px;
+  background: #3b82f6;
 }
-.studio-context-bar .st-bar-opacity input[type="range"]::-webkit-slider-thumb,
+.studio-context-bar .st-bar-opacity input[type="range"]::-webkit-slider-thumb {
+  border-color: #3b82f6;
+}
 .studio-context-bar .st-bar-opacity input[type="range"]::-moz-range-thumb {
-  border-color: var(--st-selection-blue, #3b82f6);
+  border-color: #3b82f6;
 }
 .studio-context-bar .st-bar-opacity input[type="range"]:focus-visible {
   outline: 2px solid var(--st-selection-blue, #3b82f6);

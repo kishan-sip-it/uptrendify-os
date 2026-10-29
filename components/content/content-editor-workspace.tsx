@@ -4969,8 +4969,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               // on-screen size — oversized chrome over a tiny block would
               // intercept the presses meant to select/move it.
               const handlePx = Math.max(7, Math.min(
-                18,
-                Math.round(12 / frameScale),
+                12,
+                Math.round(10 / frameScale),
                 Math.floor((Math.min(geo.w, geo.h) * frameScale) / 3) || 7,
               ));
               const selPx = Math.max(1, Math.min(3, Math.round(2 / frameScale)));
