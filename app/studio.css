@@ -1920,6 +1920,54 @@ input[type="range"][style*="--p"]::-webkit-slider-thumb {
   border: 1.5px solid var(--st-accent, var(--accent, #4f8b72));
   box-shadow: 0 1px 4px rgba(15, 23, 42, .3);
 }
+/* Opacity popover slider: visible horizontal track, contrasting filled portion,
+   and clearly visible thumb in both light and dark themes.
+   -webkit-appearance: none removes the native track, so the track pseudo-element
+   and thumb must be styled explicitly (the shared --p rule alone does not paint
+   a track for this portal-rendered input). Reuses the existing --st-accent /
+   --st-line-strong tokens so the filled/unfilled split stays themed correctly. */
+.st-opacity-popover input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  padding: 0;
+  border: none;
+  background: linear-gradient(90deg, var(--st-accent, var(--accent, #4f8b72)) var(--p, 0%), color-mix(in srgb, var(--st-line-strong, #cbd5e1) 70%, transparent) var(--p, 0%));
+  cursor: pointer;
+}
+.st-opacity-popover input[type="range"]::-webkit-slider-runnable-track {
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(90deg, var(--st-accent, var(--accent, #4f8b72)) var(--p, 0%), color-mix(in srgb, var(--st-line-strong, #cbd5e1) 70%, transparent) var(--p, 0%));
+}
+.st-opacity-popover input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  /* Center the 14px thumb over the 6px WebKit track. */
+  margin-top: -4px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid var(--st-accent, var(--accent, #4f8b72));
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .3);
+}
+.st-opacity-popover input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(90deg, var(--st-accent, var(--accent, #4f8b72)) var(--p, 0%), color-mix(in srgb, var(--st-line-strong, #cbd5e1) 70%, transparent) var(--p, 0%));
+}
+.st-opacity-popover input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid var(--st-accent, var(--accent, #4f8b72));
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .3);
+}
 .st-rotate-hud {
   padding: 5px 10px;
   border: 1px solid var(--st-line-strong, var(--line, #e2dbcf));
