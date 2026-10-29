@@ -604,17 +604,11 @@
 }
 .editor-free-block .content-doc-heading,
 .editor-free-block .content-doc-text { margin: 0; }
-/* The legacy document editor adds a hover box-shadow to editable text. In
-   free-canvas mode the block already has a blue hover/selection boundary, so
-   suppress only that nested shadow to avoid a second inner outline. */
-.studio .editor-free-block .editor-canvas-text.is-editable:hover,
-.studio .editor-free-block .editor-canvas-text.is-editable:focus,
-.studio .editor-free-block .editor-canvas-text.is-editable:focus-within,
-.studio .editor-free-block .editor-inline-edit,
-.studio .editor-free-block .editor-inline-edit:focus {
-  /* Free-canvas interaction chrome is the single blue block boundary.
-     The contenteditable editor has a different class than the idle text node,
-     so suppress its legacy outline here as well. Keep caret/text selection. */
+/* Free-canvas text uses the frame-level selection boundary only. The
+   legacy hover/focus decoration is now scoped to .editor-block in
+   app/content-editor.css, so no nested box is drawn inside this canvas. */
+.editor-free-block .editor-canvas-text.is-editable,
+.editor-free-block .editor-inline-edit {
   outline: none;
   outline-offset: 0;
   box-shadow: none;
@@ -1702,6 +1696,13 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
   outline: 1.5px dashed color-mix(in srgb, var(--st-accent) 65%, transparent);
   outline-offset: -3px;
   border-radius: 4px;
+}
+
+/* Free-canvas shapes use the shared blue selection boundary; the flow editor
+   keeps its local dashed focus cue. */
+.editor-free-block .editor-shape-text .editor-inline-edit:focus {
+  outline: none;
+  outline-offset: 0;
 }
 
 /* Managed-image state in the inspector — replaces the raw internal asset URL

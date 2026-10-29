@@ -1311,7 +1311,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   useEffect(() => { setEditorStatus(contentStatus); }, [contentStatus]);
   const [dropTarget, setDropTarget] = useState<{ index: number; below: boolean } | null>(null);
   const [overflow, setOverflow] = useState(false);
-  const [safeZones, setSafeZones] = useState(true);
+  const [safeZones, setSafeZones] = useState(false);
   const [duplicateSize, setDuplicateSize] = useState<ContentPageSizeId>('square');
   const [imageAltDraft, setImageAltDraft] = useState('');
   const [backgroundPreviewOpen, setBackgroundPreviewOpen] = useState(false);

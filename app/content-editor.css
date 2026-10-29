@@ -299,8 +299,8 @@ div[class*="level-1"] { font-weight: 800; }
 
 /* Inline canvas text editing affordance. */
 .editor-canvas-text.is-editable { cursor: text; border-radius: 6px; }
-.editor-canvas-text.is-editable:hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); }
-.editor-inline-edit { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; min-width: 40px; cursor: text; }
+.editor-block .editor-canvas-text.is-editable:hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); }
+.editor-block .editor-inline-edit { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; min-width: 40px; cursor: text; }
 
 /* Canvas top meta strip + zoom cluster. */
 .editor-canvas-meta {
