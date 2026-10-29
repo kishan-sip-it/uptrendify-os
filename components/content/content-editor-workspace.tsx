@@ -115,7 +115,13 @@ import {
 import { buildBrandApplyPreview } from '@/lib/studio/brand-apply-preview';
 import { brandCanvasSizeLabel, generateBrandCanvas } from '@/lib/studio/brand-canvas-generation';
 import { ensureBrandFontsLoaded } from '@/lib/studio/brand-fonts';
-import { studioFontFamilyCssStack, studioFontFamilyNameFromCss } from '@/lib/studio/font-families';
+import {
+  studioFontFamilyCssStack,
+  studioFontFamilyNameFromCss,
+  getStudioFontWeightOptions,
+  nearestStudioFontWeight,
+  type StudioFontWeight,
+} from '@/lib/studio/font-families';
 import { StudioFontFamilyPicker } from '@/components/content/studio-font-family-picker';
 import { contrastRatio } from '@/lib/studio/template-library/contrast';
 import { templatePaletteByName } from '@/lib/studio/template-library/art';
@@ -229,8 +235,9 @@ type InlineTextBaseStyle = {
   bg?: string | null;
   fontSize?: number;
   fontFamily?: string;
+  fontWeight?: StudioFontWeight;
 };
-type InlineTextFormatKey = 'bold' | 'italic' | 'underline' | 'color' | 'bg' | 'fontSize' | 'fontFamily';
+type InlineTextFormatKey = 'bold' | 'italic' | 'underline' | 'color' | 'bg' | 'fontSize' | 'fontFamily' | 'fontWeight';
 type InlineTextFormatValue = boolean | string | number | null;
 type InlineTextToolbarState = {
   left: number;
@@ -246,6 +253,7 @@ type InlineTextToolbarState = {
   bgActive: boolean | null;
   fontFamily: string;
   fontSize: number;
+  fontWeight: StudioFontWeight;
 };
 type InlineTextFormatAction = (key: InlineTextFormatKey, explicitValue?: InlineTextFormatValue) => void;
 type InlineTextToolbarPrepare = () => void;
@@ -263,7 +271,7 @@ type ActiveInlineTextToolbar = {
 
 function inlineRunStyle(run: InlineTextRun): React.CSSProperties {
   return {
-    ...(run.bold !== undefined ? { fontWeight: run.bold ? 700 : 400 } : {}),
+    ...(run.fontWeight !== undefined ? { fontWeight: run.fontWeight } : run.bold !== undefined ? { fontWeight: run.bold ? 700 : 400 } : {}),
     ...(run.italic !== undefined ? { fontStyle: run.italic ? 'italic' : 'normal' } : {}),
     ...(run.underline !== undefined ? { textDecoration: run.underline ? 'underline' : 'none' } : {}),
     ...(run.color !== undefined ? { color: run.color ?? 'inherit' } : {}),
@@ -280,7 +288,7 @@ function inlineStyleOnly(run: InlineTextRun): Omit<InlineTextRun, 'text'> {
 }
 
 function sameInlineStyle(a: InlineTextRun, b: InlineTextRun): boolean {
-  return (['bold', 'italic', 'underline', 'color', 'bg', 'fontSize', 'fontFamily'] as const)
+  return (['bold', 'italic', 'underline', 'color', 'bg', 'fontSize', 'fontFamily', 'fontWeight'] as const)
     .every((key) => a[key] === b[key]);
 }
 
@@ -365,7 +373,15 @@ function readInlineTextRunsFromDom(root: HTMLElement): InlineTextRun[] {
     if (tag === 'mark') style.bg = cssColorToHex(node.style.backgroundColor) ?? '#ffff00';
 
     const weight = node.style.fontWeight;
-    if (weight) style.bold = weight === 'bold' || Number(weight) >= 600;
+    if (weight) {
+      const numericWeight = Number(weight);
+      if ([400, 500, 600, 700].includes(numericWeight)) {
+        style.fontWeight = numericWeight as StudioFontWeight;
+        delete style.bold;
+      } else {
+        style.bold = weight === 'bold' || numericWeight >= 600;
+      }
+    }
     const fontStyle = node.style.fontStyle;
     if (fontStyle) style.italic = fontStyle === 'italic';
     const decoration = node.style.textDecoration || node.style.textDecorationLine;
@@ -495,7 +511,10 @@ function formatInlineRuns(runs: InlineTextRun[], start: number, end: number, key
     const selectedStart = Math.max(0, start - runStart);
     const selectedEnd = Math.min(run.text.length, end - runStart);
     if (selectedStart > 0) updated.push({ ...run, text: run.text.slice(0, selectedStart) });
-    updated.push({ ...run, text: run.text.slice(selectedStart, selectedEnd), [key]: value } as InlineTextRun);
+    const nextRun = { ...run, text: run.text.slice(selectedStart, selectedEnd), [key]: value } as InlineTextRun;
+    if (key === 'fontWeight') delete nextRun.bold;
+    if (key === 'bold') delete nextRun.fontWeight;
+    updated.push(nextRun);
     if (selectedEnd < run.text.length) updated.push({ ...run, text: run.text.slice(selectedEnd) });
   }
   return coalesceInlineTextRuns(updated);
@@ -511,15 +530,18 @@ function getInlineToolbarState(root: HTMLElement, range: Range, baseStyle: Inlin
   const computed = window.getComputedStyle(root);
   const computedColor = cssColorToHex(computed.color) ?? '#111827';
   const computedSize = Number.parseInt(computed.fontSize, 10) || 16;
+  const parsedComputedWeight = Number.parseInt(computed.fontWeight, 10);
+  const computedWeight = ([400, 500, 600, 700].includes(parsedComputedWeight) ? parsedComputedWeight : 400) as StudioFontWeight;
   const computedFamily = computed.fontFamily.split(',')[0]?.trim().replace(/^['"]|['"]$/g, '') || 'Inter';
   const base = {
-    bold: baseStyle.bold ?? false,
+    bold: baseStyle.bold ?? (baseStyle.fontWeight !== undefined ? baseStyle.fontWeight >= 600 : false),
     italic: baseStyle.italic ?? false,
     underline: baseStyle.underline ?? false,
     color: baseStyle.color ?? computedColor,
     bg: baseStyle.bg ?? null,
     fontSize: baseStyle.fontSize ?? computedSize,
     fontFamily: baseStyle.fontFamily ?? computedFamily,
+    fontWeight: baseStyle.fontWeight ?? computedWeight,
   };
   const all = <K extends InlineTextFormatKey,>(key: K): Array<InlineTextRun[K]> =>
     segments.map(({ run }) => (run[key] === undefined ? base[key] : run[key]) as InlineTextRun[K]);
@@ -528,13 +550,14 @@ function getInlineToolbarState(root: HTMLElement, range: Range, baseStyle: Inlin
   const bgValue = common(all('bg').map((value) => value === undefined ? base.bg : value));
   const fontSize = common(all('fontSize').map((value) => value ?? base.fontSize)) ?? base.fontSize;
   const fontFamily = common(all('fontFamily').map((value) => value ?? base.fontFamily)) ?? base.fontFamily;
+  const fontWeight = common(segments.map(({ run }) => run.fontWeight ?? (run.bold !== undefined ? (run.bold ? 700 : 400) : base.fontWeight))) ?? base.fontWeight;
   const rect = range.getBoundingClientRect();
   return {
     left: Math.max(8, Math.min(window.innerWidth - 440, rect.left + rect.width / 2 - 216)),
     top: Math.max(8, rect.top - 52),
     start,
     end,
-    bold: all('bold').every((value) => value === true),
+    bold: segments.every(({ run }) => run.bold !== undefined ? run.bold : run.fontWeight !== undefined ? run.fontWeight >= 600 : base.bold),
     italic: all('italic').every((value) => value === true),
     underline: all('underline').every((value) => value === true),
     color: typeof color === 'string' ? color : '#111827',
@@ -542,6 +565,7 @@ function getInlineToolbarState(root: HTMLElement, range: Range, baseStyle: Inlin
     bgActive: inlineRangeBackgroundState(segments.map(({ run }) => run), base.bg),
     fontFamily,
     fontSize,
+    fontWeight,
   };
 }
 
@@ -710,8 +734,12 @@ function CanvasText({
     if (nextValue === undefined) {
       const base = baseStyleRef.current ?? {};
       const allActive = segments.every(({ run }) => {
-        const runValue = run[key];
-        const baseValue = base[key];
+        const runValue = key === 'bold' && run.bold === undefined && run.fontWeight !== undefined
+          ? run.fontWeight >= 600
+          : run[key];
+        const baseValue = key === 'bold' && base.bold === undefined
+          ? (base.fontWeight !== undefined ? base.fontWeight >= 600 : false)
+          : base[key];
         return (runValue === undefined ? baseValue : runValue) === true;
       });
       nextValue = !allActive;
@@ -3739,8 +3767,22 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               <StudioFontFamilyPicker
                 value={range.fontFamily}
                 label="Selected text font family"
-                onChange={(family) => inline!.apply('fontFamily', family)}
+                onChange={(family) => {
+                  inline!.apply('fontFamily', family);
+                  inline!.apply('fontWeight', nearestStudioFontWeight(family, range.fontWeight));
+                }}
               />
+              <select
+                className="st-bar-select st-bar-weight-select"
+                aria-label="Selected text font weight"
+                title="Selected text font weight"
+                value={String(range.fontWeight)}
+                onChange={(event) => inline!.apply('fontWeight', Number(event.currentTarget.value) as StudioFontWeight)}
+              >
+                {getStudioFontWeightOptions(range.fontFamily).map((weight) => (
+                  <option key={weight.value} value={weight.value}>{weight.value} {weight.label}</option>
+                ))}
+              </select>
               <input
                 className="st-bar-size-input"
                 type="number"
@@ -3788,8 +3830,31 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                   label="Font family"
                   includeThemeDefault
                   disabled={!editable}
-                  onChange={(family) => patchBlock(block.id, { fontFamily: family || undefined })}
+                  onChange={(family) => {
+                    const currentWeight = block.fontWeight ?? (block.bold ? 700 : 400);
+                    const nextWeight = nearestStudioFontWeight(family, currentWeight);
+                    patchBlock(block.id, {
+                      fontFamily: family || undefined,
+                      fontWeight: block.fontWeight !== undefined && nextWeight !== currentWeight ? nextWeight : block.fontWeight,
+                      bold: block.fontWeight !== undefined ? nextWeight >= 600 : (block.bold ?? false),
+                    });
+                  }}
                 />
+                <select
+                  className="st-bar-select st-bar-weight-select"
+                  aria-label="Font weight"
+                  title="Font weight"
+                  value={String(block.fontWeight ?? (block.bold ? 700 : 400))}
+                  disabled={!editable}
+                  onChange={(event) => {
+                    const nextWeight = Number(event.currentTarget.value) as StudioFontWeight;
+                    patchBlock(block.id, { fontWeight: nextWeight, bold: nextWeight >= 600 });
+                  }}
+                >
+                  {getStudioFontWeightOptions(block.fontFamily).map((weight) => (
+                    <option key={weight.value} value={weight.value}>{weight.value} {weight.label}</option>
+                  ))}
+                </select>
                 <span className="st-bar-stepper" aria-label="Font size">
                   <button type="button" aria-label="Decrease font size" title="Smaller text" disabled={!editable} onClick={() => patchBlock(block.id, { fontSize: Math.max(8, (block.fontSize ?? defaultFontSize(block)) - 1) })}><Minus size={12} /></button>
                   <input
@@ -3831,7 +3896,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             ) : null}
             {block.type === 'text' || block.type === 'heading' ? (
               <span className="st-bar-group" aria-label="Text emphasis">
-                <button type="button" className={block.bold ? 'is-on' : ''} onClick={() => patchBlock(block.id, { bold: !block.bold })} disabled={!editable} title="Bold text" aria-label="Bold text"><strong>B</strong></button>
+                <button type="button" className={block.bold ? 'is-on' : ''} onClick={() => patchBlock(block.id, { bold: !block.bold, fontWeight: undefined })} disabled={!editable} title="Bold text" aria-label="Bold text"><strong>B</strong></button>
                 <button type="button" className={block.italic ? 'is-on' : ''} onClick={() => patchBlock(block.id, { italic: !block.italic })} disabled={!editable} title="Italic text" aria-label="Italic text"><em>I</em></button>
                 <button type="button" className={block.underline ? 'is-on' : ''} onClick={() => patchBlock(block.id, { underline: !block.underline })} disabled={!editable} title="Underline text" aria-label="Underline text"><u>U</u></button>
               </span>
@@ -4000,11 +4065,11 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     const ink = block.textColor ?? readableShapeInk(block.color ?? DEFAULT_CONTENT_SHAPE_COLOR);
     const fontSize = block.fontSize ?? defaultShapeTextFontSize(block);
     return (
-      <div className={`editor-shape-text align-${block.align}`} style={{ color: ink, fontSize: `${fontSize}px`, fontFamily: studioFontFamilyCssStack(block.fontFamily) }}>
+      <div className={`editor-shape-text align-${block.align}`} style={{ color: ink, fontSize: `${fontSize}px`, fontFamily: studioFontFamilyCssStack(block.fontFamily), fontWeight: block.fontWeight }}>
         <CanvasText
           value={label}
           richText={block.richText}
-          baseStyle={{ color: ink, fontSize, ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }}
+          baseStyle={{ color: ink, fontSize, ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}), ...(block.fontWeight !== undefined ? { fontWeight: block.fontWeight } : {}) }}
           disabled={!editable}
           multiline
           editGateRef={blockSelectedAtPointerDown}
@@ -4030,14 +4095,14 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     switch (block.type) {
       case 'heading':
         return (
-          <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: studioFontFamilyCssStack(block.fontFamily), fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden', opacity: block.opacity ?? 1 }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} editGateRef={blockSelectedAtPointerDown} isSelected={!snapshotMode && selectedId === block.id && !previewMode} onInlineToolbarChange={snapshotMode ? undefined : bindInlineToolbar(block.id)} editRequest={snapshotMode ? 0 : (inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0)} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+          <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: studioFontFamilyCssStack(block.fontFamily), fontWeight: block.fontWeight ?? (block.bold ? 800 : undefined), fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden', opacity: block.opacity ?? 1 }}>
+            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}), ...(block.fontWeight !== undefined ? { fontWeight: block.fontWeight } : {}) }} disabled={!editable} multiline={false} onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} editGateRef={blockSelectedAtPointerDown} isSelected={!snapshotMode && selectedId === block.id && !previewMode} onInlineToolbarChange={snapshotMode ? undefined : bindInlineToolbar(block.id)} editRequest={snapshotMode ? 0 : (inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0)} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
           </div>
         );
       case 'text':
         return (
-          <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: studioFontFamilyCssStack(block.fontFamily), fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
-            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} editGateRef={blockSelectedAtPointerDown} isSelected={!snapshotMode && selectedId === block.id && !previewMode} onInlineToolbarChange={snapshotMode ? undefined : bindInlineToolbar(block.id)} editRequest={snapshotMode ? 0 : (inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0)} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+          <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: studioFontFamilyCssStack(block.fontFamily), fontWeight: block.fontWeight ?? (block.bold ? 700 : undefined), fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined, width: '100%', height: '100%', overflow: 'hidden' }}>
+            <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}), ...(block.fontWeight !== undefined ? { fontWeight: block.fontWeight } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={textProps.onCommit} onDraftInput={snapshotMode ? undefined : (next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} editGateRef={blockSelectedAtPointerDown} isSelected={!snapshotMode && selectedId === block.id && !previewMode} onInlineToolbarChange={snapshotMode ? undefined : bindInlineToolbar(block.id)} editRequest={snapshotMode ? 0 : (inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0)} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
           </div>
         );
       case 'image':
@@ -4845,13 +4910,13 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       style={{ cursor: block.locked ? 'not-allowed' : undefined, opacity: block.opacity ?? 1 }}
                     >
                       {block.type === 'heading' ? (
-                        <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: studioFontFamilyCssStack(block.fontFamily), fontWeight: block.bold ? 800 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs, link: undefined })} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+                        <div className={`content-doc-heading align-${block.align} editor-level-${block.level}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg } : {}), fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: studioFontFamilyCssStack(block.fontFamily), fontWeight: block.fontWeight ?? (block.bold ? 800 : undefined), fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
+                          <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}), ...(block.fontWeight !== undefined ? { fontWeight: block.fontWeight } : {}) }} disabled={!editable} multiline={false} onClick={() => setSelectedId(block.id)} onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs, link: undefined })} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
                         </div>
                       ) : null}
                       {block.type === 'text' ? (
-                        <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: studioFontFamilyCssStack(block.fontFamily), fontWeight: block.bold ? 700 : undefined, fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
-                          <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs, link: undefined })} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
+                        <div className={`content-doc-text size-${block.size} align-${block.align}`} style={{ color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, ...(block.bg ? { background: block.bg, padding: '6px 10px', borderRadius: 8 } : {}), fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: studioFontFamilyCssStack(block.fontFamily), fontWeight: block.fontWeight ?? (block.bold ? 700 : undefined), fontStyle: block.italic ? 'italic' : undefined, textDecoration: block.underline ? 'underline' : undefined }}>
+                          <CanvasText value={resolveBlockText(block, linkedValues)} richText={block.richText} baseStyle={{ bold: block.bold, italic: block.italic, underline: block.underline, color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR, bg: block.bg, ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}), ...(block.fontFamily ? { fontFamily: block.fontFamily } : {}), ...(block.fontWeight !== undefined ? { fontWeight: block.fontWeight } : {}) }} disabled={!editable} multiline onClick={textProps.onClick} onCommit={(next, runs) => patchBlock(block.id, { text: next, richText: runs, link: undefined })} onDraftInput={(next, runs) => persistInlineTextDraft(block.id, next, runs)} editOnDoubleClick={true} isSelected={selectedId === block.id && !previewMode} onInlineToolbarChange={bindInlineToolbar(block.id)} editRequest={inlineTextEditRequest?.blockId === block.id ? inlineTextEditRequest.sequence : 0} onEditingEnd={() => setInlineTextEditRequest((current) => current?.blockId === block.id ? null : current)} />
                         </div>
                       ) : null}
                       {block.type === 'image' ? (

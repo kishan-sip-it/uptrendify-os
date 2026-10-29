@@ -1825,6 +1825,7 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
   cursor: pointer;
 }
 .st-bar-select:hover { border-color: var(--st-line-strong, var(--line, #e2dbcf)); }
+.st-bar-weight-select { width: 78px; max-width: 78px; padding: 0 5px; font-size: 10px; }
 /* Searchable font family picker used by the existing text-context toolbar. */
 .st-font-picker {
   position: relative;

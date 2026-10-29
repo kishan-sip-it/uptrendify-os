@@ -4,12 +4,28 @@
  * matching and always include a generic fallback. The picker never accepts
  * arbitrary CSS strings.
  */
+export type StudioFontWeight = 400 | 500 | 600 | 700;
+export type StudioFontWeightOption = { value: StudioFontWeight; label: string };
+
+const GOOGLE_FONT_WEIGHTS = [
+  { value: 400, label: 'Regular' },
+  { value: 500, label: 'Medium' },
+  { value: 600, label: 'Semibold' },
+  { value: 700, label: 'Bold' },
+] as const satisfies readonly StudioFontWeightOption[];
+
+const SYSTEM_FONT_WEIGHTS = [
+  { value: 400, label: 'Regular' },
+  { value: 700, label: 'Bold' },
+] as const satisfies readonly StudioFontWeightOption[];
+
 export type StudioFontFamilyOption = {
   value: string;
   label: string;
   category: 'Sans serif' | 'Serif' | 'Monospace';
   cssStack: string;
   weightSummary: string;
+  weights: readonly StudioFontWeightOption[];
   styleSummary: string;
   source: 'Google Fonts' | 'System fonts';
 };
@@ -21,6 +37,7 @@ export const STUDIO_FONT_FAMILIES: readonly StudioFontFamilyOption[] = [
     category: 'Sans serif',
     cssStack: 'Inter, Arial, sans-serif',
     weightSummary: '400 Regular · 500 Medium · 600 Semibold · 700 Bold',
+    weights: GOOGLE_FONT_WEIGHTS,
     styleSummary: 'Normal and italic',
     source: 'Google Fonts',
   },
@@ -30,6 +47,7 @@ export const STUDIO_FONT_FAMILIES: readonly StudioFontFamilyOption[] = [
     category: 'Sans serif',
     cssStack: '"Plus Jakarta Sans", Inter, Arial, sans-serif',
     weightSummary: '400 Regular · 500 Medium · 600 Semibold · 700 Bold',
+    weights: GOOGLE_FONT_WEIGHTS,
     styleSummary: 'Normal and italic',
     source: 'Google Fonts',
   },
@@ -38,7 +56,8 @@ export const STUDIO_FONT_FAMILIES: readonly StudioFontFamilyOption[] = [
     label: 'Arial',
     category: 'Sans serif',
     cssStack: 'Arial, Helvetica, sans-serif',
-    weightSummary: 'Regular and bold',
+    weightSummary: '400 Regular · 700 Bold',
+    weights: SYSTEM_FONT_WEIGHTS,
     styleSummary: 'Normal and italic where available',
     source: 'System fonts',
   },
@@ -47,7 +66,8 @@ export const STUDIO_FONT_FAMILIES: readonly StudioFontFamilyOption[] = [
     label: 'Verdana',
     category: 'Sans serif',
     cssStack: 'Verdana, Geneva, sans-serif',
-    weightSummary: 'Regular and bold',
+    weightSummary: '400 Regular · 700 Bold',
+    weights: SYSTEM_FONT_WEIGHTS,
     styleSummary: 'Normal and italic where available',
     source: 'System fonts',
   },
@@ -56,7 +76,8 @@ export const STUDIO_FONT_FAMILIES: readonly StudioFontFamilyOption[] = [
     label: 'Trebuchet MS',
     category: 'Sans serif',
     cssStack: '"Trebuchet MS", Arial, sans-serif',
-    weightSummary: 'Regular and bold',
+    weightSummary: '400 Regular · 700 Bold',
+    weights: SYSTEM_FONT_WEIGHTS,
     styleSummary: 'Normal and italic where available',
     source: 'System fonts',
   },
@@ -65,7 +86,8 @@ export const STUDIO_FONT_FAMILIES: readonly StudioFontFamilyOption[] = [
     label: 'Georgia',
     category: 'Serif',
     cssStack: 'Georgia, "Times New Roman", serif',
-    weightSummary: 'Regular and bold',
+    weightSummary: '400 Regular · 700 Bold',
+    weights: SYSTEM_FONT_WEIGHTS,
     styleSummary: 'Normal and italic where available',
     source: 'System fonts',
   },
@@ -74,7 +96,8 @@ export const STUDIO_FONT_FAMILIES: readonly StudioFontFamilyOption[] = [
     label: 'Times New Roman',
     category: 'Serif',
     cssStack: '"Times New Roman", Times, serif',
-    weightSummary: 'Regular and bold',
+    weightSummary: '400 Regular · 700 Bold',
+    weights: SYSTEM_FONT_WEIGHTS,
     styleSummary: 'Normal and italic where available',
     source: 'System fonts',
   },
@@ -83,7 +106,8 @@ export const STUDIO_FONT_FAMILIES: readonly StudioFontFamilyOption[] = [
     label: 'Courier New',
     category: 'Monospace',
     cssStack: '"Courier New", Courier, monospace',
-    weightSummary: 'Regular and bold',
+    weightSummary: '400 Regular · 700 Bold',
+    weights: SYSTEM_FONT_WEIGHTS,
     styleSummary: 'Normal and italic where available',
     source: 'System fonts',
   },
@@ -92,7 +116,8 @@ export const STUDIO_FONT_FAMILIES: readonly StudioFontFamilyOption[] = [
     label: 'System UI',
     category: 'Sans serif',
     cssStack: 'system-ui, sans-serif',
-    weightSummary: 'Regular and bold',
+    weightSummary: '400 Regular · 700 Bold',
+    weights: SYSTEM_FONT_WEIGHTS,
     styleSummary: 'Normal and italic where available',
     source: 'System fonts',
   },
@@ -102,6 +127,19 @@ export function getStudioFontFamilyOption(value?: string | null): StudioFontFami
   const normalized = value?.trim().toLowerCase();
   if (!normalized) return null;
   return STUDIO_FONT_FAMILIES.find((font) => font.value.toLowerCase() === normalized) ?? null;
+}
+
+export function getStudioFontWeightOptions(value?: string | null): readonly StudioFontWeightOption[] {
+  return getStudioFontFamilyOption(value)?.weights ?? SYSTEM_FONT_WEIGHTS;
+}
+
+/** Clamp an existing stored weight to the closest weight the target family exposes. */
+export function nearestStudioFontWeight(value: string | null | undefined, requested: number): StudioFontWeight {
+  const options = getStudioFontWeightOptions(value);
+  return options.reduce<StudioFontWeight>(
+    (best, option) => Math.abs(option.value - requested) < Math.abs(best - requested) ? option.value : best,
+    options[0]?.value ?? 400,
+  );
 }
 
 /** Extract a single family name from an inline CSS family list. */
