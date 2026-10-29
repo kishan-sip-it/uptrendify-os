@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
+import { studioFontFamilyCssStack } from '@/lib/studio/font-families';
 import {
   CONTENT_PAGE_SIZES,
   DEFAULT_CONTENT_SHAPE_COLOR,
@@ -114,7 +115,7 @@ function renderInlineText(value: string, runs?: InlineTextRun[]) {
         ...(run.color !== undefined ? { color: run.color ?? 'inherit' } : {}),
         ...(run.bg !== undefined ? { backgroundColor: run.bg ?? 'transparent' } : {}),
         ...(run.fontSize !== undefined ? { fontSize: `${run.fontSize}px` } : {}),
-        ...(run.fontFamily ? { fontFamily: run.fontFamily } : {}),
+        ...(run.fontFamily ? { fontFamily: studioFontFamilyCssStack(run.fontFamily) } : {}),
         whiteSpace: 'pre-wrap',
       }}
     >
@@ -231,7 +232,7 @@ export function ContentDocumentView({
                     ...geoStyle,
                     color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR,
                     ...(block.bg ? { background: block.bg } : {}),
-                    fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 800 : undefined,
+                    fontSize: `${block.fontSize ?? headingFontSizeForLevel(block.level)}px`, fontFamily: studioFontFamilyCssStack(block.fontFamily), fontWeight: block.bold ? 800 : undefined,
                     fontStyle: block.italic ? 'italic' : undefined,
                     textDecoration: block.underline ? 'underline' : undefined,
                   }}
@@ -249,7 +250,7 @@ export function ContentDocumentView({
                     ...geoStyle,
                     color: block.color ?? DEFAULT_CONTENT_TEXT_COLOR,
                     ...(block.bg ? { background: block.bg } : {}),
-                    fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: block.fontFamily || undefined, fontWeight: block.bold ? 700 : undefined,
+                    fontSize: block.fontSize ? `${block.fontSize}px` : undefined, fontFamily: studioFontFamilyCssStack(block.fontFamily), fontWeight: block.bold ? 700 : undefined,
                     fontStyle: block.italic ? 'italic' : undefined,
                     textDecoration: block.underline ? 'underline' : undefined,
                   }}
@@ -304,7 +305,7 @@ export function ContentDocumentView({
                   {shapeLabel ? (
                     <div
                       className={`editor-shape-text align-${block.align}`}
-                      style={{ color: shapeInk, fontSize: `${block.fontSize ?? defaultShapeTextFontSize(block)}px`, fontFamily: block.fontFamily || undefined }}
+                      style={{ color: shapeInk, fontSize: `${block.fontSize ?? defaultShapeTextFontSize(block)}px`, fontFamily: studioFontFamilyCssStack(block.fontFamily) }}
                     >
                       {renderInlineText(shapeLabel, block.richText)}
                     </div>
