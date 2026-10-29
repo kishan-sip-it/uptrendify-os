@@ -506,9 +506,9 @@
   position: absolute;
   inset: 10% 8%;
   z-index: 45;
-  /* One restrained blue guide, readable over light/dark artwork without a
-     second decorative stroke or any effect on saved content. */
-  border: 1px dashed #3b82f6;
+  /* Keep the existing safe-area guide legible after the canvas is zoomed
+     out; this is the guide toggle, not persisted artwork. */
+  border: 2px dashed #3b82f6;
   border-radius: 6px;
   pointer-events: none;
   background: transparent;
@@ -609,10 +609,14 @@
    suppress only that nested shadow to avoid a second inner outline. */
 .studio .editor-free-block .editor-canvas-text.is-editable:hover,
 .studio .editor-free-block .editor-canvas-text.is-editable:focus,
-.studio .editor-free-block .editor-canvas-text.is-editable:focus-within {
-  /* Free-canvas interaction chrome is the single blue block boundary. Do not
-     show the legacy inner hover/focus box on top of that boundary. */
+.studio .editor-free-block .editor-canvas-text.is-editable:focus-within,
+.studio .editor-free-block .editor-inline-edit,
+.studio .editor-free-block .editor-inline-edit:focus {
+  /* Free-canvas interaction chrome is the single blue block boundary.
+     The contenteditable editor has a different class than the idle text node,
+     so suppress its legacy outline here as well. Keep caret/text selection. */
   outline: none;
+  outline-offset: 0;
   box-shadow: none;
 }
 /* A short text inside a tall free-canvas block must still enter inline editing
@@ -2030,7 +2034,19 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 .st-bar-reset { font-size: 10px; }
 .st-bar-opacity { gap: 7px; min-width: 0; }
 .st-bar-opacity input[type="range"] { width: 76px; }
-.st-bar-opacity-icon { flex: 0 0 auto; color: var(--st-text); opacity: .95; }
+.st-bar-opacity-icon {
+  display: inline-block;
+  flex: 0 0 13px;
+  width: 13px;
+  height: 13px;
+  border: 1px solid color-mix(in srgb, var(--st-text, #e5e7eb) 55%, var(--st-panel, #111827));
+  border-radius: 2px;
+  background-color: var(--st-panel, #111827);
+  background-image:
+    linear-gradient(135deg, transparent 8%, color-mix(in srgb, var(--st-panel, #111827) 24%, transparent) 100%),
+    conic-gradient(color-mix(in srgb, var(--st-text, #e5e7eb) 65%, var(--st-panel, #111827)) 25%, transparent 0 50%, color-mix(in srgb, var(--st-text, #e5e7eb) 65%, var(--st-panel, #111827)) 0 75%, transparent 0);
+  background-size: 100% 100%, 6px 6px;
+}
 /* Filled track driven by --p so 100% actually reaches the right edge —
    native accent tracks leave a thumb-shaped gap at max. */
 .studio-context-bar input[type="range"],
@@ -2143,7 +2159,7 @@ input[type="range"][style*="--p"]::-webkit-slider-thumb {
   background: transparent;
 }
 .studio-context-bar .st-bar-opacity input[type="range"]::-webkit-slider-runnable-track {
-  height: 6px;
+  height: 8px;
   border-radius: 999px;
   background: linear-gradient(
     90deg,
@@ -2153,13 +2169,13 @@ input[type="range"][style*="--p"]::-webkit-slider-thumb {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--st-text, #e5e7eb) 24%, transparent);
 }
 .studio-context-bar .st-bar-opacity input[type="range"]::-moz-range-track {
-  height: 6px;
+  height: 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--st-text, #e5e7eb) 42%, var(--st-panel, #111827));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--st-text, #e5e7eb) 24%, transparent);
 }
 .studio-context-bar .st-bar-opacity input[type="range"]::-moz-range-progress {
-  height: 6px;
+  height: 8px;
   border-radius: 999px;
   background: #3b82f6;
 }

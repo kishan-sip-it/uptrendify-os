@@ -33,7 +33,7 @@ import {
   Trash2,
   Type,
   Undo2,
-  Grid3X3,
+  
   LayoutTemplate,
   Highlighter,
   ImageDown,
@@ -3976,7 +3976,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               )
             ) : null}
             <span className="st-bar-group st-bar-opacity" role="group" aria-label="Transparency">
-              <Grid3X3 className="st-bar-opacity-icon" size={13} aria-hidden="true" />
+              <span className="st-bar-opacity-icon" aria-hidden="true" />
               <input
                 type="range"
                 min={0}
