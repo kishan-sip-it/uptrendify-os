@@ -82,7 +82,7 @@ export function StudioFontFamilyPicker({
     if (open) searchRef.current?.focus();
   }, [open]);
 
-  const visibleCurrentValue = selected?.label ?? value.trim() || 'Inter';
+  const visibleCurrentValue = (selected?.label ?? value.trim()) || 'Inter';
 
   return (
     <div className="st-font-picker" ref={rootRef}>
@@ -94,7 +94,7 @@ export function StudioFontFamilyPicker({
         aria-label={label}
         aria-expanded={open}
         aria-haspopup="listbox"
-        title={selected?.label ?? value || 'Inter'}
+        title={(selected?.label ?? value) || 'Inter'}
         onClick={() => {
           setSearch('');
           setOpen((current) => !current);

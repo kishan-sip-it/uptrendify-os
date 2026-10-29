@@ -107,7 +107,7 @@ export function getStudioFontFamilyOption(value?: string | null): StudioFontFami
 /** Extract a single family name from an inline CSS family list. */
 export function studioFontFamilyNameFromCss(value: string): string {
   const first = value.split(',')[0]?.trim() ?? '';
-  return first.replace(/^(['"])(.*)\\1$/, '$2').trim();
+  return first.replace(/^(['"])(.*)\1$/, '$2').trim();
 }
 
 /**
@@ -121,7 +121,7 @@ export function studioFontFamilyCssStack(value?: string | null): string | undefi
   if (option) return option.cssStack;
 
   const name = studioFontFamilyNameFromCss(value.trim());
-  if (!name || name.length > 120 || /[;{}<>\\u0000-\\u001f]/.test(name)) {
+  if (!name || name.length > 120 || /[;{}<>\u0000-\u001f]/.test(name)) {
     return 'Inter, Arial, sans-serif';
   }
   const escaped = name.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
