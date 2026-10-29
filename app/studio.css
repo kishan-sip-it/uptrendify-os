@@ -583,9 +583,11 @@
      fractional widths anti-alias into a blurry line over the scaled frame. */
 }
 /* Crisp hover affordance: solid hairline, no tint, no blur, never while the
-   block is selected, being edited, or grabbed by a handle. */
+   block is selected, being edited, or grabbed by a handle.
+   Uses the counter-scaled --st-sel-width so the line stays visible at every
+   zoom level (the block sits inside a scaled frame). */
 .editor-free-block:not(.is-selected):hover:not(:has(.editor-inline-edit:focus)) {
-  outline: 1px solid color-mix(in srgb, var(--st-accent) 55%, transparent);
+  outline: var(--st-sel-width, 1px) solid color-mix(in srgb, var(--st-accent) 55%, transparent);
   outline-offset: var(--st-sel-offset, 2px);
 }
 .editor-free-block:not(.is-selected):hover:has(.st-free-handle:hover) { outline: none; }
@@ -618,7 +620,7 @@
   z-index: 60;
   width: var(--st-handle-size, 10px);
   height: var(--st-handle-size, 10px);
-  border: 1.5px solid var(--st-accent);
+  border: var(--st-handle-border, 1.5px) solid var(--st-accent);
   border-radius: 50%;
   background: #fff;
   /* No drop shadow: shadows over the scaled frame read as a glittering halo. */
@@ -644,11 +646,11 @@
   left: 50%;
   width: var(--st-rotate-size, 24px);
   height: var(--st-rotate-size, 24px);
-  margin: calc(var(--st-sel-offset, 2px) + 6px) 0 0 calc(var(--st-rotate-size, 24px) / -2);
+  margin: calc(var(--st-sel-offset, 2px) + var(--st-rotate-gap, 6px)) 0 0 calc(var(--st-rotate-size, 24px) / -2);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1.5px solid var(--st-accent);
+  border: var(--st-handle-border, 1.5px) solid var(--st-accent);
   border-radius: 50%;
   background: #fff;
   color: var(--st-accent);
@@ -991,6 +993,14 @@
 /* Keep the inline editor clickable through the full free-canvas text block. */
 .editor-free-block .editor-inline-edit {
   min-height: 100%;
+  /* Suppress the inner editing outline; the frame-level .st-selection-overlay
+     already provides a single blue boundary so a second outline is redundant. */
+  outline: none;
+}
+.editor-free-block .editor-canvas-text.is-editable:hover {
+  /* Suppress the inner hover box-shadow from content-editor.css; the block-level
+     outline provides the single crisp hover boundary. */
+  box-shadow: none;
 }
 .editor-block .content-doc-heading,
 .editor-block .content-doc-text {
@@ -1661,20 +1671,10 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 .studio-float input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
 .studio-float input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
 
-/* Shape text keeps a visible focus cue while editing (base rule strips the
-   idle outline only). */
+/* Shape text inline editing: suppress inner dashed outline; the single
+   selection overlay boundary already marks the active block. */
 .editor-shape-text .editor-inline-edit:focus {
-  outline: 1.5px dashed color-mix(in srgb, var(--st-accent) 65%, transparent);
-  outline-offset: -3px;
-  border-radius: 4px;
-}
-
-/* Shape text keeps a visible focus cue while editing (base rule strips the
-   idle outline only). */
-.editor-shape-text .editor-inline-edit:focus {
-  outline: 1.5px dashed color-mix(in srgb, var(--st-accent) 65%, transparent);
-  outline-offset: -3px;
-  border-radius: 4px;
+  outline: none;
 }
 
 /* Managed-image state in the inspector — replaces the raw internal asset URL
@@ -1831,8 +1831,8 @@ button.st-logo-import-chip.is-failed:hover:not(:disabled) { background: color-mi
 }
 .st-bar-stepper:hover { background: color-mix(in srgb, var(--st-line, var(--line, #e2dbcf)) 45%, transparent); }
 .st-bar-stepper button { min-width: 22px; padding: 0 3px; background: transparent !important; }
-.st-bar-reset { font-size: 10px; }
-.st-bar-opacity { gap: 6px; }
+.st-bar-opacity { display: inline-flex; align-items: center; gap: 6px; }
+.st-bar-opacity-icon { color: var(--st-ink-2, var(--muted, #756f63)); flex: 0 0 auto; }
 .st-bar-opacity input[type="range"] { width: 76px; }
 /* Filled track driven by --p so 100% actually reaches the right edge —
    native accent tracks leave a thumb-shaped gap at max. */
@@ -1913,6 +1913,55 @@ input[type="range"][style*="--p"] {
 }
 input[type="range"][style*="--p"]::-webkit-slider-thumb {
   -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid var(--st-accent, var(--accent, #4f8b72));
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .3);
+}
+
+/* Opacity popover slider: visible horizontal track, contrasting filled portion,
+   and clearly visible thumb in both light and dark themes.
+   -webkit-appearance: none removes the native track, so the track pseudo-element
+   and thumb must be styled explicitly (the shared --p rule alone does not paint
+   a track for this portal-rendered input). Reuses the existing --st-accent /
+   --st-line-strong tokens so the filled/unfilled split stays themed correctly. */
+.st-opacity-popover input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  padding: 0;
+  border: none;
+  background: linear-gradient(90deg, var(--st-accent, var(--accent, #4f8b72)) var(--p, 0%), color-mix(in srgb, var(--st-line-strong, #cbd5e1) 70%, transparent) var(--p, 0%));
+  cursor: pointer;
+}
+.st-opacity-popover input[type="range"]::-webkit-slider-runnable-track {
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(90deg, var(--st-accent, var(--accent, #4f8b72)) var(--p, 0%), color-mix(in srgb, var(--st-line-strong, #cbd5e1) 70%, transparent) var(--p, 0%));
+}
+.st-opacity-popover input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  /* Center the 14px thumb over the 6px WebKit track. */
+  margin-top: -4px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid var(--st-accent, var(--accent, #4f8b72));
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .3);
+}
+.st-opacity-popover input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(90deg, var(--st-accent, var(--accent, #4f8b72)) var(--p, 0%), color-mix(in srgb, var(--st-line-strong, #cbd5e1) 70%, transparent) var(--p, 0%));
+}
+.st-opacity-popover input[type="range"]::-moz-range-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;

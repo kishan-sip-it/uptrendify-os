@@ -199,6 +199,23 @@ type RasterTextReview = {
   notes: string[];
 };
 
+function CheckerboardTransparencyIcon({ size = 15, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect x="2" y="2" width="12" height="12" rx="2.5" stroke="currentColor" strokeWidth="1.25" />
+      <path d="M2 8h12M8 2v12" stroke="currentColor" strokeWidth="1.25" />
+      <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2H8v6H2V4.5zM8 8h6v3.5a2.5 2.5 0 0 1-2.5 2.5H8V8z" fill="currentColor" />
+    </svg>
+  );
+}
+
 const HISTORY_LIMIT = 80;
 /** Default highlighter ink — a soft legible yellow, matching the toolbar fallback. */
 const DEFAULT_HIGHLIGHT_COLOR = '#fff59d';
@@ -1291,6 +1308,8 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [moreMenu, setMoreMenu] = useState<{ blockId: string; left: number; top: number; submenu: TextContextSubmenu; submenuLeft?: number; submenuTop?: number } | null>(null);
   // Position popover opened from the contextual toolbar (Layer + Align groups).
   const [toolbarPopover, setToolbarPopover] = useState<{ kind: 'layer' | 'align'; left: number; top: number } | null>(null);
+  // Transparency popover opened from the contextual toolbar (opacity slider + readout).
+  const [opacityPopover, setOpacityPopover] = useState<{ left: number; top: number } | null>(null);
   // True while a drag/resize/rotate gesture is in flight — hides the pill and
   // contextual controls so nothing obstructs the artwork mid-gesture.
   const [gestureActive, setGestureActive] = useState(false);
@@ -1446,10 +1465,11 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
     };
   }, [moreMenu]);
 
-  // Selection/page changes close the More menu; the block it targeted may be gone.
+  // Selection/page changes close the More menu and popovers; the block it targeted may be gone.
   useEffect(() => {
     setMoreMenu(null);
     setToolbarPopover(null);
+    setOpacityPopover(null);
   }, [selectedId, activePageIndex, previewMode, focusMode]);
 
   useEffect(() => {
@@ -1469,6 +1489,24 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [toolbarPopover]);
+
+  useEffect(() => {
+    if (!opacityPopover) return;
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && (target.closest('[data-studio-opacity-popover]') || target.closest('[data-studio-opacity-trigger]'))) return;
+      setOpacityPopover(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpacityPopover(null);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [opacityPopover]);
 
   useEffect(() => {
     try {
@@ -3794,7 +3832,11 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                   disabled={!editable}
                 >
                   <option value="">Theme font</option>
-                  {['Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'monospace'].map((font) => <option key={font} value={font}>{font}</option>)}
+                  {Array.from(new Set([
+                    ...(brandEssentials.headingFont ? [brandEssentials.headingFont] : []),
+                    ...(brandEssentials.bodyFont ? [brandEssentials.bodyFont] : []),
+                    'Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'monospace'
+                  ])).map((font) => <option key={font} value={font}>{font}</option>)}
                 </select>
                 <span className="st-bar-stepper" aria-label="Font size">
                   <button type="button" aria-label="Decrease font size" title="Smaller text" disabled={!editable} onClick={() => patchBlock(block.id, { fontSize: Math.max(8, (block.fontSize ?? defaultFontSize(block)) - 1) })}><Minus size={12} /></button>
@@ -3911,21 +3953,25 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 </button>
               )
             ) : null}
-            <span className="st-bar-group st-bar-opacity" aria-label="Transparency">
-              <input
-                type="range"
-                min={10}
-                max={100}
-                step={5}
-                value={opacityPercent}
-                style={{ ['--p' as string]: `${opacityPercent}%` }}
-                onChange={(event) => patchBlock(block.id, { opacity: Number(event.currentTarget.value) / 100 })}
-                disabled={!editable}
-                aria-label="Transparency"
-                title="Transparency"
-              />
-              <span className="st-bar-opacity-value" aria-hidden="true">{opacityPercent}%</span>
-            </span>
+            <button
+              type="button"
+              className={`st-bar-btn${opacityPopover !== null ? ' is-on' : ''}`}
+              data-studio-opacity-trigger=""
+              aria-haspopup="dialog"
+              aria-expanded={opacityPopover !== null}
+              disabled={!editable}
+              onClick={(event) => {
+                const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+                setToolbarPopover(null);
+                setOpacityPopover((current) => current ? null : { left: Math.round(rect.left), top: Math.round(rect.bottom + 6) });
+              }}
+              title={`Transparency (${opacityPercent}%)`}
+              aria-label={`Transparency (${opacityPercent}%)`}
+            >
+              <CheckerboardTransparencyIcon size={14} />
+              <span>Transparency</span>
+              {opacityPercent < 100 ? <span className="st-bar-opacity-badge">{opacityPercent}%</span> : null}
+            </button>
             <span className="st-context-bar-sep" aria-hidden="true" />
             <button
               type="button"
@@ -4751,12 +4797,17 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 const geo = block.geometry ?? { x: 24, y: 24, w: 320, h: 90 };
                 const isSelected = selectedId === block.id && !previewMode;
                 // Handles and the selection border keep a constant SCREEN size
-                // at every zoom: divide the on-screen px by the frame scale and
-                // snap to whole CSS px — fractional widths anti-alias into a
-                // blurry "glittering" line.
+                // at every zoom: divide the desired on-screen px by the frame
+                // scale so the CSS value, after being visually shrunk by the
+                // parent transform, still appears at the intended screen size.
+                // The upper clamp must be high enough that the counter-scale is
+                // never defeated — e.g. at 10 % zoom, 10 / 0.1 = 100 CSS-px
+                // which renders as 10 screen-px, exactly the target.
                 const frameScale = Math.max(0.05, zoom / 100);
-                const handlePx = Math.max(7, Math.min(16, Math.round(10 / frameScale)));
-                const selPx = Math.max(1, Math.min(3, Math.round(2 / frameScale)));
+                const handlePx = Math.max(7, Math.round(10 / frameScale));
+                const handleBorderPx = Math.max(1, Math.round(1.5 / frameScale));
+                const selPx = Math.max(1, Math.round(2 / frameScale));
+                const selOffsetPx = Math.max(1, Math.round(2 / frameScale));
                 return (
                   <div
                     key={block.id}
@@ -4767,8 +4818,9 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                       transform: geo.rotation ? `rotate(${geo.rotation}deg)` : undefined,
                       cursor: canEdit && !block.locked ? 'move' : 'default',
                       ['--st-handle-size' as string]: `${handlePx}px`,
+                      ['--st-handle-border' as string]: `${handleBorderPx}px`,
                       ['--st-sel-width' as string]: `${selPx}px`,
-                      ['--st-sel-offset' as string]: `${Math.max(1, Math.min(4, Math.round(2 / frameScale)))}px`,
+                      ['--st-sel-offset' as string]: `${selOffsetPx}px`,
                     }}
                     onPointerDown={(event) => {
                       if (event.button !== 0 || spaceHeld.current) return;
@@ -4900,15 +4952,12 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               // to whole CSS px — fractional widths anti-alias into a blurry
               // "glittering" line.
               const frameScale = Math.max(0.05, zoom / 100);
-              // Handles must never grow wider than a third of the block's
-              // on-screen size — oversized chrome over a tiny block would
-              // intercept the presses meant to select/move it.
-              const handlePx = Math.max(7, Math.min(
-                18,
-                Math.round(12 / frameScale),
-                Math.floor((Math.min(geo.w, geo.h) * frameScale) / 3) || 7,
-              ));
-              const selPx = Math.max(1, Math.min(3, Math.round(2 / frameScale)));
+              const handlePx = Math.max(7, Math.round(10 / frameScale));
+              const handleBorderPx = Math.max(1, Math.round(1.5 / frameScale));
+              const selPx = Math.max(1, Math.round(2 / frameScale));
+              const selOffsetPx = Math.max(1, Math.round(2 / frameScale));
+              const rotateSizePx = Math.max(20, Math.round(24 / frameScale));
+              const rotateGapPx = Math.max(2, Math.round(6 / frameScale));
               return (
                 <div
                   data-studio-selection-overlay=""
@@ -4918,9 +4967,11 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                     left: geo.x, top: geo.y, width: geo.w, height: geo.h,
                     transform: geo.rotation ? `rotate(${geo.rotation}deg)` : undefined,
                     ['--st-handle-size' as string]: `${handlePx}px`,
+                    ['--st-handle-border' as string]: `${handleBorderPx}px`,
                     ['--st-sel-width' as string]: `${selPx}px`,
-                    ['--st-sel-offset' as string]: `${Math.max(1, Math.min(4, Math.round(2 / frameScale)))}px`,
-                    ['--st-rotate-size' as string]: `${Math.max(20, Math.round(24 / frameScale))}px`,
+                    ['--st-sel-offset' as string]: `${selOffsetPx}px`,
+                    ['--st-rotate-size' as string]: `${rotateSizePx}px`,
+                    ['--st-rotate-gap' as string]: `${rotateGapPx}px`,
                   }}
                 >
                   {canEdit && !block.locked ? (
@@ -4957,7 +5008,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                         onPointerUp={() => finishFreeRotate(block.id)}
                         onPointerCancel={() => finishFreeRotate(block.id)}
                       >
-                        <RotateCw className="st-free-rotate-icon" aria-hidden="true" />
+                        <RotateCw className="st-free-rotate-icon" strokeWidth={Math.max(1.5, Math.min(3, Math.round(2 / frameScale)))} aria-hidden="true" />
                       </span>
                     </>
                   ) : null}
@@ -5521,7 +5572,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                 ))}
                 <label className="st-context-item" style={{ ...contextMenuItemStyle, gridTemplateColumns: '1fr', gap: 6, cursor: 'pointer' }}>
                   <span style={contextMenuActionStyle}><Eye size={14} /> Fine-tune</span>
-                  <input type="range" min={10} max={100} step={5} value={Math.round((moreMenuBlock.opacity ?? 1) * 100)} style={{ width: '100%', ['--p' as string]: `${Math.round((moreMenuBlock.opacity ?? 1) * 100)}%` }}
+                  <input type="range" min={0} max={100} step={5} value={Math.round((moreMenuBlock.opacity ?? 1) * 100)} style={{ width: '100%', ['--p' as string]: `${Math.round((moreMenuBlock.opacity ?? 1) * 100)}%` }}
                     onChange={(event) => patchBlock(moreMenuBlock.id, { opacity: Number(event.currentTarget.value) / 100 })} aria-label="Transparency percent" />
                 </label>
               </>
@@ -5560,6 +5611,55 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
             <button className="st-context-item" key={position} type="button" role="menuitem" disabled={!freeMode || !canEditBlock(selected)}
               onClick={() => { alignBlockToPage(selected.id, position); setToolbarPopover(null); }} style={contextMenuItemStyle}><span style={contextMenuActionStyle}>{icon} {label}</span></button>
           ))}
+        </div>,
+        document.body,
+      ) : null}
+
+      {/* Transparency popover from the contextual toolbar: slider + value readout. */}
+      {opacityPopover && selected ? createPortal(
+        <div
+          data-studio-opacity-popover=""
+          role="dialog"
+          aria-label="Transparency"
+          className="st-opacity-popover"
+          onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
+          style={{
+            position: 'fixed',
+            left: Math.max(8, Math.min(opacityPopover.left - 60, window.innerWidth - 240)),
+            top: opacityPopover.top,
+            zIndex: 100300,
+            width: 224,
+            padding: '10px 14px 12px',
+            borderRadius: 14,
+            border: '1px solid var(--st-line-strong, var(--line, #e2dbcf))',
+            background: 'var(--surface-card, var(--panel, #fffdf8))',
+            boxShadow: '0 20px 48px rgba(15, 23, 42, .18)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            color: 'var(--st-text, var(--text, #292820))',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 750, display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--st-text, var(--text, #292820))' }}>
+              <CheckerboardTransparencyIcon size={14} /> Transparency
+            </span>
+            <span className="st-bar-opacity-value" style={{ minWidth: 32, textAlign: 'right', fontSize: 11.5, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: 'var(--st-ink-2, var(--muted, #756f63))' }}>
+              {Math.round((selected.opacity ?? 1) * 100)}%
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round((selected.opacity ?? 1) * 100)}
+              style={{ width: '100%', ['--p' as string]: `${Math.round((selected.opacity ?? 1) * 100)}%` }}
+              onChange={(event) => patchBlock(selected.id, { opacity: Number(event.currentTarget.value) / 100 })}
+              aria-label="Transparency percent"
+              title="Transparency percent"
+            />
+          </div>
         </div>,
         document.body,
       ) : null}
@@ -5791,7 +5891,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               ))}
               <label className="st-context-item" style={{ ...contextMenuItemStyle, gridTemplateColumns: '1fr', gap: 6, cursor: 'pointer' }}>
                 <span style={contextMenuActionStyle}><Eye size={14} /> Fine-tune</span>
-                <input type="range" min={10} max={100} step={5} value={Math.round((contextMenuBlock.opacity ?? 1) * 100)} style={{ width: '100%' }}
+                <input type="range" min={0} max={100} step={5} value={Math.round((contextMenuBlock.opacity ?? 1) * 100)} style={{ width: '100%' }}
                   onChange={(event) => patchBlock(contextMenuBlock.id, { opacity: Number(event.currentTarget.value) / 100 })} aria-label="Transparency percent" />
               </label>
             </>
