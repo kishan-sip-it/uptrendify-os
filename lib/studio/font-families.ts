@@ -130,7 +130,9 @@ export function getStudioFontFamilyOption(value?: string | null): StudioFontFami
 }
 
 export function getStudioFontWeightOptions(value?: string | null): readonly StudioFontWeightOption[] {
-  return getStudioFontFamilyOption(value)?.weights ?? SYSTEM_FONT_WEIGHTS;
+  const normalized = value?.trim();
+  if (!normalized) return GOOGLE_FONT_WEIGHTS; // The theme/default stack falls back to Inter.
+  return getStudioFontFamilyOption(normalized)?.weights ?? SYSTEM_FONT_WEIGHTS;
 }
 
 /** Clamp an existing stored weight to the closest weight the target family exposes. */

@@ -31,6 +31,7 @@ describe('Studio font families', () => {
   });
 
   it('limits selectable weights to each family and chooses the closest supported fallback', () => {
+    expect(getStudioFontWeightOptions().map((weight) => weight.value)).toEqual([400, 500, 600, 700]);
     expect(getStudioFontWeightOptions('Inter').map((weight) => weight.value)).toEqual([400, 500, 600, 700]);
     expect(getStudioFontWeightOptions('Plus Jakarta Sans').map((weight) => weight.value)).toEqual([400, 500, 600, 700]);
     expect(getStudioFontWeightOptions('Arial').map((weight) => weight.value)).toEqual([400, 700]);
