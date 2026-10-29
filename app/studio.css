@@ -596,7 +596,7 @@
    Hover only applies to unselected, non-editing blocks; selected/gesture chrome
    is rendered separately by .st-selection-overlay. */
 .editor-free-block:not(.is-selected):hover:not(:has(.editor-inline-edit:focus)) {
-  outline: 2px solid color-mix(in srgb, var(--st-accent) 82%, var(--st-text));
+  outline: var(--st-sel-width, 2px) solid color-mix(in srgb, var(--st-accent) 82%, var(--st-text));
   outline-offset: var(--st-sel-offset, 2px);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--st-panel) 78%, transparent),
