@@ -501,6 +501,16 @@
   overflow: hidden;
   border-radius: 2px;
 }
+.studio-safe-zone-guides {
+  position: absolute;
+  inset: 10% 8%;
+  z-index: 45;
+  border: 1px dashed color-mix(in srgb, var(--st-accent) 86%, var(--st-text));
+  border-radius: 8px;
+  pointer-events: none;
+  /* Opposing light/dark keylines keep guides legible over either artwork tone. */
+  box-shadow: 0 0 0 1px rgb(255 255 255 / .88), 0 0 0 2px rgb(15 23 42 / .72);
+}
 .studio-page-label {
   position: absolute;
   top: -26px;
@@ -573,7 +583,7 @@
   overflow: visible;
   pointer-events: none;
 }
-.editor-free-block.is-ghost { opacity: .38; }
+/* Hidden/ghost opacity is applied to artwork content, not the editor chrome. */
 .editor-free-block.is-selected {
   z-index: 30;
   /* Selection chrome (outline + handles) moved to the frame-level
@@ -582,13 +592,16 @@
      constant SCREEN size at every zoom level. Whole-CSS-px values only:
      fractional widths anti-alias into a blurry line over the scaled frame. */
 }
-/* Crisp hover affordance: solid hairline, no tint, no blur, never while the
-   block is selected, being edited, or grabbed by a handle. */
+/* A full, high-contrast hover boundary without changing saved geometry.
+   Hover only applies to unselected, non-editing blocks; selected/gesture chrome
+   is rendered separately by .st-selection-overlay. */
 .editor-free-block:not(.is-selected):hover:not(:has(.editor-inline-edit:focus)) {
-  outline: 1px solid color-mix(in srgb, var(--st-accent) 55%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--st-accent) 82%, var(--st-text));
   outline-offset: var(--st-sel-offset, 2px);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--st-panel) 78%, transparent),
+    0 0 6px color-mix(in srgb, var(--st-accent) 30%, transparent);
 }
-.editor-free-block:not(.is-selected):hover:has(.st-free-handle:hover) { outline: none; }
 .editor-free-block .content-doc-heading,
 .editor-free-block .content-doc-text { margin: 0; }
 /* A short text inside a tall free-canvas block must still enter inline editing
@@ -602,8 +615,11 @@
   position: absolute;
   z-index: 55;
   pointer-events: none;
-  outline: var(--st-sel-width, 2px) solid var(--st-accent);
+  outline: var(--st-sel-width, 2px) solid color-mix(in srgb, var(--st-accent) 82%, var(--st-text));
   outline-offset: var(--st-sel-offset, 2px);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--st-panel) 78%, transparent),
+    0 0 5px color-mix(in srgb, var(--st-accent) 22%, transparent);
 }
 .st-selection-overlay .st-free-handle,
 .st-selection-overlay .st-free-rotate { pointer-events: auto; }
@@ -618,7 +634,7 @@
   z-index: 60;
   width: var(--st-handle-size, 10px);
   height: var(--st-handle-size, 10px);
-  border: 1.5px solid var(--st-accent);
+  border: 2px solid color-mix(in srgb, var(--st-accent) 82%, var(--st-text));
   border-radius: 50%;
   background: #fff;
   /* No drop shadow: shadows over the scaled frame read as a glittering halo. */
@@ -648,7 +664,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1.5px solid var(--st-accent);
+  border: 2px solid color-mix(in srgb, var(--st-accent) 82%, var(--st-text));
   border-radius: 50%;
   background: #fff;
   color: var(--st-accent);

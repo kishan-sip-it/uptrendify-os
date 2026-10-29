@@ -4744,7 +4744,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               </span>
             ) : null}
             {safeZones ? (
-              <div aria-hidden="true" style={{ position: 'absolute', inset: '10% 8%', border: '1px dashed rgba(124,124,255,.55)', borderRadius: 8, pointerEvents: 'none' }} />
+              <div aria-hidden="true" className="studio-safe-zone-guides" />
             ) : null}
             {freeMode ? (
               (activePage?.blocks ?? []).map((block, layerIndex) => {
@@ -4799,7 +4799,7 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
                     onContextMenu={(event) => openBlockContextMenu(event, block)}
 
                   >
-                    <div className="editor-free-block-content" style={{ opacity: block.opacity ?? 1 }}>
+                    <div className="editor-free-block-content" style={{ opacity: (block.opacity ?? 1) * (block.hidden ? 0.38 : 1) }}>
                       {renderBlockInner(block)}
                     </div>
                     {/* Selection outline + handles render once in the frame-level
