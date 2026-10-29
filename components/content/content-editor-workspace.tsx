@@ -722,7 +722,12 @@ function CanvasText({
     if (!editable || !savedRange || !editable.contains(savedRange.commonAncestorContainer)) return;
     // Colour inputs and selects should keep focus while a user edits their value.
     // Toolbar buttons prevent mousedown-default and can safely return focus to the canvas.
-    const returnFocusToEditable = !isInlineToolbarFocused();
+    // The searchable font popover unmounts after a choice; return focus to the
+    // editor rather than leaving the saved text range tied to a removed input.
+    const activeElement = document.activeElement;
+    const focusedFontPopover = activeElement instanceof HTMLElement
+      && activeElement.closest('.st-font-picker-popover') !== null;
+    const returnFocusToEditable = !isInlineToolbarFocused() || focusedFontPopover;
     const start = textOffsetForDomPoint(editable, savedRange.startContainer, savedRange.startOffset);
     const end = textOffsetForDomPoint(editable, savedRange.endContainer, savedRange.endOffset);
     if (end <= start) return;
