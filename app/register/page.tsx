@@ -32,7 +32,7 @@ function PasswordField({
   return (
     <label>
       {label}
-      <span style={{ position: 'relative', display: 'block' }}>
+      <span className="auth-password">
         <input
           name={name}
           value={value}
@@ -43,25 +43,12 @@ function PasswordField({
           maxLength={72}
           autoComplete={autoComplete}
           placeholder={placeholder}
-          style={{ width: '100%', paddingRight: 44 }}
         />
         <button
           type="button"
+          className="auth-password-toggle"
           aria-label={visible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
           onClick={onToggle}
-          style={{
-            position: 'absolute',
-            right: 10,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            border: 0,
-            background: 'transparent',
-            color: 'var(--muted)',
-            cursor: 'pointer',
-            display: 'grid',
-            placeItems: 'center',
-            padding: 4,
-          }}
         >
           {visible ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>

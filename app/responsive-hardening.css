@@ -174,11 +174,6 @@ button, a, input, textarea, select {
   .public-footer {
     max-width: calc(100% - 28px);
   }
-
-  .auth-layout-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 480px) !important;
-    gap: 24px;
-  }
 }
 
 @media (max-width: 900px) {
@@ -212,18 +207,6 @@ button, a, input, textarea, select {
 
   .detail-row dd {
     margin-left: 0;
-  }
-
-  .auth-layout-grid {
-    grid-template-columns: 1fr !important;
-  }
-
-  .auth-showcase {
-    max-height: none;
-  }
-
-  .auth-card-wrap {
-    max-height: none;
   }
 }
 
@@ -325,14 +308,6 @@ button, a, input, textarea, select {
     width: calc(100vw - 16px);
     bottom: 8px;
   }
-
-  .auth-layout-grid {
-    gap: 14px;
-  }
-
-  .auth-card-wrap {
-    padding-inline: 0;
-  }
 }
 
 @media (max-width: 480px) {
@@ -367,10 +342,6 @@ button, a, input, textarea, select {
 
   .public-header-cta {
     padding-inline: 10px;
-  }
-
-  .auth-card-wrap {
-    padding-bottom: 20px;
   }
 }
 
