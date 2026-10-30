@@ -192,32 +192,19 @@ export default function LoginPage() {
         </label>
         <label>
           Password
-          <span style={{ position: 'relative', display: 'block' }}>
+          <span className="auth-password">
             <input
               name="password"
               type={showPassword ? 'text' : 'password'}
               required
               autoComplete="current-password"
               placeholder="••••••••"
-              style={{ width: '100%', paddingRight: 44 }}
             />
             <button
               type="button"
+              className="auth-password-toggle"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
               onClick={() => setShowPassword((value) => !value)}
-              style={{
-                position: 'absolute',
-                right: 10,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                border: 0,
-                background: 'transparent',
-                color: 'var(--muted)',
-                cursor: 'pointer',
-                display: 'grid',
-                placeItems: 'center',
-                padding: 4,
-              }}
             >
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
@@ -227,7 +214,7 @@ export default function LoginPage() {
           {loading ? <><LoaderCircle size={15} className="spin" /> Working…</> : <>Sign in <Sparkles size={15} /></>}
         </button>
         {confirmationNotice ? (
-          <div className="field-note" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div className="field-note auth-note">
             <CheckCircle2 size={14} /> {confirmationNotice}
           </div>
         ) : null}
@@ -243,7 +230,7 @@ export default function LoginPage() {
           </button>
         ) : null}
         {resent ? (
-          <div className="field-note" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div className="field-note auth-note">
             <MailCheck size={14} /> A fresh confirmation email was sent.
           </div>
         ) : null}
