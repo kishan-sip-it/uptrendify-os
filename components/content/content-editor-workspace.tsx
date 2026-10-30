@@ -120,6 +120,18 @@ import { templatePaletteByName } from '@/lib/studio/template-library/art';
 import { STUDIO_LIBRARY } from '@/lib/studio/template-library';
 import { importSvgTemplate, type SvgTemplateImport } from '@/lib/studio/import-template';
 import { eraseRasterTextPixels, type RasterTextBounds } from '@/lib/studio/raster-text';
+import { cropRasterRegion, eraseRasterRegionPixels } from '@/lib/studio/raster-layers';
+import {
+  MAGIC_LAYERS_DEFAULT_SELECT_CONFIDENCE,
+  buildMagicLayerPage,
+  containFitMapping,
+  verifySolidBackground,
+  verifySolidShapeFill,
+  type MagicLayerBackground,
+  type MagicLayerBuildElement,
+  type MagicLayerElement,
+  type MagicLayerShapeKind,
+} from '@/lib/studio/magic-layers';
 import { isManagedStudioAssetUrl } from '@/lib/content/studio-asset-image';
 import { storyboardPagesFromScript } from '@/lib/content/parse-script';
 import { lintBlocks, healthScore, channelLimit, type BrandLintIssue } from '@/lib/studio/brand-lint';
@@ -198,6 +210,37 @@ type RasterTextReview = {
   components: RasterTextCandidate[];
   notes: string[];
 };
+
+/** One reviewed Magic Layers element. Mirrors the API plan element with the
+ * user's review edits applied (corrected text/bounds, selection state). */
+type MagicLayerCandidate =
+  | (Extract<MagicLayerElement, { kind: 'text' }> & { selected: boolean })
+  | (Extract<MagicLayerElement, { kind: 'shape' }> & { selected: boolean })
+  | (Extract<MagicLayerElement, { kind: 'image' }> & { selected: boolean });
+type MagicLayerReview = {
+  fileName: string;
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+  dataUrl: string;
+  width: number;
+  height: number;
+  background: MagicLayerBackground;
+  candidates: MagicLayerCandidate[];
+  notes: string[];
+  dropped: string[];
+};
+
+/** Clamp a model-returned box into the reviewable 0..1000 space (same policy
+ * as the raster-text review) without distorting w/h beyond the canvas. */
+function clampMagicBounds(bounds: { x: number; y: number; w: number; h: number }) {
+  const x = Math.max(0, Math.min(999, Math.round(bounds.x)));
+  const y = Math.max(0, Math.min(999, Math.round(bounds.y)));
+  return {
+    x,
+    y,
+    w: Math.max(1, Math.min(1000 - x, Math.round(bounds.w))),
+    h: Math.max(1, Math.min(1000 - y, Math.round(bounds.h))),
+  };
+}
 
 function CheckerboardTransparencyIcon({ size = 15, className }: { size?: number; className?: string }) {
   return (
@@ -1301,6 +1344,11 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
   const [isImportingTemplate, setIsImportingTemplate] = useState(false);
   const [rasterReview, setRasterReview] = useState<RasterTextReview | null>(null);
   const [isApplyingRasterText, setIsApplyingRasterText] = useState(false);
+  const [magicReview, setMagicReview] = useState<MagicLayerReview | null>(null);
+  const [isMagicAnalyzing, setIsMagicAnalyzing] = useState(false);
+  const [isApplyingMagic, setIsApplyingMagic] = useState(false);
+  const magicAbortRef = useRef<AbortController | null>(null);
+  const magicFileInputRef = useRef<HTMLInputElement | null>(null);
   const [textContextMenu, setTextContextMenu] = useState<{ blockId: string; left: number; top: number; submenu: TextContextSubmenu; submenuLeft?: number; submenuTop?: number } | null>(null);
   // The "…" More menu — dropdown from the top contextual toolbar and from the
   // compact selection pill. Shares the right-click menu's handlers and submenu
@@ -2731,6 +2779,281 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
       setError(cause instanceof Error ? cause.message : 'Could not safely grab the selected text.');
     } finally {
       setIsApplyingRasterText(false);
+    }
+  };
+
+  // ---------- Magic Layers: reconstruct editable layers from a flattened image ----------
+
+  const startMagicLayers = async (file: File) => {
+    if (!canEdit || isMagicAnalyzing || magicReview) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setError('Choose a PNG, JPG, or WEBP image for Magic Layers.');
+      if (magicFileInputRef.current) magicFileInputRef.current.value = '';
+      return;
+    }
+    if (file.size <= 0 || file.size > 2 * 1024 * 1024) {
+      setError('Magic Layers images are limited to 2 MB.');
+      if (magicFileInputRef.current) magicFileInputRef.current.value = '';
+      return;
+    }
+    setIsMagicAnalyzing(true);
+    setError(null);
+    try {
+      const rawBytes = new Uint8Array(await file.arrayBuffer());
+      let binary = '';
+      for (let offset = 0; offset < rawBytes.length; offset += 0x8000) {
+        binary += String.fromCharCode(...rawBytes.subarray(offset, Math.min(offset + 0x8000, rawBytes.length)));
+      }
+      const data = btoa(binary);
+      const bitmap = await createImageBitmap(file);
+      const width = bitmap.width;
+      const height = bitmap.height;
+      bitmap.close();
+
+      const controller = new AbortController();
+      magicAbortRef.current = controller;
+      const response = await fetch(`/api/brands/${brandId}/content/${contentId}/magic-layers`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mimeType: file.type, data }),
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => null) as {
+        plan?: { background: MagicLayerBackground; elements: MagicLayerElement[]; notes?: string[] };
+        dropped?: string[];
+        error?: string;
+      } | null;
+      if (!response.ok) throw new Error(payload?.error || 'Magic Layers could not analyze this image.');
+      const plan = payload?.plan;
+      if (!plan || !Array.isArray(plan.elements)) throw new Error('Magic Layers returned no reconstruction plan.');
+
+      const candidates: MagicLayerCandidate[] = plan.elements.map((element) => ({
+        ...element,
+        bounds: clampMagicBounds(element.bounds),
+        selected: element.confidence >= MAGIC_LAYERS_DEFAULT_SELECT_CONFIDENCE,
+      }));
+      // Recognition is preview-only: nothing reaches the canvas until the user
+      // reviews the layers and confirms the replacement explicitly.
+      setMagicReview({
+        fileName: file.name,
+        mimeType: file.type as MagicLayerReview['mimeType'],
+        dataUrl: `data:${file.type};base64,${data}`,
+        width,
+        height,
+        background: plan.background,
+        candidates,
+        notes: plan.notes ?? [],
+        dropped: payload?.dropped ?? [],
+      });
+      setNotice(candidates.length
+        ? 'Review the recovered layers. Only selected layers are reconstructed; everything else stays embedded in the background.'
+        : 'No editable layers were confidently detected. You can still use the image unchanged.');
+      setError(null);
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'AbortError') setError('Magic Layers analysis was cancelled.');
+      else setError(cause instanceof Error ? cause.message : 'Magic Layers analysis failed.');
+    } finally {
+      setIsMagicAnalyzing(false);
+      magicAbortRef.current = null;
+      if (magicFileInputRef.current) magicFileInputRef.current.value = '';
+    }
+  };
+
+  const cancelMagicAnalysis = () => {
+    magicAbortRef.current?.abort();
+  };
+
+  const patchMagicCandidate = (index: number, patch: Partial<MagicLayerCandidate>) => {
+    setMagicReview((current) => current
+      ? { ...current, candidates: current.candidates.map((candidate, position) => position === index ? ({ ...candidate, ...patch } as MagicLayerCandidate) : candidate) }
+      : current);
+  };
+
+  const installMagicImageUnchanged = async () => {
+    const review = magicReview;
+    if (!review || isApplyingMagic) return;
+    setIsApplyingMagic(true);
+    setError(null);
+    try {
+      const sourceUrl = await uploadTemplateRaster({
+        blockId: 'magic-unchanged',
+        dataUrl: review.dataUrl,
+        fileName: review.fileName.replace(/\.[^.]+$/, '') + '.png',
+      }, 4 * 1024 * 1024);
+      if (!sourceUrl) throw new Error('The image could not be stored securely.');
+      const mapping = containFitMapping(review.width, review.height);
+      installImportedPages([{
+        id: newBlockId('page'),
+        size: mapping.size,
+        bg: '#ffffff',
+        backgroundImage: { src: sourceUrl, alt: review.fileName.slice(0, 300), fit: 'contain' },
+        blocks: [],
+      }], 'Original image imported unchanged. Use Magic Layers with a clearer source to recover editable layers.');
+      setMagicReview(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not import the image unchanged.');
+    } finally {
+      setIsApplyingMagic(false);
+    }
+  };
+
+  const applyMagicLayers = async () => {
+    const review = magicReview;
+    if (!review || isApplyingMagic) return;
+    const selected = review.candidates.filter((candidate) => candidate.selected);
+    if (!selected.length) {
+      setError('Select at least one recovered layer before applying Magic Layers.');
+      return;
+    }
+    setIsApplyingMagic(true);
+    setError(null);
+    try {
+      const image = new Image();
+      image.src = review.dataUrl;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = review.width;
+      canvas.height = review.height;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) throw new Error('This browser could not prepare the image for layer reconstruction.');
+      context.drawImage(image, 0, 0);
+      const sourcePixels = context.getImageData(0, 0, review.width, review.height);
+      const source = { width: review.width, height: review.height, data: sourcePixels.data };
+      const honesty: string[] = [];
+
+      // The cleaned raster ALWAYS stays the page background: anything the
+      // model did not detect remains visible instead of being silently lost
+      // behind a fabricated flat fill. The border check only informs the user
+      // how safe it is to later replace or recolour that background layer.
+      const claim = review.background;
+      if (claim.kind === 'solid' && claim.color && verifySolidBackground(source, claim.color).verified) {
+        honesty.push(`Background pixels verified flat (${claim.color}); the background layer is safe to recolour or replace.`);
+      }
+
+      // Verify each shape's flat-colour claim against the actual pixels; a
+      // shape that is not really flat becomes an image cutout instead of a
+      // fabricated vector.
+      const cutoutTargets: Array<{ index: number; bounds: { x: number; y: number; w: number; h: number } }> = [];
+      const elements: MagicLayerBuildElement[] = [];
+      for (const candidate of selected) {
+        if (candidate.kind === 'text') {
+          elements.push({
+            kind: 'text', text: candidate.text, bounds: candidate.bounds, fontSize: candidate.fontSize,
+            fontFamily: candidate.fontFamily, fontWeight: candidate.fontWeight, italic: candidate.italic,
+            underline: candidate.underline, color: candidate.color, align: candidate.align,
+          });
+          continue;
+        }
+        if (candidate.kind === 'shape') {
+          if (verifySolidShapeFill(source, candidate.bounds, candidate.fill).verified) {
+            elements.push({ kind: 'shape', shape: candidate.shape, bounds: candidate.bounds, fill: candidate.fill, rotation: candidate.rotation, renderedAs: 'native' });
+          } else {
+            honesty.push('A recovered shape was not actually a flat colour; it was kept as an image cutout instead of a fabricated vector.');
+            cutoutTargets.push({ index: elements.length, bounds: candidate.bounds });
+            elements.push({ kind: 'shape', shape: candidate.shape, bounds: candidate.bounds, fill: candidate.fill, rotation: candidate.rotation, renderedAs: 'image', url: '' });
+          }
+          continue;
+        }
+        cutoutTargets.push({ index: elements.length, bounds: candidate.bounds });
+        elements.push({ kind: 'image', bounds: candidate.bounds, url: '', description: candidate.description });
+      }
+
+      // Rebuild the background: the proven glyph-mask erase for text regions,
+      // edge interpolation for shape/image regions. Every selected element
+      // leaves the background exactly once — that is the no-duplicates
+      // guarantee that makes moving a layer reveal a clean surface.
+      let working: Uint8ClampedArray = source.data;
+      const textColorRegions = selected
+        .filter((candidate): candidate is Extract<MagicLayerCandidate, { kind: 'text' }> => candidate.kind === 'text')
+        .map((candidate) => ({ bounds: candidate.bounds, color: candidate.color }));
+      if (textColorRegions.length) {
+        const textErased = eraseRasterTextPixels({ width: review.width, height: review.height, data: working }, textColorRegions);
+        working = textErased.data;
+        const skippedText = textErased.regions.filter((region) => region.status !== 'erased').length;
+        if (skippedText) honesty.push(`${skippedText} text layer(s) could not be cleaned safely and stayed embedded; their editable copies were still added.`);
+      }
+      const boxRegions = selected.filter((candidate) => candidate.kind !== 'text').map((candidate) => candidate.bounds);
+      if (boxRegions.length) {
+        working = eraseRasterRegionPixels({ width: review.width, height: review.height, data: working }, boxRegions).data;
+      }
+
+      const cleanedPixels = context.createImageData(review.width, review.height);
+      cleanedPixels.data.set(working);
+      context.putImageData(cleanedPixels, 0, 0);
+      // PNG is intentional: lossy re-encoding would alter untouched pixels.
+      const cleanedDataUrl = canvas.toDataURL('image/png');
+      const bytesInDataUrl = Math.floor((cleanedDataUrl.split(',')[1]?.length ?? 0) * 0.75);
+      if (bytesInDataUrl > 4 * 1024 * 1024) {
+        throw new Error('The losslessly cleaned background exceeds the 4 MB limit. Use a smaller source image or select fewer layers.');
+      }
+      const backgroundSrc = await uploadTemplateRaster({
+        blockId: 'magic-background',
+        dataUrl: cleanedDataUrl,
+        fileName: review.fileName.replace(/\.[^.]+$/, '') + '-layers-background.png',
+      }, 4 * 1024 * 1024);
+      if (!backgroundSrc) throw new Error('The cleaned background could not be stored securely.');
+
+      // Cut out image layers from the ORIGINAL pixels (never the erased copy),
+      // so each layer keeps its exact content at its exact position.
+      const cropCanvas = document.createElement('canvas');
+      for (const target of cutoutTargets) {
+        const crop = cropRasterRegion(source, target.bounds);
+        if (!crop) continue;
+        cropCanvas.width = crop.width;
+        cropCanvas.height = crop.height;
+        cropCanvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(crop.data), crop.width, crop.height), 0, 0);
+        const dataUrl = cropCanvas.toDataURL('image/png');
+        const src = await uploadTemplateRaster({
+          blockId: 'magic-cutout',
+          dataUrl,
+          fileName: review.fileName.replace(/\.[^.]+$/, '') + '-layer.png',
+        }, 4 * 1024 * 1024);
+        if (!src) continue;
+        const element = elements[target.index]!;
+        if (element.kind === 'image' || (element.kind === 'shape' && element.renderedAs === 'image')) {
+          elements[target.index] = { ...element, url: src };
+        }
+      }
+      const missingCutouts = cutoutTargets.filter((target) => {
+        const element = elements[target.index]!;
+        return (element.kind === 'image' || (element.kind === 'shape' && element.renderedAs === 'image')) && !element.url;
+      }).length;
+      if (missingCutouts) honesty.push(`${missingCutouts} image layer(s) exceeded the asset size limit and were skipped.`);
+
+      // Assemble the editable page, then confirm the replacement explicitly.
+      const { page, warnings } = buildMagicLayerPage({
+        background: { type: 'image', src: backgroundSrc, alt: review.fileName.slice(0, 300) },
+        elements,
+        imageWidth: review.width,
+        imageHeight: review.height,
+        seed: review.fileName,
+      });
+      if (!page.blocks.length) throw new Error('No recovered layer could be stored. Nothing was changed.');
+
+      const counts = page.blocks.reduce((accumulator, block) => {
+        accumulator[block.type] = (accumulator[block.type] ?? 0) + 1;
+        return accumulator;
+      }, {} as Record<string, number>);
+      const summary = Object.entries(counts).map(([type, count]) => `${count} ${type}`).join(', ');
+      const notes = [...honesty, ...warnings].slice(0, 4);
+      const notice = `Magic Layers applied: ${page.blocks.length} editable layer(s) (${summary}).` +
+        (notes.length ? ' ' + notes.join(' ') : '') +
+        ' Undo (Ctrl+Z) restores your canvas; nothing is saved until you save a version.';
+
+      setStudioActionDialog({
+        kind: 'confirm',
+        title: `Replace the current canvas with ${page.blocks.length} recovered layer(s)?`,
+        description: 'The reconstructed layers are placed exactly where their pixels were, over a cleaned background. Your current canvas is replaced but stays recoverable with Undo (Ctrl+Z), and nothing is saved until you save a version.',
+        confirmLabel: 'Apply Magic Layers',
+        onConfirm: () => {
+          installImportedPages([page], notice);
+          setMagicReview(null);
+        },
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Magic Layers could not be applied.');
+    } finally {
+      setIsApplyingMagic(false);
     }
   };
 
@@ -4664,7 +4987,27 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               {dockTab === 'ai' ? (
                 <>
                   <span className="st-label">AI</span>
-                  <p className="editor-hint">Ask AI to rewrite, shorten or restyle the selected block. <span className="st-preview-tag">Preview</span></p>
+                  <p className="editor-hint">Magic Layers turns a flattened design image into separate editable layers — text, shapes and image regions — placed exactly where their pixels were.</p>
+                  <input
+                    ref={magicFileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap' }}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void startMagicLayers(file);
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button type="button" className="st-btn st-btn--primary" onClick={() => magicFileInputRef.current?.click()} disabled={!canEdit || isMagicAnalyzing || isApplyingMagic}>
+                      {isMagicAnalyzing ? <LoaderCircle size={13} className="studio-upload-spinner" /> : <Sparkles size={13} />}
+                      {isMagicAnalyzing ? 'Analyzing image…' : 'Reconstruct layers from image'}
+                    </button>
+                    {isMagicAnalyzing ? (
+                      <button type="button" className="st-btn" onClick={cancelMagicAnalysis}>Cancel analysis</button>
+                    ) : null}
+                  </div>
+                  <p className="editor-hint">PNG, JPG or WEBP up to 2 MB. Nothing changes until you review the recovered layers and confirm the replacement.</p>
                 </>
               ) : null}
               {dockTab === 'scenes' ? (
@@ -6094,6 +6437,157 @@ export function ContentEditorWorkspace({ brandId, organizationId, contentId, doc
               <button type="button" className="st-btn st-btn--primary" onClick={() => void applyRasterTextReview()} disabled={isApplyingRasterText || (rasterReview?.components.filter((component) => component.selected).length ?? 0) === 0}>
                 {isApplyingRasterText ? <LoaderCircle size={13} className="studio-upload-spinner" /> : null}
                 Grab selected text ({rasterReview.components.filter((component) => component.selected).length})
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {magicReview ? (
+        <div className="studio-upload-overlay" role="presentation" style={{ zIndex: 100100, alignItems: 'center', justifyContent: 'center', padding: 18, overflowY: 'auto' }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="magic-layers-review-title" className="studio-upload-dialog" style={{
+            width: 'min(1180px, 96vw)', maxWidth: 1180, maxHeight: '94vh', overflow: 'auto', gap: 12,
+            alignItems: 'stretch', background: 'var(--surface-card, var(--panel, #fffdf8))', color: 'var(--text, #292820)',
+            border: '1px solid var(--line, #e2dbcf)', padding: 18,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <strong id="magic-layers-review-title" style={{ fontSize: 18 }}>Magic Layers</strong>
+                <p className="editor-hint" style={{ margin: '6px 0 0' }}>Nothing is changed yet. Review the recovered layers, correct the wording or bounds, and select what to reconstruct. Unselected content stays embedded in the background.</p>
+              </div>
+              <button type="button" className="st-icon" onClick={() => setMagicReview(null)} disabled={isApplyingMagic} aria-label="Cancel Magic Layers">×</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{
+                  width: '100%', aspectRatio: `${magicReview.width} / ${magicReview.height}`,
+                  position: 'relative', overflow: 'hidden', background: 'var(--st-surface)',
+                  border: '1px solid var(--st-border, #334155)', borderRadius: 8,
+                }}>
+                  <img src={magicReview.dataUrl} alt="Original image layer-reconstruction preview" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+                  {magicReview.candidates.map((candidate, index) => (
+                    <button key={index} type="button"
+                      aria-label={`${candidate.selected ? 'Deselect' : 'Select'} layer ${index + 1} (${candidate.kind})`}
+                      aria-pressed={candidate.selected}
+                      onClick={() => patchMagicCandidate(index, { selected: !candidate.selected })}
+                      style={{
+                        position: 'absolute',
+                        left: `${candidate.bounds.x / 10}%`,
+                        top: `${candidate.bounds.y / 10}%`,
+                        width: `${Math.max(1, Math.min(1000 - candidate.bounds.x, candidate.bounds.w)) / 10}%`,
+                        height: `${Math.max(1, Math.min(1000 - candidate.bounds.y, candidate.bounds.h)) / 10}%`,
+                        minWidth: 16, minHeight: 12, padding: 0, borderRadius: 3,
+                        border: candidate.selected ? '2px solid #22c55e' : `1px solid ${candidate.kind === 'text' ? '#38bdf8' : candidate.kind === 'shape' ? '#f59e0b' : '#a78bfa'}`,
+                        background: candidate.selected ? 'rgba(34,197,94,.12)' : 'rgba(56,189,248,.06)',
+                        color: '#fff', fontSize: 10, fontWeight: 700, textShadow: '0 1px 2px #000', cursor: 'pointer',
+                      }} title={candidate.kind === 'text' ? candidate.text : candidate.kind === 'shape' ? `${candidate.shape} shape` : (candidate.description ?? 'image region')}>{index + 1}</button>
+                  ))}
+                </div>
+                <div className="editor-hint" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
+                  <span><span style={{ color: '#38bdf8' }}>□</span> text</span>
+                  <span><span style={{ color: '#f59e0b' }}>□</span> shape</span>
+                  <span><span style={{ color: '#a78bfa' }}>□</span> image</span>
+                  <span><span style={{ color: '#22c55e' }}>□</span> selected to reconstruct</span>
+                </div>
+                <div style={{ marginTop: 10, padding: 10, borderRadius: 6, background: 'var(--st-surface, #0b0f15)', fontSize: 12 }}>
+                  <strong>Detected background</strong>
+                  <p style={{ margin: '5px 0 0' }}>
+                    {magicReview.background.kind}
+                    {magicReview.background.kind === 'solid' && magicReview.background.color ? ` · ${magicReview.background.color}` : ''}
+                    {magicReview.background.kind === 'gradient' && magicReview.background.gradient ? ` · ${magicReview.background.gradient.from} → ${magicReview.background.gradient.to}` : ''}
+                    {' '}— the cleaned image always stays the background layer so nothing undetected is lost.
+                  </p>
+                  {(magicReview.notes.length || magicReview.dropped.length) ? (
+                    <>
+                      <strong style={{ display: 'inline-block', marginTop: 8 }}>Recognition notes</strong>
+                      {[...magicReview.notes, ...magicReview.dropped].slice(0, 5).map((note, index) => <p key={index} style={{ margin: '5px 0 0' }}>{note}</p>)}
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              <div style={{ minWidth: 0, maxHeight: '61vh', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 9 }}>
+                {magicReview.candidates.length ? magicReview.candidates.map((candidate, index) => (
+                  <div key={index} style={{
+                    border: `1px solid ${candidate.selected ? '#22c55e' : 'var(--st-border, #334155)'}`,
+                    borderRadius: 8, padding: 10,
+                    background: candidate.selected ? 'rgba(34,197,94,.06)' : 'var(--st-surface, #0b0f15)',
+                    display: 'flex', flexDirection: 'column', gap: 7,
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={candidate.selected} onChange={(event) => patchMagicCandidate(index, { selected: event.target.checked })} style={{ marginTop: 3 }} />
+                      <span style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.4 }}>
+                        #{index + 1} · {candidate.kind === 'text' ? (candidate.text || 'Empty text') : candidate.kind === 'shape' ? `${candidate.shape} shape` : (candidate.description || 'image region')}
+                      </span>
+                      <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: 'var(--st-muted, #9ca3af)' }}>{Math.round(candidate.confidence * 100)}%</span>
+                    </label>
+                    {candidate.kind === 'text' ? (
+                      <>
+                        <label className="st-field"><span>Text (correct the recognition before applying)</span>
+                          <input className="st-input" value={candidate.text} onChange={(event) => patchMagicCandidate(index, { text: event.target.value })} />
+                        </label>
+                        <div className="st-field-row" style={{ gap: 8, alignItems: 'end' }}>
+                          <label className="st-field" style={{ flex: 1, minWidth: 80 }}><span>Estimated font</span>
+                            <input className="st-input" value={candidate.fontFamily ?? 'Arial'} onChange={(event) => patchMagicCandidate(index, { fontFamily: event.target.value })} />
+                          </label>
+                          <label className="st-field" style={{ width: 82 }}><span>Size</span>
+                            <input className="st-input" type="number" min={1} max={1000} value={candidate.fontSize} onChange={(event) => patchMagicCandidate(index, { fontSize: Math.max(1, Math.min(1000, Number(event.target.value) || 1)) })} />
+                          </label>
+                          <label className="st-field" style={{ width: 56 }}><span>Colour</span>
+                            <input type="color" value={candidate.color} onChange={(event) => patchMagicCandidate(index, { color: event.target.value })} aria-label={`Text colour for layer ${index + 1}`} style={{ width: '100%', height: 34 }} />
+                          </label>
+                          <label className="st-field" style={{ width: 90 }}><span>Weight</span>
+                            <select className="st-select" value={candidate.fontWeight ?? 'normal'} onChange={(event) => patchMagicCandidate(index, { fontWeight: event.target.value as 'normal' | 'bold' })}>
+                              <option value="normal">Regular</option><option value="bold">Bold</option>
+                            </select>
+                          </label>
+                        </div>
+                      </>
+                    ) : null}
+                    {candidate.kind === 'shape' ? (
+                      <div className="st-field-row" style={{ gap: 8, alignItems: 'end' }}>
+                        <label className="st-field" style={{ flex: 1 }}><span>Shape</span>
+                          <select className="st-select" value={candidate.shape} onChange={(event) => patchMagicCandidate(index, { shape: event.target.value as MagicLayerShapeKind })}>
+                            <option value="rectangle">Rectangle</option><option value="square">Square</option><option value="circle">Circle</option>
+                            <option value="triangle">Triangle</option><option value="star">Star</option><option value="pyramid">Pyramid</option>
+                          </select>
+                        </label>
+                        <label className="st-field" style={{ width: 56 }}><span>Fill</span>
+                          <input type="color" value={candidate.fill} onChange={(event) => patchMagicCandidate(index, { fill: event.target.value })} aria-label={`Fill colour for layer ${index + 1}`} style={{ width: '100%', height: 34 }} />
+                        </label>
+                      </div>
+                    ) : null}
+                    {candidate.kind === 'image' ? (
+                      <label className="st-field"><span>Alt text for the image layer</span>
+                        <input className="st-input" value={candidate.description ?? ''} maxLength={300} onChange={(event) => patchMagicCandidate(index, { description: event.target.value })} />
+                      </label>
+                    ) : null}
+                    <div className="st-field"><span>Region bounds (0–1000: X, Y, W, H)</span>
+                      <div className="st-field-row" style={{ gap: 5 }}>
+                        {(['x', 'y', 'w', 'h'] as const).map((key) => (
+                          <label key={key} className="st-field" style={{ width: 0, flex: '1 1 0' }}><span>{key.toUpperCase()}</span>
+                            <input className="st-input" type="number" min={key === 'w' || key === 'h' ? 1 : 0} max={1000} value={candidate.bounds[key]}
+                              onChange={(event) => {
+                                const min = key === 'w' || key === 'h' ? 1 : 0;
+                                const value = Math.max(min, Math.min(1000, Math.round(Number(event.target.value) || min)));
+                                patchMagicCandidate(index, { bounds: clampMagicBounds({ ...candidate.bounds, [key]: value }) });
+                              }} />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )) : <p className="editor-hint">No editable layers were confidently detected. Use the image unchanged, or cancel and try a clearer source.</p>}
+              </div>
+            </div>
+            <p className="editor-hint" style={{ margin: 0 }}>
+              Selected layers are lifted out of the image and become editable blocks at the same position; the background is cleaned where they were. Flat-colour shape claims are verified against the actual pixels before becoming native shapes — anything else is kept as an image cutout. Reconstruction is approximate: inspect the result before saving.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', paddingTop: 4 }}>
+              <button type="button" className="st-btn" onClick={() => setMagicReview(null)} disabled={isApplyingMagic}>Cancel</button>
+              <button type="button" className="st-btn" onClick={() => void installMagicImageUnchanged()} disabled={isApplyingMagic}>Use image unchanged</button>
+              <button type="button" className="st-btn st-btn--primary" onClick={() => void applyMagicLayers()} disabled={isApplyingMagic || (magicReview.candidates.filter((candidate) => candidate.selected).length) === 0}>
+                {isApplyingMagic ? <LoaderCircle size={13} className="studio-upload-spinner" /> : null}
+                Apply Magic Layers ({magicReview.candidates.filter((candidate) => candidate.selected).length})
               </button>
             </div>
           </section>
